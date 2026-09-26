@@ -6,7 +6,29 @@
 # container is created (and again after a rebuild) to install it into
 # ~/.local/bin. Authenticate separately with `gh auth login` or a GH_TOKEN that
 # carries the `repo` and `workflow` scopes.
+#
+# THE VERSION IS PINNED, and deliberately so. This script used to resolve the
+# latest stable tag at build time from
+# https://api.github.com/repos/cli/cli/releases/latest, which made it the only
+# step of the image build that depended on the GitHub *API* — every other tool
+# here (lazygit, docker, k3d, kubectl, kubelogin, uv, node, rust) is pinned. That
+# API is rate-limited per client IP for unauthenticated callers and the image
+# build has no token, so the lookup is a request the build cannot retry its way
+# out of and cannot cache: a rebuild on a rootless-Podman NixOS host died on
+#
+#     curl: (22) The requested URL returned error: 404
+#
+# immediately after the azure-cli layer, with nothing else in the RUN changed.
+# The download from github.com itself was never the problem — `lazygit.sh` pulls
+# a release asset off github.com earlier in the same RUN and succeeded — so what
+# failed was the API call, and an unpinned build that also can't be reproduced
+# from one machine to the next is worth nothing here. Bump the pin below when a
+# newer `gh` is wanted; `GH_VERSION=2.98.0 bash gh.sh` overrides it for a
+# one-off, matching how `uv.sh` pins uv and pre-commit.
 set -euo pipefail
+
+# See https://github.com/cli/cli/releases for the available versions.
+readonly GH_VERSION="${GH_VERSION:-2.97.0}"
 
 # gh publishes Linux archives for amd64 and arm64; map the Debian architecture
 # name onto the one gh uses in its asset file names.
@@ -18,16 +40,6 @@ case "$(dpkg --print-architecture)" in
 		exit 1
 		;;
 esac
-
-# Resolve the latest stable release tag rather than pinning, so a fresh install
-# tracks upstream. The tag looks like `v2.94.0`; strip the leading `v`. Read the
-# whole API response into a variable first, then parse it: piping curl into a
-# parser that exits early (grep -m1, awk's exit) closes the pipe and makes curl
-# fail with EPIPE, which `pipefail` would turn into a script abort.
-readonly LATEST_URL="https://api.github.com/repos/cli/cli/releases/latest"
-latest_json="$(curl -fsSL "$LATEST_URL")"
-GH_VERSION="$(awk -F'"' '/"tag_name"/ { sub(/^v/, "", $4); print $4; exit }' <<<"$latest_json")"
-readonly GH_VERSION
 
 readonly ARCHIVE_NAME="gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
 readonly DOWNLOAD_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${ARCHIVE_NAME}"

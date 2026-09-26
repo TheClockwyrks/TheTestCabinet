@@ -1,0 +1,264 @@
+// field — reading a WHOLE region of the canvas, rather than a handful of points.
+// LOCAL TO THIS GROUP.
+//
+// WHY IT IS HERE RATHER THAN IN `harness.ts`. The harness reads pixels the way
+// almost every check wants them read: a cluster at a point (`sampleColor`), the
+// lit core of a body (`litBox`), a box held for comparison (`regionPixels`). Three
+// of the stage's points want neither — `field/stage-fit` asks whether each HUD
+// strip carries anything at all, `field/hud-strips-clear` asks whether posing a
+// formation changed either strip, and `field/starfield` has to COUNT marks that
+// `specs/field.md` leaves free to be a single pixel across. All three read a
+// rectangle stated by its TOP-LEFT corner and its extent — a HUD strip, the play
+// field — rather than by a centre and a footprint, and all three then take a
+// reading over that whole rectangle. No other group wants any of it, so it lives
+// beside the checks that do rather than in the file every group is editing.
+//
+// `countMarksByContrast` is deliberately NOT a count against one sampled colour,
+// and is named for the reading it makes so the two are never confused. A count
+// against one colour is the right reading for a footprint whose background the
+// caller already knows; this one counts blobs that stand away from the field
+// EITHER SIDE of them, which is the only reading available on a field whose colour
+// `specs/overview.md` leaves to the build and which a build may lay a gradient, a
+// vignette or a nebula across.
+//
+// NOTHING HERE IS A THRESHOLD. Every distance, every extent and every count a
+// check demands is the check's own and is passed in, stated beside the figure it
+// is a tolerance on.
+
+import { HUD_BOTTOM_TOP, HUD_TOP_H, STAGE_H, STAGE_W } from "../constants";
+import type { Harness, Rgb } from "../harness";
+
+/** A rectangle in logical stage units, by its top-left corner and its extent. */
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Device pixels read out of the canvas, RGBA, four channels per pixel, row-major. */
+export interface Region {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+/** The two HUD strips, as specs/field.md's table of the three regions gives them. */
+export const HUD_STRIPS: readonly { where: string; box: Box }[] = [
+  {
+    where: "the top HUD strip",
+    box: { x: 0, y: 0, w: STAGE_W, h: HUD_TOP_H },
+  },
+  {
+    where: "the bottom HUD strip",
+    box: { x: 0, y: HUD_BOTTOM_TOP, w: STAGE_W, h: STAGE_H - HUD_BOTTOM_TOP },
+  },
+];
+
+/**
+ * Every device pixel inside a logical box, read in ONE `getImageData`.
+ *
+ * The box's two corners are carried into the backing store through the world's
+ * camera and the engine's own fit — the same map `Harness.device` makes for a
+ * single point — so a region names the same part of the stage at every window
+ * shape and every pixel density.
+ */
+export function readRegion(h: Harness, box: Box): Region {
+  const topLeft = h.device(box.x, box.y);
+  const bottomRight = h.device(box.x + box.w, box.y + box.h);
+  const width = Math.max(1, bottomRight.x - topLeft.x);
+  const height = Math.max(1, bottomRight.y - topLeft.y);
+  const { data } = h.ctx.getImageData(topLeft.x, topLeft.y, width, height);
+  return { width, height, data };
+}
+
+/**
+ * How many pixels of `region` sit further than `minDistance` from `colour`.
+ *
+ * The plain count, for a check that asks whether ANYTHING was painted over a
+ * stretch of the stage. {@link countMarksByContrast} is what asks how many
+ * separate things were.
+ */
+export function countUnlike(
+  region: Region,
+  colour: Rgb,
+  minDistance: number,
+): number {
+  let count = 0;
+  for (let i = 0; i < region.data.length; i += 4) {
+    const away = Math.hypot(
+      region.data[i] - colour.r,
+      region.data[i + 1] - colour.g,
+      region.data[i + 2] - colour.b,
+    );
+    if (away > minDistance) count += 1;
+  }
+  return count;
+}
+
+/**
+ * How many pixels of two readings of the same region sit further than
+ * `minDistance` apart, pixel for pixel.
+ *
+ * The reading a region COMPARISON is built out of: read the region, change one
+ * thing, read it again, and count how many pixels moved. Two readings of different
+ * sizes are not comparable and say so.
+ */
+export function countMoved(
+  before: Region,
+  after: Region,
+  minDistance: number,
+): number {
+  if (
+    before.width !== after.width ||
+    before.height !== after.height ||
+    before.data.length !== after.data.length
+  ) {
+    throw new Error(
+      "spectra: two readings of the same region must be the same size, got " +
+        `${String(before.width)}x${String(before.height)} and ` +
+        `${String(after.width)}x${String(after.height)}`,
+    );
+  }
+  let moved = 0;
+  for (let i = 0; i < before.data.length; i += 4) {
+    const away = Math.hypot(
+      before.data[i] - after.data[i],
+      before.data[i + 1] - after.data[i + 1],
+      before.data[i + 2] - after.data[i + 2],
+    );
+    if (away > minDistance) moved += 1;
+  }
+  return moved;
+}
+
+/**
+ * The colour that occurs most often in a region.
+ *
+ * What the region's own background is, taken from the region itself rather than
+ * assumed: `specs/overview.md` fixes no palette, and a HUD strip a build painted
+ * light with dark type and one it painted dark with light type both answer here
+ * with the panel rather than with the type.
+ */
+export function modeColor(region: Region): Rgb {
+  const counts = new Map<number, number>();
+  let best = 0;
+  let bestCount = -1;
+  for (let i = 0; i < region.data.length; i += 4) {
+    const key =
+      region.data[i] * 65536 + region.data[i + 1] * 256 + region.data[i + 2];
+    const count = (counts.get(key) ?? 0) + 1;
+    counts.set(key, count);
+    if (count > bestCount) {
+      best = key;
+      bestCount = count;
+    }
+  }
+  return { r: (best >> 16) & 0xff, g: (best >> 8) & 0xff, b: best & 0xff };
+}
+
+/** What counts as one mark, and what is not a mark at all. */
+export interface MarkOptions {
+  /**
+   * How far a pixel must sit from the field either side of it, on the 0–441 RGB
+   * scale, to read as drawn rather than as the field behind it.
+   */
+  minDistance: number;
+  /**
+   * How far either side of a pixel the field it is drawn on is read, in logical
+   * units.
+   *
+   * A mark is found by LOCAL contrast rather than against one sampled colour, so
+   * nothing here assumes the field is flat, or that a mark is brighter than it: a
+   * pixel is ink when it stands away from the field BOTH sides of it AND those two
+   * readings of the field AGREE WITH EACH OTHER. A small bright dot and a small
+   * dark one both satisfy that; a gradient, a vignette, a wash or the falling edge
+   * of a glow does not, because on any of those the two sides of a pixel disagree
+   * by about twice what the pixel disagrees with either — which is exactly what
+   * the second condition rejects. Without it a build's ship glow alone reads as
+   * two dozen marks, and a starfield well under the minimum passes on the strength
+   * of them. The span is part of the reading rather than a bound the caller
+   * asserts.
+   */
+  span: number;
+}
+
+/**
+ * How many separate marks `box` holds: connected blobs of pixels that stand out
+ * from a field that AGREES WITH ITSELF either side of them.
+ *
+ * Four-connected, at the canvas's OWN resolution rather than on a lattice, so a
+ * mark a single pixel across is counted once and a mark four across is not counted
+ * four times. The figures the caller states are in logical units and are carried
+ * into device pixels through the engine's own fit, so a mark counts the same at
+ * every window size and pixel density.
+ */
+export function countMarksByContrast(
+  h: Harness,
+  box: Box,
+  options: MarkOptions,
+): number {
+  const { scale } = h.engine.viewport();
+  const span = Math.max(1, Math.round(options.span * scale));
+  const region = readRegion(h, box);
+  const { width, height } = region;
+
+  const apart = (a: number, b: number): number =>
+    Math.hypot(
+      region.data[a * 4] - region.data[b * 4],
+      region.data[a * 4 + 1] - region.data[b * 4 + 1],
+      region.data[a * 4 + 2] - region.data[b * 4 + 2],
+    );
+
+  // Ink: a pixel that stands out from the field BOTH sides of it, `span` away,
+  // where those two readings of the field agree with each other — so a mark on
+  // locally uniform ground is ink and a slope of any kind is not.
+  const ink = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    for (let x = 0; x < width; x += 1) {
+      const at = row + x;
+      const before = row + Math.max(0, x - span);
+      const after = row + Math.min(width - 1, x + span);
+      if (before === at || after === at) continue;
+      if (
+        apart(at, before) > options.minDistance &&
+        apart(at, after) > options.minDistance &&
+        apart(before, after) <= options.minDistance
+      ) {
+        ink[at] = 1;
+      }
+    }
+  }
+
+  let marks = 0;
+  const stack: number[] = [];
+  for (let seed = 0; seed < ink.length; seed += 1) {
+    if (ink[seed] !== 1) continue;
+    ink[seed] = 2;
+    stack.push(seed);
+    while (stack.length > 0) {
+      const at = stack.pop() as number;
+      const x = at % width;
+      const y = (at - x) / width;
+      if (x > 0 && ink[at - 1] === 1) {
+        ink[at - 1] = 2;
+        stack.push(at - 1);
+      }
+      if (x + 1 < width && ink[at + 1] === 1) {
+        ink[at + 1] = 2;
+        stack.push(at + 1);
+      }
+      if (y > 0 && ink[at - width] === 1) {
+        ink[at - width] = 2;
+        stack.push(at - width);
+      }
+      if (y + 1 < height && ink[at + width] === 1) {
+        ink[at + width] = 2;
+        stack.push(at + width);
+      }
+    }
+    marks += 1;
+  }
+  return marks;
+}

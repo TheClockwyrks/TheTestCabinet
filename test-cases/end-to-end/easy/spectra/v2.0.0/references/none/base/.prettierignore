@@ -1,0 +1,20 @@
+# Everything that is not the build's own source: installed packages, build
+# output, coverage reports, and the files seeded with the project. The seeded
+# specification and the seeded art are read, not written, so they are not this
+# project's formatting to answer for.
+node_modules/
+dist/
+build/
+out/
+coverage/
+package-lock.json
+.vendor/
+assets/
+specs/
+
+# The showcase the finished game ships: prose, a carousel manifest and captured
+# media rather than source.
+showcase/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

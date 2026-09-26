@@ -29,7 +29,7 @@ capability is monopolized, upgrades and coverage both matter. The checks encode 
 3. **never-upgraded must lose** — tier-I firepower drowns under late hit points.
 4. **one-lane cluster must lose** — on the branching map, coverage must reach both lanes.
 5. **competent mixed + upgraded + placed must win** (realistic economy).
-6. *(soft)* **both branch leanings win** — neither branch family dominates.
+6. _(soft)_ **both branch leanings win** — neither branch family dominates.
 
 Run `--funded` to confirm 1–4 lose for **mechanical**, not economic, reasons: even with
 unlimited money the energy-only, no-detection, never-upgraded, and one-lane boards still
@@ -38,7 +38,7 @@ lose, while the competent board wins outright.
 ## Structure
 
 - `paycheck.ts` — asserts the damage-proportional economy case by case (`npx tsx
-  sim/paycheck.ts`): what a shot pays on a plain unit, and what a bond pool pays as it
+sim/paycheck.ts`): what a shot pays on a plain unit, and what a bond pool pays as it
   drains and when it breaks. Run it after touching `damageUnit` / `bondDamage`.
 - `harness.ts` — `newGame()`, `runMatch(controller, {funded})`, `layoutController()`
   (declarative `BuildOrder[]`), and board `ANCHORS`/`cellNear` placement helpers.

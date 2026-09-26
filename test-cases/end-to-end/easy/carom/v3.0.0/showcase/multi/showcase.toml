@@ -1,0 +1,7 @@
+[[media]]
+file = "gameplay.json.gz"
+name = "Three balls at once: collisions, saves, and points both ways"
+
+[[media]]
+file = "mid-match.png"
+name = "All three balls in flight"

@@ -1,0 +1,176 @@
+//! The **API-call bracket**: the one place a model-facing call is recorded, and the reason no host
+//! function on this membrane can quietly skip it.
+//!
+//! # Two surfaces over one core, and only one of them is here
+//!
+//! gg's tools and gg's [operations](crate::sandbox::operations) are two surfaces over one core of
+//! typed functions ([`OperationApi`]), and they are independent: a tool exists because a tool-calling
+//! model needs a JSON name to dispatch, an operation exists because a program needs something to
+//! write, and neither is defined in terms of the other. An agent has exactly one of the two, so what
+//! is recorded here is the **whole** account of what a responses-as-code agent did — no tool-call
+//! record accompanies it — and the record is keyed on the operation the model called rather than on
+//! whatever the internals dispatched underneath.
+//!
+//! What runs underneath is recorded under the same identity, and that is the point rather than a
+//! coincidence: a dispatched call is pinned in the [replay](crate::capture) under the **operation**,
+//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Two
+//! operations may share one implementation (`files.read_file` and `views.open_file` are both
+//! reads), so a replay keyed on the implementation would feed one
+//! operation's recorded outcome to another's call. Thirteen operations reach no internal dispatch at
+//! all, and a call the membrane refused ran nothing whatsoever though the model made it — both are
+//! still API calls, and both are recorded here.
+//!
+//! # Why the bracket is at the host function, not inside `dispatch`
+//!
+//! [`dispatch`](super::MembraneState::dispatch) knows which internal call is being made and nothing
+//! else — the operation is the host function's own knowledge and is gone by the time dispatch is
+//! reached. So the bracket goes around the *whole* host function body, which buys three things at
+//! once: it covers the calls that never dispatch; it closes **after** the typed conversion, so an
+//! internal call that answered `ok` with a payload the function could not use is a failed API call;
+//! and it encloses everything the call set off, so the nesting on the stream reads the way it
+//! happened.
+//!
+//! # The bracket asks two questions of the agent, not one
+//!
+//! Whether this agent was **granted** the call, which decides whether it runs, and whether the model
+//! had **read the call's documentation** before writing it, which decides nothing at all and is
+//! recorded. The second is [discovery](crate::discovery), and it is here for the same reason the
+//! gate is: this is the one place every model-facing call passes through, so a question asked here
+//! is asked of every call rather than of the ones forty-eight host functions remembered.
+//!
+//! # Why a token
+//!
+//! [`GuardedApi`] owns the [api](OperationApi) behind a field this module alone can see, and hands it out
+//! only against a [`Recording`] — which only [`recorded`](MembraneState::recorded) and its siblings
+//! can mint. A host function in a sibling module therefore *cannot* reach the api, dispatch a tool,
+//! or declare an ending without having opened a bracket first: the omission this whole file exists
+//! to prevent is a compile error rather than a silent zero on a console. The
+//! `every_host_function_records_its_own_api_call` in `recording.test.rs` closes the remaining gap — a host
+//! function that opened a bracket naming the *wrong* call, and the one function that touches
+//! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
+
+use super::test_cabinet::gg::types::ApiError;
+use super::{MembraneState, OperationApi, wire_failure};
+use crate::discovery::{CallDiscovery, spelled_by_gg};
+use crate::sandbox::OperationId;
+use crate::sandbox::invoker::ApiIdentity;
+
+/// Proof that a model-facing API call is being recorded around whatever is done with it.
+///
+/// Its field is private to this module, so no sibling can forge one: the only way to hold a
+/// `Recording` is to be inside the closure [`recorded`](MembraneState::recorded) ran. That is the
+/// whole enforcement mechanism — see the module docs.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Recording(());
+
+/// The [api](OperationApi) itself, reachable only from inside an open [`Recording`].
+///
+/// A newtype rather than a bare field on [`MembraneState`] for one reason: Rust privacy is
+/// module-*subtree* privacy, so a field declared in `membrane.rs` is visible to every host function
+/// file under it and could be called without a record. Declared here, it is visible to this module
+/// alone, and [`get`](Self::get) is the only door.
+pub(super) struct GuardedApi<A: OperationApi> {
+    /// The native, typed operation surface. Private to this module on purpose.
+    api: A,
+}
+
+impl<A: OperationApi> GuardedApi<A> {
+    /// Take ownership of the api for one program.
+    pub(super) fn new(api: A) -> Self {
+        Self { api }
+    }
+
+    /// Hand the api back when the program has ended, so the loop reclaims the per-turn state it
+    /// moved in. Not a call, so it needs no [`Recording`].
+    pub(super) fn into_inner(self) -> A {
+        self.api
+    }
+
+    /// The api, for the duration of a recorded call.
+    pub(super) fn get(&mut self, _: Recording) -> &mut A {
+        &mut self.api
+    }
+}
+
+impl<A: OperationApi> MembraneState<A> {
+    /// Record one model-facing API call around `body` — the bracket every host function on this
+    /// membrane opens, and the only source of the [`Recording`] its body needs to do anything.
+    ///
+    /// The identity is an [`OperationId`]: gg's own name for the call, never the SDK spelling the
+    /// model actually typed, so a count means the same thing in every arm of a cross-language study.
+    ///
+    /// A membrane **refusal** — a spent wall-clock budget, a call this agent was not granted —
+    /// closes the bracket as a failed call rather than skipping it. The model made the call; that
+    /// nothing ran underneath it is the execution layer's fact, which is exactly why
+    /// [`SandboxRefusal`](crate::sandbox::invoker::SandboxRefusal) is kept out of the tool roster
+    /// and why an API call is not.
+    ///
+    /// # The bracket is also the capability gate
+    ///
+    /// Because every arm's SDK is **static**. No guest leaves a name out of a program's scope any
+    /// more, so every call a program can write arrives here, and the one thing that decides whether
+    /// it happens is [`granted`](MembraneState::granted) — asked here, once, from the operation gg
+    /// files the call under. Putting it in the bracket rather than in each host function is what
+    /// makes "no model-facing call escapes the gate" a property of the mechanism instead of a rule
+    /// forty-eight functions have to remember, and it is why the refusal is *inside* the record: a
+    /// call the model made and gg refused is a failed API call, not an absence.
+    pub(super) fn recorded<R>(
+        &mut self,
+        id: OperationId,
+        body: impl FnOnce(&mut Self, Recording) -> Result<R, ApiError>,
+    ) -> Result<R, ApiError> {
+        let rendered = id.to_string();
+        // Built once and used for **both** halves of the bracket, so a closing record cannot name a
+        // different call from the opening one it answers.
+        let identity = ApiIdentity {
+            operation: &rendered,
+        };
+        self.api.api.begin_api_call(identity);
+        self.api_calls = self.api_calls.saturating_add(1);
+        let result = self.granted(id).and_then(|()| {
+            self.record_discovery(id, identity);
+            body(self, Recording(()))
+        });
+        // The class the program is about to be thrown with, taken from the error itself. It is the
+        // API layer's own reason, not the tool's: a membrane refusal has no tool record at all, and
+        // a typed conversion that failed over a tool that answered `ok` is a failure here and a
+        // success there.
+        let failure = result.as_ref().err().map(|error| wire_failure(error.code));
+        self.api.api.end_api_call(identity, failure);
+        result
+    }
+
+    /// Ask the api whether the model had **read this call's documentation** before writing it, and
+    /// record the call when it had not — the [discovery](crate::discovery) half of the bracket.
+    ///
+    /// Called from inside the bracket and only for a call the gate let through, which is what makes
+    /// the two questions read in the right order: a call this agent was not granted is a
+    /// [refusal](crate::sandbox::invoker::SandboxRefusal), a different fact with its own roster, and it is
+    /// undocumentable anyway — a withheld operation has no page in this agent's surface.
+    ///
+    /// The [ending calls](spelled_by_gg) are skipped before the api is asked at all, because gg's own
+    /// prompt spells them at the model: an exemption asked here rather than answered there keeps the
+    /// api's implementations from each having to know which calls gg names in its prompt.
+    ///
+    /// It **cannot fail and cannot refuse**. The answer is written to the turn's record and nowhere
+    /// else; the call proceeds identically either way. See
+    /// [the module docs](crate::discovery#where-the-detection-happens-and-why-there).
+    fn record_discovery(&mut self, id: OperationId, identity: ApiIdentity<'_>) {
+        if spelled_by_gg(id) {
+            return;
+        }
+        if self.api.api.call_discovery(identity) == CallDiscovery::Undocumented {
+            self.undocumented.record(identity.operation);
+        }
+    }
+
+    /// The api, for a caller holding a [`Recording`] — the shorthand every carve-out uses instead of
+    /// reaching through the guard by hand.
+    pub(super) fn api(&mut self, recording: Recording) -> &mut A {
+        self.api.get(recording)
+    }
+}
+
+#[cfg(test)]
+#[path = "recording.test.rs"]
+mod tests;

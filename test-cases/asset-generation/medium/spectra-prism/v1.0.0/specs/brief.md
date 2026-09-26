@@ -1,9 +1,9 @@
 # Spectra Prism — drawing brief
 
-You are drawing the **Prism**, the **two-band boss drone** for *Spectra*, a
+You are drawing the **Prism**, the **two-band boss drone** for _Spectra_, a
 two-band formation shooter. The Prism is the large anchor of a wave: a layered
 drone with an **outer shell of one band over an inner core of the opposite
-band**. Everything below describes the *enemy* — never the player's ship.
+band**. Everything below describes the _enemy_ — never the player's ship.
 
 ## The canvas
 
@@ -19,12 +19,12 @@ band**. Everything below describes the *enemy* — never the player's ship.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Cyan band (shell) | `#34e2ff` |
-| Magenta band (core) | `#ff4ec7` |
+| Role                   | Hex       |
+| ---------------------- | --------- |
+| Cyan band (shell)      | `#34e2ff` |
+| Magenta band (core)    | `#ff4ec7` |
 | Shell gap (dark panel) | `#0b1020` |
-| Highlight / glyphs | `#ffffff` |
+| Highlight / glyphs     | `#ffffff` |
 
 ## The form
 

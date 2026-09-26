@@ -7,12 +7,18 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { HarnessSlug, RunRecord } from "./index";
+import type { GgCapabilitySet, GgProviderCandidate } from "./gg";
+import type { HarnessSlug, RunRecord, TokenPrices } from "./index";
 
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
  */
-export type DriverState = "starting" | "running" | "succeeded" | "failed";
+export type DriverState =
+  | "starting"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled";
 
 /**
  * The body of `POST /jobs`: what to run, with what, against which model. The
@@ -42,9 +48,22 @@ export type LaunchBody = {
   model: string;
   /**
    * Built-in orchestrator slug that conducts the harness sessions (e.g.
-   * `one-shot` or `ralph`). Omit for the `one-shot` default.
+   * `one-shot`). Omit for the `one-shot` default.
    */
   orchestrator?: string;
+  /**
+   * Built-in [engine](crate::engine) slug the produced build is written
+   * against (e.g. `simple-2d`) — the runtime supplying its frame loop, input,
+   * audio, assets, and diagnostics. Omit for the `none` default, exactly as
+   * `orchestrator` is omitted for `one-shot`: an absent key means the launch
+   * wants the engineless run, which is what `none` is.
+   *
+   * The slug must be one the engine catalogue knows *and* one the requested
+   * case version declares support for; both are checked when the run
+   * executes, not here, so a bad selection fails the run rather than being
+   * silently downgraded.
+   */
+  engine?: string;
   /**
    * Optional override for the maximum harness runtime, in seconds.
    */
@@ -65,7 +84,10 @@ export type LaunchBody = {
    * [`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A
    * [`TimedOut`](crate::run_record::RunState::TimedOut) or
    * [`Completed`](crate::run_record::RunState::Completed) outcome is the model's,
-   * not a fault to retry, and a user cancel is never retried.
+   * not a fault to retry, and a user cancel is never retried. Neither is a
+   * [`LimitExceeded`](crate::run_record::RunState::LimitExceeded) run: the harness
+   * stopped it on a ceiling its own configuration armed, so a fresh attempt reaches
+   * the same bound.
    *
    * The default is `1` (one retry) when omitted, so the total attempts allowed is
    * `1 + retry_count`: the initial attempt plus up to `retry_count` retries.
@@ -73,6 +95,123 @@ export type LaunchBody = {
    * the field the run form sends; absent → treated as `1` by the backend.
    */
   retryCount?: number;
+  /**
+   * The declarative [capability set](GgCapabilitySet) configuring a **gg** run —
+   * which capabilities are on, their implementations/params, and the model-slot
+   * bindings. Present when (and only when) [`Self::harness`] is
+   * [`HarnessSlug::Gg`]: a gg run is
+   * configured by this set rather than by the `(model, orchestrator)` dimensions
+   * a third-party harness run uses. Omitted for every non-gg run. The driver maps
+   * it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose
+   * `validate` enforces the gg⇔capability-set invariant.
+   */
+  ggCapabilitySet?: GgCapabilitySet;
+  /**
+   * The context window, in tokens, of each model this **gg** run may bind — the
+   * model catalog's figure for each id in
+   * [`GgCapabilitySet::bound_model_ids`](crate::gg::GgCapabilitySet::bound_model_ids).
+   *
+   * **Filled in by the backend at enqueue, not sent by a client.** The catalog the
+   * backend owns is the single store of model facts; resolving the window here — once,
+   * where the catalog lives — is what lets gg carry no model table of its own and
+   * makes the figure a *pushed* input to the run rather than something the run
+   * container has to go and fetch. A client that sends it is overwritten. Empty when
+   * the catalog knows no window for any bound model, and for every non-gg run.
+   */
+  ggModelWindows?: { [key in string]: number };
+  /**
+   * The ordered candidate list each model this **gg** run may be served by.
+   *
+   * **Filled in by the backend at enqueue, not sent by a client**, on the same terms as
+   * [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog
+   * has no candidate for refuses the enqueue rather than launching with an empty list.
+   */
+  ggModelProviders?: { [key in string]: Array<GgProviderCandidate> };
+  /**
+   * The input modalities each model this **gg** run may bind accepts (`text`,
+   * `image`, `file`, …), as the model catalog observed them.
+   *
+   * **Filled in by the backend at enqueue, not sent by a client**, on the same terms
+   * as [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model
+   * the catalog has no modality list for is simply **absent** from the map, which gg
+   * reads as unknown rather than as "text only": it will try an image and recover if
+   * the provider refuses it. Empty for every non-gg run.
+   */
+  ggModelModalities?: { [key in string]: Array<string> };
+  /**
+   * The curated **list price** (USD per token) each model this **gg** run may
+   * bind is scored at, resolved from the model catalog at enqueue and stamped
+   * here on the same terms as [`gg_model_windows`](Self::gg_model_windows).
+   *
+   * A run's comparable cost is computed from the developer's published list
+   * price — entered on the model's catalog entry — and nothing else, so the
+   * figure is stable across providers and discounts. A gg run binding a model
+   * with no list price is refused at enqueue rather than priced off whatever
+   * a provider happened to charge that day. Empty for every non-gg run, whose
+   * single model's price rides in [`model_prices`](Self::model_prices).
+   */
+  ggModelPrices?: { [key in string]: TokenPrices };
+  /**
+   * The curated list price (USD per token) of the launch's model, resolved from
+   * the model catalog at enqueue and stamped here so the driver prices the run's
+   * comparable cost from it without reaching the catalog. `None` for a gg run
+   * (whose per-model prices ride in `gg_model_prices`) and for a run enqueued
+   * before the catalog priced models.
+   */
+  modelPrices?: TokenPrices;
+};
+
+/**
+ * The body of `POST /gg/runs`: a **gg-native** run request. Only the test case,
+ * version, and variant carry over from a conventional run (those are
+ * test-case-level); everything a third-party run expresses as `(model,
+ * orchestrator)` is instead expressed by the [capability set](GgCapabilitySet),
+ * which binds the models (to [slots](test_cabinet_core::gg::GgSlotBinding)) and
+ * selects the capabilities. There is deliberately no `harness` field — this
+ * endpoint runs the gg harness by construction — and no `orchestrator` field: gg
+ * is its own executor and the orchestrator dimension does not apply.
+ */
+export type GgRunRequest = {
+  /**
+   * Test-case slug to run (e.g. `carom`).
+   */
+  testCase: string;
+  /**
+   * Exact, immutable test-case version (e.g. `v1.0.0`).
+   */
+  version: string;
+  /**
+   * Variant to run. Defaults to `base` when omitted.
+   */
+  variant?: string;
+  /**
+   * The declarative capability set configuring the run: its agent profiles (each
+   * with its own capabilities, model binding, and delegation graph) and the
+   * run-level model slots and limits. Must bind a model to its
+   * [root agent](GgCapabilitySet::root).
+   */
+  capabilitySet: GgCapabilitySet;
+  /**
+   * Optional override for the maximum harness runtime, in seconds.
+   */
+  maxRuntimeSeconds?: number;
+  /**
+   * How many times to automatically retry this run after a terminal failure The
+   * Test Cabinet (or a catastrophic build) is responsible for. Defaults to `1`
+   * (one retry) when omitted; `0` disables retries. The backend clamps it to a
+   * sane maximum. Same semantics as a conventional run's `retryCount`.
+   */
+  retryCount?: number;
+  /**
+   * Built-in [engine](test_cabinet_core::engine) slug the produced build is
+   * written against. Omit for the `none` default, which supplies no runtime.
+   *
+   * A gg run seeds and builds a workspace like any other run, so it carries the
+   * engine dimension on the same terms: the slug must be one the engine
+   * catalogue knows and one the requested case version declares support for,
+   * both checked when the run executes.
+   */
+  engine?: string;
 };
 
 /**
@@ -104,8 +243,9 @@ export type StatusUpdate = {
    */
   state: DriverState;
   /**
-   * The produced run record, required when `state` is `succeeded`. Its `links`
-   * are authoritative and stored with it.
+   * The produced run record, required when `state` is `succeeded` and carried on
+   * a `canceled` report too (the record a killed gg run wound down to produce). Its
+   * `links` are authoritative and stored with it.
    */
   record?: RunRecord;
   /**
@@ -154,6 +294,50 @@ export type JobSummary = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**
@@ -190,6 +374,50 @@ export type ActiveJobOut = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**
@@ -370,6 +598,50 @@ export type Notification = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**
@@ -448,6 +720,50 @@ export type RunEvent = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
+   * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+   * was launched from, lifted out of its stored capability set. A gg run has no
+   * single harness model — [`model_id`](Self::model_id) is only its representative
+   * primary-slot binding — so the active-run list identifies a gg row by its
+   * configuration instead. `None` for every third-party-harness job (which carries
+   * no capability set) and for a gg job assembled by hand rather than from a named
+   * configuration.
+   */
+  ggPreset?: string;
 };
 
 /**

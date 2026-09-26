@@ -1,0 +1,11 @@
+{
+  "sample_rate": 44100,
+  "channels": "stereo",
+  "max_duration_ms": 60000,
+  "seed": 7,
+  "instrument_bank": "gm-lite@0.1.0",
+  "actions": "log.json",
+  "preview": "preview.png",
+  "wav": "music.wav",
+  "mid": "music.mid"
+}

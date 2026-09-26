@@ -7,6 +7,9 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgTelemetryEvent } from "./gg";
+import type { TokenMetrics } from "./index";
+
 /**
  * The subagent orchestration states a harness can report.
  */
@@ -217,6 +220,34 @@ export type EventKind =
       message: string;
     }
   | {
+      type: "usage";
+      /**
+       * This turn's token counts, by normalized class.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The harness-reported cost (USD) for this turn, when it reports one per
+       * turn. Most harnesses report cost only as a session total (or not at
+       * all), so this is usually absent.
+       */
+      cost?: number;
+    }
+  | {
+      type: "gg";
+      /**
+       * The gg telemetry event, verbatim.
+       *
+       * Boxed so this one variant does not dominate the size of every event in the
+       * process: it carries a whole foreign document (a capability set, an issue
+       * board, a session summary) into an enum whose other variants are a handful of
+       * small strings, and it grows again with every addition to gg's contract.
+       * `Box<T>` serializes and renders in the contract exactly as `T`, so the wire
+       * shape is unchanged — the same reasoning boxes the summary inside
+       * [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary).
+       */
+      event: GgTelemetryEvent;
+    }
+  | {
       type: "unknown";
       /**
        * The original, unclassified harness output.
@@ -417,6 +448,34 @@ export type HarnessEvent = {
        * A human readable description of the stage and its status.
        */
       message: string;
+    }
+  | {
+      type: "usage";
+      /**
+       * This turn's token counts, by normalized class.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The harness-reported cost (USD) for this turn, when it reports one per
+       * turn. Most harnesses report cost only as a session total (or not at
+       * all), so this is usually absent.
+       */
+      cost?: number;
+    }
+  | {
+      type: "gg";
+      /**
+       * The gg telemetry event, verbatim.
+       *
+       * Boxed so this one variant does not dominate the size of every event in the
+       * process: it carries a whole foreign document (a capability set, an issue
+       * board, a session summary) into an enum whose other variants are a handful of
+       * small strings, and it grows again with every addition to gg's contract.
+       * `Box<T>` serializes and renders in the contract exactly as `T`, so the wire
+       * shape is unchanged — the same reasoning boxes the summary inside
+       * [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary).
+       */
+      event: GgTelemetryEvent;
     }
   | {
       type: "unknown";

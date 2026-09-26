@@ -36,12 +36,24 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     /// The uploaded tarball contained an entry whose path escaped the run's
     /// directory (a `..` segment or absolute path) — a traversal attempt, refused.
-    #[error("rejected artifact entry `{0}`: path escapes the run directory")]
+    #[error("artifact entry `{0}` escapes the run directory")]
     Traversal(String),
     /// A read was requested for a run with no stored tree. Distinct from an I/O
     /// fault so the HTTP layer can map it to a `404` rather than a `500`.
     #[error("no stored tree for run `{0}`")]
     NotFound(String),
+}
+
+/// One stored run tree, as [`ArtifactStore::list_runs`] reports it.
+#[derive(Debug, Clone)]
+pub struct StoredTree {
+    /// The run id the tree is keyed by (`<root>/<id>/`).
+    pub id: String,
+    /// When the tree was last written, which is the moment the driver's upload
+    /// finished unpacking. The backend's reclamation sweep measures its grace window
+    /// against this, so a store impl must report the tree's own write time rather
+    /// than the time of the listing.
+    pub modified: std::time::SystemTime,
 }
 
 /// The backing store for run artifacts, keyed per run id. Small by design (see the
@@ -81,29 +93,67 @@ pub trait ArtifactStore: Send + Sync {
     /// media too rather than leaving an orphaned tree behind.
     fn delete_run(&self, id: &str) -> Result<(), StoreError>;
 
-    /// Tar run `id`'s tree — the whole `implementation/` directory plus
-    /// `run-record.json` and (when present) `events.jsonl` — into an in-memory
-    /// archive, the inverse of [`store_run`](ArtifactStore::store_run). The
-    /// publisher Job downloads this to drive the GitHub-repo + Pages release: it
-    /// needs the generated **source** (which `release_code` gits into a public repo)
-    /// *and* the built playable output under `implementation/` (which
-    /// `release_playable_build` deploys to Pages), plus the record and recorded
-    /// events without extra round-trips. So the `implementation/` tree is archived
-    /// whole — only the run's *separately addressed* proof/asset media endpoints are
-    /// not bundled here (they live under the run root, not under `implementation/`,
-    /// and the publisher does not republish them).
+    /// Every run tree the store currently holds, with each tree's last-write time.
     ///
-    /// Returns [`StoreError::NotFound`] when the run has no stored tree (so the
-    /// caller maps an unknown run to a `404`), and the entry paths are relative to
-    /// the run root (`implementation/...`, `run-record.json`, `events.jsonl`),
-    /// matching the layout `store_run` unpacks — so the publisher untars it back to
-    /// the same shape the driver produced.
-    fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError>;
+    /// The backend's reclamation sweep is the caller: it intersects these ids against
+    /// its own run rows and deletes what nothing references. That makes the listing
+    /// the control plane's only view of what the data plane is holding, so it must
+    /// report exactly the trees a [`delete_run`](ArtifactStore::delete_run) would
+    /// remove — an id the store cannot key by is skipped rather than reported.
+    ///
+    /// An upload in flight carries no entry here: it is spooled into
+    /// [`scratch_dir`](ArtifactStore::scratch_dir) as an unnamed file and becomes a
+    /// run directory only once it has been unpacked.
+    fn list_runs(&self) -> Result<Vec<StoredTree>, StoreError>;
 
-    /// Gzip-tar run `id`'s **entire** stored directory into an in-memory archive,
-    /// for a reviewer downloading the run's produced tree in one request.
+    /// Answer `Ok(())` when run `id` has a stored tree, [`StoreError::NotFound`] when
+    /// it does not, and [`StoreError::Traversal`] for an id that is not a single safe
+    /// path segment.
     ///
-    /// Deliberately *not* [`read_run_tree`](ArtifactStore::read_run_tree)'s subset.
+    /// This exists because the two archive writers below **stream**: they are handed
+    /// a sink and fill it as they walk. Once the first byte is on the wire the status
+    /// code is spent, so a `404` for an unknown run can no longer be sent — the
+    /// question has to be asked *before* the response begins. Every caller that
+    /// streams therefore calls this first, and the writers call it again themselves
+    /// so a direct caller cannot skip it.
+    fn ensure_run_tree(&self, id: &str) -> Result<(), StoreError>;
+
+    /// Write run `id`'s tree — the whole `implementation/` directory plus
+    /// `run-record.json` and (when present) `events.jsonl` — into `out` as a `tar`
+    /// archive, building it as it goes: the inverse of
+    /// [`store_run`](ArtifactStore::store_run). The publisher Job downloads this to
+    /// drive the GitHub-repo + Pages release: it needs the generated **source**
+    /// (which `release_code` gits into a public repo) *and* the built playable output
+    /// under `implementation/` (which `release_playable_build` deploys to Pages),
+    /// plus the record and recorded events without extra round-trips. So the
+    /// `implementation/` tree is archived whole — only the run's *separately
+    /// addressed* proof/asset media endpoints are not bundled here (they live under
+    /// the run root, not under `implementation/`, and the publisher does not
+    /// republish them).
+    ///
+    /// The archive is written rather than returned so the service never holds a whole
+    /// run tree in memory: `out` is the response body's sink, and the walk proceeds
+    /// at the rate the client drains it. A sink that fails — the usual cause being a
+    /// client that hung up — aborts the walk with that [`StoreError::Io`] rather than
+    /// finishing an archive nobody is reading.
+    ///
+    /// An `Err` out of this means the archive in `out` is PARTIAL, and the caller must
+    /// make its reader see that. It cannot be inferred from the bytes: `tar::Builder`
+    /// terminates the archive from its own `Drop` on the way out of a failing walk, so
+    /// a truncated tar is a well-formed tar. The streaming caller answers it by
+    /// aborting the response body — see `ChannelWriter` in `api.rs`.
+    ///
+    /// Returns [`StoreError::NotFound`] when the run has no stored tree, and the entry
+    /// paths are relative to the run root (`implementation/...`, `run-record.json`,
+    /// `events.jsonl`), matching the layout `store_run` unpacks — so the publisher
+    /// untars it back to the same shape the driver produced.
+    fn write_run_tree(&self, id: &str, out: &mut dyn std::io::Write) -> Result<(), StoreError>;
+
+    /// Write run `id`'s **entire** stored directory into `out` as one gzip-tar,
+    /// building and compressing it as it goes, for a reviewer downloading the run's
+    /// produced tree in one request.
+    ///
+    /// Deliberately *not* [`write_run_tree`](ArtifactStore::write_run_tree)'s subset.
     /// That one is shaped for the publisher, which wants only what it republishes
     /// (`implementation/` + the record + normalized events). A reviewer downloading
     /// a run wants what the run actually produced — which for an asset-generation
@@ -118,9 +168,14 @@ pub trait ArtifactStore: Send + Sync {
     /// stream is gzip-framed — a run tree is source, JSON, and NDJSON, which
     /// compresses hard, and the transfer is the whole cost being optimized here.
     ///
+    /// Same streaming contract as `write_run_tree`, and the same reason: this is the
+    /// **ungated** route the console links as a plain download, so any reviewer can
+    /// ask for the largest tree the store holds and must not be able to set the
+    /// service's peak allocation by doing so.
+    ///
     /// Returns [`StoreError::NotFound`] when the run has no stored tree, and
     /// [`StoreError::Traversal`] for an id that is not a single safe path segment.
-    fn read_run_archive(&self, id: &str) -> Result<Vec<u8>, StoreError>;
+    fn write_run_archive(&self, id: &str, out: &mut dyn std::io::Write) -> Result<(), StoreError>;
 }
 
 /// A [`LocalFsStore`] convenience: the implementation directory of a run
@@ -213,15 +268,54 @@ impl ArtifactStore for LocalFsStore {
         }
     }
 
-    fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError> {
-        let run_dir = self.run_dir(id);
+    fn list_runs(&self) -> Result<Vec<StoredTree>, StoreError> {
+        let mut trees = Vec::new();
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            // Only directories are run trees. A spooled upload is an unnamed temp
+            // file in this same root, and it must never be reported as a tree the
+            // sweep could delete.
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            // A name that is not a usable store key could not be deleted through
+            // `delete_run` anyway, so reporting it would only hand the sweep an id it
+            // cannot act on.
+            let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !is_safe_id(&id) {
+                continue;
+            }
+            trees.push(StoredTree {
+                id,
+                modified: entry.metadata()?.modified()?,
+            });
+        }
+        Ok(trees)
+    }
+
+    fn ensure_run_tree(&self, id: &str) -> Result<(), StoreError> {
+        // Guard the id here rather than only in the archive walk: both writers reach
+        // the filesystem by joining the id onto the store root instead of going
+        // through the canonicalizing core resolvers, so an id that is not a single
+        // safe path segment must be refused before either of them starts.
+        if !is_safe_id(id) {
+            return Err(StoreError::Traversal(id.to_string()));
+        }
         // An absent run directory is an unknown run, mapped to a `404` upstream —
         // not a `500`. (An id with no stored tree never created the directory.)
-        if !run_dir.is_dir() {
+        if !self.run_dir(id).is_dir() {
             return Err(StoreError::NotFound(id.to_string()));
         }
+        Ok(())
+    }
 
-        let mut builder = tar::Builder::new(Vec::new());
+    fn write_run_tree(&self, id: &str, out: &mut dyn std::io::Write) -> Result<(), StoreError> {
+        self.ensure_run_tree(id)?;
+        let run_dir = self.run_dir(id);
+
+        let mut builder = tar::Builder::new(out);
         // The whole `implementation/` tree: the generated source `release_code` gits
         // into the public repo *and* the built playable output `release_playable_build`
         // deploys to Pages both live under it. `append_dir_all` keeps the
@@ -242,32 +336,38 @@ impl ArtifactStore for LocalFsStore {
                 Err(err) => return Err(err.into()),
             }
         }
-        Ok(builder.into_inner()?)
+        // `finish` writes the two zero blocks that terminate a tar. Calling it
+        // explicitly, rather than letting the builder's `Drop` do it and swallow the
+        // result, is what makes a sink failure on the *last* write reach the caller.
+        //
+        // IT IS NOT WHAT SIGNALS A TRUNCATED ARCHIVE. `Drop` writes those same blocks
+        // on the way out of a failing walk, so an archive that stopped half way is
+        // terminated just as neatly as one that finished. The signal therefore lives
+        // one layer out, in the response body: see `ChannelWriter` in `api.rs`, which
+        // withholds the buffered tail and pushes an error into the stream so the
+        // download fails as a download.
+        builder.finish()?;
+        Ok(())
     }
 
-    fn read_run_archive(&self, id: &str) -> Result<Vec<u8>, StoreError> {
-        // This walks a whole directory tree rather than handing `run_dir` to the
-        // canonicalizing core resolvers, so — as in `delete_run` — the id is guarded
-        // here: an id that is not a single safe path segment could otherwise reach a
-        // tree outside the store root.
-        if !is_safe_id(id) {
-            return Err(StoreError::Traversal(id.to_string()));
-        }
+    fn write_run_archive(&self, id: &str, out: &mut dyn std::io::Write) -> Result<(), StoreError> {
+        self.ensure_run_tree(id)?;
         let run_dir = self.run_dir(id);
-        if !run_dir.is_dir() {
-            return Err(StoreError::NotFound(id.to_string()));
-        }
 
-        // Compress as the archive is built rather than gzipping a finished tar, so
-        // only the compressed copy is ever held whole.
-        let encoder = GzEncoder::new(Vec::new(), Compression::default());
+        // Compress into the sink as the archive is built rather than gzipping a
+        // finished tar, so neither the tar nor its compressed form is ever held whole.
+        let encoder = GzEncoder::new(out, Compression::default());
         let mut builder = tar::Builder::new(encoder);
         // `append_dir_all(id, run_dir)` archives the directory's contents *under* an
         // `<id>/` prefix, which is what `tar -C /artifacts -czf … "$run"` produces —
         // so an archive downloaded here unpacks to the same `<run-id>/` layout the
         // extract script's output has, and existing tooling reads it unchanged.
         builder.append_dir_all(id, &run_dir)?;
-        Ok(builder.into_inner()?.finish()?)
+        // Terminate the tar, then flush the gzip trailer. Both have to happen against
+        // the live sink, and both can fail against a client that hung up mid-download.
+        builder.finish()?;
+        builder.into_inner()?.finish()?;
+        Ok(())
     }
 }
 

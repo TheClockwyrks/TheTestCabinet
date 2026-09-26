@@ -35,7 +35,10 @@ export class Audio {
       if (!this.muted) this.startBeds();
       return;
     }
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
@@ -80,7 +83,11 @@ export class Audio {
   toggleMute(): void {
     this.muted = !this.muted;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : MASTER_GAIN, this.ctx.currentTime, 0.02);
+      this.master.gain.setTargetAtTime(
+        this.muted ? 0 : MASTER_GAIN,
+        this.ctx.currentTime,
+        0.02,
+      );
     }
     if (!this.muted && this.started) this.startBeds();
   }

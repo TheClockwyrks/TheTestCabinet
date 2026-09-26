@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
-import { Pagination } from "@test-cabinet/ui";
+import { Pagination } from "@clockwyrks/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { RunFilters } from "../../components/RunFilters";
 import { useRunFilters } from "../../components/useRunFilters";
 import { useResetPageOnChange } from "../../components/usePagedSearchParams";
@@ -39,8 +40,10 @@ const PAGE_SIZE = 20;
 export function UnpublishedPage() {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
   const { refreshToken } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const filters = useRunFilters();
-  const { page, setPage, committedQuery, facets, latestVersions } = filters;
+  const { page, setPage, committedQuery, facets, latestVersions, ggConfigId } =
+    filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -71,6 +74,10 @@ export function UnpublishedPage() {
       version: facets.version || undefined,
       harness: facets.harness || undefined,
       model: facets.model || undefined,
+      // Set only by a coverage cell's Runs link, which narrows to the runs behind
+      // one cell's figure. The bar carries no control for it (see
+      // `useRunFilters`), so it reaches the query straight from the URL.
+      ggConfigId: ggConfigId || undefined,
       latestVersions,
       sort,
       dir,
@@ -93,6 +100,7 @@ export function UnpublishedPage() {
     page,
     needle,
     facets,
+    ggConfigId,
     latestVersions,
     sort,
     dir,
@@ -120,6 +128,7 @@ export function UnpublishedPage() {
         command="--runs/unpublished"
         blink
         comment={<>// reviewed, not yet released</>}
+        actions={canStop ? <StopRunsControls /> : undefined}
       />
 
       <div className={styles.controls}>
@@ -139,7 +148,7 @@ export function UnpublishedPage() {
           <p className={styles.empty}>
             {filters.activeCount > 0
               ? "No unpublished runs match those filters."
-              : "Nothing waiting to publish — every reviewed run is public."}
+              : "Nothing waiting to publish; every reviewed run is public."}
           </p>
         )
       ) : (

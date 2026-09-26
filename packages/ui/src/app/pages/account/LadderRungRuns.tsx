@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   LadderClimber,
   LadderProgressRung,
-} from "@test-cabinet/run-record/ladders";
-import { canonicalModelId } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record/ladders";
+import { canonicalModelId } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { claimSectionReturn } from "../../components/backReturn";
 import { useGalleryData } from "../../data/galleryContext";
+import { resolveEngineSlug } from "../../data/engines";
+import { ggConfigKey } from "./comboLabels";
+import { caseEngine } from "./caseLabels";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import ladderStyles from "./Ladder.module.scss";
 import styles from "./Coverage.module.scss";
@@ -44,7 +47,18 @@ export function RungRuns({
   const [loading, setLoading] = useState(true);
 
   const { slug, version, variant } = rung;
+  // The rung's engine, resolved. It is part of the rung's identity within the climb —
+  // one ladder holds the same case at the same version and variant twice when the two
+  // pins name different engines — and the gate counts through the same segment, so a
+  // listing that ignored it would show the other rung's runs as the evidence behind
+  // this rung's verdict.
+  const engine = caseEngine(rung);
   const { harness, model } = climber;
+  // A gg climber's runs are the ones launched from its configuration, which the
+  // harness and the model alone do not say: every gg climber on this model runs the
+  // `gg` harness. The rung's verdict counts by the configuration's id, so the listing
+  // behind it narrows by the same id.
+  const ggConfigId = ggConfigKey(climber.ggConfigId);
 
   // Re-queried on `refreshToken` as well as on the rung's identity: that token is
   // bumped by the console stream's `finished` run events, so a run that completes while
@@ -62,6 +76,8 @@ export function RungRuns({
       variant,
       harness,
       model,
+      engine,
+      ggConfigId: ggConfigId || undefined,
       // A rung pins an exact version, which the listing's "current versions only"
       // default would otherwise filter away.
       latestVersions: false,
@@ -80,7 +96,17 @@ export function RungRuns({
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, slug, version, variant, harness, model, refreshToken]);
+  }, [
+    queryRunSummaries,
+    slug,
+    version,
+    variant,
+    engine,
+    harness,
+    model,
+    ggConfigId,
+    refreshToken,
+  ]);
 
   // The runs of this cell that are still executing. They have no record to query yet,
   // so they are matched out of the runtime's in-flight list by the same identity the
@@ -93,14 +119,18 @@ export function RungRuns({
           run.testCaseSlug === slug &&
           run.testCaseVersion === version &&
           run.variant === variant &&
+          // Resolved on both sides: an engineless run is spelled as an absent field by
+          // a launch that named none and as `none` by one that named it, and the two
+          // are one engine.
+          resolveEngineSlug(run.engine) === engine &&
           run.harnessSlug === harness &&
           canonicalModelId(run.modelId) === canonicalModelId(model),
       ),
-    [inProgress, slug, version, variant, harness, model],
+    [inProgress, slug, version, variant, engine, harness, model],
   );
 
-  // The case, its version and variant, the harness and the model are all fixed by the
-  // rung and the climber, so the log drops the columns that would repeat them.
+  // The case, its version, variant and engine, the harness and the model are all fixed
+  // by the rung and the climber, so the log drops the columns that would repeat them.
   const table = useRunTable({
     runs: summaries,
     localIds,

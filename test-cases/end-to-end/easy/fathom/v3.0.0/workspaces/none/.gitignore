@@ -1,0 +1,17 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`.
+dist/
+build/
+out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright's report and the per-test output beside it.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

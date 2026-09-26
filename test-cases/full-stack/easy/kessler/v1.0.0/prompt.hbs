@@ -1,0 +1,95 @@
+Build **Kessler**, an orbital demolition arcade game that runs entirely in the
+browser.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your starting point
+
+{{#if (eq engine.slug "none")}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away: Vite builds it, Vitest tests it, ESLint lints it, and Prettier formats it.
+That toolchain is the whole of what it supplies.
+
+What is missing is everything under `src/`, and that directory does not exist
+yet. This build runs on no engine, so the layer beneath the game is yours as
+well as the game itself.
+{{else if (eq engine.slug "simple-2d")}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
+it, Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
+`initialize`, `update`, and `render` throw `"not implemented"`, and whose
+`BACKGROUND` is a placeholder. The stub is written against the `KesslerState`
+and `KesslerDebugApi` types the specification asks `src/game.ts` to declare, so
+the project does not type-check until those declarations exist.
+
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the
+game and does not restate the engine. The documentation also carries a complete
+worked example of unit-testing a game built on it.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
+it, Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts`. As seeded it is a stub game
+definition whose instance's `initialize` throws `"not implemented"`, and whose
+`BACKGROUND` is a placeholder. The stub is written against the `KesslerState`
+and `KesslerDebugApi` types the specification asks `src/game.ts` to declare, so
+the project does not type-check until those declarations exist.
+
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the
+game and does not restate the engine.
+{{/if}}
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` states what you implement, which
+files stay as they are, the code quality the build is held to, the commands that
+run over the finished repository, and how the build is invoked. `specs/assets.md`
+states the art and sound to produce and how each is wired in, and
+`specs/showcase.md` defines the showcase the finished game ships.
+
+## Driving the game in a browser
+
+The project's Playwright and its headless Chromium are installed.
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on
+`PATH`; it lives in your project's `node_modules` like any other dependency.
+Launch Chromium with the `--no-sandbox` argument, since this container has no
+Chromium sandbox and a default launch fails.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+directly from this repository's commits, so work you leave uncommitted is not
+published. When the build is complete, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with
+nothing uncommitted or untracked. A `.gitignore` already excludes
+`node_modules/`, the build output, and coverage reports, so a clean tree means
+committing your source, your tests, your `package-lock.json`, your produced
+files under `assets/`, your `showcase/` directory, and your `README.md`.

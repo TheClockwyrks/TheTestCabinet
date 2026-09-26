@@ -28,14 +28,14 @@ the same way.
 
 Use only these opaque colors:
 
-| Role | Hex |
-| --- | --- |
+| Role                                         | Hex       |
+| -------------------------------------------- | --------- |
 | Pipe body — neutral base (the accent region) | `#808890` |
-| Iron — flanges, collars, bolts | `#3a3836` |
+| Iron — flanges, collars, bolts               | `#3a3836` |
 
 Do **not** use the water color `#3d9bd6` or the steam color `#7fcabc` anywhere on the
-model. The build paints the pipe body to one of those at run time (see *The pipe body
-is the accent region*); baking either in defeats it.
+model. The build paints the pipe body to one of those at run time (see _The pipe body
+is the accent region_); baking either in defeats it.
 
 ## The form
 

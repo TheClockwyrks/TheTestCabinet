@@ -14,10 +14,11 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use uuid::Uuid;
 
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
-use test_cabinet_core::review::{DomainRating, Rating, ReviewRevision, ReviewVerdict};
+use test_cabinet_core::review::{
+    AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict,
+};
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
@@ -26,7 +27,7 @@ use crate::db::{
 };
 use crate::error::ApiError;
 use crate::snapshot::{RunSummary, run_summary_score};
-use crate::store::{DefinitionStore, StoredManifest};
+use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
 
@@ -52,17 +53,62 @@ pub async fn add_review(
     user: AuthUser,
     Json(request): Json<ReviewRequest>,
 ) -> Result<Json<ReviewResponse>, ApiError> {
-    // A domain-scored case rates at least one domain; a game jam rates none and
-    // instead records its graded categories and overall grade as checklist
-    // verdicts. Require one or the other so an empty review is still rejected.
-    if request.ratings.is_empty() && request.checklist.is_empty() {
+    // A domain-scored legacy case rates at least one domain; a game jam rates none
+    // and instead records its graded categories and overall grade as checklist
+    // verdicts; a validator-rated run rates the aesthetic channel. Require one of
+    // the three so an empty review is still rejected.
+    if request.ratings.is_empty() && request.aesthetic.is_none() && request.checklist.is_empty() {
         return Err(ApiError::unprocessable(
-            "review must rate at least one domain or record a checklist verdict",
+            "review must rate at least one domain, rate the aesthetic channel, or record a \
+             checklist verdict",
         ));
     }
     if request.writeup.trim().is_empty() {
         return Err(ApiError::unprocessable("review.writeup must be non-empty"));
     }
+
+    // The run's case version decides which channel the reviewer rates. On a
+    // validator-rated run the review must carry the run-wide aesthetic tier, may
+    // carry no functional rating, and its checklist verdicts are **overrides** of
+    // the validators' — each naming a declared point, binary pass/fail. On a
+    // legacy run the aesthetic channel does not exist. Either way the store is the
+    // authority on which the run is, so the check reads the flag it lifted at push
+    // time.
+    let run = state
+        .db
+        .get_run(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
+    let manifest = if run.validator_rated {
+        let subject = &run.record.subject;
+        let manifest = state
+            .store
+            .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+            .map_err(|err| {
+                ApiError::unprocessable(format!(
+                    "case version `{}@{}` of validator-rated run `{id}` is not in the \
+                     definition store: {err}",
+                    subject.test_case_slug, subject.test_case_version
+                ))
+            })?;
+        validate_validator_rated_review(
+            &request,
+            &crate::snapshot::review_items_for_engine(
+                &manifest,
+                &subject.variant,
+                &subject.engine_slug,
+            ),
+        )?;
+        Some(manifest)
+    } else {
+        if request.aesthetic.is_some() {
+            return Err(ApiError::unprocessable(
+                "an aesthetic rating is only accepted on a validator-rated run",
+            ));
+        }
+        None
+    };
 
     let reviewed_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -74,6 +120,8 @@ pub async fn add_review(
             display_name: user.0.display_name,
         },
         ratings: request.ratings,
+        aesthetics: Vec::new(),
+        aesthetic: request.aesthetic,
         writeup: request.writeup.trim().to_string(),
         checklist: request.checklist,
         reviewed_at,
@@ -84,7 +132,12 @@ pub async fn add_review(
 
     let published = state
         .db
-        .add_review(&id, &review, request.edit_note.as_deref())
+        .add_review(
+            &id,
+            &review,
+            request.edit_note.as_deref(),
+            manifest.as_ref(),
+        )
         .await
         .map_err(ApiError::from)?;
 
@@ -95,6 +148,58 @@ pub async fn add_review(
     }
 
     Ok(Json(ReviewResponse { id, published }))
+}
+
+/// The completeness gate for a review of a **validator-rated** run: the review
+/// must carry no `ratings` (the functional channel starts as the validators'
+/// decision), must carry the run-wide `aesthetic` tier, and may carry a
+/// **partial** `checklist` of overrides — each entry the reviewer's verdict for
+/// one of the run's declared points (`items`, the effective checklist for its
+/// variant on its engine), binary `pass`/`fail` with an optional note. Points not
+/// listed keep the validators' verdicts, so an empty checklist is fine. A verdict
+/// naming a point the run does not carry — an unknown id, or one whose validator
+/// is scoped away from the run's engine — is refused with the rest. Each violation
+/// is a `422` naming what is wrong.
+fn validate_validator_rated_review(
+    request: &ReviewRequest,
+    items: &[test_cabinet_core::ReviewItem],
+) -> Result<(), ApiError> {
+    if !request.ratings.is_empty() {
+        return Err(ApiError::unprocessable(
+            "functional ratings are not accepted on a validator-rated run",
+        ));
+    }
+    if request.aesthetic.is_none() {
+        return Err(ApiError::unprocessable(
+            "review must rate the aesthetic channel",
+        ));
+    }
+    let declared: Vec<String> = items.iter().flat_map(|item| item.verdict_ids()).collect();
+    let unknown: Vec<&str> = request
+        .checklist
+        .iter()
+        .map(|verdict| verdict.id.as_str())
+        .filter(|id| !declared.iter().any(|known| known == id))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(ApiError::unprocessable(format!(
+            "review overrides a verdict the run's checklist does not carry: {}",
+            unknown.join(", ")
+        )));
+    }
+    let graded: Vec<&str> = request
+        .checklist
+        .iter()
+        .filter(|verdict| verdict.status.is_grade())
+        .map(|verdict| verdict.id.as_str())
+        .collect();
+    if !graded.is_empty() {
+        return Err(ApiError::unprocessable(format!(
+            "override verdicts must be pass or fail, not a graded tier: {}",
+            graded.join(", ")
+        )));
+    }
+    Ok(())
 }
 
 /// `POST /runs/{id}/publish` — **enqueue** a publish for a run. The publish is now
@@ -162,8 +267,8 @@ pub async fn publish(
         return Ok((StatusCode::ACCEPTED, Json(body)).into_response());
     }
 
-    let publish_job_id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
+    let publish_job_id = cuid2::create_id();
+    let job_token = cuid2::create_id();
 
     state
         .db
@@ -184,9 +289,14 @@ pub async fn publish(
 }
 
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
-/// run is **published** (a public run is in the snapshot and gallery and can
-/// never be deleted). Requires a bearer token. `404` for an unknown run. Removes
-/// the run record, its reviews, its links, and its stored media.
+/// run is **published** and this build can read its record (a public run is in the
+/// snapshot and gallery). Requires a bearer token. `404` for an unknown run.
+/// Removes the run record, its reviews, its links, and its stored media.
+///
+/// Operates on the stored row rather than on the record, so it deletes a run whose
+/// stored record this build can no longer read as well, published or not. The
+/// consoles offer that from the runs section's Unreadable tab, which reads
+/// [`unreadable`].
 #[tracing::instrument(
     name = "runs.delete",
     skip(state, _user),
@@ -205,19 +315,22 @@ pub async fn delete(
 
     // Then clear the run's stored media tree so deletion leaves nothing behind.
     // The authoritative record is already gone, so a media-cleanup fault must not
-    // fail the request — log it and leave the (now-unreferenced) bytes for a later
-    // sweep rather than resurrecting a half-deleted run.
+    // fail the request: it is logged, and the now-unreferenced bytes stay on the
+    // backend's own volume until an operator clears them, rather than the request
+    // resurrecting a half-deleted run. This is the backend's store, not the artifact
+    // service, so the reclamation sweep below has no part in it.
     if let Err(err) = state.store.delete_run_media(&id) {
         tracing::warn!("deleted run {id} but failed to remove its media: {err}");
     }
 
     // A run's playable build and recorded logs live in the separate artifact
-    // service; ask it to prune the tree too. Best-effort (see
-    // [`crate::artifacts`]): a failure is logged, never surfaced — the record is
-    // already gone, so the run has vanished from every listing regardless.
+    // service; ask it over the in-cluster artifact URL to prune the tree too.
+    // Best-effort (see [`crate::artifacts`]): a failure is logged, never surfaced —
+    // the record is already gone, so the run has vanished from every listing
+    // regardless, and the reclamation sweep collects the tree a failure leaves.
     crate::artifacts::delete_run_tree(
         &state.http,
-        state.config.artifacts_url.as_deref(),
+        state.config.artifacts_internal_url.as_deref(),
         state.config.service_token.as_deref(),
         &id,
     )
@@ -244,16 +357,24 @@ pub async fn delete(
 /// right now — the ones clearing the publish gate — for the console's Unpublished
 /// worklist, where every listed run is meant to be selectable and published.
 ///
-/// `state=any` returns **every** stored run, published and unpublished alike — the
-/// consoles' run listings, where an unpublished run must sort and page alongside the
-/// published ones. It and `publishable` are offered only on the numbered-pager path
-/// below (the cursor listings walk one lifecycle slice at a time).
+/// `state=any` applies **no** lifecycle predicate at all: every recorded run,
+/// published or not, in any terminal state. That is what the consoles' run listings
+/// need — an unpublished run has to sort and page alongside the published ones —
+/// and what a listing scoped by something other than the publish lifecycle needs
+/// (the gg analysis section's Sessions tab, narrowed by `harness=gg`). It and
+/// `publishable` are offered only on the numbered-pager path below; the cursor
+/// listings walk one lifecycle slice at a time.
 ///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
 /// the console's run log and list pages consume) instead of full
 /// [`StoredRunOut`] records; the cursor (`before`/`limit`) and `state` selector
 /// behave identically for both projections. Any other `fields` value (or none)
 /// keeps the default full records.
+///
+/// Every projection and mode serves only the runs whose stored record this build
+/// can read, and the offset mode's `total` counts exactly those rows, so a pager
+/// sized from it offers only pages that hold rows. A run this build cannot read is
+/// listed by [`unreadable`] instead.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
@@ -269,22 +390,30 @@ pub async fn list(
         let filter = SummaryFilter {
             state: summary_state(params.state.as_deref()),
             test_case: params.test_case.clone(),
+            test_cases: parse_comma_list(params.test_cases.as_deref()),
             model: params.model.clone(),
             harness: params.harness.clone(),
             variant: params.variant.clone(),
             version: params.version.clone(),
+            versions: parse_comma_list(params.versions.as_deref()),
+            engine: params.engine.clone(),
+            gg_config_id: params.gg_config_id.clone(),
             latest_versions: params.latest_versions.unwrap_or(false),
+            aesthetic: params.aesthetic.clone(),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
         let dir = parse_dir(params.dir.as_deref());
+        // The cards name their case, so every listing resolves the name map once;
+        // the test-case sort orders by the same names the cards show.
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         let (runs, total) = state
             .db
-            .list_summaries(&filter, sort, dir, limit, offset)
+            .list_summaries(&filter, sort, dir, &case_names, limit, offset)
             .await
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before: None,
             total: Some(total),
         })
@@ -319,47 +448,84 @@ pub async fn list(
             .map_err(ApiError::from)?,
     };
     if params.fields.as_deref() == Some("summary") {
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before,
             total: None,
         })
         .into_response())
     } else {
+        // The full projection carries each run's score and functional rating through
+        // the same catalog seams as the cards, so the console's produced worklist
+        // (which reads this projection) shows a validator-rated run's points the
+        // moment it completes.
+        let mut manifests = ManifestCache::default();
         Ok(Json(ListResponse {
-            runs: runs.iter().map(stored_run_out).collect(),
+            runs: runs
+                .iter()
+                .map(|run| stored_run_out(run, manifests.for_run(&state.store, run)))
+                .collect(),
             next_before,
         })
         .into_response())
     }
 }
 
-/// Build the summary cards for a page of runs, enriching each with its aggregate
-/// reviewer `score` — the one field [`RunSummary::from_stored`] leaves `None`
-/// because the checklist weights live only in the case catalog, not the run.
+/// A per-page cache of resolved case manifests keyed by `(slug, version)`, so a
+/// listing reads each case from the definition store once rather than once per
+/// run. A run whose case isn't ingested resolves to `None` (and stays `None`).
+#[derive(Default)]
+struct ManifestCache(HashMap<(String, String), Option<StoredManifest>>);
+
+impl ManifestCache {
+    fn for_run(&mut self, store: &DefinitionStore, run: &StoredRun) -> Option<&StoredManifest> {
+        let subject = &run.record.subject;
+        let key = (
+            subject.test_case_slug.clone(),
+            subject.test_case_version.clone(),
+        );
+        self.0
+            .entry(key)
+            .or_insert_with(|| {
+                store
+                    .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+                    .ok()
+            })
+            .as_ref()
+    }
+}
+
+/// Build the summary cards for a page of runs, enriching each with the two fields
+/// [`RunSummary::from_stored`] cannot fill without the case catalog: its case's
+/// display `case_name` (from `case_names`, the same map the `testCase` sort orders
+/// by) and its aggregate reviewer `score` (the checklist weights live only in the
+/// catalog, not the run).
 ///
 /// Each run's manifest is resolved from the definition store and its reviews
 /// scored against that case's declared weights (see [`run_summary_score`]). The
 /// resolved manifest is cached per `(slug, version)` so a case is read once per
 /// page rather than once per run; a run whose case isn't ingested keeps
 /// `score = None`.
-fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary> {
-    let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+fn summary_cards(
+    store: &DefinitionStore,
+    case_names: &CaseNames,
+    runs: &[StoredRun],
+) -> Vec<RunSummary> {
+    let mut manifests = ManifestCache::default();
     runs.iter()
         .map(|run| {
             let mut card = RunSummary::from_stored(run);
             let subject = &run.record.subject;
-            let key = (
-                subject.test_case_slug.clone(),
-                subject.test_case_version.clone(),
-            );
-            let manifest = manifests.entry(key).or_insert_with(|| {
-                store
-                    .read_manifest(&subject.test_case_slug, &subject.test_case_version)
-                    .ok()
-            });
-            if let Some(manifest) = manifest {
-                card.score = run_summary_score(manifest, &subject.variant, &run.reviews);
+            card.case_name = case_display_name(case_names, &subject.test_case_slug);
+            if let Some(manifest) = manifests.for_run(store, run) {
+                card.score = run_summary_score(manifest, &run.record, &run.reviews);
+                // The functional rating is derived through the one seam the lifted
+                // column and the snapshot share, so a validator-rated card never
+                // depends on the row having been pushed with its case in the store.
+                card.rating =
+                    crate::db::functional_rating(Some(manifest), &run.record, &run.reviews);
+                card.validator_rated = manifest.validator_rated();
             }
             card
         })
@@ -396,6 +562,9 @@ pub async fn adversarial_controllers(
 }
 
 /// `GET /runs/{id}` — one stored run (published or pending) with its reviews.
+///
+/// Answers with the record, so a run whose stored record this build cannot read
+/// answers `404` here and is reached through [`unreadable`].
 pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -406,7 +575,65 @@ pub async fn get(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
-    Ok(Json(stored_run_out(&run)))
+    // The run's case version, for the score and the functional rating; a run whose
+    // case isn't ingested is still served, without a score.
+    let subject = &run.record.subject;
+    let manifest = state
+        .store
+        .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+        .ok();
+    Ok(Json(stored_run_out(&run, manifest.as_ref())))
+}
+
+/// `GET /runs/unreadable?limit=&offset=` — the stored runs whose records this build
+/// cannot read, as `{ runs, total }`, newest first by finish time.
+///
+/// Paged exactly as the numbered mode of [`list`] is: `limit` defaults to
+/// [`DEFAULT_LIMIT`] and is clamped to [`MAX_LIMIT`], and `total` counts every
+/// unreadable run the cabinet holds, so a pager sized from it offers only pages that
+/// hold rows.
+///
+/// Every ordinary listing filters these out, so without this endpoint such a run is
+/// reachable from nowhere while still occupying the store. Each row carries the
+/// identity the run's lifted columns hold plus the error decoding its record
+/// produces now; deleting one goes through [`delete`], which acts on the row. A
+/// read; no auth on the private network, like the other run reads.
+#[tracing::instrument(name = "runs.unreadable", skip(state), err(Debug))]
+pub async fn unreadable(
+    State(state): State<AppState>,
+    Query(params): Query<UnreadableParams>,
+) -> Result<Json<UnreadableRunsResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let (runs, total) = state
+        .db
+        .list_unreadable_runs(limit, params.offset.unwrap_or(0))
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(UnreadableRunsResponse {
+        runs: runs.iter().map(unreadable_run_out).collect(),
+        total,
+    }))
+}
+
+/// Shape one unreadable run for the wire.
+fn unreadable_run_out(run: &crate::db::UnreadableRun) -> UnreadableRunOut {
+    UnreadableRunOut {
+        id: run.id.clone(),
+        started_at: run.started_at.clone(),
+        finished_at: run.finished_at.clone(),
+        test_case_slug: run.test_case_slug.clone(),
+        test_case_version: run.test_case_version.clone(),
+        variant: run.variant.clone(),
+        engine_slug: run.engine_slug.clone(),
+        harness_slug: run.harness_slug.clone(),
+        model_id: run.model_id.clone(),
+        gg_preset: run.gg_preset.clone(),
+        test_type: run.test_type.clone(),
+        state: run.run_state.clone(),
+        published: run.published,
+        review_count: run.review_count,
+        error: run.error.clone(),
+    }
 }
 
 /// `GET /runs/{id}/events` — the published run's recorded normalized event
@@ -531,6 +758,7 @@ pub async fn review_stats(
     // `Rating` is not `Hash`; tally by rank (0 = flawless … 4 = broken) so the result
     // is already ordered best-to-worst.
     let mut rating_counts = [0usize; Rating::ALL.len()];
+    let mut aesthetic_counts = [0usize; AestheticRating::ALL.len()];
 
     for subject in &subjects {
         *case_counts
@@ -542,6 +770,12 @@ pub async fn review_stats(
         // tallies but not the ratings breakdown.
         if let Some(worst) = Rating::worst(subject.ratings.iter().map(|r| r.rating)) {
             rating_counts[worst.rank()] += 1;
+        }
+        // The aesthetic channel: a validator-rated run's review rates no functional
+        // domain and instead carries one run-wide tier (a legacy per-domain review
+        // already collapsed to its worst), so it lands here instead.
+        if let Some(tier) = subject.aesthetic {
+            aesthetic_counts[tier.rank()] += 1;
         }
     }
 
@@ -555,12 +789,23 @@ pub async fn review_stats(
         })
         .collect();
 
+    let aesthetics = AestheticRating::ALL
+        .iter()
+        .enumerate()
+        .filter(|&(rank, _)| aesthetic_counts[rank] > 0)
+        .map(|(rank, rating)| AestheticSlice {
+            rating: *rating,
+            count: aesthetic_counts[rank],
+        })
+        .collect();
+
     Ok(Json(ReviewStatsResponse {
         window_reviews: subjects.len(),
         total_reviews: total,
         test_cases: stat_slices(case_counts),
         models: stat_slices(model_counts),
         ratings,
+        aesthetics,
     }))
 }
 
@@ -576,8 +821,23 @@ fn stat_slices(counts: HashMap<String, usize>) -> Vec<StatSlice> {
 }
 
 /// Map a stored run to the read-side wire shape: `record` (links populated), the
-/// reviews array, the resolved links, and the published flag.
-fn stored_run_out(run: &StoredRun) -> StoredRunOut {
+/// reviews array, the resolved links, the published flag, the two rating
+/// channels (the functional `rating`, the aggregate `aesthetic`) with the
+/// `validator_rated` flag that says which way the functional one was decided,
+/// and the run's `score`.
+///
+/// `manifest` is the run's case version from the definition store, when
+/// ingested. With it the functional rating and the score come through the same
+/// seams the summary cards and the snapshot use ([`crate::db::functional_rating`],
+/// [`run_summary_score`]), so a validator-rated run's detail shows its points and
+/// rating the moment it completes; without it the score is unknown (`None`) and
+/// the rating falls back to the lifted column / the review aggregate.
+fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredRunOut {
+    let rating = match manifest {
+        Some(manifest) => crate::db::functional_rating(Some(manifest), &run.record, &run.reviews),
+        None if run.validator_rated => run.rating,
+        None => crate::db::aggregate_review_rating(&run.record, &run.reviews),
+    };
     StoredRunOut {
         record: run.record.clone(),
         reviews: run.reviews.iter().map(review_out).collect(),
@@ -586,6 +846,10 @@ fn stored_run_out(run: &StoredRun) -> StoredRunOut {
             playable_build: run.links.playable_build.clone(),
         },
         published: run.published,
+        rating,
+        aesthetic: crate::db::aggregate_review_aesthetic(&run.reviews),
+        validator_rated: manifest.map_or(run.validator_rated, StoredManifest::validator_rated),
+        score: manifest.and_then(|manifest| run_summary_score(manifest, &run.record, &run.reviews)),
     }
 }
 
@@ -597,6 +861,7 @@ fn review_out(review: &StoredReview) -> ReviewOut {
         reviewer: review.reviewer.display_name.clone(),
         username: review.reviewer.username.clone(),
         ratings: review.ratings.clone(),
+        aesthetic: review.aesthetic,
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
@@ -610,9 +875,19 @@ fn review_out(review: &StoredReview) -> ReviewOut {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewRequest {
+    /// The reviewer's per-domain functional ratings. Required (one per effective
+    /// domain) on a legacy domain-scored run; refused on a validator-rated run.
     #[serde(default)]
     ratings: Vec<DomainRating>,
+    /// The reviewer's **run-wide** aesthetic tier. Required on a validator-rated
+    /// run; refused on a legacy run.
+    #[serde(default)]
+    aesthetic: Option<AestheticRating>,
     writeup: String,
+    /// The reviewer's checklist verdicts. On a legacy run the full checklist; on
+    /// a validator-rated run a **partial** list of overrides (each a declared
+    /// verdict id with a binary pass/fail status) — points not listed keep the
+    /// validators' verdicts.
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
     /// A note explaining what changed, required when this submission edits an
@@ -667,6 +942,12 @@ pub struct ListParams {
     /// Filter to one test-case slug (summary + offset path only). Wire: `testCase`.
     #[serde(rename = "testCase")]
     test_case: Option<String>,
+    /// Filter to a comma-separated list of test-case slugs (summary + offset path
+    /// only) — the home page's group-leaderboard slice: one query covers a
+    /// test-case group's member cases. ANDs with the other filters, `testCase`
+    /// included, so naming both narrows to their intersection. Wire: `testCases`.
+    #[serde(rename = "testCases")]
+    test_cases: Option<String>,
     /// Filter to one model id (summary + offset path only).
     model: Option<String>,
     /// Filter to one harness slug (summary + offset path only).
@@ -678,6 +959,25 @@ pub struct ListParams {
     /// Normally paired with `testCase`, since a version only means something
     /// within a case.
     version: Option<String>,
+    /// Filter to a comma-separated list of exact test-case versions (summary +
+    /// offset path only) — the case-detail Runs tab's version scope: the console
+    /// computes the versions in the anchored `major.minor` or major line from the
+    /// catalog and sends the concrete list. Like `version`, it silences
+    /// `latestVersions`.
+    versions: Option<String>,
+    /// Filter to one engine slug (summary + offset path only) — the slug the run
+    /// was launched under, with the engineless run recording the slug `none`.
+    engine: Option<String>,
+    /// Filter to the runs launched from one gg configuration, by its id (summary +
+    /// offset path only). A coverage cell counts by the same value, so a listing
+    /// narrowed by it holds exactly the runs behind a cell's figure. Wire:
+    /// `ggConfigId`.
+    #[serde(rename = "ggConfigId")]
+    gg_config_id: Option<String>,
+    /// Filter to runs whose aggregate aesthetic rating is exactly this tier
+    /// (`legendary`/`amazing`/`good`/`okay`/`slop`; summary + offset path only).
+    /// A run no review has rated on that channel never matches.
+    aesthetic: Option<String>,
     /// Restrict every run to its case's current `major.minor` — the newest one
     /// that case has a run for in the selected `state` slice (summary + offset
     /// path only). Ignored when `version` names an exact version. Wire:
@@ -716,6 +1016,65 @@ pub struct SummaryListResponse {
     /// is unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     total: Option<usize>,
+}
+
+/// One row of [`UnreadableRunsResponse`]: a stored run this build cannot decode,
+/// as its lifted identity plus the error its record produces now. Not a
+/// contract-codegen type — a plain axum response, like [`SummaryListResponse`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableRunOut {
+    id: String,
+    started_at: String,
+    finished_at: String,
+    test_case_slug: String,
+    test_case_version: String,
+    variant: String,
+    engine_slug: Option<String>,
+    harness_slug: String,
+    model_id: String,
+    gg_preset: Option<String>,
+    test_type: String,
+    state: String,
+    published: bool,
+    review_count: i64,
+    /// The error decoding the stored record produces against the current
+    /// `RunRecord`.
+    error: String,
+}
+
+/// The [`unreadable`] listing: one page of unreadable runs plus how many the cabinet
+/// holds in total.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableRunsResponse {
+    runs: Vec<UnreadableRunOut>,
+    total: usize,
+}
+
+/// The query parameters [`unreadable`] pages with, the numbered pair the summary
+/// mode of [`list`] carries.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadableParams {
+    /// Rows per page, defaulting to [`DEFAULT_LIMIT`] and clamped to [`MAX_LIMIT`].
+    limit: Option<usize>,
+    /// Rows to skip, so a pager can jump to a page.
+    offset: Option<usize>,
+}
+
+/// Split a comma-separated list query param (`versions`, `testCases`) into the
+/// filter's list: entries are trimmed and empties dropped, so `v1.0.0, v1.1.0`
+/// and a trailing comma both parse. `None` (absent, or nothing but separators)
+/// applies no filter.
+fn parse_comma_list(list: Option<&str>) -> Option<Vec<String>> {
+    let list: Vec<String> = list?
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if list.is_empty() { None } else { Some(list) }
 }
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
@@ -782,6 +1141,28 @@ pub struct StoredRunOut {
     links: LinksOut,
     /// Whether the run is published (in the public snapshot).
     published: bool,
+    /// The run's **functional** rating: on a validator-rated run the validators'
+    /// decision as overridden by its reviews (present from completion — the
+    /// validators' own figure while unreviewed), the review aggregate on a legacy
+    /// run (`null` while unreviewed). Composed with the toolchain gate either
+    /// way. Always present, `null` when unset.
+    rating: Option<Rating>,
+    /// The run's aggregate **aesthetic** rating — the worst run-wide tier across
+    /// its reviews — or `null` when no review has rated the aesthetic channel
+    /// (every legacy run, and an unreviewed validator-rated one). Always present.
+    aesthetic: Option<AestheticRating>,
+    /// Whether the run is validator-rated, so the console shows its points and
+    /// functional rating from the record immediately, offers publish without a
+    /// review, and asks the reviewer for the run-wide aesthetic tier (plus any
+    /// verdict overrides).
+    validator_rated: bool,
+    /// The run's score against its case version's checklist weights — the same
+    /// figure the summary cards carry (see [`run_summary_score`]): the
+    /// validator-decided score on a validator-rated run (`reviews` is `0`, present
+    /// from completion), the mean across reviews on a legacy run (`null` while
+    /// unreviewed). `null` when the run's case version isn't ingested. Always
+    /// present.
+    score: Option<crate::snapshot::RunScoreOut>,
 }
 
 #[derive(Serialize)]
@@ -791,6 +1172,10 @@ struct ReviewOut {
     reviewer: String,
     username: String,
     ratings: Vec<DomainRating>,
+    /// The reviewer's run-wide aesthetic tier (a legacy per-domain row already
+    /// collapsed to its worst); absent on a legacy run's review.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    aesthetic: Option<AestheticRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
     /// RFC 3339 of the first submission (unchanged by later edits).
@@ -864,6 +1249,10 @@ pub struct ReviewStatsResponse {
     /// Reviews per rating the account gave (the worst rating across each review's
     /// domains), best-to-worst. Reviews that rated no domain (game jams) are omitted.
     ratings: Vec<RatingSlice>,
+    /// Reviews per **aesthetic** rating the account gave (each review's run-wide
+    /// tier), best-to-worst. Reviews that did not rate the aesthetic channel
+    /// (every legacy-run review) are omitted.
+    aesthetics: Vec<AestheticSlice>,
 }
 
 /// One bucket of a keyed breakdown: an opaque `key` (a test-case slug or model id)
@@ -883,3 +1272,16 @@ struct RatingSlice {
     rating: Rating,
     count: usize,
 }
+
+/// One bucket of the aesthetic-ratings breakdown: an aesthetic tier and how many
+/// recent reviews the account gave it (as their run-wide tier).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AestheticSlice {
+    rating: AestheticRating,
+    count: usize,
+}
+
+#[cfg(test)]
+#[path = "runs.test.rs"]
+mod tests;

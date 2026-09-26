@@ -1,0 +1,294 @@
+# Wick — The assets this build produces
+
+Wick ships with no pre-made art and no pre-made sound. This machine carries
+asset tools on its `PATH`, and every sprite, sheet, icon, cue, and music bed
+the game shows or plays is produced with them during this build, committed to
+the repository, and bundled by it. This file is the contract: what to produce,
+which tool produces it, where the file lands, and how the build reaches it.
+
+Production is a one-time step. The tools belong to this machine and are absent
+when the project is installed and rebuilt elsewhere, so the committed files are
+the assets: `npm ci` and `npm run build` invoke no tool, and the built site
+fetches nothing from outside its own `dist/`. A build that shells out to a
+generation tool fails wherever the tools are absent, even though the game is
+complete.
+
+## The tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | one sprite, a PNG | the still sprites: the idle lamplighter, the icons, the gems, the pickups, the ground tile, and the effects that hold one shape |
+| `draw-sheet` | a sprite sheet, one PNG per frame | everything that moves on its own: the walk cycles, the death puff, and the animated effects |
+| `sfx-synth` | a procedural sound, a `.wav` | the cues |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the cues, where a sampled layer suits one better |
+| `music` | sequenced music over the instrument bank, a `.wav` and a `.mid` | the music bed |
+
+Each is a command-line tool, and `<tool> --help` states its operations
+(`<tool> <operation> --help` for one operation's flags). Each records the
+operations run against it and then renders the finished file, which you commit
+at the path this file names. `draw` and `draw-sheet` rasterize a fixed-size
+RGBA canvas from drawing operations; `draw-sheet` takes a `--frame` on each
+operation, so a sheet lands as separate files, one per frame, and it offers
+layers with keyframes. `sfx-sample` draws on the `combat-core` sample pack and
+`music` on the `cinematic` instrument bank, both present in the container and
+browsed with `list-samples` and `list-instruments`; `music` emits a portable
+`.mid` beside the `.wav`, and both are committed. Produce these files
+with these tools; pre-made art, a downloaded sound, or a bundled font standing
+in for a produced file does not meet this contract.
+
+`particle-2d` is on the `PATH` as well. Wick plays no particle system, and any
+flourish beyond the produced sprites is drawn in code.
+
+## Where the files land, and how they are loaded
+
+Every produced file sits under `assets/` at the root of this repository, at the
+path named below, and is committed.
+
+{{#if (eq engine.slug "none")}}
+The build loads them itself. Every URL it requests resolves against the page
+rather than against the origin root, so the site runs unchanged whether it is
+served from the root of a static host or mounted under a sub-path. A
+root-absolute URL such as `/assets/sprites/ground.png` does not meet this: it
+resolves against the origin and fails under a sub-path. Every image is decoded
+and every sound is bound to its cue before the first frame draws.
+{{else if (eq engine.slug "simple-2d")}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus,
+both documented in the `engine/` directory at the root of this repository. The
+loader resolves every path under one root, `assets/`, relative to the page the
+build is served from, so the build asks it for a path written relative to that
+root, such as `sprites/ground.png` and `audio/hit.wav`, rather than
+constructing a URL of its own. Each image is loaded with `api.assets.loadImage`
+and each audio cue below is bound to its produced file with `api.audio.load`
+under its name in `CUES`, awaited in `initialize`, so every asset is decoded
+before the first frame.
+{{else}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus,
+both documented in the `engine/` directory at the root of this repository. The
+loader resolves every path under one root, `assets/`, relative to the page the
+build is served from, so the build asks it for a path written relative to that
+root, such as `sprites/ground.png` and `audio/hit.wav`, rather than
+constructing a URL of its own. Each image is loaded with `api.assets.loadImage`
+and each audio cue below is bound to its produced file with `api.audio.load`
+under its name in `CUES`, awaited in the instance's `initialize`, so every
+asset is decoded before the first frame.
+{{/if}}
+
+{{#if (ne engine.slug "none")}}
+### The names in `src/constants.ts`
+
+Every path and canvas this file fixes is exported from `src/constants.ts`, each
+path relative to the `assets/` root the loader resolves against.
+
+| Constant | Holds |
+| --- | --- |
+| `LAMPLIGHTER_IDLE_PATH`, `LAMPLIGHTER_WALK_SHEET` | The idle sprite's path, and the walk sheet's directory with its frame count. |
+| `LAMPLIGHTER_SPRITE_WIDTH`, `LAMPLIGHTER_SPRITE_HEIGHT` | The lamplighter's canvas. |
+| `ENEMY_SHEET_DIR`, `ENEMY_FRAMES` | The directory each enemy's sheet sits under, by id, and the frames each holds. |
+| `PUFF_SHEET`, `PUFF_SPRITE_SIZE` | The death puff's directory with its frame count, and its square canvas. |
+| `GEM_PATHS`, `GEM_SPRITE_SIZES` | Each gem tier's path and square canvas. |
+| `PICKUP_PATHS`, `PICKUP_SPRITE_SIZE` | Each pickup kind's path, and their square canvas. |
+| `GROUND_TILE_PATH`, `GROUND_TILE_SIZE` | The ground tile's path and square canvas. |
+| `EFFECT_SPRITES` | Each weapon's effect by id: its path, a file for one sprite or a directory for a sheet, its frame count, and its canvas. |
+| `ICON_PATHS`, `ICON_SIZE` | Each icon's path by id, and their square canvas. |
+| `CUE_PATHS`, `MUSIC_SCORE_PATH` | Each cue's file by name, the music bed's included, and the bed's score. |
+| `MUSIC_MIN_SECONDS`, `HUM_MIN_SECONDS`, `LOOP_SEAM_TOLERANCE` | The least the bed and the hum run, and the loop seam's tolerance. |
+| `WALK_FRAME_TIME`, `PUFF_TIME` | The animation figures under Animation below. |
+
+{{/if}}
+The simulation reads no image: a sprite's size in the world is the figure this
+file states, and every hitbox is the shape `specs/weapons.md` and
+`specs/enemies.md` give it, whatever the file decoded to.
+
+## The sprites
+
+Every sprite is pixel art drawn at one unit per pixel on a transparent,
+straight-alpha canvas of exactly the size its row states, so a sprite `24`
+pixels wide stands `24` units wide in the world, and the game draws it with
+image smoothing off so it stays crisp at the stage's fit. Each is drawn
+centered on the thing it depicts. A sheet's frames are separate PNG files,
+numbered from `0`, each on a canvas of the sheet's size, and no two frames of
+one sheet are the same picture.
+
+| Sprite | Files | Tool | Frames | Canvas |
+| --- | --- | --- | --- | --- |
+| Lamplighter, idle | `assets/sprites/lamplighter/idle.png` | `draw` | `1` | `24 x 32` |
+| Lamplighter, walk | `assets/sprites/lamplighter/walk/0.png` to `5.png` | `draw-sheet` | `6` | `24 x 32` |
+| Each common enemy, a walk cycle | `assets/sprites/enemies/<id>/0.png` to `3.png`, for each of the ten common ids in `ENEMY_IDS` | `draw-sheet` | `4` | twice its radius in `ENEMIES`, square: `20` for `moth`, `20` for `bat`, `24` for `rat`, `16` for `gnat`, `28` for `beetle`, `20` for `wisp`, `28` for `spider`, `24` for `crow`, `32` for `shade`, `36` for `hound` |
+| Mothwing | `assets/sprites/enemies/mothwing/0.png` to `3.png` | `draw-sheet` | `4` | `56 x 56` |
+| Owl | `assets/sprites/enemies/owl/0.png` to `3.png` | `draw-sheet` | `4` | `72 x 72` |
+| The Dark | `assets/sprites/enemies/dark/0.png` to `3.png` | `draw-sheet` | `4` | `80 x 80` |
+| Death puff, shared by every enemy | `assets/sprites/puff/0.png` to `3.png` | `draw-sheet` | `4` | `24 x 24` |
+| Gems | `assets/sprites/gems/small.png`, `medium.png`, `large.png` | `draw` | `1` each | `8 x 8`, `12 x 12`, `16 x 16` |
+| Pickups | `assets/sprites/pickups/chest.png`, `bread.png`, `draft.png` | `draw` | `1` each | `24 x 24` |
+| Ground tile | `assets/sprites/ground.png` | `draw` | `1` | `64 x 64` |
+
+Every enemy is told from every other at a glance, by silhouette and not by hue
+alone, and the two elites and the Dark read as larger and heavier than the
+commons. An enemy's sprite may be mirrored across its vertical axis to face
+the sign of its heading's `x`; nothing else about its orientation is fixed.
+The three gem tiers are told apart by size and form. The ground tile sits
+flush against itself on all four sides, since the ground is that tile repeated
+across the world. The game draws the ground as that tile once for every
+`GROUND_TILE_SIZE` cell of world space the view overlaps, each drawing covering
+its cell exactly.
+
+### The weapon effects
+
+Each weapon has one effect the game draws wherever the weapon's shape is live,
+as `specs/weapons.md` and `specs/evolutions.md` define that shape. Each is
+produced on the canvas its row states and scaled in code to the live shape,
+which `areaMul` and later levels grow, so the effect's drawn extent is the
+hitbox's extent on every tick it is drawn.
+
+| Effect | Weapon | Files | Form | Canvas | Drawn over |
+| --- | --- | --- | --- | --- | --- |
+| slash | Taper | `assets/sprites/effects/taper.png` | one sprite | `120 x 40` | the `width x height` rectangle, for `SLASH_FLASH` (`0.1`) seconds |
+| bolt | Ember | `assets/sprites/effects/ember.png` | one sprite | `16 x 16` | the bolt's circle, for its life |
+| dart | Pin | `assets/sprites/effects/pin.png` | one sprite | `12 x 12` | the dart's circle, for its life |
+| lantern | Lantern | `assets/sprites/effects/lantern.png` | one sprite | `28 x 28` | each lantern's circle, for its life |
+| aura ring | Halo | `assets/sprites/effects/halo.png` | one sprite, a ring | `160 x 160` | the aura's circle, always |
+| puddle | Oil Splash | `assets/sprites/effects/oil-splash.png` | one sprite | `100 x 100` | the puddle's circle, for its life |
+| strike | Spark | `assets/sprites/effects/spark/0.png` to `3.png` | a sheet of `4`, played once | `80 x 80` | the strike's `area` circle, for `SPARK_FLASH` (`0.2`) seconds |
+| shard | Shard | `assets/sprites/effects/shard.png` | one sprite | `16 x 16` | the shard's circle, for its life |
+| sconce | Sconce | `assets/sprites/effects/sconce/0.png` to `3.png` | a sheet of `4`, spinning | `24 x 24` | the sconce's circle, for its life |
+| flare burst | Flare | `assets/sprites/effects/flare/0.png` to `5.png` | a sheet of `6`, played once | `128 x 128` | the burst's circle, for `FLARE_FLASH` (`0.4`) seconds |
+
+A projectile's sprite is drawn centered on its circle, upright or turned to
+its velocity as you choose. The aura's picture on the tick it pulses differs
+from its picture on the tick before, and so does a puddle's. The burst is
+drawn at the full diameter of its circle, past the edges of the view where
+the circle reaches past them.
+
+Each of the six evolved weapons has an effect of the same form, frame count,
+and canvas as its base's, at the path below, visibly distinct from its base's
+so a player sees at a glance that the tool has transformed.
+
+| Evolution | Files |
+| --- | --- |
+| Pyre | `assets/sprites/effects/pyre.png` |
+| Beacon | `assets/sprites/effects/beacon.png` |
+| Hail | `assets/sprites/effects/hail.png` |
+| Chandelier | `assets/sprites/effects/chandelier.png` |
+| Corona | `assets/sprites/effects/corona.png` |
+| Blaze | `assets/sprites/effects/blaze.png` |
+
+### Animation
+
+| Figure | Constant | Value |
+| --- | --- | --- |
+| Seconds each frame of a walk cycle or a spin is shown | `WALK_FRAME_TIME` | `0.1` |
+| Seconds a death puff lasts, all four frames together | `PUFF_TIME` | `0.4` |
+
+Every animation of the world runs on ticks, so the world holds still on every
+screen but `playing`. The almanac's entry picture is the one animation that is
+not the world's, and it runs on `simTime`, which every frame adds its delta
+time to whatever the screen, as `specs/ui.md` states.
+
+- The lamplighter draws the walk sheet on a tick with a non-zero movement
+  direction and the idle sprite on every other tick. The walk frame is
+  `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6`, with `m` the number of ticks of
+  this run on which the lamplighter moved, so the cycle advances one frame per
+  `WALK_FRAME_TIME` seconds of movement and wraps. The produced idle sprite
+  faces right, and the lamplighter drawn facing left is that sprite reflected
+  across its vertical axis.
+- An enemy draws frame `floor(age / WALK_FRAME_TIME) mod 4` of its sheet for as
+  long as it lives.
+- The death puff is drawn centered on the position an enemy died at, frame
+  `floor(t / (PUFF_TIME / 4))` for `t` the seconds of ticks since the tick it
+  died, in `[0, PUFF_TIME)`, and is gone after. It is a picture, and it damages
+  nothing.
+- A strike draws frame `floor(t / (SPARK_FLASH / 4))` and a burst frame
+  `floor(t / (FLARE_FLASH / 6))`, for `t` the seconds of ticks since the tick
+  the zone appeared, so each sheet plays once through over its flash.
+- A sconce draws frame `floor(t / WALK_FRAME_TIME) mod 4`, for `t` the seconds
+  of ticks since it was fired, so it spins for its life.
+
+### The icons
+
+The twenty-seven icons are the items as a player knows them: the sixteen
+weapons, base and evolved, the ten passives, and lamp oil. Each is one `24 x
+24` sprite at `assets/icons/<id>.png`, for each id in `BASE_WEAPON_IDS`,
+`EVOLUTION_IDS`, and `PASSIVE_IDS`, and `assets/icons/lamp-oil.png` for
+`LAMP_OIL_ID`. Each is told from every other at a glance, and an evolved
+weapon's icon reads as a transformed version of its base's. The HUD's slots,
+the level-up and chest overlays, and the almanac draw them beside the names
+`specs/ui.md` states; an evolved weapon's icon is shown in its slot, on the
+chest overlay's evolve result, and on the almanac, and never in an offer.
+
+## The sound
+
+Produce a distinct sound for each of the fourteen cues below, under exactly
+these file names, with `sfx-synth` or `sfx-sample` as suits each. The event
+each cue plays on is fixed in `specs/ui.md`.
+
+| Cue | File |
+| --- | --- |
+| `hit` | `assets/audio/hit.wav` |
+| `kill` | `assets/audio/kill.wav` |
+| `gem` | `assets/audio/gem.wav` |
+| `hurt` | `assets/audio/hurt.wav` |
+| `level-up` | `assets/audio/level-up.wav` |
+| `choose` | `assets/audio/choose.wav` |
+| `chest` | `assets/audio/chest.wav` |
+| `evolve` | `assets/audio/evolve.wav` |
+| `pickup` | `assets/audio/pickup.wav` |
+| `fallen` | `assets/audio/fallen.wav` |
+| `dawn` | `assets/audio/dawn.wav` |
+| `menu-move` | `assets/audio/menu-move.wav` |
+| `menu-confirm` | `assets/audio/menu-confirm.wav` |
+| `hum` | `assets/audio/hum.wav` |
+
+### The music bed
+
+Produce the `music` cue with `music`, which may sequence the `cinematic`
+instrument bank, synth waveforms, or both: `assets/audio/music.wav`, with its
+`assets/audio/music.mid` committed beside it. The `.wav` is what the game
+plays, for the length of a run as `specs/ui.md` states, and it runs at least
+`MUSIC_MIN_SECONDS` (`30`) seconds.
+
+### Loops
+
+`hum` and `music` are each authored to loop cleanly: the file's end runs into
+its start with no click, no gap, and no jump in level, so in every channel the
+last sample and the first sample differ by at most `LOOP_SEAM_TOLERANCE`
+(`0.01`) of full scale. `hum` runs at least `HUM_MIN_SECONDS` (`2`) seconds.
+
+### The sound bar
+
+- The fourteen cues and the bed sound like one night.
+- `hit` and `gem` sound many times a second late in the night, so each is short
+  and light; `kill` sits above `hit`.
+- `hurt` is unmistakable in a crowd of the other cues.
+- `fallen` and `dawn` carry weight, and each is told from the other by ear.
+- `hum` sits under the music, and the bed stays welcome for the full ten
+  minutes.
+
+{{#if (eq engine.slug "none")}}
+Play each cue on its event and run the two loops as `specs/ui.md` states.
+{{else if (eq engine.slug "simple-2d")}}
+Bind each name in `CUES` to its file with `api.audio.load`, play a cue on its
+event, and run the two loops through `api.audio.loop` and `api.audio.stop`.
+{{else}}
+Bind each name in `CUES` to its file through the engine's `audio.load`, play a
+cue on its event, and run the two loops through the world's `audio.loop` and
+`audio.stop`.
+{{/if}}
+
+## What stays drawn in code
+
+No produced file covers the following. Each is rendered by the build, and the
+file named beside it fixes its behavior and what a player must read.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The ground, as the produced tile repeated in world space | `specs/world.md` |
+| The HUD's bars, pips, clock, kill count, cooldown state, and slot frames | `specs/ui.md` |
+| Every menu, overlay, and screen and all of their text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |
+
+## Genuinely produced
+
+Every moth, bolt, and gem on screen is a produced sprite, every enemy walks on
+its produced frames, every slot and offer carries a produced icon, and every
+cue plays a produced sound. Everything the game shows and plays traces to a
+file produced here or to the chrome drawn in code above.

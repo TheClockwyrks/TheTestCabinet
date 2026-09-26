@@ -11,10 +11,10 @@
   margin-bottom: t.$space-lg;
 }
 
-// First row: the title with its version, then the difficulty rating pushed to
-// the right edge. Second row: the tag badges on the left, the page-level actions
-// on the right. Both span the full content width so the header uses the
-// available space.
+// First row: the title with its difficulty rating, then the version selector
+// and the Run action pushed to the right edge. Second row: the tag badges on
+// the left, the engine and variant selectors on the right. Both span the full
+// content width so the header uses the available space.
 .titleRow {
   display: flex;
   align-items: center;
@@ -23,12 +23,12 @@
   gap: t.$space-sm t.$space-md;
 }
 
-// Keeps the version sat immediately after the title, both aligned on their
-// shared baseline, while the row's space-between pushes the difficulty rating to
-// the far edge.
+// Keeps the difficulty rating sat immediately after the title, centered on the
+// title's line, while the row's space-between pushes the coordinate selectors
+// to the far edge.
 .titleGroup {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: t.$space-sm t.$space-md;
 }
@@ -45,7 +45,7 @@
   margin: 0;
   font-size: t.$font-xl;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .tags {
@@ -69,15 +69,20 @@
     color: t.$color-positive;
   }
 
+  &[data-level="medium"] {
+    color: t.$color-warning;
+  }
+
   &[data-level="hard"] {
     color: t.$color-accent-2;
   }
 }
 
 .version {
+  font-size: t.$font-sm;
   font-variant-numeric: tabular-nums;
   color: t.$color-text-muted;
-  // Loose text in the title row, so it needs its own readability halo.
+  // Loose text in the header, so it needs its own readability halo.
   @include h.halo;
 }
 
@@ -157,25 +162,16 @@
 
 .tabActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo (the `.tab` `h.halo` dark layers) and
-  // back the accent glow with it — `var(--ttc-glow)` alone has no contrast where
-  // an active label lands over the warm sun. Merged into one declaration because
-  // a bare `text-shadow` would override the halo the `.tab` mixin set. (Mirrors
-  // `.comment` in PromptHeader.module.scss.)
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 
-// Page-level actions in the header: the variant selector paired with the Run
-// action (consoles only), right-aligned beneath the difficulty rating so they
-// read as the header's control column and never crowd the tab strip. Wraps to a
-// second line only if the variant name is extreme; the Run button stays beside
-// it.
-.actionRow {
+// The right-hand group of each header row — the version selector with the Run
+// action on the title row, the engine and variant selectors on the tags row —
+// right-aligned and centered on its row's line, so the selectors read as one
+// labelled family and never crowd the tab strip. Wraps only if a name is
+// extreme.
+.coordinateRow {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -188,8 +184,7 @@
   align-items: center;
   gap: t.$space-sm;
 
-  // Grow to a comfortable tap target on narrow screens, with the Run button
-  // keeping its intrinsic size beside it.
+  // Grow to a comfortable tap target on narrow screens.
   @include bp.below(t.$bp-md) {
     flex: 1 1 auto;
   }
@@ -265,4 +260,49 @@
 .notFound {
   color: t.$color-text-muted;
   @include h.halo;
+}
+
+// The version selector on top of the shared selector styling: tabular numerals
+// (it lists versions).
+.versionSelect {
+  font-variant-numeric: tabular-nums;
+}
+
+// The line under the tab strip while a superseded version is anchored:
+// "Viewing vX; latest is vY", muted, with the latest version a link. It pulls
+// up into the strip's bottom margin so it sits close under the strip's
+// baseline and keeps the strip's usual gap to the content below it.
+.versionNotice {
+  margin: calc(t.$space-md - t.$space-xl) 0 t.$space-xl;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The retry action beneath a failed coordinate resolution. Reads like the
+// header's Run action but in the panel's muted register — an inline recovery,
+// not a primary call to action.
+.retry {
+  margin-top: t.$space-sm;
+  padding: t.$space-xs t.$space-md;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
 }

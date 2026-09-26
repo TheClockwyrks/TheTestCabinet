@@ -1,10 +1,10 @@
 # Foray Raider — drawing brief
 
-You are drawing the **Foray raider**, an animated **sprite sheet** for *Foray*,
+You are drawing the **Foray raider**, an animated **sprite sheet** for _Foray_,
 a top-down ant-colony raiding game. Two colonies raid each other's territory for
 seeds and royal jelly; the **raider is the forager** — the lean, fast caste that
 crosses into enemy ground, picks up a seed, and hauls it home. You are drawing
-the *forager*, in **two states** — empty-handed and **laden** (carrying a
+the _forager_, in **two states** — empty-handed and **laden** (carrying a
 seed) — the same sprite for either colony (see **Palette** for why the body is
 drawn in neutral grey). It must read as **walking**: the renderer plays a walk
 cycle as the raider moves, so you are drawing animation frames, not still poses.
@@ -20,15 +20,15 @@ cycle as the raider moves, so you are drawing animation frames, not still poses.
   **four facings**, drawn **twice** — empty (0–15) and laden with a seed
   (16–31), laid out facing-major. The raider is shown from directly above:
 
-  | Frames | State | Facing | Role |
-  | --- | --- | --- | --- |
-  | 0, 1, 2, 3 | empty | **down** | walk steps 1–4 |
-  | 4, 5, 6, 7 | empty | **up** | walk steps 1–4 |
-  | 8, 9, 10, 11 | empty | **left** | walk steps 1–4 |
+  | Frames         | State | Facing    | Role           |
+  | -------------- | ----- | --------- | -------------- |
+  | 0, 1, 2, 3     | empty | **down**  | walk steps 1–4 |
+  | 4, 5, 6, 7     | empty | **up**    | walk steps 1–4 |
+  | 8, 9, 10, 11   | empty | **left**  | walk steps 1–4 |
   | 12, 13, 14, 15 | empty | **right** | walk steps 1–4 |
-  | 16, 17, 18, 19 | laden | **down** | walk steps 1–4 |
-  | 20, 21, 22, 23 | laden | **up** | walk steps 1–4 |
-  | 24, 25, 26, 27 | laden | **left** | walk steps 1–4 |
+  | 16, 17, 18, 19 | laden | **down**  | walk steps 1–4 |
+  | 20, 21, 22, 23 | laden | **up**    | walk steps 1–4 |
+  | 24, 25, 26, 27 | laden | **left**  | walk steps 1–4 |
   | 28, 29, 30, 31 | laden | **right** | walk steps 1–4 |
 
 - Within a facing the four frames are **one walk cycle**, played in order and
@@ -75,7 +75,7 @@ the heavy soldier it dodges:
 A laden raider is **carrying a seed home** and reads as **slow and heavy**:
 
 - A **gold seed** rides on the raider's back — a rounded gold lump clearly sitting
-  *on top of* the body, the most eye-catching thing in the frame, present in
+  _on top of_ the body, the most eye-catching thing in the frame, present in
   every frame of the laden cycles.
 - The carried seed makes the raider read as **weighed down**: across the laden
   cycle the body sits a little lower and the stride is shorter than the matching
@@ -86,16 +86,16 @@ A laden raider is **carrying a seed home** and reads as **slow and heavy**:
 
 The raider's **body** is **recolored per colony at runtime by a palette swap**,
 so you draw the body **once in a neutral grey ramp** — never in red or blue. The
-**carried seed is shared gold** and is *not* recolored. Use only these colors:
+**carried seed is shared gold** and is _not_ recolored. Use only these colors:
 
-| Role | Hex | Notes |
-| --- | --- | --- |
-| Body, darkest | `#3a3a3a` | recolorable — becomes the colony's dark tone |
-| Body, mid | `#6a6a6a` | recolorable — the main body fill |
-| Body, light | `#9a9a9a` | recolorable — the leading-edge highlight |
-| Head accent | `#cccccc` | recolorable — the brightest body color |
+| Role                | Hex       | Notes                                        |
+| ------------------- | --------- | -------------------------------------------- |
+| Body, darkest       | `#3a3a3a` | recolorable — becomes the colony's dark tone |
+| Body, mid           | `#6a6a6a` | recolorable — the main body fill             |
+| Body, light         | `#9a9a9a` | recolorable — the leading-edge highlight     |
+| Head accent         | `#cccccc` | recolorable — the brightest body color       |
 | Carried seed (gold) | `#ffd964` | **laden frames only**; shared, not recolored |
-| Outline | `#0a0806` | fixed dark outline; not recolored |
+| Outline             | `#0a0806` | fixed dark outline; not recolored            |
 
 The four `#3a3a3a`/`#6a6a6a`/`#9a9a9a`/`#cccccc` greys are the **recolorable
 ramp** — remapped to the colony's red or blue ramp at draw time. The gold seed

@@ -1,0 +1,246 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/breakpoints" as bp;
+
+// Dashboards — the board grid, the panel cards, and the boards/editor list.
+//
+// Two rules from the repository's data-visualization conventions are enforced here
+// rather than in the panel component, because they are layout properties:
+//
+// - **One filter row above everything it scopes.** The board's range picker sits above
+//   the grid and no panel carries its own, so every figure on the page is drawn from the
+//   same slice of the corpus — which is also what the single batched request guarantees
+//   on the data side.
+// - **No skeleton flash on refetch.** Changing the range holds the previous render at
+//   reduced opacity instead of tearing the board down, so nothing jumps under the reader.
+
+// --- The board ----------------------------------------------------------------------
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-bottom: t.$space-md;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+// The twelve-column grid. Twelve because it divides by 2, 3, 4 and 6, so halves,
+// thirds and quarters are all exact.
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: t.$space-md;
+  align-items: start;
+  transition: opacity 120ms ease;
+}
+
+// Held at reduced opacity while the next batch is in flight — never replaced by a
+// skeleton, which would collapse the layout and jump the page.
+.gridBusy {
+  opacity: 0.55;
+}
+
+// Below a tablet every panel is full width regardless of its stored span: a chart in a
+// quarter of a phone screen is a smear, and the grid column count is a layout hint
+// rather than a promise.
+.panel {
+  min-width: 0;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+
+  @include bp.below(t.$bp-md) {
+    grid-column: span 12 !important;
+  }
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.panelLink {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    color: t.$color-text;
+    text-decoration: underline;
+  }
+}
+
+.panelMeta {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.panelQuery {
+  margin: 0;
+  font-family: var(--ttc-font);
+  font-size: 0.78rem;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
+}
+
+.panelError {
+  color: t.$color-negative;
+}
+
+// The table-view twin, one disclosure per panel: every figure a chart draws is
+// reachable as numbers without leaving the board.
+.panelTable {
+  summary {
+    cursor: pointer;
+    color: t.$color-text-muted;
+    font-size: t.$font-sm;
+  }
+}
+
+// --- The boards list and the editor ---------------------------------------------------
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.rowCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-sm t.$space-md;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.rowTitleLink {
+  font-weight: 600;
+  color: t.$color-text;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.rowSub {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  overflow-wrap: anywhere;
+}
+
+.rowQuery {
+  font-family: var(--ttc-font);
+  font-size: 0.78rem;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-shrink: 0;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fieldLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.input,
+.select {
+  padding: t.$space-xs t.$space-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+}
+
+.queryInput {
+  padding: t.$space-xs t.$space-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.panelRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 6rem auto;
+  gap: t.$space-sm;
+  align-items: center;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

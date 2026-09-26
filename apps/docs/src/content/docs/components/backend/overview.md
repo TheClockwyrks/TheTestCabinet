@@ -2,224 +2,236 @@
 title: Overview
 ---
 
-The backend is a Rust server that acts as The Test Cabinet's centralized source
-of truth. It distributes the definitions that [runners](/components/architecture/#runners-and-reporters)
-need to execute a test case and stores the results they produce, so that runs and
-published results are coordinated through one service rather than scattered across
-repositories and machines.
+The backend is a Rust server that holds The Test Cabinet's definitions and
+results. It distributes the test case definitions a runner needs to execute a
+run and stores the run records those runs produce, so every run and every
+published result is coordinated through one service.
 
-It replaces The Test Cabinet's original "git-as-a-db" design, in which run
-records were committed directly into the public site's dataset. That approach
-was chosen for convenience rather than because it was a sound way to store
-results; the backend takes over that responsibility. See [Results](/components/core/results/).
+Two interfaces are the backend's cross-component contracts: its [HTTP
+API](/components/backend/api/) and the [public
+snapshot](/components/backend/snapshot/) it exports. Everything else, including
+how it stores what it serves, is internal.
 
 ## Responsibilities
 
-The backend serves two kinds of client, as described in
-[Runners and Reporters](/components/architecture/#runners-and-reporters):
+The backend serves two kinds of client, described in [Runners and
+Reporters](/components/architecture/#runners-and-reporters):
 
-- **Runners** ([CLI](/components/cli/overview/),
-  [driver](/components/driver/overview/), [Tauri app](/components/tauri/overview/))
-  resolve test case definitions from the backend; the driver reports each
-  [run record](/components/core/run-records/) back to it when the run finishes, and
-  the run is then [reviewed and published](/components/core/results/#lifecycle).
-  (Container images are not resolved from the backend — a runner pulls them from
-  its configured registry directly; see
-  [Execution](/components/core/execution/#containerization).)
-- **Reporters** ([Tauri app](/components/tauri/overview/), and indirectly the
-  [public site](/components/site/overview/)) read those definitions and
-  published results to display them.
+- Runners (the CLI and driver) resolve test case definitions from the
+  backend. The driver reports each [run record](/components/core/run-records/)
+  back to it when the run finishes.
+- Reporters (the web console, and the public site through the snapshot) read
+  definitions and published results to display them.
 
-Concretely, the backend holds:
+Each runner resolves its run-container image from its own registry
+configuration.
 
-- **Test case definitions.** Test cases are authored in the repository's
-  `test-cases/` folder (organized as
-  `test-cases/<type>/<difficulty>/<slug>/<version>/`, where the type and
-  difficulty grouping levels are organizational — a case's identity, type, and
-  difficulty come from its `test-case.toml` manifest); a finished version is
-  published to the backend, which
-  then holds the canonical copy a runner resolves at run time. The repository is
-  the editing source; the backend is the distribution source. The on-disk format
-  is unchanged by this — publishing caches a version, it does not transform it.
-  See [Test Cases](/testing/end-to-end/overview/#catalog-layout).
-- **Run results.** The published [run records](/components/core/run-records/),
-  with their links to each run's public source repository and playable build.
-  This is the system of record for published runs, persisted in a relational
-  database (embedded SQLite by default, or PostgreSQL) through SeaORM. (The exact
-  tables are a backend implementation detail; what is
-  fixed is the [run record](/components/core/run-records/) shape stored in them
-  and the [HTTP API](/components/backend/api/) and
-  [public snapshot](/components/backend/snapshot/) that expose them.)
+The backend holds two bodies of data.
 
-Every component interacts with the backend over one [HTTP API](/components/backend/api/);
-that interface and the [public snapshot](/components/backend/snapshot/) it exports
-are the backend's two cross-component contracts. The backend itself is configured
-entirely through environment variables (its bind address, database and store
-paths, the repository checkout it ingests from, and its R2 and deploy-hook
-credentials) — no configuration file is required.
+### Test case definitions
+
+Cases are authored in the repository's `test-cases/` and `game-jams/` folders,
+in the formats the [testing](/testing/overview/) pages specify. An ingest scan
+copies each new or changed version out of the repository checkout into the
+backend's on-disk definition store, rendering the version's reference mockups to
+screenshots as it goes. The repository is the editing source and the store is
+the distribution source a runner resolves at run time. Ingest caches a version
+rather than transforming it.
+
+A version's baseline validation media lives in the checkout's `cold-storage`
+submodule rather than in its folder. Ingest copies it into the stored version's
+`validation-baseline/`, where the API serves it and the snapshot publishes it
+(see [where baselines live](/components/core/validation/#where-baselines-live)).
+The deployed ingest sidecar fetches the submodule shallowly on every refresh of
+its checkout.
+
+Ingest writes each version as a resolved record whose shape the backend build
+defines, so a store is readable only by a build that agrees on that shape. The
+store records a record-format version stamped by the ingest that wrote it, and
+the backend compares it against the format the running build reads. A store
+stamped with any other format holds records the running build cannot read. The
+backend reports it unready, and the next ingest scan re-ingests the whole
+catalog so the store returns to a format it can serve.
+
+### Run results
+
+The stored [run records](/components/core/run-records/) with their reviews and
+links, persisted in a relational database (embedded SQLite by default, or
+PostgreSQL). A run's proof, asset and validation media is written beside the
+definitions in the on-disk store rather than into that database. This is the
+system of record for every run, published or not.
+
+A stored record can predate a change to the run record contract, leaving it
+unreadable by the running build. The backend records, per run, whether the build
+can read that run's record and the record-format generation the decision was
+made under. Every run listing counts and serves exactly the readable runs, so a
+listing's reported total equals the number of rows it can return. A build whose
+record format differs from the stamp on a row re-decides that row's readability
+once at startup, before it serves.
+
+The generation is pinned to the shape of the run record contract, which covers
+the record schema together with every schema it references, such as the gg
+capability set a gg run's record embeds. The build records the contract shape
+each generation was decided against, and a change to that shape fails the
+build's tests until it is either recorded under the current generation, which
+asserts that stored records survive it, or given a new generation.
+
+A run the build cannot read stays reachable on its own terms. `GET
+/runs/unreadable` lists each such run's lifted identity together with the error
+its stored record produces, paged like every other listing, and `DELETE
+/runs/{id}` deletes it. Both act on the stored row rather than on the record, so
+a published run is deletable here, being already absent from the snapshot and
+the gallery.
 
 ## Authentication
 
-The backend has no public write surface, and it stays on a **private network** —
-in a [cluster deployment](/deployment/kubernetes/), a `ClusterIP` service with no
-public `Ingress` — so that reachability is the first line of access control and
-the service is never exposed to the public internet. On top of that network boundary,
-a second, application-level layer **identifies who is acting**: real user
-[accounts](#accounts), so that every [review](/components/core/results/#reviews) a
-run carries is attributed to a person rather than being anonymous. The network
-boundary is not replaced — auth is an *added* layer.
+The backend stays on a private network. In a [cluster
+deployment](/deployment/kubernetes/overview/) it is a `ClusterIP` service with
+no public `Ingress`, so reachability is the first line of access control.
 
-- **Reads stay open.** Pulling definitions and reading runs require only that the
-  caller can reach the backend on its private network.
-- **Mutations require an account.** The mutating run endpoints — reviewing and
-  publishing — require a **bearer token** identifying the account acting; without
-  one the backend answers `401`. The backend does not itself store
-  credentials; it verifies each token against a separate [auth
-  service](/components/auth/overview/) (see [Accounts](#accounts)).
+On top of that boundary, bearer tokens identify who is acting:
 
-Because the backend is private, the [public site](/components/site/overview/)
-does **not** read from it directly.
+- Reads are open. Resolving definitions and reading runs require only that the
+  caller can reach the backend.
+- Mutations require a token. The mutating run endpoints answer `401` without an
+  `Authorization: Bearer <token>` header. Each token is resolved to an account
+  by the standalone [auth service](/components/auth/overview/), and the
+  resulting [review](/components/core/results/#reviews) is attributed to that
+  account.
 
-## Accounts
+The dispatcher authenticates with a shared service token
+(`TCAB_BACKEND_SERVICE_TOKEN`) to claim queued jobs, and each driver
+authenticates with the per-job token minted when its job was enqueued.
 
-User identity lives in a **standalone [auth service](/components/auth/overview/)**
-(`crates/auth-service`, the `tcab-auth-service` binary), not in the backend
-itself. The auth service handles open self-registration and password login
-(hashing with Argon2id) and mints opaque **bearer tokens**; the backend stays out
-of the credential business entirely.
+## Review and publish
 
-On every mutating run request (review, publish) the caller presents its
-token as `Authorization: Bearer <token>`, and the backend **verifies** it against
-the auth service (`POST /auth/verify`) to resolve the acting account — failing the
-request `401` if the token is missing or invalid. The account it resolves is what a
-review is [attributed](/components/core/results/#reviews) to.
+A produced run reaches the gallery through two steps the backend mediates.
 
-The backend is pointed at the auth service with `TCAB_BACKEND_AUTH_URL` (default
-`http://127.0.0.1:8789`). Identity is an *added* layer on top of the private
-network, not a replacement for it: the auth service is itself a private-network
-service, and open self-registration is acceptable precisely because reaching it
-already requires being on that network. See the
-[auth service overview](/components/auth/overview/).
+A run's record is stored privately the moment the run finishes: the driver
+reports it when it posts the job's terminal status, and the produced build and
+media land on the [artifact service](/components/artifacts/overview/). The build
+is playable, so the run can be reviewed. Review attaches one review per account
+to the run.
 
-## Review, Publish, and Synchronization
+Publish releases the run: its generated source to its own public repository and
+its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy run
+with no review, and enqueues a per-publish `tcab-publisher` Job that the
+[dispatcher](/components/dispatcher/overview/) claims. When that Job reports a
+terminal success the backend marks the run published, regenerates the public
+snapshot from the full set of published runs, uploads it, and triggers a site
+rebuild.
 
-A produced run reaches the gallery through two steps the backend mediates —
-**review**, then **publish** (the [lifecycle](/components/core/results/#lifecycle)
-is the conceptual account; this is the backend's role in it).
+The backend serializes publishes so two operators cannot race on shared state,
+and it coalesces a burst of publishes into one snapshot generation, one upload,
+and one site rebuild. Regenerating the whole published set on each refresh keeps
+the operation idempotent.
 
-A run's record is stored **privately** the moment the run finishes — the
-[driver](/components/driver/overview/) reports it when it posts the job's terminal
-status, and the produced build and media land on the
-[artifact service](/components/artifacts/overview/). It is not in the public
-snapshot, but its build is playable so it can be reviewed. **Review** attaches one
-or more [reviews](/components/core/results/#reviews) (one per account) to the run.
+## Artifact reclamation
 
-The public **release** of the run — its generated code to its own public
-repository, its build to Cloudflare Pages — happens only on **publish**, and the
-backend owns this **synchronized** half. Being a single, central entity is the
-point: it serializes publish requests so that two operators publishing at the same
-time cannot race on the shared state. Publish is a gate — it **refuses a run that
-has no review** (`422`) — and on each accepted publish the backend enqueues a
-per-publish [`tcab-publisher`](/components/dispatcher/overview/) Job to do the
-release, then on its terminal success:
+The backend owns the lifetime of a run's tree on the [artifact
+service](/components/artifacts/overview/), reaching the service over
+`TCAB_ARTIFACTS_URL` with the shared service token.
 
-1. Marks the run published in its store, the system of record.
-2. Regenerates the [public snapshot](#public-snapshot) from the full set of
-   **published** runs (an unpublished run is excluded), each with its reviews.
-3. Uploads the snapshot to its public bucket and triggers a rebuild of the site.
+Deleting a run removes its row and then prunes its tree. The prune is
+best-effort, so the delete succeeds regardless of the data plane's health.
 
-Because the backend coordinates this, it can also **coalesce** a burst of
-publishes — a batch sweep, or several operators at once — into a single snapshot
-regeneration, one upload, and one site rebuild, rather than one of each per run.
-Regenerating the whole published set each time (rather than applying deltas)
-keeps the operation idempotent: re-running it converges on the same snapshot.
+A periodic sweep reclaims what a failed prune left, and anything else the volume
+holds with no run behind it. Each pass lists the service's stored trees, keeps
+every tree whose id still has a run row, and deletes the rest once they are
+older than a grace window. The grace window covers the interval between a driver
+uploading a run's tree and reporting the run terminal.
 
-Both of these mutations require a bearer token (see [Accounts](#accounts));
-reviews are attributed to the account the token resolves to.
+`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` sets the pass interval and `0` disables the
+sweep. `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` sets the grace window.
 
-## Review Scheduling
+A pass acts only on a run-id set the backend read and found at least one run in.
+A query that fails and one that comes back empty both abandon the pass, which is
+retried at the next interval, so a database fault or a backend brought up
+against a fresh database beside a populated volume leaves the volume intact. A
+failing tree listing abandons the pass the same way.
 
-The backend also holds the **reviewer scheduling** state — what runs an account
-wants to exist, and how fast it wants them arriving. This is per-account, private,
-console-only data: it never reaches the public snapshot and no runner consults it.
+## Review scheduling
 
-- A [coverage plan](/components/backend/coverage/) declares version-pinned cases
-  crossed with harness+model combinations and a target run count per cell. The
-  backend expands it into a matrix, counts what exists against it, and enqueues what
-  is missing.
+The backend holds each account's reviewer scheduling state: what runs that
+account wants to exist, and how fast it wants them arriving. The data is private
+to the account, stays inside the backend and the web console, and stays out of
+the public snapshot.
+
+- A [coverage plan](/components/backend/coverage/) declares cases pinned to a
+  version, variant and engine, crossed with combinations and a target run count
+  per cell. The backend expands the declaration into a matrix, counts what
+  exists against it, and enqueues what is missing.
 - A [ladder](/components/backend/ladders/) applies the same machinery to an
-  *ordered* series of cases, which each combination climbs until a gate stops it.
+  ordered series of cases, which each combination climbs until a gate stops it.
 
-Two properties of that design are the backend's to enforce, and both follow from it
-being the single central entity:
+Run counts stay global while judgement stays per-account. A run someone else
+produced satisfies a plan's target, while "unreviewed" means unreviewed by the
+requesting account and a ladder's gate reads only that account's own review, so
+two reviewers share the cabinet's runs while keeping separate worklists.
 
-- **Run counts stay global while judgement stays per-account.** A run someone else
-  produced satisfies a plan's target and is never re-requested, but "unreviewed"
-  means unreviewed *by the requesting account* and a ladder's gate reads only that
-  account's own review. Two reviewers therefore share the cabinet's runs without
-  sharing each other's worklists.
-- **Enqueueing is bounded and serialized.** A plan holds a bounded review buffer
-  rather than firing its whole matrix, and refilling it is an endpoint the console
-  calls — there is no background daemon. The backend serializes each plan's or
-  ladder's top-up with a claim on its row, so two console tabs cannot both observe
-  the same shortfall and both enqueue for it.
+Enqueueing is buffered and serialized. A plan holds a review buffer rather than
+firing its whole matrix, refilling it is an endpoint a caller invokes rather
+than a background daemon, and each plan's or ladder's top-up claims its row
+first, so two concurrent callers cannot both enqueue for one shortfall. The
+buffer is bounded unless the plan's or ladder's buffer target is unbounded, in
+which case a top-up enqueues the whole matrix.
 
-## Public Snapshot
+## Public snapshot
 
-The public site must show published runs to anonymous visitors without depending
-on the private backend. To bridge this, the backend **exports a public
-snapshot** of its published dataset — the run records, their reviews (each
-attributed to its reviewer), and the case metadata the gallery needs — that the
-static site is built from. Only **published** runs are exported; a produced run
-that has not been published is never in the snapshot.
+The public site shows published runs to anonymous visitors without reaching the
+private backend. The backend exports a snapshot of its published dataset to a
+[Cloudflare R2](https://developers.cloudflare.com/r2/) bucket, and the site
+build fetches that export.
 
-- The snapshot is uploaded to a **[Cloudflare R2](https://developers.cloudflare.com/r2/)**
-  bucket, which pairs naturally with the site's Cloudflare Pages deployment. The
-  backend holds the only credential that can write to it; the bucket is
-  read-only to everyone else.
-- The upload is **atomic** — a new snapshot is written and then swapped into
-  place — so a site build never reads a half-written dataset.
-- After uploading, the backend fires the site's **deploy hook** to trigger a
-  rebuild. The site build fetches the snapshot from R2 and produces static
-  output; it never connects to the backend.
+- Only published runs are exported, apart from the redacted [gg document
+  corpus](/components/backend/snapshot/#gg-runsjson--the-gg-document-corpus),
+  which is not gated on publication.
+- Writing the bucket takes the `TCAB_R2_*` credentials, which the backend holds
+  and `tcab publish-reference` is given to upload a case's reference frames. The
+  bucket is read-only to everyone else.
+- The upload is atomic: a new generation is written first and a small pointer
+  object is swapped in last, so a site build never reads a half-written dataset.
+- After uploading, the backend fires the site's deploy hook. The site build
+  fetches the snapshot and produces static output without connecting to the
+  backend.
 
-This keeps the trust boundary clean: the backend stays private and authenticated,
-the only thing that crosses into public reach is an exported, read-only dataset
-of already-published runs, and the connection always flows *outward* from the
-backend — nothing reaches in. The site has no live dependency on the backend and
-remains a fully static deployment. See [Site](/components/site/overview/).
+Every connection flows outward from the backend, and what crosses into public
+reach is a read-only export of already-published runs. The snapshot's file
+layout is specified in [Public Snapshot](/components/backend/snapshot/).
 
-The snapshot's exact file layout — the keys, the atomic-swap pointer, and the
-shape of each file the site reads — is specified in
-[Public Snapshot](/components/backend/snapshot/).
+## Configuration
 
-## Status
+The backend is configured entirely through environment variables.
+`TCAB_BACKEND_CHECKOUT` is the only required one. With the R2 and deploy-hook
+variables omitted the backend still ingests, records reviews and publishes, and
+regenerates the snapshot, skipping the upload and the rebuild.
 
-The backend ships in [v0.2.0](/changelogs/v0.2.0/) as the
-`test-cabinet-backend` crate (`crates/backend`): an [Axum](https://github.com/tokio-rs/axum)
-server backed by a SeaORM system of record (embedded SQLite by default, or an
-external PostgreSQL) and an on-disk definition store. It is configured entirely
-through environment variables — its bind address (`TCAB_BACKEND_BIND`), database
-connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
-(`TCAB_BACKEND_STORE`), the repository checkout it ingests from
-(`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
-(`TCAB_SNAPSHOT_COALESCE_MS`, default 60s — a sliding debounce, so a batch of
-publishes mints one generation and one site rebuild rather than one each), how long
-a superseded snapshot generation is kept before it is
-[pruned](/components/backend/snapshot/#pruning-superseded-generations)
-(`TCAB_SNAPSHOT_RETENTION_HOURS`, default 24), whether experimental
-(still-being-iterated-on) test
-cases are offered to the UI (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable;
-default hidden), and its R2 (`TCAB_R2_*`) and deploy-hook
-(`TCAB_SITE_DEPLOY_HOOK_URL`) credentials, and the
-[auth service](/components/auth/overview/) it verifies bearer tokens against
-(`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`). The backend binds to
-`8787` by default (the worker uses `8788`, the auth service `8789`). Only
-`TCAB_BACKEND_CHECKOUT` is required; with the R2 and deploy-hook variables omitted
-the backend still ingests, records reviews/publishes, and regenerates the
-snapshot on disk, skipping only the upload and rebuild — a dev-only mode.
+| Variable                             | Purpose                                                                                                                                                                                                            | Default                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `TCAB_BACKEND_CHECKOUT`              | The repository checkout ingest scans. Required.                                                                                                                                                                    | —                                         |
+| `TCAB_BACKEND_BIND`                  | Bind address.                                                                                                                                                                                                      | `127.0.0.1:8787`                          |
+| `TCAB_BACKEND_DATABASE_URL`          | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                  | `sqlite://./tcab-backend.sqlite?mode=rwc` |
+| `TCAB_BACKEND_DB_AZURE_AD`           | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                          | `false`                                   |
+| `TCAB_BACKEND_STORE`                 | The on-disk definition store.                                                                                                                                                                                      | `./tcab-store`                            |
+| `TCAB_BACKEND_AUTH_URL`              | The auth service bearer tokens are verified against.                                                                                                                                                               | `http://127.0.0.1:8789`                   |
+| `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                  | —                                         |
+| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                        | `false`                                   |
+| `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                    | `local`                                   |
+| `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                           | `60000`                                   |
+| `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                             | `24`                                      |
+| `TCAB_R2_*`                          | Credentials and bucket the snapshot is uploaded to.                                                                                                                                                                | —                                         |
+| `TCAB_SITE_DEPLOY_HOOK_URL`          | The site deploy hook fired after each upload.                                                                                                                                                                      | —                                         |
+| `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | —                                         |
+| `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                              | image Chromium                            |
+| `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents.                                                                                                                                                              | `<checkout>/target/gg-reference`          |
+| `TCAB_ARTIFACTS_PUBLIC_URL`          | Artifact service base URL, advertised to the web console.                                                                                                                                                          | —                                         |
+| `TCAB_ARTIFACTS_URL`                 | Artifact service base URL the backend itself calls to prune and sweep run trees. Unset disables the prune, the sweep, and the snapshot's artifact media fallback.                                                  | —                                         |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                       | `6`                                       |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                         | `24`                                      |
+| `TCAB_ARENA_PUBLIC_URL`              | Arena service base URL, advertised to the web console.                                                                                                                                                             | —                                         |
+| `TCAB_GRAFANA_PUBLIC_URL`            | Grafana base URL, advertised to the web console.                                                                                                                                                                   | —                                         |
+| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the snapshot bucket, advertised to the web console.                                                                                                                                        | —                                         |
 
-User identity is **not** part of this crate. It lives in the standalone
-[auth service](/components/auth/overview/) (`crates/auth-service`,
-`tcab-auth-service`), which the backend treats as an external dependency it
-verifies tokens against — keeping credential storage out of the backend entirely.
+The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
+the [artifact service](/components/artifacts/overview/) `8790`, and the
+[arena](/components/arena/overview/) `8791`, so all four coexist on one host.

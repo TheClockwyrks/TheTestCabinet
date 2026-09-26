@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { CoverageGroup } from "@test-cabinet/run-record/coverage";
+import type { CoverageGroup } from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -9,13 +9,15 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The Groups tab (`/account/groups`): the reusable model groups (sets of harness/
-// model combinations) and case groups (sets of version-pinned cases) that coverage
-// plans reference as pointers. Editing a group reshapes every plan that references
-// it. Console-only; gated on a signed-in account.
+// The Groups tab (`/account/groups`): the reusable combination groups (sets of
+// combinations, each a harness and its model or a gg configuration and the models it
+// binds) and case groups (sets of version-pinned cases) that coverage plans reference
+// as pointers. Editing a group reshapes every plan that references it. Console-only;
+// gated on a signed-in account.
 export function GroupsPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -88,21 +90,22 @@ export function GroupsPage() {
       <PageLayout>
         <PromptHeader
           command="--groups"
-          comment={<>// reusable model &amp; case groups</>}
+          comment={<>// reusable combination &amp; case groups</>}
         />
         <AccountTabs active="groups" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to manage coverage groups — they are saved to your account.
+          Sign in to manage coverage groups. They are saved to your account.
         </p>
       </PageLayout>
     );
   }
 
-  const modelGroups = groups?.filter((g) => g.kind === "combo") ?? [];
+  const comboGroups = groups?.filter((g) => g.kind === "combo") ?? [];
   const caseGroups = groups?.filter((g) => g.kind === "case") ?? [];
 
   const renderGroup = (group: CoverageGroup) => {
-    const count = group.kind === "combo" ? group.combos.length : group.cases.length;
+    const count =
+      group.kind === "combo" ? group.combos.length : group.cases.length;
     return (
       <div key={group.id} className={styles.rowCard}>
         <div className={styles.rowMain}>
@@ -133,27 +136,28 @@ export function GroupsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--groups"
-          comment={<>// reusable model &amp; case groups</>}
-        />
-        <Link className={exec.primary} to={routes.accountGroupNew()}>
-          New group
-        </Link>
-      </div>
+      <PromptHeader
+        command="--groups"
+        comment={<>// reusable combination &amp; case groups</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountGroupNew()}>
+            + New group
+          </Link>
+        }
+      />
       <AccountTabs active="groups" />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState size="section" label="Loading groups…" />
       ) : (groups?.length ?? 0) === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>
-            You have no groups yet. Create a model group (a reusable set of
-            harness/model combinations) or a case group (a reusable set of
-            version-pinned cases), then reference them from your coverage plans.
+            You have no groups yet. Create a combination group (a reusable set
+            of harnesses with their models and gg configurations with the models
+            they bind) or a case group (a reusable set of version-pinned cases),
+            then reference them from your coverage plans.
           </p>
           <Link className={exec.primary} to={routes.accountGroupNew()}>
             Create your first group
@@ -161,11 +165,11 @@ export function GroupsPage() {
         </div>
       ) : (
         <>
-          <p className={exec.sectionLabel}>Model groups</p>
-          {modelGroups.length === 0 ? (
-            <p className={styles.empty}>No model groups yet.</p>
+          <p className={exec.sectionLabel}>Combination groups</p>
+          {comboGroups.length === 0 ? (
+            <p className={styles.empty}>No combination groups yet.</p>
           ) : (
-            <div className={styles.list}>{modelGroups.map(renderGroup)}</div>
+            <div className={styles.list}>{comboGroups.map(renderGroup)}</div>
           )}
 
           <p className={exec.sectionLabel}>Case groups</p>

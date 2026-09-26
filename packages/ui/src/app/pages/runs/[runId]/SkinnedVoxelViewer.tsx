@@ -1,9 +1,9 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useState } from "react";
-import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
-import type { PartMesh, SkinnedMesh } from "@test-cabinet/voxel-runtime";
-import { SkinnedVoxelRig } from "@test-cabinet/voxel-runtime/three";
+import type { AnimationSpec, ModelSpec } from "@clockwyrks/run-record";
+import type { PartMesh, SkinnedMesh } from "@clockwyrks/voxel-runtime";
+import { SkinnedVoxelRig } from "@clockwyrks/voxel-runtime/three";
 import {
   AMBIENT_INTENSITY,
   CAMERA_FOV,

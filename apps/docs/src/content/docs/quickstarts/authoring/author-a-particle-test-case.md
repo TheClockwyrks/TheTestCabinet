@@ -2,84 +2,86 @@
 title: Author a Particle Test Case
 ---
 
-Scaffold a new [particle](/testing/asset-generation/particle-binaries/)
-[asset-generation](/testing/asset-generation/overview/) test case — a visual effect
-(an explosion, a muzzle flash, an engine plume) the model **authors as a system**
-(emitters, forces, per-particle F-curves) with the `particle-2d` or `particle-3d`
-binary, simulated live to match a written brief. This is the short version;
-[Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/)
-covers it in full, and [Manifests](/testing/asset-generation/manifests/) is the
-authoritative schema.
+## Overview
 
-Building a playable game instead? See
-[Author an End-to-End Test Case](/quickstarts/authoring/author-an-end-to-end-test-case/) —
-a different test type with a `[build]` and reference mockups.
+Scaffold a particle asset-generation case: a visual effect the model authors as
+a system of emitters, forces and per-particle curves with the `particle-2d` or
+`particle-3d` binary, simulated live against a written brief.
+[Particle cases](/testing/asset-generation/manifests/particle-cases/) is the
+authoritative manifest schema, and
+[Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/)
+is the full procedure.
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version, not by editing a published one.
+A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is
+frozen once a run references it. Revise by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, particle, tool, output, the overall domain
-  variants/              # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs             # rendered into the harness instruction (NOT seeded)
-  specs/brief.md         # the effect + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml    # type, asset_kind, [particle], [tool], [output], the overall domain
+  variants/         # one standalone TOML file per variant, listed in `variants`
+  prompt.hbs        # rendered into the harness instruction; not seeded
+  specs/brief.md    # the effect and how the binary behaves; seeded
+  description.md    # site-facing summary; not seeded
+  changelog.md      # what changed in this version; not seeded
 ```
 
-There is **no target clip**, **no simulation seed**, and **no bake** — the model
-authors a system to match the brief, not to reproduce a supplied effect, and it is
-reviewed by a human simulating it live.
+A run receives the seeded brief plus the orchestrator-written
+`particle-2d.config.json` or `particle-3d.config.json`. The case declares no
+`[[reference]]`, `[build]`, `[[check]]`, or `[[review_item]]`.
 
 ## Steps
 
-1. Choose the kind and subject: **`particle-2d`** (planar, screen-space — width and
-   height; worked example **`spectra-burst`**) or **`particle-3d`** (volumetric —
-   width, height, depth; worked example **`thunderhead-flak`**, the primary manifest
-   example). Pick a self-contained VFX moment whose *character* reads the same across
-   live replays.
-2. Write `specs/brief.md`: what the effect depicts and its silhouette; its lifecycle
-   and timing over `duration_ms`; the emitters and forces conceptually (as intent,
-   not flags); the color/opacity/size curves; the **exact palette** (named hex, the
-   only colors allowed); **one-shot vs loop**; and how the tool behaves — that
-   `render` simulates the system and emits `system.json`, and the effect **varies
-   slightly from play to play**. Keep it
-   [self-contained](/testing/end-to-end/overview/#self-contained-specifications) —
-   the model sees only the seeded files. There is **no operations schema**.
-3. Write `prompt.hbs` using only the documented template variables
-   (`{{variant.*}}`, `{{#each specs}}`) — it renders in strict mode — pointing the
-   model at the binary's `--help` and requiring it to author a *system* (not
-   individual particles) and run `render` before finishing.
-4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
-   `type = "asset-generation"`, `asset_kind` (`"particle-2d"` or `"particle-3d"`), a
-   `variants` list of paths to standalone variant files under `variants/` (a root
-   key, so it must precede the first table header; first = default), a `[particle]`
-   table (`width`/`height`, plus `depth` for 3D only, `duration_ms`, `fps` > 0,
-   `loop`, `background` — it replaces `[canvas]`/`[voxel]`), `[tool]` (the `binary`
-   and `preview` path), `[output]` (only `actions` — core emits `system.json`
-   automatically), and the single `overall` `[[domain]]` a human rates the simulated
-   effect under — there is **no `[[review_item]]` checklist**; the effect is judged as
-   a whole against its brief. The case declares **no `[[reference]]`**, **no
-   `[model]`**, **no `[build]`**, and **no `[[check]]`**.
-
-[Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/)
-is the full procedure — read it before you start, alongside the worked example
-matching your kind.
+1. Pick the kind and the effect. `particle-2d` authors a planar field, worked
+   example `spectra-burst`; `particle-3d` authors a volume, worked example
+   `thunderhead-flak`. Choose one self-contained moment whose character reads
+   the same across repeated simulations.
+2. Write `specs/brief.md`. State what the effect depicts, its lifecycle and
+   timing within `duration_ms`, its emitters and forces as intent, its
+   color, opacity and size curves, the exact palette as named hex values, and
+   whether it is one-shot or looping. State that `render` simulates the system
+   and emits `system.json`, and that a stochastic simulation varies slightly
+   between plays. Keep the brief
+   [self-contained](/testing/end-to-end/overview/#self-contained-specifications):
+   the model sees only the seeded files, and the binary's `--help` is the
+   operation vocabulary.
+3. Write `prompt.hbs` from the documented template variables (`{{workspace}}`,
+   `{{variant.*}}`, `{{#each specs}}`). Rendering is strict, so an unknown
+   variable is an error. Point the model at the binary's `--help`, and require
+   it to author a system and run `render` before finishing.
+4. Write `test-case.toml`:
+   - the site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
+     `description`, `changelog`), `prompt`, `max_runtime_hours`, and
+     `type = "asset-generation"`;
+   - `asset_kind = "particle-2d"` or `"particle-3d"`;
+   - `variants`, a list of paths to the files under `variants/`. It is a root
+     key, so it precedes the first table header, and its first entry is the
+     default;
+   - `[particle]` with `width`, `height`, `duration_ms` and `fps` all greater
+     than zero, plus `depth` for `particle-3d` only, `loop`, and `background`;
+   - `[tool]` naming the `binary` and the `preview` path, and `[output]` naming
+     the `actions` log. Core emits `system.json` automatically;
+   - one `[[domain]]` with `id = "overall"`, the single rating the produced
+     effect is judged on.
+5. Write each variant file under `variants/`, giving it a `slug`, a `name`, a
+   `description`, and any additive `spec` entries.
 
 ## Validate
+
+Run both commands for every variant.
 
 ```sh
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-Render the prompt and inspect the seeded repository to confirm the manifest resolves
-and the seeded set (brief + the seeded `particle-3d.config.json` /
-`particle-2d.config.json`) is self-contained. Do this for **every** variant.
+`prompt` catches template and manifest errors. `seed` writes the seeded
+repository under `tmp/`, so you can confirm the seeded set is self-contained.
 
 ## Next steps
 
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
-- [Review a Run](/quickstarts/development/review-a-run/) to assess a run, playing the
-  emitted system live in the review UI.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) exercises the
+  case end to end.
+- [Review a Run](/quickstarts/development/review-a-run/) plays the emitted
+  system live and rates it.

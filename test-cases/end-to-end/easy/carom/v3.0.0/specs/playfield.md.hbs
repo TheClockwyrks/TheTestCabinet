@@ -1,0 +1,134 @@
+# Carom — The field, the paddles, and the obstacles
+
+This file defines the walls and goals of the field, the paddles, and the
+obstacles, including how a ball is resolved against an obstacle. All positions
+and sizes are in the field's logical units, and every figure below carries the
+name this specification gives it.
+
+## Walls and goals
+
+- The top wall (`y = 0`) and the bottom wall (`y = FIELD_H`) are solid, and a
+  ball reflects off them.
+- The left and right edges are goals. `specs/balls.md` states when a ball has
+  passed one and what it scores.
+
+## Paddles
+
+- Each paddle is a rounded bar `PADDLE_W` wide by `PADDLE_H` tall (`16 x 110`),
+  with `PADDLE_HALF` (`55`) its half-height.
+- The left (player one) paddle occupies `x` in `[P1_X0, P1_X1]` (`[48, 64]`), so
+  `P1_X1` is its field-facing face. The right (player two or AI) paddle occupies
+  `x` in `[P2_X0, P2_X1]` (`[1216, 1232]`), so `P2_X0` is its field-facing face.
+- A paddle moves only vertically. Its center `cy` is clamped to
+  `[PADDLE_MIN_CY, PADDLE_MAX_CY]` (`[55, 665]`), keeping the paddle fully on the
+  field.
+- A human-controlled paddle moves at `PADDLE_SPEED` (`720`) units per second
+  while a movement action is held and is otherwise stationary: with `up` and
+  `down` each `1` while held and `0` otherwise, `axis = down - up` and
+  `vy = axis * PADDLE_SPEED`.
+- Every mover of a paddle (input, the AI, and the debug driver) sets `vy` and then
+  integrates it the same way: `next = clamp(cy + vy * dt, PADDLE_MIN_CY,
+  PADDLE_MAX_CY)`; if the clamp changed the value and `dt > 0`, then
+  `vy = (next - cy) / dt`; then `cy = next`.
+- A paddle's `vy` after integration is its actual vertical velocity for the
+  frame, which is what the spin mechanic reads at contact. A paddle pinned against
+  a bound therefore carries `vy = 0` while the action is held into the bound.
+
+`specs/balls.md` states how both paddles move while a ball is held.
+
+## Obstacles
+{{#if (eq variant.slug "gyre")}}
+
+Two obstacles sit in the field. Each is a rounded bar `OBSTACLE_W` wide by
+`OBSTACLE_H` tall (`20 x 140`), placed mirror-symmetrically through the field
+center `(FIELD_CX, FIELD_CY)`, with base centers `OBSTACLE_CENTERS[0] = (490, 220)`
+and `OBSTACLE_CENTERS[1] = (790, 500)`. They sway up and down and spin in place.
+
+### Moving, rotating obstacles
+
+Each obstacle's pose is a function of an obstacle clock `t`, in seconds.
+
+Vertical oscillation. Each obstacle's center `x` is unchanged while its center `y`
+oscillates sinusoidally about its base center with amplitude `OBSTACLE_SWAY_AMP`
+(`80`) units and period `OBSTACLE_SWAY_PERIOD` (`3.6`) seconds. The two obstacles
+oscillate in anti-phase, keeping the layout point-symmetric about the field
+center:
+
+- Obstacle A center:
+  `(490, 220 + OBSTACLE_SWAY_AMP * sin(2*pi * t / OBSTACLE_SWAY_PERIOD))`.
+- Obstacle B center:
+  `(790, 500 - OBSTACLE_SWAY_AMP * sin(2*pi * t / OBSTACLE_SWAY_PERIOD))`.
+
+Rotation. Each obstacle rotates continuously about its own center at the constant
+rate `OBSTACLE_SPIN_RATE` (`60 deg/s`, held in radians per second), in the same
+direction for both, with angle `theta(t) = OBSTACLE_SPIN_RATE * t`. At `t = 0`
+both obstacles are upright, their long axes vertical.
+
+The obstacle clock `t` advances by the frame's delta time. `specs/ui.md` states
+which screens advance it and what starting a match sets it to.
+
+The obstacles are drawn rotated and shifted to match their current pose.
+
+### Collision with oriented obstacles
+
+Treat the ball as a circle of radius `BALL_R` and each obstacle as a rectangle
+with half-extents `(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`), the rounded corners
+cosmetic. That rectangle is oriented at the obstacle's current angle `theta(t)`
+and centered at its current center `C = (cx, cy)`.
+
+A ball is resolved against each obstacle in the sub-step order
+`specs/balls.md` fixes, against the pose (`C`, `theta`) the obstacle clock's
+value at the start of the frame gives. The clock advances once per frame, after
+the ball has taken every sub-step, so all of a frame's sub-steps face one pose:
+
+1. Into the obstacle's local frame. Translate and un-rotate the ball center
+   `P = (px, py)` into the obstacle's local axes, rotating by `-theta` about `C`:
+   - `dx = px - cx`, `dy = py - cy`
+   - `lx =  dx * cos(theta) + dy * sin(theta)`
+   - `ly = -dx * sin(theta) + dy * cos(theta)`
+
+   In this local frame the obstacle is an axis-aligned rectangle spanning
+   `[-OBSTACLE_HW, OBSTACLE_HW] x [-OBSTACLE_HH, OBSTACLE_HH]`.
+2. Closest point and overlap. Clamp to the rectangle:
+   `qx = clamp(lx, -OBSTACLE_HW, OBSTACLE_HW)`,
+   `qy = clamp(ly, -OBSTACLE_HH, OBSTACLE_HH)`. The ball overlaps the obstacle
+   when the distance from `(lx, ly)` to `(qx, qy)` is less than `BALL_R`.
+3. Local normal. With the ball center outside the rectangle, the local contact
+   normal is `normalize((lx - qx, ly - qy))`, a face normal for an edge hit and
+   pointing out of a corner for a corner hit. With the ball center inside the
+   rectangle, the local normal is the axis of least penetration (`+/-x` or
+   `+/-y`).
+4. Back to world. Rotate the local normal `(nlx, nly)` back by `+theta` to get the
+   world normal `n`:
+   - `nx = nlx * cos(theta) - nly * sin(theta)`
+   - `ny = nlx * sin(theta) + nly * cos(theta)`
+5. Reflect. While the ball is moving into the surface (`v . n < 0`), reflect the
+   velocity about the world normal: `v' = v - 2 * (v . n) * n`. Speed is unchanged
+   and spin is preserved. Then push the ball out along `n` until it no longer
+   overlaps, placing its center `BALL_R` off the contact face.
+
+At `theta = 0` a hit on a vertical face flips `vx` and a hit on a horizontal face
+flips `vy`. At any other angle the ball leaves along the reflected direction off
+the tilted face.
+{{else}}
+
+Two obstacles sit in the field, fixed in place. Each is a rounded bar
+`OBSTACLE_W` wide by `OBSTACLE_H` tall (`20 x 140`), placed mirror-symmetrically
+through the field center `(FIELD_CX, FIELD_CY)`:
+
+- Obstacle A is centered at `OBSTACLE_CENTERS[0]` (`490, 220`).
+- Obstacle B is centered at `OBSTACLE_CENTERS[1]` (`790, 500`).
+
+{{#unless (eq engine.slug "none")}}
+`OBSTACLES` holds the same two obstacles as axis-aligned rectangles, which is what
+the collision below resolves against.
+
+{{/unless}}
+### Collision
+
+Each obstacle is an axis-aligned rectangle with half-extents
+`(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`) centered on its fixed center, the rounded
+corners cosmetic. A ball is resolved against it by the circle against an
+axis-aligned rectangle rule `specs/balls.md` states, and the bounce leaves speed
+and spin unchanged.
+{{/if}}

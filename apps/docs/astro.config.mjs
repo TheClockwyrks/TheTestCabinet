@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { promql } from "./src/grammars/promql.mjs";
+import { traceql } from "./src/grammars/traceql.mjs";
 
 // Repairs Expressive Code's external stylesheet, which is broken under this
 // project's stack (astro-expressive-code 0.43.1 + Astro 6.4.7 + the satteri
@@ -94,7 +96,7 @@ function fixExpressiveCodeStylesheet() {
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
-// (see .github/workflows/deploy-docs.yml). The public gallery (apps/site) is a
+// (see scripts/ci/deploy-docs.sh). The public gallery (apps/site) is a
 // separate deployment at testcabinet.ai; these are two sites, not one.
 //
 // `site` is the canonical origin used for generated absolute URLs (sitemap,
@@ -120,8 +122,13 @@ export default defineConfig({
         TableOfContents: "./src/components/TableOfContents.astro",
       },
       // Synthwave code blocks, in keeping with the palette. The theme ships with
-      // the Expressive Code integration Starlight already bundles.
-      expressiveCode: { themes: ["synthwave-84"] },
+      // the Expressive Code integration Starlight already bundles. Shiki bundles
+      // no grammar for the query languages the observability docs quote, so
+      // those two are registered from `src/grammars/`.
+      expressiveCode: {
+        themes: ["synthwave-84"],
+        shiki: { langs: [promql, traceql] },
+      },
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
@@ -183,6 +190,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "quickstarts/devops/add-or-update-a-model",
+                "quickstarts/devops/probe-a-model",
                 "quickstarts/devops/publish-a-run",
                 "quickstarts/devops/publish-a-reference",
                 "quickstarts/devops/publish-errata",
@@ -215,6 +223,9 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/authoring/writing-case-specifications",
+                "guides/authoring/writing-workspaces-and-references",
+                "guides/authoring/writing-debug-apis-and-validators",
+                "guides/authoring/authoring-a-case-showcase",
                 "guides/authoring/authoring-an-end-to-end-test-case",
                 "guides/authoring/authoring-a-full-stack-test-case",
                 "guides/authoring/authoring-an-asset-generation-test-case",
@@ -256,6 +267,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.7.0",
             "changelogs/v0.6.3",
             "changelogs/v0.6.2",
             "changelogs/v0.6.1",
@@ -288,10 +300,13 @@ export default defineConfig({
                 "components/core/execution",
                 "components/core/harnesses",
                 "components/core/orchestrators",
+                "components/core/engines",
+                "components/core/test-case-groups",
                 "components/core/events",
                 "components/core/metrics",
                 "components/core/validation",
                 "components/core/run-records",
+                "components/core/showcase",
                 "components/core/results",
               ],
             },
@@ -316,9 +331,9 @@ export default defineConfig({
               items: ["components/artifacts/overview"],
             },
             {
-              label: "Tauri",
+              label: "Arena",
               collapsed: true,
-              items: ["components/tauri/overview"],
+              items: ["components/arena/overview"],
             },
             {
               label: "Web",
@@ -393,9 +408,21 @@ export default defineConfig({
           collapsed: true,
           items: [
             "deployment/overview",
-            "deployment/kubernetes",
             "deployment/backups",
             "deployment/telemetry",
+            // The cluster itself, split by plane: what always runs, what a run
+            // is scheduled onto, the database, and how they reach each other.
+            {
+              label: "Kubernetes",
+              collapsed: true,
+              items: [
+                "deployment/kubernetes/overview",
+                "deployment/kubernetes/control-plane",
+                "deployment/kubernetes/run-plane",
+                "deployment/kubernetes/postgres",
+                "deployment/kubernetes/internal-ingress",
+              ],
+            },
           ],
         },
         // The supported coding-agent harnesses. The catalogue overview lists
@@ -507,10 +534,541 @@ export default defineConfig({
         {
           label: "Orchestrators",
           collapsed: true,
+          items: ["orchestrators/overview", "orchestrators/one-shot"],
+        },
+        // The engines — the runtimes a produced game is built on. The catalogue
+        // overview lists every engine; each engine then has its own section,
+        // split into the APIs it exposes, the concepts behind its internals, how
+        // a build uses it, complete example builds, and how a validator drives
+        // it. The contract they all implement lives under Core.
+        {
+          label: "Engines",
+          collapsed: true,
           items: [
-            "orchestrators/overview",
-            "orchestrators/one-shot",
-            "orchestrators/ralph",
+            "engines/overview",
+            "engines/none",
+            {
+              label: "Simple 2D",
+              collapsed: true,
+              items: [
+                "engines/simple-2d/overview",
+                {
+                  label: "APIs",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/apis/overview",
+                    "engines/simple-2d/apis/engine",
+                    "engines/simple-2d/apis/game",
+                    "engines/simple-2d/apis/clocks",
+                    "engines/simple-2d/apis/viewport",
+                    "engines/simple-2d/apis/input",
+                    "engines/simple-2d/apis/audio",
+                    "engines/simple-2d/apis/assets",
+                    "engines/simple-2d/apis/diagnostics",
+                    "engines/simple-2d/apis/recording",
+                  ],
+                },
+                {
+                  label: "Concepts",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/concepts/overview",
+                    "engines/simple-2d/concepts/frame",
+                    "engines/simple-2d/concepts/viewport",
+                    "engines/simple-2d/concepts/input",
+                    "engines/simple-2d/concepts/audio",
+                    "engines/simple-2d/concepts/assets",
+                    "engines/simple-2d/concepts/diagnostics",
+                    "engines/simple-2d/concepts/debug",
+                    "engines/simple-2d/concepts/recording",
+                  ],
+                },
+                {
+                  label: "Examples",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/examples/overview",
+                    "engines/simple-2d/examples/a-minimal-game",
+                    "engines/simple-2d/examples/input-and-actions",
+                    "engines/simple-2d/examples/audio-and-assets",
+                    "engines/simple-2d/examples/diagnostics-and-overlay",
+                    "engines/simple-2d/examples/validating-a-game",
+                    "engines/simple-2d/examples/scripted-clocks",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/usage/overview",
+                    "engines/simple-2d/usage/creating-the-engine",
+                    "engines/simple-2d/usage/the-game-loop",
+                    "engines/simple-2d/usage/drawing",
+                    "engines/simple-2d/usage/actions",
+                    "engines/simple-2d/usage/audio-and-assets",
+                    "engines/simple-2d/usage/diagnostics",
+                    "engines/simple-2d/usage/debug",
+                  ],
+                },
+                {
+                  label: "Validators",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-2d/validators/overview",
+                    "engines/simple-2d/validators/the-suite",
+                    "engines/simple-2d/validators/simulation",
+                    "engines/simple-2d/validators/rendering",
+                    "engines/simple-2d/validators/input-and-audio",
+                    "engines/simple-2d/validators/recording",
+                  ],
+                },
+              ],
+            },
+            {
+              label: "Structured 2D",
+              collapsed: true,
+              items: [
+                "engines/structured-2d/overview",
+                {
+                  label: "APIs",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-2d/apis/overview",
+                    "engines/structured-2d/apis/engine",
+                    "engines/structured-2d/apis/game-instance",
+                    "engines/structured-2d/apis/worlds",
+                    "engines/structured-2d/apis/game-mode",
+                    "engines/structured-2d/apis/actors",
+                    "engines/structured-2d/apis/components",
+                    "engines/structured-2d/apis/controllers",
+                    "engines/structured-2d/apis/rendering",
+                    "engines/structured-2d/apis/collision",
+                    "engines/structured-2d/apis/camera",
+                    "engines/structured-2d/apis/clocks",
+                    "engines/structured-2d/apis/input",
+                    "engines/structured-2d/apis/audio",
+                    "engines/structured-2d/apis/assets",
+                    "engines/structured-2d/apis/diagnostics",
+                    "engines/structured-2d/apis/recording",
+                  ],
+                },
+                {
+                  label: "Concepts",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-2d/concepts/overview",
+                    "engines/structured-2d/concepts/frame",
+                    "engines/structured-2d/concepts/world",
+                    "engines/structured-2d/concepts/gameplay-framework",
+                    "engines/structured-2d/concepts/actors-and-components",
+                    "engines/structured-2d/concepts/possession",
+                    "engines/structured-2d/concepts/rendering",
+                    "engines/structured-2d/concepts/camera-and-viewport",
+                    "engines/structured-2d/concepts/collision",
+                    "engines/structured-2d/concepts/input",
+                    "engines/structured-2d/concepts/audio",
+                    "engines/structured-2d/concepts/assets",
+                    "engines/structured-2d/concepts/diagnostics",
+                    "engines/structured-2d/concepts/debug",
+                    "engines/structured-2d/concepts/recording",
+                  ],
+                },
+                {
+                  label: "Examples",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-2d/examples/overview",
+                    "engines/structured-2d/examples/a-minimal-game",
+                    "engines/structured-2d/examples/pawns-and-controllers",
+                    "engines/structured-2d/examples/worlds-and-transitions",
+                    "engines/structured-2d/examples/game-mode-and-scoring",
+                    "engines/structured-2d/examples/collision-and-events",
+                    "engines/structured-2d/examples/audio-and-assets",
+                    "engines/structured-2d/examples/diagnostics-and-overlay",
+                    "engines/structured-2d/examples/validating-a-game",
+                    "engines/structured-2d/examples/scripted-clocks",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-2d/usage/overview",
+                    "engines/structured-2d/usage/creating-the-engine",
+                    "engines/structured-2d/usage/levels-and-worlds",
+                    "engines/structured-2d/usage/game-modes",
+                    "engines/structured-2d/usage/actors-and-components",
+                    "engines/structured-2d/usage/controllers-and-pawns",
+                    "engines/structured-2d/usage/rendering",
+                    "engines/structured-2d/usage/collision",
+                    "engines/structured-2d/usage/audio-and-assets",
+                    "engines/structured-2d/usage/diagnostics",
+                    "engines/structured-2d/usage/debug",
+                  ],
+                },
+                {
+                  label: "Validators",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-2d/validators/overview",
+                    "engines/structured-2d/validators/the-suite",
+                    "engines/structured-2d/validators/simulation",
+                    "engines/structured-2d/validators/world-and-actors",
+                    "engines/structured-2d/validators/rendering",
+                    "engines/structured-2d/validators/input-and-audio",
+                    "engines/structured-2d/validators/recording",
+                  ],
+                },
+              ],
+            },
+            // The 3D members of the Simple and Structured families, in the same
+            // five sections as their 2D siblings.
+            {
+              label: "Simple 3D",
+              collapsed: true,
+              items: [
+                "engines/simple-3d/overview",
+                {
+                  label: "APIs",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-3d/apis/overview",
+                    "engines/simple-3d/apis/engine",
+                    "engines/simple-3d/apis/game",
+                    "engines/simple-3d/apis/clocks",
+                    "engines/simple-3d/apis/viewport",
+                    "engines/simple-3d/apis/rendering",
+                    "engines/simple-3d/apis/view",
+                    "engines/simple-3d/apis/input",
+                    "engines/simple-3d/apis/audio",
+                    "engines/simple-3d/apis/assets",
+                    "engines/simple-3d/apis/diagnostics",
+                    "engines/simple-3d/apis/recording",
+                  ],
+                },
+                {
+                  label: "Concepts",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-3d/concepts/overview",
+                    "engines/simple-3d/concepts/frame",
+                    "engines/simple-3d/concepts/viewport",
+                    "engines/simple-3d/concepts/rendering",
+                    "engines/simple-3d/concepts/camera-and-view",
+                    "engines/simple-3d/concepts/input",
+                    "engines/simple-3d/concepts/audio",
+                    "engines/simple-3d/concepts/assets",
+                    "engines/simple-3d/concepts/diagnostics",
+                    "engines/simple-3d/concepts/debug",
+                    "engines/simple-3d/concepts/recording",
+                  ],
+                },
+                {
+                  label: "Examples",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-3d/examples/overview",
+                    "engines/simple-3d/examples/a-minimal-game",
+                    "engines/simple-3d/examples/input-and-actions",
+                    "engines/simple-3d/examples/audio-and-assets",
+                    "engines/simple-3d/examples/diagnostics-and-overlay",
+                    "engines/simple-3d/examples/validating-a-game",
+                    "engines/simple-3d/examples/scripted-clocks",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-3d/usage/overview",
+                    "engines/simple-3d/usage/creating-the-engine",
+                    "engines/simple-3d/usage/the-game-loop",
+                    "engines/simple-3d/usage/the-scene",
+                    "engines/simple-3d/usage/the-camera-and-pointer",
+                    "engines/simple-3d/usage/the-screen-layer",
+                    "engines/simple-3d/usage/actions",
+                    "engines/simple-3d/usage/audio-and-assets",
+                    "engines/simple-3d/usage/diagnostics",
+                    "engines/simple-3d/usage/debug",
+                  ],
+                },
+                {
+                  label: "Validators",
+                  collapsed: true,
+                  items: [
+                    "engines/simple-3d/validators/overview",
+                    "engines/simple-3d/validators/the-suite",
+                    "engines/simple-3d/validators/simulation",
+                    "engines/simple-3d/validators/rendering",
+                    "engines/simple-3d/validators/input-and-audio",
+                    "engines/simple-3d/validators/recording",
+                  ],
+                },
+              ],
+            },
+            {
+              label: "Structured 3D",
+              collapsed: true,
+              items: [
+                "engines/structured-3d/overview",
+                {
+                  label: "APIs",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-3d/apis/overview",
+                    "engines/structured-3d/apis/engine",
+                    "engines/structured-3d/apis/game-instance",
+                    "engines/structured-3d/apis/worlds",
+                    "engines/structured-3d/apis/game-mode",
+                    "engines/structured-3d/apis/actors",
+                    "engines/structured-3d/apis/components",
+                    "engines/structured-3d/apis/controllers",
+                    "engines/structured-3d/apis/rendering",
+                    "engines/structured-3d/apis/collision",
+                    "engines/structured-3d/apis/camera",
+                    "engines/structured-3d/apis/math",
+                    "engines/structured-3d/apis/clocks",
+                    "engines/structured-3d/apis/input",
+                    "engines/structured-3d/apis/audio",
+                    "engines/structured-3d/apis/assets",
+                    "engines/structured-3d/apis/diagnostics",
+                    "engines/structured-3d/apis/recording",
+                  ],
+                },
+                {
+                  label: "Concepts",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-3d/concepts/overview",
+                    "engines/structured-3d/concepts/frame",
+                    "engines/structured-3d/concepts/world",
+                    "engines/structured-3d/concepts/gameplay-framework",
+                    "engines/structured-3d/concepts/actors-and-components",
+                    "engines/structured-3d/concepts/possession",
+                    "engines/structured-3d/concepts/rendering",
+                    "engines/structured-3d/concepts/camera-and-viewport",
+                    "engines/structured-3d/concepts/collision",
+                    "engines/structured-3d/concepts/input",
+                    "engines/structured-3d/concepts/audio",
+                    "engines/structured-3d/concepts/assets",
+                    "engines/structured-3d/concepts/diagnostics",
+                    "engines/structured-3d/concepts/debug",
+                    "engines/structured-3d/concepts/recording",
+                  ],
+                },
+                {
+                  label: "Examples",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-3d/examples/overview",
+                    "engines/structured-3d/examples/a-minimal-game",
+                    "engines/structured-3d/examples/pawns-and-controllers",
+                    "engines/structured-3d/examples/worlds-and-transitions",
+                    "engines/structured-3d/examples/game-mode-and-scoring",
+                    "engines/structured-3d/examples/collision-and-events",
+                    "engines/structured-3d/examples/audio-and-assets",
+                    "engines/structured-3d/examples/diagnostics-and-overlay",
+                    "engines/structured-3d/examples/validating-a-game",
+                    "engines/structured-3d/examples/scripted-clocks",
+                  ],
+                },
+                {
+                  label: "Usage",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-3d/usage/overview",
+                    "engines/structured-3d/usage/creating-the-engine",
+                    "engines/structured-3d/usage/levels-and-worlds",
+                    "engines/structured-3d/usage/game-modes",
+                    "engines/structured-3d/usage/actors-and-components",
+                    "engines/structured-3d/usage/controllers-and-pawns",
+                    "engines/structured-3d/usage/rendering",
+                    "engines/structured-3d/usage/models-and-animation",
+                    "engines/structured-3d/usage/collision",
+                    "engines/structured-3d/usage/audio-and-assets",
+                    "engines/structured-3d/usage/diagnostics",
+                    "engines/structured-3d/usage/debug",
+                  ],
+                },
+                {
+                  label: "Validators",
+                  collapsed: true,
+                  items: [
+                    "engines/structured-3d/validators/overview",
+                    "engines/structured-3d/validators/the-suite",
+                    "engines/structured-3d/validators/simulation",
+                    "engines/structured-3d/validators/world-and-actors",
+                    "engines/structured-3d/validators/rendering",
+                    "engines/structured-3d/validators/input-and-audio",
+                    "engines/structured-3d/validators/recording",
+                  ],
+                },
+              ],
+            },
+            // Designed and awaiting implementation: one overview each until their
+            // runtimes exist and their five sections can be written.
+            "engines/decoupled-2d/overview",
+            "engines/decoupled-3d/overview",
+          ],
+        },
+        // gg is The Test Cabinet's own first-party harness. It has its own
+        // top-level section rather than an entry under Harnesses: we own both
+        // sides of it, so it is a distinct run mode with its own configuration
+        // and result space.
+        {
+          label: "gg",
+          collapsed: true,
+          items: [
+            "gg/overview",
+            // How a capability set is named, saved and launched in the console.
+            "gg/configurations",
+            // Agent profiles authored on their own and imported by configurations.
+            "gg/agents",
+            // The ceilings a run is bounded by. Beside Configurations rather than
+            // under Capabilities: a ceiling applies to every capability and to
+            // both execution modes, and is not itself a capability.
+            "gg/execution-limits",
+            // The other guardrail that is not a capability: it bounds one reply
+            // rather than a run, and is armed per agent.
+            "gg/loop-detection",
+            // How gg's model-facing prose is authored and how the system prompt
+            // is assembled. Not a capability: it cuts across all of them.
+            "gg/prompts",
+            // The other half of the model-facing surface, and beside Prompts for
+            // the same reason. This page is projected from gg's own tool
+            // definitions and signature catalogues rather than authored.
+            "gg/reference",
+            // One page per capability, grouped by concern for reading order. The
+            // grouping matches the index on the overview page.
+            {
+              label: "Capabilities",
+              collapsed: true,
+              items: [
+                "gg/shell",
+                "gg/filesystem",
+                "gg/autoload-specifications",
+                "gg/compaction",
+                "gg/context-visibility",
+                "gg/agent-managed-context",
+                // What an agent holds, as opposed to what it can do.
+                "gg/modules",
+                "gg/skills",
+                "gg/memories",
+                "gg/tasks",
+                "gg/project-management",
+                "gg/subagents",
+                // A property of delegation rather than of context: it sets how
+                // many instances of one profile run at a time.
+                "gg/agent-persistence",
+                "gg/fsms",
+                // The two model-chosen successions, which perform the same
+                // module handoff an FSM transition does.
+                "gg/fork-and-exec",
+                "gg/ending-a-session",
+                // The lifecycle seam an operator scripts a run through.
+                "gg/hooks",
+                // A property of responses as code: the counted, disclosed
+                // repairs gg makes to a reply before running it as a program.
+                // Likewise: what gg keeps of the programs it has already run.
+                "gg/program-library",
+                "gg/result-aggregation",
+                "gg/session-record",
+                // Answering a turn by writing a program over gg's typed calls.
+                // Its own group: the capability spans the program contract, the
+                // API surface, views, gg's replies and the sandbox.
+                {
+                  label: "Responses as code",
+                  collapsed: true,
+                  items: [
+                    "gg/responses-as-code/overview",
+                    "gg/responses-as-code/invariants",
+                    "gg/responses-as-code/programs",
+                    "gg/responses-as-code/api-surface",
+                    "gg/responses-as-code/views",
+                    "gg/responses-as-code/messages",
+                    "gg/responses-as-code/sandbox",
+                  ],
+                },
+                // What a gg run emits while it runs. Its own group: the capture
+                // spans turn outcomes, turn timing, context spend, code
+                // execution, the agent surface and the console that reads them.
+                {
+                  label: "Telemetry",
+                  collapsed: true,
+                  items: [
+                    "gg/telemetry/overview",
+                    "gg/telemetry/turn-outcomes",
+                    "gg/telemetry/turn-timing",
+                    "gg/telemetry/usage",
+                    "gg/telemetry/context-spend",
+                    "gg/telemetry/code-execution",
+                    "gg/telemetry/shell-commands",
+                    "gg/telemetry/agent-surface",
+                    "gg/telemetry/console",
+                  ],
+                },
+              ],
+            },
+            // The axis responses as code is parameterised on. A sibling of
+            // Capabilities rather than a member of it: a language is a param of
+            // one capability rather than a capability of its own. The design
+            // pages come first, then one page per arm.
+            {
+              label: "Languages",
+              collapsed: true,
+              items: [
+                "gg/languages/overview",
+                "gg/languages/agent-surface",
+                "gg/languages/static-sdks",
+                "gg/languages/compilation",
+                "gg/languages/registration",
+                "gg/languages/selfcheck",
+                "gg/languages/ecmascript-guest",
+                "gg/languages/typescript",
+                "gg/languages/javascript",
+                "gg/languages/python",
+                "gg/languages/ruby",
+                "gg/languages/purescript",
+                "gg/languages/java",
+                "gg/languages/kotlin",
+                "gg/languages/rust",
+                "gg/languages/swift",
+                "gg/languages/cpp",
+                "gg/languages/csharp",
+              ],
+            },
+            // What makes a gg run answerable after the fact. A sibling of
+            // Capabilities for the same reason: none of these is a configurable
+            // capability. They share one contract surface, one run-tree
+            // artifact convention and one post-run stage.
+            {
+              label: "Analysis",
+              collapsed: true,
+              items: [
+                "gg/analysis/overview",
+                "gg/analysis/session-records",
+                "gg/analysis/query-language",
+                "gg/analysis/code-analysis",
+              ],
+            },
+          ],
+        },
+        // Harness comparisons — The Test Cabinet's A/B-testing capability: run the
+        // same benchmark under several harnesses (or gg configurations) and publish
+        // the cost/token/score data side by side. Its own section because it spans
+        // the metric graphs, a new comparison experiment, run diagnostics, the
+        // statistics that summarize them, and a publish path — none owned by a
+        // single component.
+        {
+          label: "Comparisons",
+          collapsed: true,
+          items: [
+            "comparisons/overview",
+            "comparisons/metrics-split",
+            "comparisons/experiments",
+            "comparisons/diagnostics",
+            "comparisons/statistics",
+            "comparisons/publishing",
           ],
         },
         // The test types The Test Cabinet evaluates models and harnesses with.
@@ -585,8 +1143,25 @@ export default defineConfig({
                 "testing/asset-generation/particle-binaries",
                 "testing/asset-generation/audio-binaries",
                 "testing/asset-generation/rigging-walkers",
-                "testing/asset-generation/manifests",
                 "testing/asset-generation/evaluation",
+                // The manifest format, one page per asset-kind family. The
+                // overview carries what every kind declares; each sibling
+                // carries only what its family adds.
+                {
+                  label: "Manifests",
+                  collapsed: true,
+                  items: [
+                    "testing/asset-generation/manifests/overview",
+                    "testing/asset-generation/manifests/sprite-cases",
+                    "testing/asset-generation/manifests/voxel-cases",
+                    "testing/asset-generation/manifests/skinned-cases",
+                    "testing/asset-generation/manifests/blender-cases",
+                    "testing/asset-generation/manifests/ui-cases",
+                    "testing/asset-generation/manifests/material-cases",
+                    "testing/asset-generation/manifests/particle-cases",
+                    "testing/asset-generation/manifests/audio-cases",
+                  ],
+                },
               ],
             },
             {

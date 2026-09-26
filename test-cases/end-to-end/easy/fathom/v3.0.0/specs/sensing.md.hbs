@@ -1,0 +1,214 @@
+# Fathom — Sensing the dark
+
+The maze is pitch dark. The forager perceives it through what its own light
+falls on, what a sonar pulse floods, and what a predator's flare burns. This
+file defines the fog of war and its three visibility states, the forager's
+light and the brightness that drives it, the sonar pulse, the ink cloud, and
+what each enemy effect reveals. It builds on the tile grid in
+`specs/overview.md` and the maze in `specs/maze.md`, and the hunters that
+answer to the light and the sound defined here are in `specs/predators.md`.
+
+## The fog of war
+
+Every tile of the maze is in one of three visibility states at each instant,
+and it is drawn according to that state.
+
+| State | Reported | The tile is |
+| --- | --- | --- |
+| Unrevealed | `u` | Never touched by the forager's light, a sonar pulse or a flare. Drawn as the flat unrevealed fog `specs/overview.md` fixes, which reads the same over rock as over open water. |
+| Remembered | `r` | Revealed earlier and not lit this instant. Drawn dim: rock as dark stone, corridor as faint open water, and any plankton on it as a faint mote. |
+| Lit | `l` | Revealed this instant by the forager's light, a live sonar mark or a flare. Drawn at full brightness. |
+
+Three things reveal a tile: the forager's passive light, a sonar pulse's front
+as it arrives, and a flare's bloom. A revealed tile is lit while its source
+holds it and remembered from then on.
+
+## What is remembered
+
+- Terrain and plankton. Once a tile has been revealed by any source it stays
+  remembered for the rest of the current maze, across losing a life included.
+  Descending to a deeper maze lays out a fresh maze whose fog is fully
+  unrevealed.
+- Predators. A predator's body is drawn only while it is lit this instant:
+  inside the forager's light, during the window a sonar pulse or a flare shows
+  it, or during its own detection alert (`specs/predators.md`). Between those
+  glimpses it is not drawn, wherever it stands, and nothing of where it was is
+  kept.
+{{#if (eq variant.slug "kindle")}}
+- The amber lights. The bonus drifter and the Lanternjaw's bulb-light
+  (`specs/predators/lanternjaw.md`) are the maze's two amber lights, each drawn
+  as a single glowing amber point and drawn alike, so which glimmer is which is
+  not readable at a glance. They are clipped to the vision circle below: an
+  amber light inside the circle is drawn whatever the fog beneath it says and
+  wherever the light pocket fails to reach, and an amber light beyond the
+  circle is painted over with the flat fog like the ground around it. Only the
+  Lanternjaw's bulb is drawn that way, and its body follows the rule above.
+{{else}}
+- The amber lights. The bonus drifter and the Lanternjaw's bulb-light
+  (`specs/predators/lanternjaw.md`) are the maze's two amber lights, and both
+  are drawn at all times and at any distance, across unrevealed fog and through
+  rock. Each is a single glowing amber point, drawn alike, so which glimmer is
+  which is not readable at a glance. Only the Lanternjaw's bulb is drawn that
+  way, and its body follows the rule above.
+
+The whole explored map stays drawn. Every tile ever revealed keeps being drawn,
+across the entire grid at once, remembered tiles dim and the pocket around the
+forager bright. The tiles drawn black are the never-revealed ones.
+{{/if}}
+{{#if (eq variant.slug "kindle")}}
+
+## The vision circle
+
+The forager carries an outer vision circle, and the maze is drawn only inside
+it.
+
+- Its radius is `R = KINDLE_VISION_MIN + KINDLE_VISION_GAIN * G`, with
+  `KINDLE_VISION_MIN` (`192`) and `KINDLE_VISION_GAIN` (`128`) in logical units,
+  so `R` is `192` (6 tiles) at `G = 0` and `320` (10 tiles) at `G = 1`, where
+  `G` is the brightness below.
+- It is a true circle of radius `R` about the forager's center. Terrain,
+  plankton and the amber lights are drawn inside it, and its edge runs through
+  the middle of a tile as readily as along one rather than being rounded to
+  whole tiles.
+- It is a rendering mask and it senses nothing. It reveals no tile and
+  remembers no tile: what shows inside it is what the fog of war has already
+  revealed by another means, at its remembered or lit brightness, and ground
+  inside the circle that has never been revealed is drawn as fog.
+- Ground beyond `R` is painted with the same flat fog as never-revealed ground,
+  and it stays remembered underneath. Returning to it draws it again, dim, with
+  any uneaten plankton still on it.
+- Predators are not governed by it. A predator is drawn by the light pocket
+  below, by a sonar mark, by a flare and by its own detection alert, and the
+  vision circle draws none.
+- Three things are drawn over the blackout and so show beyond the circle: the
+  Flarefish's flare bloom, the forager's own sonar wavefront, and the
+  Gloamfin's ping wavefront (`specs/predators.md`).
+- A soft glow in the forager's color fills the circle.
+{{/if}}
+
+## The forager's light
+
+The forager gives off a soft light, so a pocket of maze around it is always
+lit.{{#if (eq variant.slug "kindle")}} It is the smaller of the two circles the forager carries, and it is the
+one that reveals and the one that draws predators.{{/if}}
+
+- Its radius is `V = VISION_MIN + VISION_GAIN * G`, with `VISION_MIN` (`96`)
+  and `VISION_GAIN` (`64`) in logical units, so `V` is `96` (3 tiles) at
+  `G = 0` and `160` (5 tiles) at `G = 1`.{{#if (eq variant.slug "kindle")}}
+  `V` is smaller than `R` at every brightness.{{/if}}
+- The light travels straight. A tile is lit by it when the tile's center lies
+  within `V` of the forager's center and the segment joining those two centers
+  crosses no rock tile other than that tile itself.
+- The light reveals the rock it lands on and stops there. A rock tile the light
+  reaches is lit and drawn as rock, and the tiles behind it are left as they
+  were.
+- Predators and plankton inside the lit set are drawn live.
+
+## Brightness
+
+Brightness is a value `G` in `[0, 1]`, `0` when the forager has not eaten
+recently.
+
+- Each plankton eaten adds `BRIGHT_PER_EAT` (`0.34`) to `G`, clamped at `1`.
+- Eating arms a hold of `BRIGHT_HOLD` (`1.0 s`), in full each time. While the
+  hold runs `G` is steady.
+- Once the hold expires `G` decays continuously, halving every
+  `BRIGHT_HALFLIFE` (`0.9 s`), so a tick of length `dt` takes `G` to
+  `G * 0.5 ^ (dt / 0.9)`.
+{{#if (eq variant.slug "kindle")}}
+- `G` drives both circles, the light radius `V` and the vision circle `R`, by
+  the formulas above.
+{{else}}
+- `G` drives the light radius `V` by the formula above.
+{{/if}}
+- `G` is what the Lanternjaw and the Flarefish hunt. Each senses the forager
+  out to a light detection range that grows with `G`, as
+  `specs/predators/lanternjaw.md` and `specs/predators/flarefish.md` fix.
+
+## The sonar pulse
+
+The sonar pulse floods the corridors around the forager, revealing them and
+marking the hunters standing in them. The control is in `specs/movement.md`.
+
+- Cooldown. A pulse is emitted when its cooldown is `0`, and emitting one sets
+  the cooldown to `SONAR_COOLDOWN` (`1.5 s`), which then runs down. Pulses are
+  unlimited, and the cooldown is the only limit on them. The HUD carries a
+  readiness gauge (`specs/ui.md`).
+- Range. A pulse travels from the forager's tile through open tiles alone,
+  following the corridors, out to a path range of `E` corridor steps. `E` is
+  `SONAR_RANGE_BASE` (`9`) tiles at depth `1` and shrinks with depth as
+  `specs/progression.md` fixes.
+- A wavefront, not an instant circle. The front advances at
+  `SONAR_WAVE_SPEED` (`14`) corridor steps per second, so it stands `14 * t`
+  steps out `t` seconds after the pulse, and the pulse ends once the front
+  passes `E`. Each open tile within `E` corridor steps of the origin is
+  revealed as the front reaches it, near tiles before far ones, together with
+  the rock tiles bounding those corridors, so a flooded passage is drawn as
+  corridor and rock rather than as floor alone. The flood follows the
+  corridors, so it reaches around corners and through junctions, and it enters
+  no space rock seals off.{{#if (eq variant.slug "kindle")}} What it reveals enters memory, so a corridor it
+  finds beyond the vision circle is drawn once the circle reaches it.{{/if}}
+- Marks. A predator standing on a flooded tile as the front reaches it is
+  marked: its body is drawn at its live position for `SONAR_MARK_TIME`
+  (`1.5 s`) from that moment, fading out, whether or not the forager's light
+  reaches it. A pulse marks the Gloamfin and the Flarefish.
+- The amber lights are left as they are. A pulse draws neither the bonus
+  drifter's body nor the Lanternjaw's, and it changes neither amber mote, so a
+  pulse never resolves which glimmer is which.
+- It is heard. When the front arrives at a Gloamfin it hands that Gloamfin a
+  fix on the forager, on arrival rather than at the moment the pulse was
+  emitted (`specs/predators/gloamfin.md`).
+- Presentation. Draw the pulse as a glowing crest that flows outward through
+  the corridors, bending at bends and reflecting off rock exactly as the reveal
+  does, rather than as an expanding circle. It spreads across many tiles as its
+  own overlay, in the cyan tint `specs/state.md` names for a forager pulse, and
+  it is drawn in code rather than from a sprite. How the crest is styled is
+  yours.{{#if (eq variant.slug "kindle")}} It is drawn over the vision-circle mask, so it
+  shows beyond the circle.{{/if}}
+
+## Ink
+
+The forager releases a cloud of ink that blinds the hunters that see. The
+control is in `specs/movement.md`.
+
+- Cooldown. A cloud is released when ink's cooldown is `0`, and releasing one
+  sets the cooldown to `INK_COOLDOWN` (`8 s`), which then runs down. Ink is
+  unlimited, and the cooldown is the only limit on it. The HUD carries a
+  readiness gauge (`specs/ui.md`).
+- The cloud. A dark cloud of radius `INK_RADIUS` (`80` logical units, 2.5
+  tiles) appears centered on the forager and stands for `INK_LIFE` (`3 s`)
+  before it dissipates. It stays fixed at the point it was released, and
+  everything swims through it at its ordinary speed.
+- Blinding. A Lanternjaw or a Flarefish is blinded while its center is inside a
+  cloud, or while the segment joining its center to the forager's center passes
+  within `INK_RADIUS` of that cloud's center. A blinded hunter drops any fix it
+  holds, takes no new one, and wanders until it is clear of the cloud or the
+  cloud expires.
+- An ink cloud has no effect on the Gloamfin (`specs/predators/gloamfin.md`).
+
+## What the enemy effects reveal
+
+The two enemy effects that spread across the maze differ in what they give the
+forager.
+
+- The Flarefish's flare reveals. Its bloom lights the full disc of the flare
+  radius `specs/predators/flarefish.md` fixes around the Flarefish, rock and
+  floor alike and straight through rock, revealing and remembering every tile
+  in it and drawing any predator or drifter inside it live. The disc is stuck
+  to the Flarefish and moves with it, and it is drawn at full brightness for as
+  long as the bloom burns.
+{{#if (eq variant.slug "kindle")}}
+  It is full vision, so it draws even ground that has never been explored, and
+  it is drawn over the vision-circle mask, so a flare beyond the circle still
+  reads. When the bloom ends the disc goes with it: everything it lit that lies
+  outside the vision circle is painted back to the flat fog, still remembered
+  underneath.
+{{else}}
+  When the bloom ends the disc drops from lit back to remembered dim, and the
+  tiles it lit stay revealed.
+{{/if}}
+- The Gloamfin's ping reveals nothing. Its wavefront is drawn sweeping outward
+  through the corridors{{#if (eq variant.slug "kindle")}}, beyond the vision circle
+  included{{/if}}, in the tint `specs/predators/gloamfin.md` fixes for the
+  ping that cast it. It draws no tile, reveals and remembers no tile, and marks
+  no predator and no drifter, the Gloamfin that cast it included.

@@ -14,8 +14,8 @@
 // already hold (the console's backend listing, the static site's snapshot index),
 // so the Overview costs no per-run document fetches.
 
-import type { TestType } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { TestType } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 import { formatSlug } from "../format";
 
@@ -243,23 +243,4 @@ export function standInField(
     min: Math.min(...means),
     max: Math.max(...means),
   };
-}
-
-/**
- * The subject model's mean of a figure over the cohort, ignoring runs that did
- * not report it. `null` when no run reported it — distinct from a mean of zero.
- */
-export function meanReported(
-  runs: readonly RunSummary[],
-  value: (run: RunSummary) => number | null,
-): number | null {
-  let sum = 0;
-  let reported = 0;
-  for (const run of runs) {
-    const measured = value(run);
-    if (measured === null) continue;
-    sum += measured;
-    reported += 1;
-  }
-  return reported === 0 ? null : sum / reported;
 }

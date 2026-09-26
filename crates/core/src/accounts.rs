@@ -105,9 +105,8 @@ pub struct ReviewerPicture {
 /// An HTTP client for the standalone auth service.
 ///
 /// The base URL is the auth service's address (for example
-/// `http://127.0.0.1:8789`). Used by the CLI/desktop/web to register and log in,
-/// and by the backend to [verify](Self::verify) the bearer token on each
-/// mutating request.
+/// `http://127.0.0.1:8789`). Used by the CLI to register and log in, and by the
+/// backend to [verify](Self::verify) the bearer token on each mutating request.
 #[derive(Debug, Clone)]
 pub struct AccountsClient {
     /// The auth service base URL, without a trailing slash.
@@ -270,7 +269,7 @@ fn traced_headers() -> http::HeaderMap {
 
 /// Map a transport-level failure into an [`Error::Auth`] tagged with the URL.
 fn auth_err(url: &str, err: reqwest::Error) -> Error {
-    Error::Auth(format!("auth request to `{url}` failed: {err}"))
+    Error::Auth(format!("request to `{url}` failed: {err}"))
 }
 
 /// Turn a non-2xx response into an [`Error::Auth`], surfacing the service's error
@@ -286,7 +285,7 @@ async fn error_for_status(url: &str, response: reqwest::Response) -> Result<reqw
         .map(|envelope| envelope.error.message)
         .unwrap_or_else(|| body.trim().to_string());
     Err(Error::Auth(format!(
-        "auth request to `{url}` failed ({status}): {message}"
+        "request to `{url}` failed ({status}): {message}"
     )))
 }
 

@@ -1,0 +1,55 @@
+# The libraries a Kotlin program may reach, as this arm records them.
+#
+# WHAT DECIDES THE SET. The Kotlin standard library, translated by TeaVM. A program on this arm is
+# compiled against exactly two jars — `kotlin-stdlib` and the script runtime its script class extends
+# — plus gg's own SDK, and nothing else; the driver's own 60 MB compiler and every TeaVM jar are on a
+# DIFFERENT classpath on purpose, because a program compiled against those could import
+# `kotlinx.coroutines`, which is a runtime dependency of the compiler and which this sandbox cannot
+# run. See `crates/gg/src/sandbox/language/kotlin.compile.rs`.
+#
+# The standard library then rests on TeaVM's classlib — a large subset of `java.base` rather than the
+# whole of it — so a Kotlin function whose implementation reaches a class TeaVM does not carry is
+# refused with the LIBRARY's own file named, at the model's own call site. That is this arm's answer
+# and it differs from the Java arm's: a Kotlin program reaches the classlib THROUGH a standard library
+# written in Kotlin, so a diagnostic inside `kotlin/…` is a fact about the program the model wrote.
+#
+# So this file is a claim about the artifact, and it is held to it:
+# `kotlin_reaches_every_library_this_arm_says_it_may` in
+# `crates/gg/src/sandbox/language/kotlin.surface.test.rs` drives every package below through the real
+# Kotlin compiler and the real TeaVM and requires a real declaration in each to compile AND run. A
+# package listed here that does not translate fails that test rather than reaching a model, and the
+# absences worth knowing about are recorded there as absences.
+#
+# The `# --- heading ---` lines are the groups of the catalogue's `libraries` section, which is the
+# record of this arm's set. A program written against a package this arm does not carry is refused
+# by the compiler, in its own words.
+# `packages/gg-sandbox-kotlin/tools/GgSignatures.kt` reads this file and refuses a package under no
+# heading.
+#
+# NOTHING HERE NEEDS AN IMPORT LINE FOR THE FIRST GROUP: Kotlin's default imports already cover it in
+# every file, and gg's own surface needs none either, because this SDK's values are declared in the
+# root package that a program is itself compiled in. A program with no `import` at all is compiled
+# byte for byte as the model wrote it.
+
+# --- Imported for you, in every program ---
+kotlin
+kotlin.collections
+kotlin.text
+kotlin.ranges
+kotlin.sequences
+kotlin.comparisons
+kotlin.io
+
+# --- Numbers, randomness and time ---
+kotlin.math
+kotlin.random
+kotlin.time
+
+# --- The Java types the standard library rests on ---
+java.lang
+java.util
+java.math
+java.time
+java.time.format
+java.io
+java.nio.charset

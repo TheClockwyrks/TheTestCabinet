@@ -1,0 +1,46 @@
+# The "Simple 3D" engine definition.
+#
+# An engine is the runtime a produced game is built on: the frame loop and the
+# delta time it hands the game, the input actions, the audio bus, the asset
+# loader, and the on-screen diagnostics. It is a *run dimension*, selected per
+# run alongside the test case, variant, harness, and model — a case declares only
+# which engines it supports, and the engine documents itself from its own
+# package, so a case's specs never restate it.
+#
+# This engine is the 3D member of the Simple family: it provides everything
+# around a 3D game *except* the game, so a build under it writes its own
+# simulation and builds its own picture. The engine owns the renderer over the
+# canvas, the scene object and the camera it renders through, and the 2D screen
+# layer composited over the picture; the game populates the scene, poses the
+# camera, and draws its readouts. It also carries an opt-in recorder that
+# captures the frames the engine drew as video, so a validator can replay the
+# section of a scenario its check is about.
+#
+# See `engines/README.md` and the design doc at
+# `apps/docs/src/content/docs/components/core/engines.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name.
+slug = "simple-3d"
+
+# Human-readable name, shown by `tcab engines`.
+name = "Simple 3D"
+
+# What the engine provides, for display.
+description = "Frame, input, audio, assets, and diagnostics for a 3D game that writes its own simulation and builds its own scene, rendered through three.js."
+
+# The npm package carrying the runtime. It is staged into the host package store
+# with the other shippable packages, then vendored into `.vendor/engine/` in the
+# run repository at seed time and written into the seeded workspace's
+# `package.json` as a relative `file:` dependency, so the build imports it by its
+# bare name. Its `version` in the store is what is recorded on the run.
+#
+# `three` is a peer dependency of this package rather than a dependency: the
+# build declares it itself, so the engine, the build, and
+# `@clockwyrks/voxel-runtime/three` all share one instance.
+package = "@clockwyrks/simple-3d"
+
+# The directory inside the package holding the engine's own documentation. It is
+# seeded into the run workspace at `engine/`, and the rendered prompt points the
+# build at it; reading it is part of the work a run measures.
+docs = "docs"

@@ -1,0 +1,1275 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+@use "../../../styles/breakpoints" as bp;
+
+// gg-specific bits of the capability-set editor. Everything else reuses the
+// shared run-execution styles (`../RunExec.module.scss`): the field grid,
+// selects/inputs, section labels, notices, and buttons. Only the capability
+// toggle rows and the configuration-identity controls are new here.
+
+// A muted note that sits directly on the animated backdrop (the Model-slots and
+// Role-bindings intros) takes the readability halo, the same as the section labels
+// above them, or it washes out over the backdrop's sun. Panelled prose keeps the
+// panel's own contrast and must not take it.
+.backdropNote {
+  @include h.halo;
+}
+
+// The "?" help affordance: a small circular badge whose help text appears in a
+// custom on-hover/focus tooltip, so a field's details stay out of the way until
+// asked for instead of living in a permanent subtitle.
+.help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: t.$space-sm;
+  border-radius: 50%;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+    outline: none;
+  }
+
+  // The tooltip itself: normal-cased, left-aligned body text lifted above the badge
+  // on a surface card, revealed on hover or keyboard focus.
+  &:hover::after,
+  &:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + #{t.$space-xs});
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 18rem;
+    padding: t.$space-xs t.$space-sm;
+    border-radius: t.$radius-sm;
+    border: t.$border-hairline solid t.$color-border;
+    background: t.$color-surface-2;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    font-weight: 400;
+    line-height: 1.35;
+    letter-spacing: normal;
+    text-transform: none;
+    text-align: left;
+    white-space: normal;
+    box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
+    pointer-events: none;
+    z-index: 20;
+  }
+}
+
+// The slider switch worn by every capability toggle and per-feature toggle: a real
+// checkbox whose native box is hidden and replaced by a track+knob, so turning a
+// capability on reads as flipping it live.
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 1.15rem;
+}
+
+.switchInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.switchTrack {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: t.$color-border;
+  transition: background 0.15s ease;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0.15rem;
+    width: 0.85rem;
+    height: 0.85rem;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: t.$color-text;
+    transition: transform 0.15s ease;
+  }
+}
+
+.switchInput:checked + .switchTrack {
+  background: t.$color-accent;
+
+  &::after {
+    transform: translate(0.95rem, -50%);
+  }
+}
+
+.switchInput:disabled + .switchTrack {
+  opacity: 0.5;
+}
+
+.switchInput:focus-visible + .switchTrack {
+  outline: t.$border-hairline solid t.$color-accent;
+  outline-offset: 2px;
+}
+
+// The configuration identity row: name + description, bottom-aligned so their
+// controls sit on one line and wrap when cramped.
+.presetRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-bottom: t.$space-md;
+}
+
+// The name field flexes to fill the row; the buttons keep their intrinsic width.
+.presetNameField {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+// The save/rename/delete cluster — keeps the buttons on one line, wrapping together.
+.presetActions {
+  display: flex;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// --- Agent type ---------------------------------------------------------------------
+//
+// How the agent is implemented, chosen above its capabilities because the capabilities
+// are a consequence of it. Panelled like the run limits: a segmented track and a line of
+// prose need a surface to read against, and a panelled heading takes the panel's own
+// contrast rather than the backdrop halo.
+
+.modeWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// What the selected type means, under the track. Muted like every other explanatory
+// line in the form, and given room so the track does not sit on top of it.
+.modePurpose {
+  margin: t.$space-sm 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The selected type's own settings — the responses-as-code sandbox, or the machine. The
+// same panel a capability row wears, because they are the same fields; what it is
+// missing is the switch, which the type selector above already is.
+.modePanel {
+  padding: t.$space-md;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  // The body's own top margin sets it off from a capability's purpose line; here it is
+  // the first thing in the panel and the panel's padding is the whole gutter.
+  > .capBody {
+    margin-top: 0;
+  }
+}
+
+// A capability group: a collapsible header over its capability rows.
+.group {
+  margin-bottom: t.$space-md;
+}
+
+// The group's clickable header — a full-width bar with a toggle caret, the group
+// name, and an on-count, styled as a bare button so it reads as a section heading.
+.groupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-xs 0;
+  background: none;
+  border: 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+
+  &:hover .groupName {
+    color: t.$color-accent;
+  }
+}
+
+.groupToggle {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.groupName {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.groupCount {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The editable list of capability rows. The group header above carries a bottom
+// hairline; the top margin keeps the first row from touching it.
+.capList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin: t.$space-md 0;
+}
+
+// One capability: a panelled block with a toggle + name + purpose, and (when on)
+// its params editor beneath. Panelled so each capability reads as a distinct,
+// self-contained knob — mirroring the batch form's combination rows.
+.capRow {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The toggle line: the slider switch, the capability name, and its id badge.
+// Centered so the name and badge sit on the switch's midline.
+.capHeader {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  cursor: pointer;
+}
+
+.capName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.capId {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A capability that is switched off dims its heading so the enabled ones stand
+// out at a glance (its config is still recorded, so two configurations being
+// compared stay symmetric).
+.capOff .capName,
+.capOff .capId {
+  opacity: 0.55;
+}
+
+.capPurpose {
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The per-capability config body (the dedicated param controls), revealed only when
+// the capability is on and has something to configure.
+.capBody {
+  margin-top: t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// A grid of labelled fields — a capability's params, the run's ceilings, a hook's
+// command. One rule for every one of them, because they are the same control repeated
+// and an operator who learns the shape in one panel should meet it again in the next.
+//
+// A real grid, and a track floor wide enough for a *label*. These fields are labelled in
+// phrases ("Saturated words before abandoning", "Execution timeout (seconds)"), not in
+// words, and a wrapping flex row would pack four and five of them onto a
+// line by their inputs' width: every label would then wrap to two rows, which unlevels the
+// inputs beside it and makes the row unreadable. `auto-fit` takes as many equal columns
+// as the form is actually wide enough for — three in the editor, one on a phone — so the
+// count follows the width instead of being fixed at a number that is wrong somewhere.
+@mixin param-grid($min: 18rem) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax($min, 1fr));
+  gap: t.$space-md;
+}
+
+.capParamGrid {
+  @include param-grid;
+}
+
+.capParamField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// A field's name, its help badge and its reset control on one line — the same row
+// `SettingRow` gives the account pages, so a control that has been moved off its
+// authored figure is marked identically wherever it is edited.
+.fieldLabelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// A `toggles` param (gg's documentation-type flags) is a group of checkboxes
+// rather than one control, so it takes a whole row of the param grid — its member
+// labels carry a clause of explanation each and would wrap to shreds in a column
+// beside a number field.
+.toggleField {
+  grid-column: 1 / -1;
+}
+
+// A `model` param (compaction's handoff model) is two controls — where the model comes
+// from, and which one — laid out exactly like an agent's own binding. It takes a whole
+// row of the param grid for the same reason the agent binding takes its own row: a model
+// id is long, and a slot picker beside it in one column would be unreadable.
+.modelParamField {
+  grid-column: 1 / -1;
+  gap: t.$space-xs;
+}
+
+// The members of a toggles param, stacked: each label is a sentence, so laying them
+// out in columns like the tool checkboxes would make them hard to scan.
+.toggleList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.toggleItem {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  cursor: pointer;
+}
+
+// --- The state machine (a `states` param) -----------------------------------------
+//
+// A machine is the largest control in the form by some distance — a list of states,
+// each holding a list of edges, each holding a checkbox set — so it takes the whole
+// width of the param grid and lays its rows out as cards rather than as another line
+// of fields. The nesting is carried by indentation and a leading rule, not by boxes
+// inside boxes: an edge belongs to the state above it, and one border is enough to
+// say so.
+
+.fsmWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+// The machine itself, inside the wrapper that claims the row. It takes no width rule of
+// its own: `.fsmWrapper` is the grid cell and this is a block inside it, so it is already
+// as wide as the row the wrapper spans.
+.fsmField {
+  align-items: flex-start;
+  gap: t.$space-sm;
+}
+
+.fsmStates {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  width: 100%;
+}
+
+// One state: its head row (what it is called, what it runs) over its edges. The entry
+// state takes the accent rule, because which state a machine starts in is the one
+// thing about it that cannot be read off any single row.
+.fsmState {
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  &[data-entry] {
+    border-color: t.$color-accent;
+  }
+}
+
+.fsmStateHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// The position marker: "entry" on the first state, the ordinal on the rest — the same
+// shape as the root agent's badge, for the same reason (a position that matters).
+.fsmStateBadge {
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-accent;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-align: center;
+}
+
+.fsmStateName {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.fsmStateAgent {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The connective tissue in "explore runs Explorer": muted, so the row reads as a
+// sentence rather than as three unrelated fields.
+.fsmRuns,
+.fsmTransferLabel {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.fsmTerminal {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The edges out of a state, indented under it behind a single rule.
+.fsmTransitions {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin: t.$space-sm 0 0;
+  padding: 0 0 0 t.$space-md;
+  border-left: t.$border-hairline solid t.$color-border;
+  list-style: none;
+}
+
+.fsmTransition {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fsmTransitionHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.fsmArrow {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+}
+
+.fsmTarget {
+  flex: 0 1 10rem;
+  min-width: 0;
+}
+
+.fsmWhen {
+  flex: 3 1 14rem;
+  min-width: 0;
+}
+
+// What the edge carries: the checkbox set, wrapped, reading as one clause after the
+// "carries" label rather than as a column of switches.
+.fsmTransfer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  padding-left: t.$space-md;
+}
+
+// An edge that carries nothing is a deliberate hard reset — legitimate, and worth
+// saying out loud, because an empty checkbox row otherwise reads as unfinished.
+.fsmReset {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// --- Run limits -------------------------------------------------------------------
+
+// The execution ceilings live in their own surface card rather than straight on the
+// backdrop, so the numeric fields read against a panel and the section holds
+// together as the operator's guardrail block.
+.limitsWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  // The panel's own padding supplies the top and bottom gutters; drop the leading
+  // label's top margin and any trailing error/warning's bottom margin so the insets
+  // stay balanced.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// The execution ceilings — and a command hook's four fields, which are the same kind of
+// row — on the shared param grid. A narrower track than a capability's params: these
+// labels are two or three words ("Max consecutive errors", "Working directory") rather
+// than phrases, so a wider floor would only leave columns half empty.
+//
+// The bottom margin sets the grid off from a trailing error/warning; the widget's
+// `:last-child` rule zeroes it away when the grid is the last thing in the panel.
+.limitGrid {
+  @include param-grid(15rem);
+  margin-bottom: t.$space-md;
+}
+
+// The decision object a custom hook script must print, quoted verbatim under the script
+// field. A block rather than an inline `code` because it is three alternatives on three
+// lines, and the whole point of quoting it is that an operator can read it as a shape.
+.hookContract {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  margin-top: t.$space-xs;
+  padding: t.$space-sm;
+  border-radius: t.$radius-sm;
+  // The token names here are the ones the scale actually defines: there is no
+  // `$surface-sunken`/`$font-mono`/`$text-xs`, and naming one compiles nowhere —
+  // Sass fails the whole stylesheet on an undefined variable, so this block took
+  // the site and console builds down with it.
+  background: t.$color-surface-2;
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  line-height: 1.6;
+}
+
+// The editor's one warning cue: a setting that is well-formed and will save, but that
+// cannot do the thing it reads as doing — a ceiling that can never fire, a state nothing
+// can enter, a capability that is on and grants no call. Amber rather than the negative
+// cue `.fieldError` wears, because none of these refuses the save, and one cue for all of
+// them so an operator learns the colour once.
+.limitWarning {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-warning;
+
+  // Trailing gutter only when something follows. The panels that stack these — a
+  // capability's body, the states field — space their children with `gap`, so a bottom
+  // margin on the last one is a hole at the foot of the card rather than separation.
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// A per-field validation error (a numeric param that isn't a number, or a fraction
+// out of range), in the negative cue.
+.fieldError {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The stacked list of model-slot blocks plus the add-slot affordance.
+.slotList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  align-items: flex-start;
+  margin-bottom: t.$space-md;
+}
+
+// One model-slot block: the slot name/mock toggle line over the model picker.
+.slotBlock {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  align-self: stretch;
+}
+
+.slotNameField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The remove control: a proper button box (not a bare glyph), sized to sit on the
+// row's inputs and aligned to their bottom edge. Mirrors the batch form's
+// `.comboRemove`.
+.slotRemove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+}
+
+// The agent slots one configuration slot fills, under the name/model row that declares
+// it. A group with a label of its own rather than another field on that row: the list is
+// as tall as the configuration has bindings, and it is the half of the block an operator
+// is actually deciding.
+.slotTargets {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// A candidate this slot cannot take, because another configuration slot already fills it.
+// Muted rather than hidden — "filled by `writer`" is the answer to why it is not
+// available, and dropping the row leaves the question — and not a fault, because the
+// mapping it names is a perfectly good one.
+.slotTargetTaken {
+  color: t.$color-text-muted;
+  cursor: default;
+}
+
+// Why a pair is unavailable, beside the pair it belongs to.
+.slotTargetNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// What is wrong with a pair this slot already fills — it is passthrough as well, nothing
+// defers to it any more, or it is gone. The negative cue, because every one of them is
+// something the save gate refuses.
+.slotTargetFault {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The read-only summary at the foot of the Slots tab: the one set of models a launch
+// collects. It wears the run-limits panel's surface (the tab's other blocks are cards, and
+// a bare list under them would read as a fourth slot) and stretches to their width, which
+// `.slotList` would otherwise leave it short of.
+.launchSummary {
+  align-self: stretch;
+  margin-bottom: 0;
+}
+
+.launchList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One launch input: the name the new-run form asks under, then what the model collected
+// under it is handed to.
+.launchRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+  font-size: t.$font-sm;
+}
+
+.launchName {
+  font-family: var(--ttc-font-mono, monospace);
+  color: t.$color-text;
+}
+
+.launchFills {
+  color: t.$color-text-muted;
+}
+
+// The binding's model row: the "Model from" selector beside the model (or
+// model-slot) control it governs, both aligned to their inputs' bottom edge and
+// wrapping under each other only when the row is truly cramped.
+.slotFields {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The "Model from" selector: intrinsic width, so the model control beside it takes
+// the row's spare space.
+.slotSourceField {
+  flex: 0 1 14rem;
+  min-width: 0;
+}
+
+.slotModelField {
+  flex: 2 1 16rem;
+  min-width: 0;
+}
+
+// The prompt-cache lifetime selector: intrinsic width like the "Model from" one it
+// shares the row with, leaving the row's spare space to the model control between them.
+.cacheTtlField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}
+
+// The reminder shown under the row once an agent is on the extended lifetime — which
+// agents earn back its premium. Guidance, not a fault, so it takes the muted cue rather
+// than the warning or negative one.
+.cacheTtlNote {
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The reasoning lever's controls — the arm selector, and the one value its arm names.
+// Intrinsic width like the prompt-cache selector they follow in the row, for the same
+// reason: the row's spare space belongs to the model control between them.
+.reasoningField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}
+
+// --- Per-feature sliders ---------------------------------------------------------
+//
+// Granting a sub-feature of a capability without granting the whole thing. Lives inside a
+// capability's expanded config (there is no standalone section for it): each slider covers
+// a bundle of calls that move together.
+
+// Set the feature toggles off from the param grid above them: the capBody's own gap
+// is tight for a fields row, so give the "Features" heading extra breathing room.
+.featureGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-top: t.$space-sm;
+}
+
+.featureList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One feature toggle: its slider + name (in a label so clicking either toggles it)
+// and an optional help tip beside them.
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.featureLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  cursor: pointer;
+}
+
+.featureName {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+// --- Agents / per-agent view ----------------------------------------------------
+
+// One agent's row in the configuration's agent list: its identity block on the left,
+// then the row's controls, which the identity block's `flex: 1` pushes to the right.
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The agent's name over its summary line, stacked so the row reads as a heading with a
+// subtitle rather than one long run of text.
+.agentIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.agentNameLine {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+// Edit and remove belong together — they act on the same agent — so they sit in one
+// group rather than drifting apart across the row.
+.agentActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex: 0 0 auto;
+
+  // The remove control's auto left margin is what pushes it away from its neighbours
+  // elsewhere; inside this group it must sit right beside Edit.
+  .slotRemove {
+    margin-left: 0;
+  }
+}
+
+// The "root" marker: which profile drives the run's top-level session, called out on
+// its list row and beside its name field.
+.rootBadge {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-accent;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+// The agent-name row at the top of the per-agent view: the editable name, and the
+// profile id beside it. Each field's own label is a plain inline span rather than a flex
+// row (the list row's `.agentNameLine` is the one with a gap), so the badge that follows
+// the label text needs its own leading space.
+.agentHeading {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin: 0 0 t.$space-md;
+
+  .rootBadge {
+    margin-left: t.$space-sm;
+  }
+}
+
+// The library entry's one-line purpose, under the name and slug row it describes. Full
+// width and set off from the Agent-type panel beneath it, since a sentence typed here is
+// read as prose rather than scanned as a field beside another.
+.agentDescriptionField {
+  display: block;
+  margin: 0 0 t.$space-md;
+}
+
+// The slug field beside the name. Intrinsic width, so the name input keeps the row's
+// spare space — a slug is short, and the two are edited together often enough that they
+// belong on one line rather than stacked.
+.agentIdField {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+// Shown as code because it is an identifier the operator will meet again verbatim — in a
+// roster, in a run's telemetry, in the argument of a call the model made — and because
+// looking like an input is exactly the wrong promise for a value nothing may rewrite. Sat
+// on the row's baseline with the inputs beside it rather than in a box of its own.
+.agentIdValue {
+  display: block;
+  padding: t.$space-xs 0;
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
+}
+
+// The roster lives in its own surface card, like the run limits: it is a table of
+// sliders, which needs a panel to read against — and a panelled heading takes the
+// panel's own contrast rather than the backdrop halo.
+.rosterWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// The subagent allowlist: one row per candidate agent, its scope sliders over an
+// optional caller-scoped description that appears when enabled.
+.subagentList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.subagentRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The three scope sliders, ganged at the row's right edge so they line up into columns
+// down the roster instead of starting wherever the agent's name happened to end.
+.subagentScopes {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: t.$space-md;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+// The description drops onto its own full-width line beneath the row, so switching a
+// scope on never shoves the sliders out of their columns.
+.subagentDescription {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+// --- Hooks ------------------------------------------------------------------------
+//
+// A hook is a record, not a line: an event, a kind, a name, and then whichever body that
+// kind needs — up to four more fields, or a whole script. It used to borrow the roster's
+// `.subagentRow` and the agent-name `.agentHeading`, neither of which lays anything out
+// (one is a centred flex row written for a single line naming one agent, the other is a
+// bare bottom margin written for one input), so a hook's controls stacked one per line,
+// its Remove button sat flush against the Name input, and nothing said where one hook
+// ended and the next began. These four rules are the hook's own.
+
+// The list of hook cards. Its gap is a step wider than the gap inside a card, so the
+// boundary between two hooks always reads as larger than the boundary between one hook's
+// own fields.
+.hookList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// One hook: the same panelled block a model slot (`.slotBlock`) and a machine's state
+// wear, which is this form's vocabulary for "one record". The border is what groups the
+// Command field with the Event it belongs to.
+.hookRow {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  align-self: stretch;
+}
+
+// What the hook *is*: its three identifying fields on one row, aligned to their inputs'
+// bottom edge so a two-row label never leaves the controls beside it hanging, and the
+// remove control at the trailing edge.
+.hookHeading {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.hookField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The note saying whether this event can be blocked. A one-line annotation on the picker
+// above it, so it carries no margin of its own and the card's gap is the whole of the
+// space around it — the browser's default `1em 0` on a `<p>` does not collapse inside a
+// flex column, and stacked on the borrowed classes' own margins it left the note adrift
+// in about three lines of empty card.
+.hookBlocking {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The custom-instructions and system-prompt editors: a full-width monospace-friendly
+// textarea on the same surface as the inputs.
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: t.$space-sm;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+// The full system-prompt template is Handlebars source, so it reads as code.
+.promptTextarea {
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+// --- The editor's tab strip --------------------------------------------------
+//
+// The configuration editor and the per-agent editor are both tabbed, and both
+// read as the same strip the test-case detail pages use — deliberately, because
+// that is the tab strip this console has already taught. It is rendered from
+// buttons rather than links: the editor holds an unsaved draft, so switching
+// section must not be a navigation that could unmount it or leave a URL an
+// operator could bookmark into a form that no longer holds their edits.
+.tabsBar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the detail pages.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    @include s.swipe-fade;
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  @include h.halo-glow;
+  border-bottom-color: t.$color-accent;
+}
+
+// The tab's own label, kept a separate element from the problem badge so the
+// badge's count never reads as part of the section's name.
+.tabLabel {
+  white-space: nowrap;
+}
+
+// A tab whose section is incomplete or contradictory — the count of what is
+// wrong, carried on the tab so an operator who is three tabs away still knows
+// where the problem is. Without it, a save gate that names a field could be
+// naming one on a tab nobody is looking at.
+.tabProblem {
+  margin-left: t.$space-xs;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-negative;
+  color: t.$color-bg;
+  font-size: t.$font-sm;
+}
+
+// The marker on an imported profile's row: which saved agent it follows. Quieter than
+// the root badge — following a saved agent is provenance, not a role in the run — so it
+// takes the border and muted text a secondary marker does.
+.sharedBadge {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+}
+
+// The two ways to declare a profile, on one line: a fresh inline agent, and a saved one
+// imported from the account's library.
+.agentAddRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The import control. `nowrap` because it shares a row with "+ Add agent" and its label
+// is the longer of the two: allowed to wrap, it broke across two lines and stood half a
+// button taller than its neighbour.
+.agentImportButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+// --- The saved-agent picker -----------------------------------------------------------
+//
+// The library, listed inside the import dialog. Rows rather than options, because each
+// carries a note under its name — which is what tells two entries with one name apart.
+
+.importList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.importOption {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  width: 100%;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: t.$color-accent;
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+    outline: none;
+  }
+}
+
+.importOptionName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// One line, always: a library listed at two lines a row is scrolled rather than scanned,
+// so a long note is cut with an ellipsis instead of pushing the next entry down.
+.importOptionNote {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The note at the top of an imported profile's view. A panel rather than a paragraph,
+// because it carries the two controls that decide whether this profile keeps following
+// the saved agent at all.
+.importedNote {
+  padding: t.$space-md t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.importedLead {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.importedOverrides {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.importedActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}

@@ -1,0 +1,50 @@
+# The one and only Wick variant: the whole night, every weapon, passive, and
+# enemy. Listed as the single entry in the case manifest's `variants`, so it is
+# the default and every run is a run of it. Every path here resolves against
+# the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The whole night: every weapon, passive, and enemy, through to dawn."
+
+# This variant declares NO `spec` of its own, and that is deliberate. The
+# roster is content inside every build, not variants; nothing in the seeded set
+# branches on the variant at all, and the only axis the specs branch on is
+# `engine.slug`.
+
+# The curated presentation this variant shows on the catalog and its case page:
+# a player-facing description and an ordered carousel, captured from the
+# `structured-2d` reference build below by `showcase/capture/`. The leading
+# entry is a replay of one sustained stretch of a real night rather than a
+# moment, and both stills are frames of that same take. Never seeded into a run.
+showcase = "showcase/base"
+
+# The authored, correct builds of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each: the
+# engineless one writes its own runtime and `window.__wick`, the Simple 2D one
+# a value-typed game over the engine's frame loop, and the Structured 2D one a
+# game mode, actors, and a controller inside the engine's framework. This table
+# names EXACTLY the engines the case supports; the resolver checks both
+# directions. No reference directory is ever seeded into a run: each is the
+# authored answer, built with the case's own `[build]` commands and held to the
+# same four toolchain gates a run is, and each is what `tcab capture-baselines`
+# drives to synthesize the baseline half of the validation media for its
+# engine. This is a full-stack case, so each of these builds also PRODUCED its
+# own sprites, sheets, icons, and audio during authoring, committed beside it
+# (its `ASSET-LAYOUT.md` maps the set); the build itself only loads them, so
+# `npm ci && npm run build` is self-contained.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` names its starter projects directly, one per engine.
+
+# No `[[domain]]` of its own. The one variant is the whole game, so it is rated
+# on the case's own `survival`, `arsenal`, `progression`, and `presentation`
+# domains alone.
+
+# No `[[review.categories]]` of its own. Every review item is common: with a
+# single variant there is no point whose claim could differ between modes, so
+# the case manifest carries the entire checklist, every item already naming the
+# validator that decides it under each engine.

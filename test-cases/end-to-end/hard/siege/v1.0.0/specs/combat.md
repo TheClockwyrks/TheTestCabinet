@@ -57,11 +57,11 @@ Each class is a distinct answer to the assault. You pick one on the in-game spaw
 UI each time you deploy or respawn (`specs/flow.md`); all three must be implemented
 and playable.
 
-| Class | Primary | Secondary | Grenade |
-| --- | --- | --- | --- |
-| **Ranger** | **Rifle** — hitscan, automatic. `14` dmg/shot, `0.1 s` cadence, magazine `30`, reserve `180`, effective range `90`, moderate spread. The all-rounder. | **Sidearm** — hitscan, `22` dmg, `0.28 s`, magazine `12`, reserve `96`, range `55`. | **Frag** ×`3`. Arcing; on impact, splash `110` dmg, blast radius `5`. |
-| **Marksman** | **Long rifle** — hitscan, bolt-action, **anti-armor**. `70` dmg/shot (ignores armor — below), `0.9 s` cadence, magazine `6`, reserve `48`, effective range `220`, aim-down-sights zoom. Deletes single tough targets at range. | **Carbine** — hitscan, `11` dmg, `0.08 s`, magazine `25`, reserve `150`, range `70`. For when they close. | **Frag** ×`2`. As above. |
-| **Breacher** | **Launcher** — arcing projectile, **splash**. `95` splash dmg, blast radius `4`, `1.0 s` cadence, magazine `4`, reserve `24`, muzzle speed `55 u/s`. Erases clustered infantry and breaks armor at close-to-mid range; weak at long range and slow to reload. | **Sidearm** — as Ranger's. | **Incendiary** ×`2`. Arcing; on impact creates a burning patch, radius `4`, dealing `25` dmg/s for `5 s` to Scourge inside it — area denial on an approach. |
+| Class        | Primary                                                                                                                                                                                                                                                       | Secondary                                                                                                 | Grenade                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ranger**   | **Rifle** — hitscan, automatic. `14` dmg/shot, `0.1 s` cadence, magazine `30`, reserve `180`, effective range `90`, moderate spread. The all-rounder.                                                                                                         | **Sidearm** — hitscan, `22` dmg, `0.28 s`, magazine `12`, reserve `96`, range `55`.                       | **Frag** ×`3`. Arcing; on impact, splash `110` dmg, blast radius `5`.                                                                                       |
+| **Marksman** | **Long rifle** — hitscan, bolt-action, **anti-armor**. `70` dmg/shot (ignores armor — below), `0.9 s` cadence, magazine `6`, reserve `48`, effective range `220`, aim-down-sights zoom. Deletes single tough targets at range.                                | **Carbine** — hitscan, `11` dmg, `0.08 s`, magazine `25`, reserve `150`, range `70`. For when they close. | **Frag** ×`2`. As above.                                                                                                                                    |
+| **Breacher** | **Launcher** — arcing projectile, **splash**. `95` splash dmg, blast radius `4`, `1.0 s` cadence, magazine `4`, reserve `24`, muzzle speed `55 u/s`. Erases clustered infantry and breaks armor at close-to-mid range; weak at long range and slow to reload. | **Sidearm** — as Ranger's.                                                                                | **Incendiary** ×`2`. Arcing; on impact creates a burning patch, radius `4`, dealing `25` dmg/s for `5 s` to Scourge inside it — area denial on an approach. |
 
 ## The Scourge roster
 
@@ -84,13 +84,13 @@ Ember with its tier accent, with a dark outline so it reads against the terrain.
 
 ### Archetypes (Tier I base stats)
 
-| Archetype | Introduced | Role & target | HP | Armor | Attack | Speed |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Rusher** | Phase A | Light melee; charges the **player and squad**. Cheap, fast, swarms. | `60` | none | Melee `18` dmg, `0.8 s` cadence, reach `2.5` | `9 u/s` |
-| **Gunner** | Phase A | Ranged infantry; shoots the **player and squad** from range. | `50` | light | Hitscan `10` dmg, `0.6 s` cadence, range `70` | `6 u/s` |
-| **Breaker** | Phase A | Sapper; **ignores the player and squad** and attacks the **active redoubt** only (`specs/phases.md`). Heavily armored, slow. | `320` | heavy | Melee `55` dmg to the redoubt, `1.5 s` cadence, reach `4` | `4 u/s` |
-| **Artillery** | Phase B | Bombardment. Holds back near the spawn line and lobs arcing shells at the **player** (nuisance) and the **active redoubt**. | `140` | light | Arcing shell — telegraphed (below) | `3 u/s` (repositions slowly) |
-| **Ravager** | Phase C | Heavy elite bruiser; wades into the **player and squad**, soaking fire to reach melee. Slow, very durable, hits hard — a target that demands anti-armor. | `500` | heavy | Melee `40` dmg, `1.2 s` cadence, reach `3` | `5 u/s` |
+| Archetype     | Introduced | Role & target                                                                                                                                            | HP    | Armor | Attack                                                    | Speed                        |
+| ------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ----- | --------------------------------------------------------- | ---------------------------- |
+| **Rusher**    | Phase A    | Light melee; charges the **player and squad**. Cheap, fast, swarms.                                                                                      | `60`  | none  | Melee `18` dmg, `0.8 s` cadence, reach `2.5`              | `9 u/s`                      |
+| **Gunner**    | Phase A    | Ranged infantry; shoots the **player and squad** from range.                                                                                             | `50`  | light | Hitscan `10` dmg, `0.6 s` cadence, range `70`             | `6 u/s`                      |
+| **Breaker**   | Phase A    | Sapper; **ignores the player and squad** and attacks the **active redoubt** only (`specs/phases.md`). Heavily armored, slow.                             | `320` | heavy | Melee `55` dmg to the redoubt, `1.5 s` cadence, reach `4` | `4 u/s`                      |
+| **Artillery** | Phase B    | Bombardment. Holds back near the spawn line and lobs arcing shells at the **player** (nuisance) and the **active redoubt**.                              | `140` | light | Arcing shell — telegraphed (below)                        | `3 u/s` (repositions slowly) |
+| **Ravager**   | Phase C    | Heavy elite bruiser; wades into the **player and squad**, soaking fire to reach melee. Slow, very durable, hits hard — a target that demands anti-armor. | `500` | heavy | Melee `40` dmg, `1.2 s` cadence, reach `3`                | `5 u/s`                      |
 
 ### Tiers — the kill-count quality ramp
 
@@ -98,10 +98,10 @@ Every archetype comes in three tiers, and the tier a unit spawns at rises with t
 run's **kill count** (`specs/phases.md`), so the assault gets harder in quality, not
 just count. Apply these multipliers to each archetype's Tier I base stats above:
 
-| Tier | Appears | HP | Damage | Armor |
-| --- | --- | --- | --- | --- |
-| **I** | at a low kill count | ×`1.0` | ×`1.0` | as listed |
-| **II** | at a mid kill count | ×`1.8` | ×`1.4` | +25% damage reduction |
+| Tier    | Appears              | HP     | Damage | Armor                 |
+| ------- | -------------------- | ------ | ------ | --------------------- |
+| **I**   | at a low kill count  | ×`1.0` | ×`1.0` | as listed             |
+| **II**  | at a mid kill count  | ×`1.8` | ×`1.4` | +25% damage reduction |
 | **III** | at a high kill count | ×`2.8` | ×`1.9` | +40% damage reduction |
 
 - **Armor** reduces incoming damage by the listed percentage — **except** from

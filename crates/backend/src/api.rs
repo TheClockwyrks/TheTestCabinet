@@ -23,26 +23,54 @@ use crate::readiness::Readiness;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+#[cfg(test)]
+#[path = "api.test.rs"]
+mod tests;
+
+mod comparisons;
 mod coverage;
 mod game_jams;
+mod gg;
+mod gg_agent;
+mod gg_config;
+mod gg_query;
+mod gg_reference;
+mod gg_view;
 mod harness_config;
 mod ingest_api;
 mod jobs;
 mod ladders;
+mod model_candidates;
+mod model_probes;
 mod models;
 mod publish_jobs;
 mod runs;
+mod stats;
+mod test_case_groups;
 mod test_cases;
 mod tournaments;
 
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
+pub use comparisons::ComparisonInput;
+// Reused by the snapshot publisher so a published comparison is folded into the
+// public snapshot with the exact computation the internal `/comparisons` API uses.
+pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
+pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
     CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
     CoverageQueue, CoverageQueueEntry, CoverageSchedule, CoverageSettings, CoverageSettingsInput,
-    HaltResult, PauseInput, ReviewPlanCase, ReviewPlanCombo, TopUpLaunch, TopUpResult,
-    TopUpSkipped,
+    HaltResult, PauseInput, ReviewPlanCase, ReviewPlanCombo, TopUpBlocked, TopUpLaunch,
+    TopUpResult, TopUpSkipped,
+};
+pub use gg::GgRunRequest;
+pub use gg_agent::{GgSavedAgent, GgSavedAgentInput};
+pub use gg_config::{GgAgentSource, GgConfig, GgConfigInput};
+pub use gg_query::{GG_QUERY_MAX_BATCH, GG_QUERY_MAX_ROWS, GgQueryBatch, GgQueryBatchResponse};
+pub use gg_view::{
+    DASHBOARD_COLUMNS, GgDashboard, GgDashboardInput, GgDashboardPanel, GgSavedQuery,
+    GgSavedQueryInput, MAX_DASHBOARD_PANELS,
 };
 pub use jobs::{
     ActiveJobOut, BulkCancelOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck,
@@ -55,11 +83,29 @@ pub use ladders::{
     LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule, RungTally,
     StoredClimberOut,
 };
+pub use model_candidates::{CandidateOut, ModelCandidatesOut};
+pub use model_probes::{
+    ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
+    ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput, ProbeTriggerResponse,
+};
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
-    ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
+    ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
-pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
+pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
+pub use test_cases::{
+    CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
+    VersionsResponse,
+};
+// The `/stats` response contract lives beside its folds in `crate::stats`
+// (the handlers in `api::stats` own only the corpus); re-exported here so the
+// generator names it the way it names every other response envelope.
+pub use crate::stats::{
+    CabinetCostOut, CabinetStatsResponse, CabinetTokensOut, CabinetWeekOut, ModelAccuracyOut,
+    ModelAccuracyResponse, ProbeProviderModelOut, ProbeProviderStatsOut, ProviderCallStatsOut,
+    ProviderModelStatsOut, ProviderStatsOut, ProviderStatsResponse, RacAccuracyOut,
+    ToolCallingAccuracyOut,
+};
 
 /// Shared application state handed to every handler.
 #[derive(Clone)]
@@ -93,6 +139,10 @@ pub struct AppState {
     /// The OpenRouter price source used to record a model's price history when a
     /// run completes and on the periodic refresh.
     pub prices: test_cabinet_core::OpenRouterPrices,
+    /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
+    /// query endpoints run over. Loaded lazily on the first query and reconciled per
+    /// id thereafter, so a deployment that never opens Discover never pays for it.
+    pub gg_docs: crate::gg_docs::GgDocIndex,
 }
 
 /// The maximum body size, in bytes, accepted on the run-media and tournament-replay
@@ -127,21 +177,53 @@ pub fn router(state: AppState) -> Router {
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
         // runs, with price history) plus operator-driven config CRUD, a
-        // seed-from-run authoring helper, and the svgl.app logo fetch. Reads are
-        // open; the mutations, the seed, and the logo fetch require a token.
-        // `/models/seed` and `/models/logo` are static, so they outrank the
-        // `/models/{slug}` dynamic route regardless of registration order.
+        // seed-from-run authoring helper, the OpenRouter fill-in lookup, and the
+        // svgl.app logo fetch. Reads are open; the mutations, the seed, the lookup,
+        // and the logo fetch require a token. `/models/seed`, `/models/logo`, and
+        // `/models/openrouter` are static, so they outrank the `/models/{slug}`
+        // dynamic route regardless of registration order.
         .route("/models", get(models::list).post(models::create))
         .route("/models/seed", get(models::seed))
+        .route("/models/openrouter", get(models::openrouter))
         .route("/models/logo", post(models::logo))
         .route(
             "/models/{slug}",
             axum::routing::put(models::update).delete(models::delete),
         )
+        // Model probes: RaC-readiness checks of a catalog model (see
+        // `crate::probe`). Triggering and the provider enumeration are
+        // bearer-gated (they reach OpenRouter on the caller's behalf, the
+        // trigger spending real credit); the reads are open like the catalog.
+        // History lives under the model, one probe under its own id.
+        .route(
+            "/models/{slug}/probes",
+            get(model_probes::list).post(model_probes::trigger),
+        )
+        .route(
+            "/models/{slug}/probe-providers",
+            get(model_probes::providers),
+        )
+        // The provider candidate list the next gg enqueue of the model would build, read from
+        // OpenRouter's endpoints listing now. Bearer-gated like the provider enumeration: it
+        // reaches OpenRouter on the caller's behalf.
+        .route(
+            "/models/{slug}/candidates",
+            get(model_candidates::candidates),
+        )
+        .route("/model-probes/{id}", get(model_probes::get))
+        // The cross-run statistics reads: per-provider health and per-model
+        // accuracy, folded from stored gg summaries (through the document
+        // index) and the probe store. Open reads like the rest of the catalog
+        // — aggregate counts only. `/stats` is its own static namespace, so
+        // neither path can collide with a dynamic route.
+        .route("/stats/providers", get(stats::providers))
+        .route("/stats/model-accuracy", get(stats::model_accuracy))
+        .route("/stats/cabinet", get(stats::cabinet))
         // Per-harness configuration (today: max parallelism). The list is an open
         // read; setting a harness's config requires a token.
         .route("/harness-config", get(harness_config::list))
         .route("/harness-config/{slug}", post(harness_config::set))
+        .route("/test-case-groups", get(test_case_groups::list))
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
         .route(
@@ -177,13 +259,23 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/validation-files",
             get(test_cases::validation_files),
         )
-        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
-        // synthesized once at publish-reference time from the reference implementation
-        // and served case-scoped — the invariant counterpart to a run's actual
-        // validation media (served run-scoped by the artifact service). A read.
+        // One reference build's committed baseline validation media
+        // (`<item>__<output>.<ext>`), synthesized once at capture-baselines time from
+        // the reference implementation and served case-scoped — the invariant
+        // counterpart to a run's actual validation media (served run-scoped by the
+        // artifact service). Keyed by engine as well as variant, because a variant has
+        // one reference implementation per engine. A read.
         .route(
-            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}",
             get(test_cases::validation_baseline),
+        )
+        // One media file of a variant's authored showcase (a `.png` still, `.webm`
+        // clip, or `.json.gz` replay captured from the reference implementation),
+        // served case-scoped — the case-side counterpart of a run's showcase files.
+        // `showcase.toml` is authoring input and is never served. A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}",
+            get(test_cases::case_showcase),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same
         // harness + model), oldest first. The driver reads this before seeding a
@@ -201,6 +293,12 @@ pub fn router(state: AppState) -> Router {
         // The adversarial controllers for a case (id + model label), so the arena
         // can pit a produced implementation from any host. A read.
         .route("/adversarial/controllers", get(runs::adversarial_controllers))
+        // The runs whose stored records this build cannot read, each with the error
+        // its record produces now — the one surface such a run is reachable from,
+        // since every other listing filters it out. Registered before `/runs/{id}`:
+        // the static segment outranks the dynamic one under the router's matcher, so
+        // this never resolves as a run-id lookup. A read.
+        .route("/runs/unreadable", get(runs::unreadable))
         // Read one run, or delete it (auth-gated; refused for a published run).
         .route("/runs/{id}", get(runs::get).delete(runs::delete))
         // Submit a review for a run (requires auth; attributed to the token's
@@ -245,6 +343,16 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_validation)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
+        // A published run's showcase files (the carousel media, plus any image the
+        // description references): mirrored in by the driver (POST) and served for
+        // the Play tab's showcase view (GET). The description text itself rides the
+        // run record; `showcase.toml` is never stored.
+        .route(
+            "/runs/{id}/showcase/{file}",
+            get(test_cases::run_showcase)
+                .post(test_cases::put_run_showcase)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at
         // push (POST) and served so the arena can pit a pushed implementation from
         // any host (GET).
@@ -252,6 +360,32 @@ pub fn router(state: AppState) -> Router {
             "/runs/{id}/controller.wasm",
             get(test_cases::run_controller)
                 .post(test_cases::put_run_controller)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
+        // A gg run's debug-only session record (the capture of its non-deterministic
+        // inputs — each agent's model I/O and every tool result): mirrored in by the
+        // driver from the `replay.json.gz` the post-run assembly stage folds the run's
+        // capture journal into (POST), and served for a person diagnosing a run the
+        // telemetry cannot explain (GET) — nothing in the console reads it, which is the
+        // record's stated position rather than an omission. Stored opaquely: the bytes are
+        // gzipped and the record is versioned, so what a reader may branch on is the
+        // document's own `formatVersion`, never the route.
+        .route(
+            "/runs/{id}/replay",
+            get(test_cases::run_replay)
+                .post(test_cases::put_run_replay)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
+        // A run's code-analysis document — the unbounded tier of the static read of the
+        // code its model wrote (every file, symbol, import edge, cycle and clone group),
+        // mirrored in by the driver from the run tree's `code-analysis.json.gz` (POST) and
+        // served to the per-run Code tab (GET). Same convention as the session record above,
+        // and offered for **every** harness: analysing a directory involves no
+        // harness-specific work, so restricting the route would cost coverage for nothing.
+        .route(
+            "/runs/{id}/code-analysis",
+            get(test_cases::run_code_analysis)
+                .post(test_cases::put_run_code_analysis)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // The published run's recorded, normalized event stream (TTC events only;
@@ -283,6 +417,119 @@ pub fn router(state: AppState) -> Router {
         // regardless of registration order.
         .route("/jobs", post(jobs::launch))
         .route("/jobs/batch", post(jobs::launch_batch))
+        // The gg run mode's own enqueue surface (auth-gated, the same gate as
+        // `POST /jobs`). A gg run is configured by a capability set rather than the
+        // flat harness+model+orchestrator tuple, so it gets a gg-native request shape
+        // (`POST /gg/runs`); the enqueued job drains through the same
+        // dispatcher/driver/relay path, so it is observed through the shared
+        // `/jobs/{id}` status and `/jobs/{id}/live` monitor.
+        .route("/gg/runs", post(gg::launch_gg))
+        // The operator's saved gg configurations (auth-gated; keyed to the token's
+        // account): named capability sets the new-run form offers once `gg` is
+        // picked as the orchestrator. `/gg/configs` is static and `/gg/configs/{id}`
+        // is its child, so neither collides with `/gg/runs`.
+        .route(
+            "/gg/configs",
+            get(gg_config::list_configs).post(gg_config::create_config),
+        )
+        .route(
+            "/gg/configs/{id}",
+            put(gg_config::update_config).delete(gg_config::delete_config),
+        )
+        // The operator's saved gg **agents** (auth-gated; keyed to the token's
+        // account): agent profiles authored on their own, which a configuration
+        // imports and may override locally. Data only — gg never reads this
+        // surface, because the console resolves an import into the configuration's
+        // own agent list before anything is stored or launched. `/gg/agents` is
+        // static and `/gg/agents/{id}` is its child, so neither collides with
+        // `/gg/runs` or `/gg/configs`.
+        .route(
+            "/gg/agents",
+            get(gg_agent::list_agents).post(gg_agent::create_agent),
+        )
+        .route(
+            "/gg/agents/{id}",
+            put(gg_agent::update_agent).delete(gg_agent::delete_agent),
+        )
+        // The gg analysis query surface (auth-gated, like the rest of `/gg`, though
+        // the corpus itself is deployment-wide rather than per-account): evaluate one
+        // TCQ query, evaluate a dashboard's worth of them against a single index
+        // read, or read the field catalog the editor's completer and sidebar are
+        // built from. `/gg/query/batch` is a child of the static `/gg/query`, and
+        // `/gg/fields` is static, so none of the three collides with `/gg/runs` or
+        // `/gg/configs`.
+        .route("/gg/query", post(gg_query::run_query))
+        .route("/gg/query/batch", post(gg_query::run_query_batch))
+        .route("/gg/fields", get(gg_query::gg_fields))
+        // The operator's saved **views** over that corpus (auth-gated; keyed to the
+        // token's account): named queries and the dashboards built from them. The
+        // corpus is deployment-wide and the views are personal — that asymmetry is the
+        // whole model, and it is why these filter on the token's account while
+        // `/gg/query` does not. All four paths are static or children of a static
+        // segment, so none collides with `/gg/runs`, `/gg/configs` or `/gg/query`.
+        .route(
+            "/gg/saved-queries",
+            get(gg_view::list_saved_queries).post(gg_view::create_saved_query),
+        )
+        .route(
+            "/gg/saved-queries/{id}",
+            get(gg_view::get_saved_query)
+                .put(gg_view::update_saved_query)
+                .delete(gg_view::delete_saved_query),
+        )
+        .route(
+            "/gg/dashboards",
+            get(gg_view::list_dashboards).post(gg_view::create_dashboard),
+        )
+        .route(
+            "/gg/dashboards/{id}",
+            get(gg_view::get_dashboard)
+                .put(gg_view::update_dashboard)
+                .delete(gg_view::delete_dashboard),
+        )
+        // gg's model-facing reference, in two documents: the index — every tool's real
+        // description and parameter schema, grouped into gg's families, plus the arms
+        // — and one responses-as-code surface per program language, fetched when a
+        // reader picks that arm. Eleven idiomatic SDKs do not fit in one document
+        // without either privileging one arm or repeating the tools eleven times, and
+        // the console's gg Reference section renders them as a picker over the index.
+        //
+        // The **one open read under `/gg`**, and deliberately so — the documents are
+        // static, identical for every caller, and carry no account, run or deployment
+        // data, so they are documentation of the harness in the same class as
+        // `/test-cases` and `/config`; a token would buy nothing and would stop a
+        // signed-out console or the docs site from linking to them.
+        //
+        // Read at run time from the directory `TCAB_GG_REFERENCE` names (the image
+        // bakes it), because the backend must not depend on `test-cabinet-gg` (`oxc`,
+        // `tiktoken-rs`, and eleven language toolchains to build it) and gg is what
+        // renders these bytes for a model in the first place — see the module docs for
+        // why that beats the committed artifact it replaced. `/gg/reference` is static
+        // and `/gg/reference/{language}` its only child, so neither collides with
+        // anything else mounted under `/gg`.
+        .route("/gg/reference", get(gg_reference::gg_reference))
+        .route(
+            "/gg/reference/{language}",
+            get(gg_reference::gg_reference_api),
+        )
+        // The operator's saved harness comparisons (auth-gated; keyed to the token's
+        // account): named A/B experiments whose per-arm distributions are computed on
+        // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`
+        // its child.
+        .route(
+            "/comparisons",
+            get(comparisons::list_comparisons).post(comparisons::create_comparison),
+        )
+        .route(
+            "/comparisons/{id}",
+            get(comparisons::get_comparison)
+                .put(comparisons::update_comparison)
+                .delete(comparisons::delete_comparison),
+        )
+        .route(
+            "/comparisons/{id}/publish",
+            post(comparisons::publish_comparison),
+        )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         // The Runs page's global stop controls, in increasing order of destruction:
@@ -362,10 +609,10 @@ pub fn router(state: AppState) -> Router {
             "/coverage-plans/{id}/coverage",
             get(coverage::plan_coverage),
         )
-        // The account's review-buffer size: how many runs it wants outstanding
+        // The account's review-buffer target: how many runs it wants outstanding
         // (in flight, or completed and not yet reviewed by it) across a plan or ladder
-        // before topping up stops. One setting per account, overridable per plan and
-        // per ladder below.
+        // before topping up stops, or no limit at all. One setting per account,
+        // overridable per plan and per ladder below.
         .route(
             "/coverage-settings",
             get(coverage::settings).put(coverage::set_settings),
@@ -440,8 +687,8 @@ pub fn router(state: AppState) -> Router {
         // records request metrics. Both degrade to no-ops when telemetry is off.
         .layer(axum::middleware::from_fn(trace_and_measure))
         .layer(TraceLayer::new_for_http())
-        // The browser UIs (gallery web app, Tauri dev server) run on a different
-        // localhost origin than this backend, so every request is cross-origin.
+        // The browser UIs (the web console and the gallery) are served from a
+        // different origin than this backend, so every request is cross-origin.
         // The backend already trusts every caller that can reach it (the
         // private-network, no-auth model in this module's docs); a permissive CORS
         // policy keeps the browser from blocking those callers without narrowing
@@ -544,9 +791,12 @@ async fn ready(
 /// and proof/asset media live behind the separate **artifact service** (the data
 /// plane — see `crates/artifacts`). Its base URL is reported here so the console
 /// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
-/// paths) a driver sets. `artifactsUrl` is `null` when no artifact service is
-/// configured (`TCAB_ARTIFACTS_PUBLIC_URL` unset) — e.g. a single-box dev setup —
-/// in which case the console leaves those links unresolved. `arenaUrl` likewise
+/// paths) a driver sets. `artifactsUrl` carries the **advertised**
+/// `TCAB_ARTIFACTS_PUBLIC_URL`, which is console-facing only; the backend's own
+/// artifact calls go through `TCAB_ARTIFACTS_URL` instead (see
+/// [`crate::artifacts`]). It is `null` when no artifact service is configured — e.g.
+/// a single-box dev setup — in which case the console leaves those links
+/// unresolved. `arenaUrl` likewise
 /// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
 /// adversarial matches/tournaments to and streams live tournament progress from;
 /// `null` degrades the adversarial run UI.
@@ -560,7 +810,7 @@ async fn client_config(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<ClientConfig> {
     axum::Json(ClientConfig {
-        artifacts_url: state.config.artifacts_url.clone(),
+        artifacts_url: state.config.artifacts_public_url.clone(),
         arena_url: state.config.arena_url.clone(),
         grafana_url: state.config.grafana_url.clone(),
         snapshot_url: state.config.snapshot_url.clone(),

@@ -28,6 +28,14 @@ Include a scope for commits that target specific components, e.g. `feat(foo):`.
 When implementing changes, do **NOT** attempt to optimize for change size.
 Always implement the most correct change, not the smallest change.
 
+### Documentation First
+
+The Test Cabinet's documentation is authoritative over the source code. If the
+documentation says one thing and the source says another, the source is wrong.
+This means that any intentional design-level changes to the source code must
+first be made to the documentation (following the documentation policies) before
+being made to the source code.
+
 ## Rust Tests
 
 Unit tests for Rust code must not follow standard Rust conventions of placing
@@ -51,7 +59,7 @@ count of non-test source files by splitting them into `foo.parsing.rs` and
 `foo.validation.rs`. This should generally be done for functions only, grouping
 them separately to keep each individual file reasonably sized.
 
-This policy *only* applies to tests in the `src/` folder. It does not apply to
+This policy _only_ applies to tests in the `src/` folder. It does not apply to
 integration/e2e tests in the `tests/` folder.
 
 ## Running Tests
@@ -63,15 +71,17 @@ The gate command is:
 cargo nextest run --workspace
 ```
 
-nextest is configured via `.config/nextest.toml` (retries, no fail-fast, and a
-per-test hard timeout) and is installed in the devcontainer. `cargo test` must
-not be used to run the test suite.
+nextest is configured via `.config/nextest.toml` and is installed in the
+devcontainer. Retries are enabled to allow flakiness to be distinguished from
+deterministic failures, but flaky tests are required to be treated as failing
+tests. `cargo test` must not be used to run the test suite.
 
 The one exception: nextest does not execute doctests. When a change touches
 doctests, additionally run `cargo test --workspace --doc` to cover them.
 
-The shared CI scripts (`scripts/ci/rust-test.sh`, `scripts/ci/binary-smoke.sh`)
-follow exactly this split; both CI systems install nextest first via
+The shared CI scripts (`scripts/ci/rust-test.sh` and `scripts/ci/rust-doctest.sh`,
+`scripts/ci/release-test.sh` and `scripts/ci/release-doctest.sh`) follow exactly
+this split; the Rust CI image carries nextest, installed by
 `scripts/ci/install-nextest.sh`.
 
 ## User Experience

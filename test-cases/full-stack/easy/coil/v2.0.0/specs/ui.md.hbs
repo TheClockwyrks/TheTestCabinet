@@ -1,0 +1,240 @@
+# Coil — Screens, the HUD, and audio
+
+This file fixes the screens the game moves between, what each one shows, the HUD
+that sits above the board, and the audio cues. The actions the screens are driven
+by are in `specs/controls.md`, the board they frame is in `specs/board.md`, and
+the figures they report are in `specs/scoring.md`. Every piece of screen copy
+below carries the name this specification gives it.
+
+## Presentation
+
+Coil fixes no palette, no font, and no artwork. `specs/overview.md` states what a
+player has to read at a glance, and how the game looks is yours. One requirement
+is this file's own: every piece of text a screen shows is legible against
+whatever sits behind it at the logical stage size `STAGE_W x STAGE_H`
+(`1280 x 720`).
+
+## The screens
+
+The snapshot's `screen` field, fixed in `specs/instrumentation.md`, names the
+screen the game is in, and the game opens on `title`.
+
+| `screen` | The screen |
+| --- | --- |
+| `title` | The title and main menu. |
+| `howto` | How to play. |
+| `playing` | The live round. |
+| `paused` | The pause menu over a frozen round. |
+| `gameover` | The round ended by a fatal collision. |
+| `cleared` | The round ended by clearing the board. |
+
+`title`, `howto`, `paused`, `gameover`, and `cleared` carry a menu, and
+`menuIndex` is the highlighted item on each of them. The highlighted item
+is drawn distinctly from the others, so a player always sees which item `confirm`
+would accept. Arriving at `howto`, `paused`, `gameover`, or `cleared` sets
+`menuIndex` to `0`, and arriving at `title` sets it to `titleIndex`, as Menu
+input below states. On `playing` the highlight is not shown and `menuIndex` rests
+at `0`.
+
+### `title`
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `COIL` |
+| Tagline | `TAGLINE_TEXT` | `GRID SERPENT` |
+| Best score | `BEST_LABEL` | `BEST`, above the session's best score |
+| Menu | `TITLE_ITEMS` | The mode's entry, then `HOW TO PLAY` |
+
+`specs/mode.md` fixes the mode's entry, which is the first item. `confirm` on it
+starts a round, which sets `screen` to `playing` with the board laid out as
+`specs/board.md` states. `confirm` on `HOW TO PLAY` sets `screen` to `howto`.
+`back` does nothing here.
+
+The board furniture may show behind the menu, dimmed or otherwise quieted, if
+that suits the look you design.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- that the snake never stops, and that steering turns it on the next tick;
+- that the snake may only turn perpendicular to the way it is travelling, so it
+  cannot double back on itself;
+- that eating a pellet makes the snake one cell longer;
+- that the wall border and the snake's own body are fatal to the head;
+- that eating pellets in quick succession builds the combo multiplier, and that
+  the multiplier falls back to one when the window runs out;
+- the controls, naming the keys bound to each action in `specs/controls.md`.
+
+`back` returns to `title`.
+
+### `playing`
+
+The live round, and the only screen the simulation advances on. It shows the
+board, its wall border, whatever obstacle cells the mode places, the snake, the
+live pellet, and the HUD.
+
+### `paused`
+
+Reached from `playing`, and the round is frozen behind it: no tick runs while the
+game is paused, so the snake is exactly where it stood and the combo window is
+exactly as full when the game resumes. The board is visible behind the pause
+menu.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `PAUSE_ITEMS` | `RESUME`, `RESTART`, `MENU` |
+
+`confirm` on `RESUME` returns to `playing` with the round untouched. `RESTART`
+starts a fresh round in the same mode. `MENU` returns to `title`. `back` and
+`pause` both return to `playing`, exactly as `RESUME` does.
+
+### `gameover` and `cleared`
+
+Both are reached when a round ends, as `specs/movement.md` states, and they are
+the same screen under two headings.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Heading, on `gameover` | `GAMEOVER_TEXT` | `GAME OVER` |
+| Heading, on `cleared` | `CLEARED_TEXT` | `BOARD CLEARED` |
+| Final score | `SCORE_LABEL` | `SCORE`, above the score the round ended on |
+| Best score | `BEST_LABEL` | `BEST`, above the session's best score |
+| Menu | `OVER_ITEMS` | `PLAY AGAIN`, `MENU` |
+
+`confirm` on `PLAY AGAIN` starts a fresh round in the same mode. `MENU` returns
+to `title`. `back` returns to `title`. The final frame of the round may show
+behind the panel.
+
+## Menu input
+
+Every menu-bearing screen is driven by the keyboard, by a pointer, and by touch,
+over the items that screen shows. `specs/controls.md` fixes the keyboard actions
+and what each does on a menu, and each screen's section above fixes what
+`confirm` accepts there.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading the build reports an item's region
+through, in the logical units of `specs/overview.md`, so the menus keep the
+layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+
+A confirm requires both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. The item every confirm acts on is the item at `menuIndex`,
+whichever input raised it, and the effect is the one that screen carries for
+`confirm`.
+
+The pointer and the touch contacts are read once per frame, in the same input
+read as the keyboard actions, and are applied after that frame's keyboard edges.
+A press and the release that follows it may arrive on one frame, and that frame
+confirms. A pointer and a touch contact drive the menus directly rather than
+through an action, so neither steers the snake and neither is read on `playing`.
+
+### The remembered title selection
+
+`titleIndex` is the title menu's remembered selection, reported by the snapshot
+`specs/instrumentation.md` fixes and opening at `0`. Confirming an item on the
+title menu sets `titleIndex` to that item's index, from the keyboard, from a
+pointer, and from a touch contact alike. Returning to `title` from any screen
+sets `menuIndex` to `titleIndex`, so leaving `howto` lands back on `HOW TO PLAY`
+and leaving a round for the title lands back on the mode entry that started it.
+
+## What advances on each screen
+
+`simTime` accumulates the delta time of every update on the `playing`
+screen alone, and input is read on every screen.
+
+| Screen | What advances |
+| --- | --- |
+| `playing` | The tick, and everything a tick resolves. |
+| Every other screen | Nothing. |
+
+## The HUD
+
+The HUD occupies the band above the board, `y` in `[0, BOARD_Y)`. It shows four
+things, spread across the band so none crowds another, and it stays clear of the
+play area.
+
+| Readout | Constant | Content |
+| --- | --- | --- |
+| Score | `SCORE_LABEL` | `SCORE`, above the current score |
+| Best | `BEST_LABEL` | `BEST`, above the session's best score |
+| Combo | — | The multiplier as `x2` through `x5`, with a bar beneath it |
+| Mode | — | The mode's short label, as `specs/mode.md` fixes it |
+
+The combo readout and its bar are shown only while `M` is at least `2`, and the
+combo area is empty at `M` of `1`. The bar drains from full to empty over the
+combo window as `specs/scoring.md` states, so a player reads at a glance how much
+of the window is left.
+
+A mute indicator sits in the band as well. It reads the current sound state
+unambiguously, either as a marker present only while muted or as a readout naming
+both states, and the muted and unmuted HUDs are told apart from the board alone.
+It changes on the frame `mute` is read, and muting changes nothing else on
+screen.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write. Play exactly the four cues in
+`CUES`, under exactly these names, one per event:
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Define and play exactly the four cues
+in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus: define exactly the four cues in `CUES`
+from the game instance's `initialize` and play them from the world's audio inside
+a tick, under exactly these names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `eat` | `CUES.eat` | The snake eats a pellet. |
+| `combo-up` | `CUES.comboUp` | The combo multiplier rises. |
+| `death` | `CUES.death` | The head enters a fatal cell. |
+| `music` | `CUES.music` | A round begins. |
+
+The `music` bed loops under the round it began with. It keeps playing while that
+round is paused, because pausing has not ended the round. Once the round has
+ended the bed is stopped rather than left running quietly, so a player who dies,
+clears the board, or leaves the round for the title hears no bed on the screen
+they land on, and the bed sounds again only when a round next begins.
+
+A round laid out by `RESTART` or by `PLAY AGAIN` is a round beginning, so the bed
+sounds under it. The bed the paused round kept playing carries on as the
+restarted round's own.
+
+Each of the three event cues is a distinct short sound, so the three events are
+told apart by ear, and each plays on the tick its event resolves, at most once on
+that tick. A tick that both eats a pellet and raises the multiplier plays `eat`
+and `combo-up` once each. Every cue is a file this build produces, and
+`specs/assets.md` fixes how each is made.
+
+{{#if (eq engine.slug "none")}}
+Muting and the first-interaction unlock belong to the runtime you write. The
+game binds the `mute` action to the runtime's mute bit and toggles it from any
+screen, then mirrors that bit into `muted` every frame. Browsers refuse to start
+audio before the player interacts with the page, so the game stays fully
+playable and silent until that first interaction.
+{{else}}
+Muting and the first-interaction unlock belong to the engine. The game binds the
+`mute` action to the engine's mute bit and toggles it from any screen, then
+mirrors that bit into `muted` every frame. The game stays fully playable with
+sound muted.
+{{/if}}
+
+## Out of scope
+
+- Network or online play, leaderboards, and any server interaction.
+- Persistence of anything between sessions.

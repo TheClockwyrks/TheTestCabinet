@@ -56,14 +56,16 @@ spec:
       serviceAccountName: tcab-artifacts # no API access — its own identity only
       containers:
         - name: artifacts
-          image: REPLACE_REGISTRY/tcab-artifacts:latest # CI publishes ghcr.io/<owner>/tcab-artifacts; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-artifacts:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-artifacts:<git-sha>
           resources:
-          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
+            # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an
             # unbounded container is worse still, because it makes the sum of a node's
             # limits unknowable and so removes the only guarantee that a run pod cannot
-            # be killed to satisfy someone else's growth. See the `TCAB_K8S_RUN_MEMORY_*`
-            # commentary in base/dispatcher.yaml for the full argument.
+            # be killed to satisfy someone else's growth. See the dispatcher
+            # container's own `resources` commentary in base/dispatcher.yaml for the
+            # always-on argument; the RUN pods (driver + sandbox) deliberately take the
+            # opposite shape — a request and NO limit — for the reasons given there.
             #
             # Sized from prod, 2026-08-18: each container's cgroup high-water mark
             # (`memory.peak`) over the pods' then ~4-day lifetime, cross-checked against
@@ -76,9 +78,22 @@ spec:
             # upload it used to buffer whole in memory (a 2Gi cap's worth) plus page
             # cache from unpacking. That upload now spools to disk (api.rs), leaving
             # anon memory at 397Mi with the largest of prod's 568 stored trees at
-            # 176Mi. The `tree.tar`/`archive.tar.gz` reads still build their archive
-            # in memory, so the ceiling must cover one of those on top: 1.5Gi is ~2.6x
-            # the worst case that remains, and can come down once those two stream too.
+            # 176Mi.
+            #
+            # The `tree.tar`/`archive.tar.gz` reads no longer build their archive in
+            # memory either: both stream the tar (and, for the archive, the gzip) into
+            # the response as the tree is walked, so a download's peak is the chunk
+            # buffer plus the gzip window — about 2Mi — however large the tree is. NO
+            # SIZE OF STORED TREE CAN NOW SET THIS POD'S PEAK. What remains is the
+            # service's own working set: the store listing, the tar walk's per-entry
+            # buffers, and page cache from reading the tree off the PVC.
+            #
+            # So the 1.5Gi below is no longer sized against anything — it is simply
+            # the number that was here when the last unbounded read was removed, and
+            # it is now far above what the service does. Lowering it is a separate,
+            # MEASURED decision: take a fresh `memory.peak` over a period that
+            # includes a heavy upload and a heavy archive download, and size from
+            # that, rather than reasoning it down from this comment.
             requests:
               cpu: 100m
               memory: 1536Mi

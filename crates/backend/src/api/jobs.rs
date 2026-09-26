@@ -19,6 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
+use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Body;
@@ -31,11 +32,11 @@ use futures_util::stream::{self, Stream, StreamExt};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
-use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
+use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{RunRecord, RunState};
+use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
 use test_cabinet_core::test_case::TestType;
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
 // Rust clients live in `core` (so neither must depend on this crate) — both the
@@ -55,6 +56,7 @@ use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
 
 use super::AppState;
+use super::gg::{bind_launch_configuration, launch_configuration_names};
 
 /// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
 /// mints a job id and per-job driver token, stores it in the `queued` state, and
@@ -82,10 +84,33 @@ pub async fn launch(
     State(state): State<AppState>,
     user: AuthUser,
     Query(query): Query<LaunchQuery>,
-    Json(body): Json<LaunchBody>,
+    Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
     let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
+    // A gg body reaches the same cell-identity lift `POST /gg/runs` does, so it answers to
+    // the same rule: the configuration it names must be one this account holds.
+    if body.harness == HarnessSlug::Gg
+        && let Some(set) = body.gg_capability_set.as_mut()
+    {
+        let names =
+            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+        bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
+    }
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
+    let record = candidate_record(&state, [&body]).await;
+    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body)
+        .await
+        .map_err(ApiError::bad_request)?;
+    // Stamp the model's curated list price onto the launch, refusing a model
+    // that has none. A gg run's per-bound-model prices ride in
+    // `gg_model_prices`, resolved inside `resolve_gg_model_facts`.
+    if let Some(prices) = resolve_model_price(&state.db, &body)
+        .await
+        .map_err(ApiError::bad_request)?
+    {
+        body.model_prices = Some(prices);
+    }
     let new = build_new_job(&body, resolve_test_type(&state, &body), &now, &attribution)
         .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
@@ -155,6 +180,14 @@ pub async fn launch_batch(
 
     let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
+    // Price every model the batch binds in one pass — one catalog fetch for the whole
+    // batch rather than one per run, and before any run resolves its window.
+    let batch_models: Vec<(String, HarnessSlug)> =
+        body.runs.iter().flat_map(launch_models).collect();
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &batch_models).await;
+    // The stored gg runs every gg run's candidate lists are ordered by, loaded once per batch.
+    let record = candidate_record(&state, &body.runs).await;
+
     // Validate and mint each requested run up front. A rejected run records its
     // error at its index and is dropped from the insert set; an accepted run
     // records its (already minted) job id and is queued for the batch insert. The
@@ -164,11 +197,56 @@ pub async fn launch_batch(
     // A batch usually fans one case out over many models/harnesses, so resolve each
     // (case, version)'s type once instead of re-reading the same manifest per run.
     let mut types: HashMap<(String, String), TestType> = HashMap::new();
+    // Every configuration this batch's gg runs name, resolved once against the launching
+    // account's library rather than per run: the batch is one account's decision, and the
+    // same configuration usually appears in most of its runs.
+    let config_names = launch_configuration_names(
+        &state.db,
+        &user.0.id,
+        body.runs
+            .iter()
+            .filter(|run| run.harness == HarnessSlug::Gg)
+            .filter_map(|run| run.gg_capability_set.as_ref())
+            .filter_map(|set| set.preset_id.as_deref()),
+    )
+    .await?;
     for run in &body.runs {
         let test_type = *types
             .entry((run.test_case.clone(), run.version.clone()))
             .or_insert_with(|| resolve_test_type(&state, run));
-        match build_new_job(run, test_type, &now, &attribution) {
+        // Resolve each run's model windows against the catalog before minting it, so a
+        // batched gg run is configured exactly as a singly-launched one is — and, exactly
+        // as in the single case, a run whose window cannot be resolved is rejected. It is
+        // reported at its own index like any other validation failure, so one unresolvable
+        // model does not sink the rest of the batch.
+        let mut run = run.clone();
+        let is_gg = run.harness == HarnessSlug::Gg;
+        // The configuration a gg run names is checked exactly as `POST /jobs` and
+        // `POST /gg/runs` check it, and a run naming one this account does not hold is
+        // reported at its own index rather than sinking the batch.
+        let bound = match run.gg_capability_set.as_mut() {
+            Some(set) if is_gg => bind_launch_configuration(set, &config_names),
+            _ => Ok(()),
+        };
+        let minted = match bound {
+            Ok(()) => {
+                match resolve_gg_model_facts(&state.db, &state.prices, &record, &mut run).await {
+                    Ok(()) => match resolve_model_price(&state.db, &run).await {
+                        // A gg run's per-bound-model prices ride in `gg_model_prices`;
+                        // a flat run's model price is stamped here.
+                        Ok(Some(prices)) => {
+                            run.model_prices = Some(prices);
+                            build_new_job(&run, test_type, &now, &attribution)
+                        }
+                        Ok(None) => build_new_job(&run, test_type, &now, &attribution),
+                        Err(reason) => Err(reason),
+                    },
+                    Err(reason) => Err(reason),
+                }
+            }
+            Err(reason) => Err(reason),
+        };
+        match minted {
             Ok(new) => {
                 items.push(LaunchBatchItem {
                     job_id: Some(new.id.clone()),
@@ -210,6 +288,315 @@ pub async fn launch_batch(
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
 }
 
+/// Every model a launch binds, paired with the harness that will run it: the run's own
+/// model id plus — for a gg run — each model its capability set binds to an agent.
+///
+/// This is the set the catalog is asked to know about at enqueue (see
+/// [`crate::bootstrap::seed_launch_prices`]), which is the same set a gg launch resolves
+/// windows for. It is harness-agnostic on purpose: a third-party-harness run has one
+/// model, and it deserves a priced catalog entry just as much as a gg run's does.
+pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
+    let mut models: Vec<(String, HarnessSlug)> = Vec::new();
+    let mut push = |id: &str| {
+        let id = id.trim();
+        if !id.is_empty() && !models.iter().any(|(known, _)| known == id) {
+            models.push((id.to_string(), body.harness));
+        }
+    };
+    push(&body.model);
+    if let Some(set) = body.gg_capability_set.as_ref() {
+        for id in set.bound_model_ids() {
+            push(id);
+        }
+    }
+    models
+}
+
+/// Fill in a **gg** launch's per-model catalog facts — the
+/// [context window](LaunchBody::gg_model_windows), the
+/// [provider candidate list](LaunchBody::gg_model_providers) and the
+/// [input modalities](LaunchBody::gg_model_modalities) of every model the run's capability set
+/// binds — or the reason the run cannot start.
+///
+/// This is the push that lets gg hold no model table of its own. The catalog is the
+/// backend's, so the backend answers the question here — once, at the moment the run is
+/// triggered — and the figures travel with the launch request to the driver, into the gg
+/// invocation, and out to the agent loop, which measures window fullness (and therefore the
+/// compaction trigger) against the window, sends every request to one candidate of the list,
+/// and decides whether it may show a model a reference image from the modalities. A run
+/// container never has to reach back for one.
+///
+/// Per model, the window and the modalities come from the
+/// [catalog](super::models::launch_facts_for) — the observations the backend already holds —
+/// and from a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
+/// only when the catalog has not observed the window yet (the first run against a
+/// just-released model). The candidate list is always built from the model's endpoints listing
+/// read live at this moment, filtered by the model's catalog entry and ordered by each
+/// provider's fault rate across `record`, the stored gg runs (see [`CatalogCandidates`](super::model_candidates::CatalogCandidates)).
+///
+/// The facts fail differently, on purpose:
+///
+/// - **No context window fails the launch.** An assumed window is not a smaller version of
+///   the right answer: it silently mis-scales every fullness figure, moves the compaction
+///   trigger, and misreports the fullness signal the agent itself steers by — a run that
+///   looks fine and measured the wrong thing. Refusing to enqueue is the honest outcome.
+/// - **No modality list does not.** Unknown modalities are recorded as unknown and the run
+///   proceeds; gg treats that as "try an image and recover if the provider refuses it"
+///   (see [`crate::api::gg`] and gg's own vision handling). Refusing to launch because
+///   OpenRouter did not annotate a model would block runs over a fact that only affects
+///   whether one tool result may carry a picture.
+/// - **No candidate fails the launch**, with the filter that emptied the list. So does an
+///   endpoints listing that cannot be read: the list is built from it, and a run with no list
+///   would leave the choice of provider to OpenRouter.
+///
+/// Whatever the client sent is discarded first — these are backend-resolved facts, not
+/// client input.
+pub(super) async fn resolve_gg_model_facts(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
+    body: &mut LaunchBody,
+) -> Result<(), String> {
+    body.gg_model_windows.clear();
+    body.gg_model_providers.clear();
+    body.gg_model_modalities.clear();
+    body.gg_model_prices.clear();
+    let Some(set) = body.gg_capability_set.as_ref() else {
+        return Ok(());
+    };
+    let facts = gg_model_facts(db, prices, record, set, &body.model, body.harness).await?;
+    facts.apply(body);
+    Ok(())
+}
+
+/// The stored gg runs the candidate lists of `bodies` are ordered by, loaded only when one of
+/// them is a gg launch: a third-party-harness enqueue builds no list and should not pay for the
+/// corpus.
+pub(super) async fn candidate_record<'a>(
+    state: &AppState,
+    bodies: impl IntoIterator<Item = &'a LaunchBody>,
+) -> Arc<Vec<Arc<crate::stats::GgRunFacts>>> {
+    if bodies
+        .into_iter()
+        .any(|body| body.gg_capability_set.is_some())
+    {
+        super::stats::recorded_run_facts(state).await
+    } else {
+        Arc::new(Vec::new())
+    }
+}
+
+/// The per-model catalog facts one gg capability set's launch carries: a context window and a
+/// provider candidate list for every model it binds, and the input modalities of the models the
+/// catalog knows them for.
+///
+/// A value of its own, rather than only ever fields written straight onto a
+/// [`LaunchBody`], because the resolution that produces it is the one part of minting a gg job
+/// that can **fail** and reaches the network. A caller about to launch many runs of one
+/// member — a coverage plan's top-up — resolves it once, before it decides what to launch, so
+/// that a member it cannot resolve costs the plan nothing rather than costing it the buffer
+/// slots the scheduler had already handed that member.
+#[derive(Debug, Clone, Default)]
+pub(super) struct GgModelFacts {
+    /// The context window every bound model is measured against.
+    windows: std::collections::BTreeMap<String, u64>,
+    /// The ordered provider candidates every bound model's requests are served by.
+    providers: std::collections::BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
+    /// A model with none is simply absent: unknown modalities are not a launch failure.
+    modalities: std::collections::BTreeMap<String, Vec<String>>,
+    /// The curated list price (USD per token) every bound model is scored at. A
+    /// model with none refuses the launch, so every bound model is present.
+    prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
+}
+
+impl GgModelFacts {
+    /// Write these facts onto the launch body they were resolved for, replacing whatever it
+    /// arrived carrying — they are backend-resolved facts, not client input.
+    pub(super) fn apply(self, body: &mut LaunchBody) {
+        body.gg_model_windows = self.windows;
+        body.gg_model_providers = self.providers;
+        body.gg_model_modalities = self.modalities;
+        body.gg_model_prices = self.prices;
+    }
+}
+
+/// Resolve one capability set's [per-model facts](GgModelFacts), or the reason a run of it
+/// cannot start. The body of [`resolve_gg_model_facts`], callable before there is a body.
+pub(super) async fn gg_model_facts(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
+    set: &test_cabinet_core::gg::GgCapabilitySet,
+    launch_model: &str,
+    harness: HarnessSlug,
+) -> Result<GgModelFacts, String> {
+    // Every model the set can run an agent on, plus the launch's own model id (the
+    // primary, which the form also records outside the set).
+    let mut models = set.bound_model_ids();
+    let launch_model = launch_model.trim();
+    if !launch_model.is_empty() && !models.contains(&launch_model) {
+        models.push(launch_model);
+    }
+    let mut facts = GgModelFacts::default();
+    for model_id in models {
+        let reasoning = binds_reasoning(set, model_id);
+        let resolved =
+            resolve_one_model_facts(db, prices, record, model_id, harness, reasoning).await?;
+        facts.windows.insert(model_id.to_string(), resolved.window);
+        facts
+            .providers
+            .insert(model_id.to_string(), resolved.candidates);
+        facts.prices.insert(model_id.to_string(), resolved.prices);
+        if !resolved.input_modalities.is_empty() {
+            facts
+                .modalities
+                .insert(model_id.to_string(), resolved.input_modalities);
+        }
+    }
+    Ok(facts)
+}
+
+/// Whether a request of `model_id` in a run of `set` may carry `reasoning`: whether any agent
+/// whose own model it is sets a [reasoning setting](test_cabinet_core::gg::GgAgentConfig::reasoning).
+///
+/// A handoff compaction's model is not counted: gg sends the summary request with the provider's
+/// default reasoning whatever the agent chose, so a model bound only as a handoff sends none.
+fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str) -> bool {
+    set.agents
+        .iter()
+        .any(|agent| agent.reasoning.is_some() && agent.resolved_model_id() == Some(model_id))
+}
+
+/// The list price a third-party-harness launch's model is scored at, or the reason the
+/// launch is refused: the model is not in the catalog, or its entry carries no list price.
+/// Every harness is priced this way, whatever cost it reports of its own, because the
+/// comparable cost is a published statistic.
+///
+/// `Ok(None)` for a gg launch, whose per-bound-model prices ride in `gg_model_prices`
+/// (see [`gg_model_facts`]).
+pub(super) async fn resolve_model_price(
+    db: &crate::db::Db,
+    body: &LaunchBody,
+) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
+    if body.harness == HarnessSlug::Gg {
+        return Ok(None);
+    }
+    match db.list_price_for_run_model(&body.model, body.harness).await {
+        Ok(Ok(prices)) => Ok(Some(prices)),
+        Ok(Err(reason)) => Err(reason),
+        Err(db_err) => Err(format!(
+            "could not read the model catalog's list price for `{}`: {db_err}",
+            body.model
+        )),
+    }
+}
+
+/// One model's resolved launch facts: the window, the candidate list and the curated list price
+/// (none of which a launch can proceed without), and the input modalities (which may
+/// legitimately be unknown).
+struct ResolvedModelFacts {
+    window: u64,
+    candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
+    input_modalities: Vec<String>,
+    /// The catalog's curated list price for the model — what the run is scored at.
+    prices: test_cabinet_core::TokenPrices,
+}
+
+/// One model's launch facts, or the reason this run cannot start.
+///
+/// The window and the modalities are the catalog's observation, else a live per-model fetch
+/// from OpenRouter. The candidate list is built from the endpoints listing read now, under the
+/// model's catalog entry; `reasoning` is whether an agent bound to it sets a reasoning setting,
+/// which also asks each candidate to support `reasoning`.
+async fn resolve_one_model_facts(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
+    model_id: &str,
+    harness: HarnessSlug,
+    reasoning: bool,
+) -> Result<ResolvedModelFacts, String> {
+    let stored = match super::models::launch_facts_for(db, model_id, harness).await {
+        Ok(facts) => facts,
+        // A catalog read that fails is not "no window" — it is an unknown. Say so rather
+        // than papering over a database problem with a live fetch.
+        Err(err) => {
+            return Err(format!(
+                "could not read the model catalog's context window for `{model_id}`: {err}"
+            ));
+        }
+    };
+    // The list price the run is scored at comes only from the catalog — never
+    // from a live fetch: a run must not be priced off whatever a provider
+    // happened to charge that day. A catalog read that fails is, exactly like a
+    // failed window read, an unknown rather than "no price".
+    let list_prices = db
+        .list_price_for_run_model(model_id, harness)
+        .await
+        .map_err(|err| {
+            format!("could not read the model catalog's list price for `{model_id}`: {err}")
+        })?;
+    let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+    let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
+        format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
+    })?;
+    // The id to ask OpenRouter under is the same one prices are looked up by, so a curated model
+    // resolves through its configured slug.
+    let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
+        .await
+        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+
+    // The window first: a model the catalog has not observed is looked up for this one model,
+    // and a run with no window is refused before its providers are asked about.
+    let (window, input_modalities) = match stored.context_window {
+        Some(window) => (window, stored.input_modalities),
+        None => {
+            let facts = prices.model_launch_facts(&lookup).await.map_err(|err| {
+                format!(
+                    "no context window is known for `{model_id}` (the model catalog has observed \
+                     none, and looking it up as `{lookup}` failed: {err})"
+                )
+            })?;
+            let window = facts.context_window.ok_or_else(|| {
+                format!("OpenRouter lists `{lookup}` but reports no context window for it")
+            })?;
+            // Prefer the live list; fall back to whatever the catalog held, so a fetch that
+            // answered the window but not the modalities does not discard an older observation.
+            let modalities = if facts.input_modalities.is_empty() {
+                stored.input_modalities
+            } else {
+                facts.input_modalities
+            };
+            (window, modalities)
+        }
+    };
+
+    let offers = prices.endpoint_offers(&lookup).await.map_err(|err| {
+        format!(
+            "`{model_id}` has no provider candidate list: reading its OpenRouter endpoints \
+             listing as `{lookup}` failed: {err}"
+        )
+    })?;
+    let catalog = super::model_candidates::CatalogCandidates::of(
+        entry.as_ref(),
+        &[model_id, &canonical, &lookup],
+    );
+    let list = catalog
+        .build(&lookup, &offers, reasoning, record)
+        .map_err(|refusal| format!("`{model_id}` has no provider candidate: {refusal}"))?;
+    Ok(ResolvedModelFacts {
+        window,
+        candidates: list
+            .candidates
+            .iter()
+            .map(test_cabinet_core::pricing::ProviderCandidate::to_invocation)
+            .collect(),
+        input_modalities,
+        prices: list_prices?,
+    })
+}
+
 /// The test type of the case version a launch request targets, read from the
 /// ingested manifest.
 ///
@@ -234,14 +621,34 @@ fn resolve_test_type(state: &AppState, body: &LaunchBody) -> TestType {
 /// a retry copies whatever its original had rather than inventing one. A run with no
 /// attribution is a perfectly good run — it is simply invisible to the scoped halts,
 /// which is the correct answer for a run nobody can attribute.
+///
+/// Visible to the rest of `api` because [`build_new_job`] is: the gg launch endpoint
+/// ([`super::gg::launch_gg`]) mints its job through the same builder, so it must be
+/// able to name — and resolve — the attribution it stamps.
 #[derive(Debug, Clone, Default)]
-struct JobAttribution {
+pub(super) struct JobAttribution {
     /// The account that asked for the run. `None` only on a retry of a job enqueued
     /// before attribution existed.
     user_id: Option<String>,
     /// The coverage plan or ladder that asked for the run, or `None` for a launch by
     /// hand. This is what a scoped `halt` cancels by.
     origin: Option<JobOrigin>,
+}
+
+impl JobAttribution {
+    /// The attribution a **scheduled** launch stamps: the account whose plan or ladder asked
+    /// for the run, and the plan or ladder itself.
+    ///
+    /// A coverage top-up mints its jobs through [`build_new_job`] like every other launch
+    /// path, but it does not arrive as an HTTP request carrying an `origin` query — it knows
+    /// its origin as a value already, so it says so directly rather than formatting a token
+    /// for [`attribution`] to parse straight back.
+    pub(super) fn scheduled(user_id: &str, origin: &JobOrigin) -> Self {
+        Self {
+            user_id: Some(user_id.to_string()),
+            origin: Some(origin.clone()),
+        }
+    }
 }
 
 /// Resolve the attribution for a launch request: the token's account, plus the
@@ -252,7 +659,10 @@ struct JobAttribution {
 /// jobs again, so a run enqueued under a typo'd origin is one no halt will ever reach
 /// — a fault that surfaces much later and in a confusing shape ("this plan will not
 /// stop"), far from the request that caused it.
-fn attribution(user: &AuthUser, query: &LaunchQuery) -> Result<JobAttribution, ApiError> {
+pub(super) fn attribution(
+    user: &AuthUser,
+    query: &LaunchQuery,
+) -> Result<JobAttribution, ApiError> {
     let origin = match query.origin.as_deref() {
         None => None,
         Some(token) => Some(JobOrigin::parse(token).ok_or_else(|| {
@@ -274,7 +684,7 @@ fn attribution(user: &AuthUser, query: &LaunchQuery) -> Result<JobAttribution, A
 /// the human-readable reason on a validation failure. Shared by the single
 /// ([`launch`]) and batch ([`launch_batch`]) enqueue paths so both validate and
 /// record a run identically.
-fn build_new_job(
+pub(super) fn build_new_job(
     body: &LaunchBody,
     test_type: TestType,
     now: &str,
@@ -294,8 +704,44 @@ fn build_new_job(
     }
     let request_json =
         serde_json::to_string(body).map_err(|e| format!("serializing launch request: {e}"))?;
+    // The engine the case pin names, lifted out of the request for the same reason the
+    // harness and the model are: it is a segment of the job's coverage cell, and a plan
+    // counts a cell's in-flight runs with a grouped query that cannot deserialize
+    // `request_json` per row. Left `None` when the request names none — that is the
+    // `none` engine, which is exactly what a `NULL` column coalesces to, so a launch by
+    // hand and a plan that pins no engine agree without either writing the slug out.
+    let engine_slug = body
+        .engine
+        .as_ref()
+        .map(|slug| slug.trim())
+        .filter(|slug| !slug.is_empty())
+        .map(str::to_string);
+    // Lift a gg run's capability set out of the launch request into its own column so
+    // a gg job's exact configuration is a first-class, queryable value rather than
+    // only buried in `request_json`. `None` for every third-party-harness job.
+    let gg_config_json = body
+        .gg_capability_set
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| format!("serializing gg capability set: {e}"))?;
+    // The two segments of a gg run's coverage cell — the configuration's id and the models
+    // the set binds — plus the configuration's name for the active-run list, all lifted out
+    // of that same set so the queue can attribute an in-flight run to its cell in SQL.
+    // Gated on the **harness**, exactly as the run's own lifts are
+    // (`crate::db::lifted_gg_config_id`, `crate::db::lifted_gg_models`), so a queued job
+    // and the run it produces land in the same cell by construction — a set that somehow
+    // rode in on a third-party-harness launch must not put the job in a cell the run can
+    // never join.
+    let gg_cell = body
+        .gg_capability_set
+        .as_ref()
+        .filter(|_| body.harness == HarnessSlug::Gg);
+    let gg_preset = gg_cell.and_then(|set| set.preset.clone());
+    let gg_config_id = gg_cell.and_then(|set| set.preset_id.clone());
+    let gg_models = gg_cell.map(|set| set.bound_model_key());
     Ok(crate::db::NewJob {
-        id: Uuid::new_v4().to_string(),
+        id: cuid2::create_id(),
         request_json,
         test_case_slug: body.test_case.clone(),
         test_case_version: body.version.clone(),
@@ -303,7 +749,12 @@ fn build_new_job(
         test_type: test_type.as_str().to_string(),
         harness_slug: body.harness.as_str().to_string(),
         model_id: body.model.clone(),
-        job_token: Uuid::new_v4().to_string(),
+        engine_slug,
+        gg_config_json,
+        gg_preset,
+        gg_config_id,
+        gg_models,
+        job_token: cuid2::create_id(),
         // A console launch is the initial attempt; the backend re-enqueues any
         // automatic retries with an incremented `attempt`.
         attempt: 0,
@@ -358,8 +809,13 @@ pub async fn status(
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
 /// exits — the same both on the local cluster and in production, since both drive a
-/// run through a driver pod. No completion notification is fired: a canceled run is
-/// an operator action, not a failure to alert on.
+/// run through a driver pod. On its way out it posts a
+/// [`DriverState::Canceled`]
+/// status carrying a [`RunState::Canceled`] record, which
+/// [`update_status`] attaches to this job; that is what keeps a killed run — and
+/// everything it streamed before the kill — visible in the run list. No completion
+/// notification is fired: a canceled run is an operator action, not a failure to
+/// alert on.
 ///
 /// Canceling an already-`canceled` job is an idempotent no-op (`200`); a job that
 /// already ran to `succeeded`/`failed` cannot be canceled (`409`); an unknown job
@@ -383,9 +839,7 @@ pub async fn cancel(
         if current == JobState::Canceled {
             return Ok(Json(job_status_out(&job)));
         }
-        return Err(ApiError::conflict(format!(
-            "job `{id}` already finished and cannot be canceled"
-        )));
+        return Err(ApiError::conflict(format!("job `{id}` already finished")));
     }
 
     let now = now_rfc3339()?;
@@ -715,6 +1169,11 @@ pub async fn ingest_preview(
 /// any) is retained too. A terminal update closes the live stream and fires a
 /// completion notification.
 ///
+/// `canceled` is the driver acknowledging an operator's kill: the job is already
+/// terminal, so this only persists the partial record the driver built (with the
+/// relayed events) and attaches it to the job — no state change, no notification,
+/// no retry. It is the only status accepted on an already-canceled job.
+///
 /// Whether a retained non-completed record is *publishable* is deliberately not
 /// decided here — the publish path enforces the interim "completed only" guard,
 /// and turning failures into first-class publishable results is a separate design
@@ -733,7 +1192,14 @@ pub async fn update_status(
     // report cannot resurrect or overwrite the canceled run (nor persist a record
     // for it). The driver's poll ends it shortly after; this is the belt-and-braces
     // guard on the backend side.
-    if JobState::from_db(&job.state) == JobState::Canceled {
+    //
+    // The one exception is the driver's own `canceled` report: that *is* the driver
+    // acknowledging the cancellation, and it carries the partial record built from
+    // what the run managed before the kill. It never changes the job's state — it
+    // only attaches that record — so a killed run stays visible and inspectable in
+    // the run list instead of vanishing.
+    let canceled_job = JobState::from_db(&job.state) == JobState::Canceled;
+    if canceled_job && !matches!(update.state, DriverState::Canceled) {
         return Ok(StatusCode::NO_CONTENT);
     }
 
@@ -747,27 +1213,36 @@ pub async fn update_status(
 
     match update.state {
         DriverState::Starting => {
-            state
+            // Announce from the row the transition *wrote*, not the one read before it.
+            // This is the transition that stamps `started_at`, so a summary lifted from
+            // the pre-update model would carry none and a console living on the stream
+            // would show a started run with no start time until its next
+            // `GET /jobs/active`. The pre-update row stands in only if the write found
+            // nothing to update — a cancel that landed in the gap — where announcing
+            // the identity we already hold beats announcing nothing.
+            let started = state
                 .db
                 .set_job_state(&id, "starting", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
             state.relay.notifier().publish_run(RunEvent::state_changed(
                 &id,
-                job_summary(&job),
+                job_summary(started.as_ref().unwrap_or(&job)),
                 JobState::Starting,
             ));
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Running => {
-            state
+            // The same freshness requirement: for a driver that never reported
+            // `starting`, this is the transition that stamps the anchor.
+            let running = state
                 .db
                 .set_job_state(&id, "running", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
             state.relay.notifier().publish_run(RunEvent::state_changed(
                 &id,
-                job_summary(&job),
+                job_summary(running.as_ref().unwrap_or(&job)),
                 JobState::Running,
             ));
             Ok(StatusCode::NO_CONTENT)
@@ -812,27 +1287,79 @@ pub async fn update_status(
                 ApiError::unprocessable("a succeeded status must carry the run record")
             })?;
             let record_id = persist_record(&state, &id, record).await?;
+            // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
+            // model claimed done but the build won't load) — the record carries
+            // which — unless the engine classified the run as the Test Cabinet's own
+            // failure: a collected tree whose dependency install never succeeded. That
+            // run lands the way every other infrastructure failure does, as a failed
+            // job carrying the record's reason with a failure notification, so an
+            // observer sees one shape for one kind of outcome.
+            let terminal_state = terminal_run_state(Some(record), RunState::Completed);
+            match succeeded_job_outcome(record) {
+                (JobState::Failed, detail) => {
+                    let detail = detail.unwrap_or("run failed");
+                    state
+                        .db
+                        .set_job_state(&id, "failed", &now, Some(detail), Some(&record_id))
+                        .await
+                        .map_err(ApiError::from)?;
+                    finish_and_notify(
+                        &state,
+                        RunEvent::finished(
+                            &id,
+                            job_summary(&job),
+                            JobState::Failed,
+                            Some(&record_id),
+                            Some(detail),
+                        ),
+                        Notification::failed(&id, job_summary(&job), detail, Some(&record_id)),
+                    );
+                }
+                _ => {
+                    state
+                        .db
+                        .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
+                        .await
+                        .map_err(ApiError::from)?;
+                    finish_and_notify(
+                        &state,
+                        RunEvent::finished(
+                            &id,
+                            job_summary(&job),
+                            JobState::Succeeded,
+                            Some(&record_id),
+                            None,
+                        ),
+                        Notification::completed(&id, job_summary(&job), &record_id),
+                    );
+                }
+            }
+            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Canceled => {
+            // The driver acknowledging an operator's kill, handing back the partial
+            // record for what the run got through. Persist it with the events the
+            // relay accumulated — that stream is the whole point, it is where a gg
+            // run's telemetry lives — and attach it to the already-terminal job so
+            // the console can navigate to it.
+            //
+            // Everything else a terminal report normally does is deliberately
+            // skipped: the job keeps its `canceled` state and its cancellation
+            // detail, no completion notification fires (a kill is an operator
+            // action, not something to alert on), and no retry is enqueued (an
+            // operator who stopped a run does not want it started again).
+            let Some(record) = update.record.as_ref() else {
+                return Err(ApiError::unprocessable(
+                    "a canceled status must carry the run record",
+                ));
+            };
+            let record_id = persist_record(&state, &id, record).await?;
             state
                 .db
-                .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
+                .attach_canceled_job_record(&id, &record_id, &now)
                 .await
                 .map_err(ApiError::from)?;
-            finish_and_notify(
-                &state,
-                RunEvent::finished(
-                    &id,
-                    job_summary(&job),
-                    JobState::Succeeded,
-                    Some(&record_id),
-                    None,
-                ),
-                Notification::completed(&id, job_summary(&job), &record_id),
-            );
-            // A clean harness exit is `Completed` (evaluable) or `Catastrophic`
-            // (the model claimed done but the build won't load) — the record carries
-            // which.
-            let terminal_state = terminal_run_state(Some(record), RunState::Completed);
-            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
         }
     }
@@ -853,6 +1380,18 @@ const MAX_RETRY_COUNT: u32 = 10;
 /// carries its record).
 fn terminal_run_state(record: Option<&RunRecord>, fallback: RunState) -> RunState {
     record.map(|record| record.status.state).unwrap_or(fallback)
+}
+
+/// How a record the driver handed back as `succeeded` lands on its job: a
+/// succeeded job for every outcome the engine reached on the model's own account,
+/// and a failed job, carrying the record's status detail, for a record the engine
+/// classified as an [infrastructure](RunState::Infrastructure) failure — the one
+/// clean-exit outcome that is the Test Cabinet's fault rather than the model's.
+fn succeeded_job_outcome(record: &RunRecord) -> (JobState, Option<&str>) {
+    match record.status.state {
+        RunState::Infrastructure => (JobState::Failed, record.status.detail.as_deref()),
+        _ => (JobState::Succeeded, None),
+    }
 }
 
 /// The `retryCount` a job's stored launch request asks for, defaulting to
@@ -918,6 +1457,13 @@ async fn origin_is_paused(state: &AppState, job: &job::Model) -> Result<bool, Ap
 /// outcome is the model's, not a fault to retry (and a user cancel never reaches
 /// the terminal transition here). The chain is bounded by the request's
 /// `retryCount`, so a persistently failing run always terminates.
+///
+/// [`RunState::LimitExceeded`] is excluded, and it is the one exclusion that is a
+/// rule rather than a judgement about the model. The harness stopped that run on an
+/// execution ceiling the run's own configuration armed, so the outcome is a property
+/// of the configuration: a fresh attempt runs the same capability set into the same
+/// ceiling, spends the same money doing it, and reports the same state. Retrying it
+/// would buy nothing and cost a whole run.
 fn is_retryable(state: RunState) -> bool {
     matches!(
         state,
@@ -973,8 +1519,15 @@ async fn maybe_enqueue_retry(
         return Ok(());
     }
 
-    let retry_id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
+    // Re-seed the retried launch's model prices exactly as its original enqueue did.
+    // Missing-only, so a launch that was already priced costs nothing; this covers
+    // the launch whose seeding was foiled by a transient OpenRouter failure.
+    if let Ok(body) = serde_json::from_str::<LaunchBody>(&job.request_json) {
+        crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
+    }
+
+    let retry_id = cuid2::create_id();
+    let job_token = cuid2::create_id();
     let now = now_rfc3339()?;
     state
         .db
@@ -987,6 +1540,17 @@ async fn maybe_enqueue_retry(
             test_type: job.test_type.clone(),
             harness_slug: job.harness_slug.clone(),
             model_id: job.model_id.clone(),
+            // The retry is the same run on the same cell, so it carries the same pin the
+            // attempt it replaces was enqueued with — the engine included.
+            engine_slug: job.engine_slug.clone(),
+            // Carry the gg capability set and the cell it was lifted to through
+            // verbatim, so a retried gg run is configured identically and counts against
+            // the same cell as the attempt it replaces. `None` for every
+            // third-party-harness job.
+            gg_config_json: job.gg_config_json.clone(),
+            gg_preset: job.gg_preset.clone(),
+            gg_config_id: job.gg_config_id.clone(),
+            gg_models: job.gg_models.clone(),
             job_token,
             attempt,
             user_id: job.user_id.clone(),
@@ -1032,9 +1596,20 @@ async fn persist_record(
     normalize_record_model_id(&mut record);
 
     let links = record.links.clone();
+    // The run's case version, so the store can decide whether the run is
+    // validator-rated and write its validator-decided functional rating at push.
+    // A version the store cannot resolve (ingested away since the job launched)
+    // pushes as a legacy run rather than losing the record.
+    let manifest = state
+        .store
+        .read_manifest(
+            &record.subject.test_case_slug,
+            &record.subject.test_case_version,
+        )
+        .ok();
     state
         .db
-        .push(&record, &links, events_json.as_deref())
+        .push(&record, &links, events_json.as_deref(), manifest.as_ref())
         .await
         .map_err(ApiError::from)?;
 
@@ -1236,7 +1811,7 @@ fn finish_and_notify(state: &AppState, event: RunEvent, notification: Notificati
 
 /// Load a job and verify the request carries its per-job token. `404` for an
 /// unknown job, `401` for a missing or wrong token.
-async fn authorize_job(
+pub(super) async fn authorize_job(
     state: &AppState,
     id: &str,
     headers: &HeaderMap,
@@ -1276,10 +1851,25 @@ fn new_job_summary(new: &crate::db::NewJob) -> JobSummary {
         variant: new.variant.clone(),
         harness_slug: new.harness_slug.clone(),
         model_id: new.model_id.clone(),
+        engine: new.engine_slug.clone(),
+        // An enqueue is not a start: the job is announced as queued, and the anchor is
+        // stamped later by the transition into `starting`.
+        started_at: None,
+        // The name comes off the lifted column the job is about to be written with,
+        // not from re-parsing the capability set beside it: the announcement a console
+        // renders and the row it will later re-read are then the same value by
+        // construction, and the enqueue path deserializes nothing it just serialized.
+        gg_preset: new.gg_preset.clone(),
     }
 }
 
 /// The run's display identity, lifted from the stored job columns.
+///
+/// The gg configuration name comes out of the job's own `gg_config_json` column (the
+/// capability set lifted there at enqueue), so the active-run list can name a gg run's
+/// configuration before the run has produced a record. A set that fails to parse is
+/// treated as nameless rather than failing the listing — the name is a display nicety,
+/// and a job the console cannot list is far worse than one shown by its model.
 fn job_summary(job: &job::Model) -> JobSummary {
     JobSummary {
         test_case_slug: job.test_case_slug.clone(),
@@ -1287,11 +1877,20 @@ fn job_summary(job: &job::Model) -> JobSummary {
         variant: job.variant.clone(),
         harness_slug: job.harness_slug.clone(),
         model_id: job.model_id.clone(),
+        // Straight off the lifted column, so an in-flight run is attributed to the same
+        // engine segment its completed run will be counted under.
+        engine: job.engine_slug.clone(),
+        started_at: job.started_at.clone(),
+        gg_preset: job
+            .gg_config_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str::<GgCapabilitySet>(json).ok())
+            .and_then(|set| set.preset),
     }
 }
 
 /// The current UTC time as an RFC 3339 string, or a `500` if formatting fails.
-fn now_rfc3339() -> Result<String, ApiError> {
+pub(super) fn now_rfc3339() -> Result<String, ApiError> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
@@ -1300,7 +1899,7 @@ fn now_rfc3339() -> Result<String, ApiError> {
 /// How often the live NDJSON stream emits a heartbeat newline while idle, so a
 /// client whose streaming `fetch()` aborts on idle reads keeps the connection
 /// alive through event-free gaps. Matches axum's default SSE keep-alive period
-/// and stays well under WKWebView/NSURLSession's ~60s request idle timeout.
+/// and stays well under the ~60s request idle timeout of Safari's WebKit networking.
 const LIVE_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Build the NDJSON byte stream for a job: the replayed backlog and latest
@@ -1322,11 +1921,10 @@ fn event_stream(
     // A periodic newline heartbeat keeps bytes flowing while the run is idle
     // between events — most notably the long gap after "Preparing the test case
     // workspace" while the driver clones the case and pulls the run-container
-    // image. A streaming `fetch()` reader that aborts on idle reads (WKWebView /
-    // NSURLSession, which backs the Tauri desktop app, times an idle request out
-    // after ~60s and surfaces it as `TypeError: Load failed`) would otherwise
-    // tear the live monitor down mid-run; Chromium has no such idle timeout,
-    // which is why the web console never saw it. A bare `\n` is a no-op to the
+    // image. A streaming `fetch()` reader that aborts on idle reads (Safari's
+    // WebKit networking times an idle request out after ~60s and surfaces it as
+    // `TypeError: Load failed`, and proxies impose similar idle timeouts) would
+    // otherwise tear the live monitor down mid-run. A bare `\n` is a no-op to the
     // NDJSON client, which skips empty lines. Mirrors the keep-alive the
     // `/notifications` SSE stream already applies. `interval_at` starts one period
     // out so a freshly subscribed client isn't sent a redundant immediate tick.
@@ -1470,7 +2068,7 @@ pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
 /// interval sets how fast a dead stream is noticed — and, with the client's
 /// tolerance factor, how long a run's row can be stale in the worst case. Matches
 /// the per-job stream's heartbeat and axum's default keep-alive period, and stays
-/// well under the 60s idle timeouts proxies and WKWebView impose.
+/// well under the 60s idle timeouts proxies and Safari's WebKit networking impose.
 const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The console stream's first frame: the id this client quotes back to

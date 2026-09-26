@@ -70,16 +70,7 @@
 
 .tabActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo (the `.tab` `h.halo` dark layers) and
-  // back the accent glow with it — `var(--ttc-glow)` alone has no contrast where
-  // an active label lands over the warm sun. Merged into one declaration because
-  // a bare `text-shadow` would override the halo the `.tab` mixin set. (Mirrors
-  // the detail page's `.tabActive`.)
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 
@@ -147,13 +138,30 @@
   margin-bottom: t.$space-sm;
 }
 
+// Title and latest-version chip share the header's left side, baseline-aligned
+// so the smaller version figure sits on the title's text line.
+.cardHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
 .cardTitle {
   margin: 0;
   font-size: t.$font-lg;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
+}
+
+// The case's newest published version ("v1.0.0"), muted beside the title.
+.version {
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // Difficulty badge; hue shifts from positive (easy) to accent-2 (hard).
@@ -170,6 +178,10 @@
 
   &[data-level="easy"] {
     color: t.$color-positive;
+  }
+
+  &[data-level="medium"] {
+    color: t.$color-warning;
   }
 
   &[data-level="hard"] {
@@ -212,5 +224,280 @@
 // warning accent so it reads as a fault rather than just "nothing here yet".
 .error {
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
+}
+
+// ---- Index + stage split -----------------------------------------------------
+// The catalog's master-detail layout: the index of rows on the left, the sticky
+// preview pane on the right, the draggable divider between them. Below the
+// medium breakpoint the panes stack, the preview first (`order: -1`) so the
+// stage stays in view while the index scrolls under it, and the divider hides.
+
+.split {
+  display: grid;
+  // Index, divider, preview. The index's share is the divider-held fraction,
+  // carried in from the page as a custom property and consumed only by this
+  // wide-layout rule, so the inline style cannot defeat the stacked template
+  // below. The divider's own width plus the column gaps make up the visual
+  // gutter between the panes.
+  grid-template-columns: var(--ttc-catalog-split, 40%) auto minmax(0, 1fr);
+  column-gap: t.$space-sm;
+  row-gap: t.$space-lg;
+  align-items: start;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// The divider between the panes: a finger-width hit area spanning the row, a
+// hairline drawn down its middle that thickens into the accent under the
+// pointer or keyboard focus (its only focus ring — the outline would box the
+// whole row-height strip). Hidden below the medium breakpoint, where the panes
+// stack and there is no split to drag.
+.divider {
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+  width: 1rem;
+  cursor: col-resize;
+  // The divider owns horizontal pointer gestures; without this a touch drag
+  // scrolls the page instead of moving the split.
+  touch-action: none;
+
+  &::before {
+    content: "";
+    width: t.$border-hairline;
+    background: t.$color-border;
+  }
+
+  &:hover::before,
+  &:focus-visible::before {
+    width: 0.2rem;
+    background: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  @include bp.below(t.$bp-md) {
+    display: none;
+  }
+}
+
+// The index: one selectable row per case, stacked. Presented as a listbox (the
+// rows are its options), so the selection reads to assistive tech the way it
+// looks.
+.index {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// One index row: a full-width button styled as a quiet panel — name and version
+// on the left, the difficulty badge flush right — that borrows the card's neon
+// treatment when selected.
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  text-align: left;
+  cursor: pointer;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+
+  &[aria-selected="true"] {
+    border-color: t.$color-accent;
+    box-shadow: inset 0 0 1.5rem
+      color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+}
+
+// A row's left side: title, latest-version chip, and the showcase marker,
+// baseline-aligned so the smaller chips sit on the title's text line.
+.rowHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The row's case name — the card title's look at index scale.
+.rowTitle {
+  margin: 0;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
+// The small play glyph marking a case whose showcase the preview can stage.
+.marker {
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  @include h.halo;
+}
+
+// The preview pane: a card-like panel that sticks while the index scrolls.
+// Below the medium breakpoint it unsticks and moves above the index.
+.preview {
+  position: sticky;
+  top: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow: inset 0 0 1.5rem
+    color-mix(in srgb, t.$color-accent 8%, transparent);
+
+  @include bp.below(t.$bp-md) {
+    position: static;
+    order: -1;
+  }
+}
+
+// The fixed-aspect stage the preview leads with: 16:9, clipped and centered, so
+// the pane holds one geometry whatever the selected case stages (mirrors the
+// home page's showcase stage). The stage owns the frame: one border around the
+// clipped box, whatever kind of media is on it — drawn here rather than on the
+// media because the clipping used to cut a media-drawn border's bottom edge off.
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+
+  // The replay player mounts its own figure; let it fill the stage's box.
+  > * {
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  // The replay canvas brings its own border (it usually stands alone); inside
+  // the stage's frame it would double up and get clipped, so strip it here.
+  canvas {
+    border: none;
+    border-radius: 0;
+  }
+}
+
+.stageMedia {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// A case without stageable media (or a host that cannot serve it) holds the
+// quiet placeholder: panel surface plus the cabinet mark.
+.stagePlaceholder {
+  color: t.$color-text-muted;
+}
+
+.stageMark {
+  width: 20%;
+  max-width: 6rem;
+  opacity: 0.5;
+}
+
+// The filmstrip under the stage: the preview's own tablist over the whole
+// showcase carousel, picking which entry the stage plays. Scrolls sideways when
+// the carousel outruns the pane (the manifest caps it at ten entries).
+.filmstrip {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  overflow-x: auto;
+}
+
+// One filmstrip thumb, stage-shaped in miniature: a button holding either the
+// image itself or the play glyph for a media kind with no cheap still. The
+// active thumb carries the accent ring the detail Play tab's strip uses.
+.filmThumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+
+  &:hover {
+    border-color: t.$color-accent-2;
+  }
+}
+
+.filmThumbActive {
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0 1px t.$color-accent;
+}
+
+.filmImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// The lone play glyph, sized up a step so it holds the thumb on its own.
+.filmGlyph {
+  font-size: t.$font-md;
+}
+
+// The preview's identity line: title + version left, difficulty badge right,
+// matching the index rows' geometry at card-title scale.
+.previewHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.previewHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.previewTitle {
+  margin: 0;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
+// The link into the case's detail page. The button treatment itself is the runs
+// section's primary action (RunExec `.primary`, the "+ New run" look), composed
+// in the TSX; this only pins it to the pane's trailing edge.
+.openCase {
+  align-self: flex-end;
 }

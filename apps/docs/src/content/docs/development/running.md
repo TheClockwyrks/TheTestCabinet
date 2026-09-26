@@ -2,92 +2,57 @@
 title: Running
 ---
 
-This page covers running The Test Cabinet **locally** — on your own machine, for
-development or to exercise the whole flow end to end. Execution is now a single,
-unified path: **every** launcher — the [CLI](/components/cli/overview/) (`tcab`),
-the [Tauri desktop app](/components/tauri/overview/), and the
-[web console](/components/web/overview/) — **enqueues** a run at the backend and
-watches it; none of them runs a test case on its own machine. So launching a run
-locally means standing up the **service-driven stack**:
+Every launcher enqueues a run at the backend and watches it: the
+[CLI](/components/cli/overview/) (`tcab`) and the
+[web console](/components/web/overview/). Neither of them executes a test case on
+its own machine. Running The Test Cabinet locally therefore means standing up the
+service stack that drains that queue.
 
-- **The full service-driven flow** — the [backend](/components/backend/overview/)
-  (which owns the **run queue**), the [auth service](/components/auth/overview/),
-  the [dispatcher](/components/dispatcher/overview/), the
-  [driver](/components/driver/overview/), the
-  [artifact service](/components/artifacts/overview/), the
-  [arena service](/components/arena/overview/) (adversarial matches/tournaments),
-  and the [web console](/components/web/overview/), running exactly as a deployed
-  environment runs them. A launcher **enqueues** a run at the backend; an
-  in-cluster dispatcher claims it and creates a per-run Kubernetes **Job** running
-  the [driver](/components/driver/overview/), which executes that one run. Because
-  execution is a cluster concern, the local service-driven story runs on a **k3d**
-  cluster (k3s-in-Docker) from the same manifests a deployment uses. (The auth
-  service is what lets you register, log in, and launch / review / publish;
-  without it the read-only flow still works, but mutations are rejected `401`.)
-- **A single run from the CLI or desktop** still targets that **same** stack.
-  `tcab run` and the desktop app are thin enqueue + watch clients, so they need a
-  reachable backend (`TCAB_BACKEND_URL`) and an account — **not** a host container
-  runtime. The fastest local path is to bring the k3d stack up (below) and point
-  `tcab` (or the desktop app) at the forwarded backend; the
-  [quickstarts](/quickstarts/overview/) walk through it and
-  [Building](/development/building/) covers producing the binaries.
-  - **Developing on the desktop app?** Set `TCAB_BACKEND_URL` and it behaves as
-    the thin client described here. Left **unset**, the shipped app instead
-    stands up its *own* bundled k3d cluster from the published images (see
-    [Self-contained cluster](/components/tauri/overview/#self-contained-cluster)):
-    great for end users, but it ingests the *bundled* catalog, so during
-    development point it at a manually-run backend you can re-ingest at will.
+Execution is a cluster concern. A launcher enqueues a run at the
+[backend](/components/backend/overview/); an in-cluster
+[dispatcher](/components/dispatcher/overview/) claims it and creates a per-run
+Kubernetes `Job` running the [driver](/components/driver/overview/), which
+executes that one run. The local stack runs on a k3d cluster (k3s-in-Docker)
+from the same manifests a [deployment](/deployment/overview/) applies, so what
+runs locally and what runs in staging or production differ only in the namespace
+they live in.
 
-Running the services on one machine is the local mirror of a real
-[deployment](/deployment/overview/): the same images and the same configuration,
-only on a throwaway local cluster. When you are ready to put them on real hosts —
-staging and prod — see [Deployment](/deployment/overview/).
+`tcab run` is a thin enqueue-and-watch client. It needs a reachable backend
+(`TCAB_BACKEND_URL`) and an account, and no container runtime of its own.
 
 ## Prerequisites
 
-- A **container runtime** (Docker) — needed by **k3d**, which runs the cluster as
-  containers. In the [devcontainer](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.devcontainer/README.md)
-  this is the **host's** daemon, reached over a bound socket (Docker-outside-of-
-  Docker); on a bare host it is the local daemon. The CLI and desktop app no longer
-  need a runtime of their own (the in-cluster driver creates the run's sandbox via
-  the Kubernetes API). See [Execution](/components/core/execution/) and
-  [first-time setup](/guides/setup/first-time-setup/).
-- [`k3d`](https://k3d.io) and `kubectl`, for the service-driven flow — both ship
-  in the devcontainer (install them yourself on a bare host).
-- The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
-  built or pullable for whichever harness you intend to run.
-- The service binaries, built per [Building](/development/building/):
-  `cargo build -p test-cabinet-backend`, `cargo build -p tcab-auth-service`,
-  `cargo build -p test-cabinet-dispatcher`, `cargo build -p test-cabinet-driver`,
-  and `cargo build -p test-cabinet-artifacts` (or the `build-portable-*` aliases
-  for static binaries). The web console is a Vite app under `apps/web`; unlike the
-  services, it does **not** run in the local k3d cluster — you run its Vite dev
-  server (`npm run -w apps/web dev`) from source against the forwarded backend, both
-  for the k3d flow and the bare-process path (iterating on the UI this way needs no
-  image rebuild). Only prod/staging serve it in-cluster as the `tcab-web` image.
-- A harness API key for the harness you will run (for example
-  `ANTHROPIC_API_KEY` for `claude`).
+- A container runtime (Docker), needed by k3d, which runs the cluster as
+  containers. In the devcontainer this is the host's daemon, reached over a bound
+  socket; on a bare host it is the local daemon.
+- [`k3d`](https://k3d.io) and `kubectl`. Both ship in the devcontainer; install
+  them yourself on a bare host.
+- The run-container images (`containers/README.md`) built or pullable for the
+  test types you intend to run; a harness installs into them at run time.
+- A harness API key for the harness you will run, for example
+  `ANTHROPIC_API_KEY` for `claude`.
+- For the bare-process path below, the service binaries built per
+  [Building](/development/building/): `cargo build -p test-cabinet-backend` and
+  `cargo build -p test-cabinet-auth-service`.
 
-## The whole stack on k3d (deployment parity)
+The web console is a Vite app under `apps/web` and does not run in the local k3d
+cluster. You run its dev server from source against the forwarded backend, so a
+UI edit hot-reloads instead of forcing an image rebuild. Only staging and
+production serve it in-cluster as the `tcab-web` image.
 
-For a task-oriented walkthrough of this — bringing the stack up, connecting the
-console, and enqueuing a run — see the guide
-[Running the Local Service Stack](/guides/development/running-the-local-service-stack/) (or the
-[quickstart](/quickstarts/development/run-the-local-service-stack/) for just the steps). This
-section is the reference the guide sits on top of.
+## The whole stack on k3d
 
-Run execution is now a cluster concern: a run schedules as a per-run **Job**, so
-the service-driven flow runs the services **the way a
-[deployment](/deployment/kubernetes/) runs them** — in a real (local) Kubernetes
-cluster, from the same manifests. The
-[`deployments/local/Makefile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/Makefile)
-drives the whole thing, and is meant to run **inside the devcontainer** (which
-ships `docker`, [`k3d`](https://k3d.io), and `kubectl` and binds the host daemon
-socket in); it also works on a bare host with those three installed directly:
+`deployments/local/Makefile` drives the whole stack. It is meant to run inside
+the devcontainer, which ships `docker`, `k3d`, and `kubectl` and binds the host
+daemon socket in; it also works on a bare host with those three installed. For a
+task-oriented walkthrough see
+[Running the Local Service Stack](/guides/development/running-the-local-service-stack/)
+or its [quickstart](/quickstarts/development/run-the-local-service-stack/).
 
-Before bringing the stack up, **export the harness provider API key** the run
-needs — the Makefile reads it from your environment and creates the cluster
-Secret from it, so no key is ever written to a tracked file:
+Export the harness provider API key the run needs before bringing the stack up.
+The Makefile reads it from your environment, or from the gitignored repo-root
+`.env`, and creates the cluster Secret from it, so no key is written to a tracked
+file:
 
 ```sh
 export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
@@ -95,167 +60,226 @@ export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
 ```
 
 ```sh
-make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
-make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, Grafana→:3000 open on localhost (run the console from source, below)
+make -C deployments/local local-up        # cluster, images, overlay, ingest
+make -C deployments/local local-forward   # hold the data plane open on localhost
 # … develop …
-make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
-make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
-make -C deployments/local local-ingest    # force re-ingest the catalog after editing a case
-make -C deployments/local secrets         # re-create the Secrets from the environment (after rotating a key)
+make -C deployments/local local-rebuild   # rebuild the service images + restart
+make -C deployments/local local-status    # pods, services, and volumes
+make -C deployments/local local-ingest    # re-ingest after editing a case
+make -C deployments/local secrets         # re-create the Secrets after a rotation
 make -C deployments/local local-down      # delete the cluster and everything in it
 ```
 
-`local-up` creates a throwaway k3d cluster, builds the **backend**, **auth**,
-**dispatcher**, **driver**, **artifact**, and **arena** images from
-[`deployments/images/`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images),
-loads them with `k3d image import` (no registry needed), creates the cluster
-Secrets from your environment (the harness key above plus a dev service token),
-applies the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests
-the catalog from a read-only mount of this repository. The **web console is the one
-piece that does not run in-cluster locally** — you run it from source (below) so a
-UI edit hot-reloads instead of forcing a full image rebuild + re-import (prod still
-serves it in-cluster). The dispatcher and driver run
-in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
-**schedules as a Job in this same cluster** — exactly as a cloud deployment runs
-it. The host no longer runs any worker process.
+`local-up` creates a throwaway k3d cluster, builds the backend, auth,
+dispatcher, driver, artifact, and arena images from `deployments/images/`, builds
+the run-container images from `containers/`, loads both sets with
+`k3d image import`, creates the cluster Secrets from your environment, applies
+the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests the
+catalog from a read-only mount of this repository.
+
+`local-rebuild` rebuilds the long-lived service images only. Tooling baked into
+a run image, such as `voxel-anim`, `draw`, the core modeling library, or the
+Foray/Lattice tooling, is rebuilt separately with
+`make -C deployments/local run-images`, or with one of the narrower targets:
+`run-images-e2e`, `run-images-full-stack`, `run-images-game-jam`,
+`run-images-asset`, `run-images-adversarial`, `run-images-performance`,
+`run-images-gg`, or `run-image-<name>` for a single image.
+
+### Waiting for a rollout
+
+`local-up` and `local-rebuild` wait for each workload to finish rolling out,
+allowing each one `ROLLOUT_TIMEOUT`, which defaults to 600s. Both wait on every
+workload before reporting, so a failure names all of the workloads that timed
+out rather than only the first.
+
+A timeout reported alongside pods still in `Terminating` means the node's
+container runtime has yet to reap the outgoing pods, which holds their
+replacements back. The wait prints those pods and the runtime's `FailedKillPod`
+events, identifying the stall as a property of the node rather than of the
+images just built. Retry once the node settles, or allow more time:
+
+```sh
+make -C deployments/local local-rebuild ROLLOUT_TIMEOUT=1800s
+```
+
+### Reaching the stack from the host
 
 `make local-forward` holds the backend on `127.0.0.1:8787`, the auth service on
-`127.0.0.1:8789`, the artifact service on `127.0.0.1:8790`, the arena service
-on `127.0.0.1:8791`, and — for convenience, since this is the session you keep
-running anyway — Grafana on `127.0.0.1:3000`. Then start the console from source in a separate terminal —
-`npm run -w apps/web dev` — and open <http://127.0.0.1:1430>. Its backend/auth URLs
-are pre-set to those forwarded addresses via the committed `apps/web/.env.development`,
-so there is nothing to configure and no `VITE_BACKEND_URL` to pass (the backend/auth
-CORS layers are permissive, so the dev server's cross-origin requests are allowed).
-The forwards are needed because the
-**browser runs outside the cluster**: it loads the console, and reaches the backend
-(which the in-cluster dispatcher and driver drain), the artifact service (each run's
-build + proof/asset media, as `<img>`/`<iframe>` requests), and the arena
-(adversarial matches/tournaments — the backend reports its URL at `GET /config`)
-over these same forwards. `tcab run` and the desktop app target the **same**
-forwarded backend: point `tcab` at it with `TCAB_BACKEND_URL=http://127.0.0.1:8787`
-(and `tcab login` first); the desktop app uses the same backend URL in its
-Connections settings. After editing a test case, re-ingest with
-`make -C deployments/local local-ingest`.
+`127.0.0.1:8789`, the artifact service on `127.0.0.1:8790`, the arena service on
+`127.0.0.1:8791`, and Grafana on `127.0.0.1:3000`. The forwards are required
+because the browser runs outside the cluster: it loads the console and reaches
+the backend, the artifact service (each run's build and proof/asset media, as
+`<img>`/`<iframe>` requests), and the arena (adversarial matches and tournaments,
+whose URL the backend reports at `GET /config`) over them.
+
+Start the console from source in a separate terminal and open
+<http://127.0.0.1:1430>:
+
+```sh
+npm run -w apps/web dev
+```
+
+Its backend and auth URLs are pre-set to the forwarded addresses by the committed
+`apps/web/.env.development`, so there is nothing to configure. The backend and
+auth CORS layers accept the dev server's cross-origin requests.
+
+`tcab run` targets the same forwarded backend. Point `tcab` at it with
+`TCAB_BACKEND_URL=http://127.0.0.1:8787` after `tcab login`.
+
+### Clearing stale forwards
+
+`local-forward` backgrounds one `kubectl port-forward` per service, so a Ctrl-C
+that reaches only the foreground process can leave children holding the ports. A
+later `local-forward` then fails to bind, or leaves one service reachable and
+another not. Clear them with:
+
+```sh
+scripts/free-local-forward.sh              # stop local forwarding
+scripts/free-local-forward.sh --dry-run    # show what would be stopped
+```
+
+It touches only forwards into the local namespace that target this repository's
+own services, so a forward held open against staging or production survives. It
+reports each forwarded port as free or still held and exits non-zero if any is
+still held. A port held by something other than one of our forwards is reported
+and left alone; in a devcontainer that is usually the editor auto-forwarding the
+port, which you stop in its PORTS panel.
 
 ## Pointing `tcab` at a deployment
 
-`tcab` is a thin enqueue-and-watch client, so the only difference between the local
-k3d stack and a remote staging/prod deployment is the URL you point it at and
-logging in with an account. There are two ways to reach a remote backend:
+`tcab` is a thin enqueue-and-watch client, so a remote staging or production
+deployment differs only in the URL you point it at and the account you log in
+with. There are two routes to a remote backend.
 
-- **Over the VPN, at the private hostnames (the prod path).** A deployment with the
-  [internal ingress](/deployment/kubernetes/#internal-ingress) serves the backend and
-  auth service at private `*.testcabinet.ai` hostnames, reachable on the company VPN.
-  Point `tcab` straight at them — no port-forward needed:
+Over the VPN, at the private hostnames, is the production path. A deployment with
+the [internal ingress](/deployment/kubernetes/internal-ingress/) serves the
+backend and auth service at private `*.testcabinet.ai` hostnames that resolve
+only on the VPN, via the cloud's private DNS:
 
-  ```sh
-  export TCAB_BACKEND_URL=https://api.tcab.testcabinet.ai
-  export TCAB_AUTH_URL=https://auth.tcab.testcabinet.ai
-  tcab login --username <name>     # authenticate against the auth service
-  tcab run --test-case carom --version v1.0.0 --variant base \
-    --harness claude --model claude-opus-4-8   # enqueue + watch, exactly as locally
-  ```
+```sh
+export TCAB_BACKEND_URL=https://api.tcab.testcabinet.ai
+export TCAB_AUTH_URL=https://auth.tcab.testcabinet.ai
+tcab login --username <name>
+tcab run --test-case carom --version v1.0.0 --variant base \
+  --harness claude --model claude-opus-4-8
+```
 
-  These hostnames resolve **only** on the VPN, via the cloud's private DNS — they
-  are not public. The backend reports the artifact and arena URLs
-  (`https://artifacts.tcab.testcabinet.ai` / `https://arena.tcab.testcabinet.ai`) at
-  `GET /config`, so media and arena views resolve over the same VPN.
+The backend reports the artifact and arena URLs at `GET /config`, so media and
+arena views resolve over the same VPN.
 
-- **`kubectl port-forward` (off-VPN fallback / debugging, or before the ingress is
-  up).** Forward the backend (and auth) `ClusterIP` services to localhost and point
-  `tcab` at the forwarded ports:
+`kubectl port-forward` is the fallback for off-VPN debugging, or for before the
+ingress is up. Forward the backend and auth `ClusterIP` services and point `tcab`
+at the forwarded ports:
 
-  ```sh
-  kubectl -n tcab-prod port-forward svc/tcab-backend 8787:8787 &
-  kubectl -n tcab-prod port-forward svc/tcab-auth    8789:8789 &
-  export TCAB_BACKEND_URL=http://127.0.0.1:8787
-  export TCAB_AUTH_URL=http://127.0.0.1:8789
-  tcab login --username <name>
-  tcab run --test-case carom --version v1.0.0 --variant base \
-    --harness claude --model claude-opus-4-8
-  ```
+```sh
+kubectl -n tcab-prod port-forward svc/tcab-backend 8787:8787 &
+kubectl -n tcab-prod port-forward svc/tcab-auth    8789:8789 &
+export TCAB_BACKEND_URL=http://127.0.0.1:8787
+export TCAB_AUTH_URL=http://127.0.0.1:8789
+tcab login --username <name>
+tcab run --test-case carom --version v1.0.0 --variant base \
+  --harness claude --model claude-opus-4-8
+```
 
-  Note that artifact/arena **media** still resolves to whatever the backend
-  advertises at `GET /config`; if those `TCAB_*_PUBLIC_URL`s point at the private
-  ingress hostnames, you also need the VPN (or matching forwards) for media to load.
+Artifact and arena media still resolve to whatever the backend advertises at
+`GET /config`, so where those `TCAB_*_PUBLIC_URL`s name the private ingress
+hostnames, media needs the VPN or matching forwards as well.
 
 ## Iterating on the backend and auth services as bare processes
 
-You can run the **backend and auth** services as ordinary host processes — the
-quickest way to iterate on those two binaries — but note that **run execution
-still requires the dispatcher and driver**, i.e. a cluster (the k3d stack above
-or a remote one). The bare-process path below stands up the two stateful services
-and the console for read/review work; to actually launch a run, point the console
-at a backend whose queue an in-cluster dispatcher is draining.
+The backend and auth service run as ordinary host processes, which is the
+quickest way to iterate on those two binaries. Run execution still requires the
+dispatcher and driver, so launching a run needs a backend whose queue an
+in-cluster dispatcher is draining. The path below stands up the two stateful
+services and the console for read and review work.
 
-### Configure the services
+### Service configuration
 
-Copy the repo-root example env files and fill them in. These remain the
-authoritative list of every variable each service reads.
+Copy the repo-root example env files and fill them in. They are the authoritative
+list of every variable each service reads.
 
 ```sh
 cp .env.backend.example .env.backend
 ```
 
-In `.env.backend`, the only required value is the checkout the backend ingests
-definitions from — point it at this repository:
+The only required value in `.env.backend` is the checkout the backend ingests
+definitions from:
 
 ```sh
 TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
-# Leave TCAB_BACKEND_BIND at its default 127.0.0.1:8787 for local use.
-# Leave TCAB_BACKEND_DATABASE_URL unset to use the default local SQLite file.
-# Leave TCAB_BACKEND_AUTH_URL at its default http://127.0.0.1:8789 so the backend
-# verifies bearer tokens against the local auth service.
-# R2 + deploy-hook variables can stay blank: with them unset the backend still
-# records to its database and regenerates the snapshot on disk (a dev-only mode).
+# TCAB_BACKEND_BIND defaults to 127.0.0.1:8787.
+# TCAB_BACKEND_DATABASE_URL unset uses the default local SQLite file.
+# TCAB_BACKEND_AUTH_URL defaults to http://127.0.0.1:8789, the local auth service.
+# With the R2 and deploy-hook variables blank, the backend still records to its
+# database and regenerates the snapshot on disk.
 ```
 
-The dispatcher and artifact service take their own env — see
-[`.env.dispatcher.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.dispatcher.example)
-and
-[`.env.artifacts.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.artifacts.example)
-for the full lists — but they assume the cluster context the k3d overlay wires up
-(the dispatcher's Kubernetes API access, the driver ServiceAccount, the artifact
-volume), so the k3d stack is the supported way to run them.
+To serve the console's gg Reference section, project gg's reference documents
+once:
 
-### Start the backend
+```sh
+scripts/gg-reference.sh
+```
 
-Run the binary directly from a directory containing `.env.backend`:
+That writes `target/gg-reference/`, which is where an unset `TCAB_GG_REFERENCE`
+resolves relative to `TCAB_BACKEND_CHECKOUT`. Skipping it costs only that
+section: `GET /gg/reference` answers `503` with a message naming this script, the
+backend logs one warning at boot, and runs, reviews, and the catalog are
+unaffected. The script builds gg, so it needs gg's program-language toolchains,
+which the devcontainer has (see
+[Building](/development/building/#gg-and-its-eleven-toolchains)).
+
+The dispatcher and artifact service read their own env, listed in
+`.env.dispatcher.example` and `.env.artifacts.example`. Both assume the cluster
+context the k3d overlay wires up, covering the dispatcher's Kubernetes API
+access, the driver ServiceAccount, and the artifact volume, so the k3d stack is
+the supported way to run them.
+
+### Starting the backend
+
+Run the binary from a directory containing `.env.backend`, then ingest the
+repository so the catalog is populated:
 
 ```sh
 ./target/debug/tcab-backend
-```
-
-Once it is up, ingest the repository so the catalog is populated:
-
-```sh
 curl -X POST http://127.0.0.1:8787/ingest
 ```
 
 Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
 `curl http://127.0.0.1:8787/test-cases`.
 
-After you **edit a test case**, re-ingest so the backend serves the change.
-A plain scan skips any version it already holds (the store is immutable per
-`(slug, version)`), so force the overwrite — optionally scoping it to the case
-you touched. The `scripts/reingest.sh` helper forces the overwrite and streams
-its per-case progress (a full re-render takes a minute or more). By default it
-only re-ingests cases whose files changed since its last successful run — it
-records that baseline in a gitignored `.reingest-timestamp` marker — so a repeat
-call after touching one case renders just that case:
+The baseline validation media a reviewer compares a run's media against comes
+from the `cold-storage` submodule. Fetch it before ingesting to review runs with
+their baselines:
 
 ```sh
-scripts/reingest.sh             # re-ingest only cases changed since the last run
-scripts/reingest.sh carom        # scope to one case (still skipped if unchanged)
-scripts/reingest.sh --force      # re-ingest every case, ignoring change detection
+git submodule update --init --depth 1 cold-storage
 ```
 
-The first run (or after `rm .reingest-timestamp`) has no baseline and re-ingests
-everything. Use `--force` to re-render regardless of what changed.
+Without it every version ingests with no baseline media, and a review shows only
+the build's half of each side-by-side. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
+points the backend at a copy kept elsewhere. The same applies to the k3d stack,
+which ingests the checkout it mounts.
 
-It is a thin wrapper over the endpoint's streamed (`Accept: application/x-ndjson`)
-progress feed; the raw call is:
+Re-ingest after editing a test case, so the backend serves the change. A plain
+scan skips any version it already holds, because the store is immutable per
+`(slug, version)`, so the re-ingest forces the overwrite. `scripts/reingest.sh`
+forces it and streams the endpoint's per-case progress. By default it re-ingests
+only the versions whose files changed since its last successful run, recorded in
+a gitignored `.reingest-timestamp` marker:
+
+```sh
+scripts/reingest.sh             # only versions changed since the last run
+scripts/reingest.sh carom       # scope to one case (still skipped if unchanged)
+scripts/reingest.sh --force     # re-ingest every case, ignoring change detection
+```
+
+The first run, or one after `rm .reingest-timestamp`, has no baseline and
+re-ingests everything. So does a run against a backend reporting an unservable
+store on `/healthz`, which is what a rebuilt backend reports when its record
+shapes changed: change detection watches the test cases, and the store went
+stale from a code change no test-case mtime records. The script wraps the endpoint's streamed
+(`Accept: application/x-ndjson`) progress feed; the raw call is:
 
 ```sh
 curl -X POST http://127.0.0.1:8787/ingest \
@@ -263,81 +287,75 @@ curl -X POST http://127.0.0.1:8787/ingest \
   -d '{"testCases": ["carom"], "force": true}'
 ```
 
-Backend-driven runs (the desktop and web consoles) resolve their definition from
-the backend, so **without a re-ingest they keep running the previous
-definition** — a newly added spec, proof, or prompt change silently does not
-reach the model, and new manifest fields read back empty. (`tcab validate`
-against a local checkout reads the repository directly and is not affected.)
+Backend-driven runs resolve their definition from the backend, so until a
+re-ingest they keep running the previous definition: a new spec, proof, or prompt
+change does not reach the model, and new manifest fields read back empty.
+`tcab validate` against a local checkout reads the repository directly and is
+unaffected.
 
 Forced re-ingest overwrites the stored version in place and is a
-**development-only** convenience for iterating on a version no run has been
-published against. Once a published run references a version it is immutable —
-revise by creating a **new version** instead, never by editing and re-ingesting
-the published one (see [Test Cases](/testing/end-to-end/overview/)).
+development-only convenience for iterating on a version no run has been published
+against. Once a published run references a version, revise the case by creating a
+new version (see [Frozen Versions](/development/frozen-versions/)).
 
-### Start the auth service
+### Starting the auth service
 
-So you can register, log in, and review/publish, start the auth service. It
-takes its own bind address and its own database, separate from the backend's:
+The auth service holds its own bind address and database, separate from the
+backend's, and both have defaults:
+
+```sh
+./target/debug/tcab-auth-service
+```
 
 ```sh
 TCAB_AUTH_BIND=127.0.0.1:8789 \
-TCAB_AUTH_DATABASE_URL=sqlite://./tcab-auth.db?mode=rwc \
+TCAB_AUTH_DATABASE_URL=sqlite://./tcab-auth.sqlite?mode=rwc \
   ./target/debug/tcab-auth-service
 ```
 
-Both default to the values shown, so a bare `./target/debug/tcab-auth-service`
-works too. Confirm it with `curl http://127.0.0.1:8789/healthz`, then create an
-account and log in:
+Confirm it with `curl http://127.0.0.1:8789/healthz`, then create an account and
+log in:
 
 ```sh
 tcab register --username dev --display-name "Dev"
 ```
 
-The backend (pointed at it by `TCAB_BACKEND_AUTH_URL`) now verifies the token the
-CLI stored, so mutations are accepted. Without the auth service running, reads
-still work but review/publish are rejected `401`.
+The backend, pointed at it by `TCAB_BACKEND_AUTH_URL`, verifies the token the CLI
+stored, so mutations are accepted. With the auth service down, reads still work
+and review and publish are rejected `401`.
 
-### Start the web console
-
-Run the console's dev server and open it in a browser:
+### Starting the web console
 
 ```sh
 npm run -w apps/web dev
 ```
 
-The console defaults its backend to `http://127.0.0.1:8787` and its auth service to
-`http://127.0.0.1:8789` — the forwarded local-stack addresses, pre-set in the
-committed `apps/web/.env.development`, so there is nothing to configure. (To aim it
-elsewhere, set the backend in the UI or override `VITE_BACKEND_URL` in a gitignored
-`.env.local`.) The console enqueues a run by posting it to the backend's queue;
-the in-cluster dispatcher claims it, the driver Job executes it, and the console
-watches its [event stream](/components/core/events/) live and reads the produced
-build and media from the [artifact service](/components/artifacts/overview/) (the
-backend reports its public URL to the console via `GET /config`). There is no
-worker to register.
+The console defaults its backend to `http://127.0.0.1:8787` and its auth service
+to `http://127.0.0.1:8789`, pre-set in the committed `apps/web/.env.development`.
+To aim it elsewhere, set the backend in the UI or override `VITE_BACKEND_URL` in
+a gitignored `.env.development.local`, which Vite loads after the committed
+`.env.development`. It enqueues a run by posting it to the backend's
+queue; the in-cluster dispatcher claims it, the driver Job executes it, and the
+console watches its [event stream](/components/core/events/) live and reads the
+produced build and media from the
+[artifact service](/components/artifacts/overview/).
 
-## Telemetry (optional)
+## Telemetry
 
-To watch traces across `tcab-backend` → `tcab-dispatcher` → `tcab-driver`
-locally, the Grafana LGTM stack runs **in the cluster** (the local overlay's
-`components/observability`), so `make -C deployments/local local-up` already wires
-every in-cluster service to it — Grafana is exposed at <http://127.0.0.1:3000> by
-`make -C deployments/local local-forward` (the session you already keep running);
-`make -C deployments/local local-grafana` is only needed when you also want the OTLP
-collector ports forwarded (to export from a process run outside the cluster). That is
-fully described under
-[Observability](/development/observability/) — in particular the
-[endpoint-duality rule](/development/observability/#endpoint-duality-in-cluster-vs-out-of-cluster):
-in-cluster pods use `http://tcab-lgtm:4318`, while a process run outside the
-cluster uses `http://localhost:4318` via that port-forward. Leaving
-`OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps everything on plain stdout logging.
+The Grafana LGTM stack runs in the cluster as the local overlay's
+`components/observability`, so `local-up` wires every in-cluster service to it
+and `local-forward` exposes Grafana at <http://127.0.0.1:3000>.
+`make -C deployments/local local-grafana` additionally forwards the OTLP
+collector ports, which a process run outside the cluster exports to. Leaving
+`OTEL_EXPORTER_OTLP_ENDPOINT` unset keeps everything on stdout logging. See
+[Observability](/development/observability/), in particular its endpoint-duality
+rule for processes inside and outside the cluster.
 
-## Next
+## Next steps
 
-When this works end to end, the same service images deploy unchanged to
-[staging and prod on Kubernetes](/deployment/kubernetes/) — what changes is the
-namespace they live in, not how the flow is wired. A run is a per-run **Job**
-everywhere: the dispatcher claims a queued run and creates a Job running the
-driver, which (under the Kubernetes runtime) creates one ephemeral sandbox pod
-per run. See [Deployment](/deployment/overview/) for the remote build.
+The same service images deploy unchanged to
+[staging and production on Kubernetes](/deployment/kubernetes/overview/). A run is a
+per-run `Job` everywhere: the dispatcher claims a queued run and creates a Job
+running the driver, which under the Kubernetes runtime creates one ephemeral
+sandbox pod per run. See [Deployment](/deployment/overview/) for the remote
+build.

@@ -1,7 +1,14 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
+import { ToastContainer } from "react-toastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
@@ -12,9 +19,14 @@ import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
+import { formatTimestamp } from "../../format";
 import type { RunQuery, RunQueryResult } from "../../data/runQuery";
 import { runSummaryPage } from "../../data/runQuery";
-import { RunsRuntimeProvider, useRunsRuntime } from "../../runtime/runsRuntime";
+import {
+  RunsRuntimeProvider,
+  useRunsRuntime,
+  type RunsRuntime,
+} from "../../runtime/runsRuntime";
 import type { TestCaseSummary } from "../../data/testCases";
 import { RunsPage } from "./RunsPage";
 
@@ -100,7 +112,10 @@ const ALL_RUNS = [PUBLISHED_NEW, UNPUBLISHED, PUBLISHED_OLD, PUBLISHED_STALE];
 // A host that answers a summary query the way the backend does: the `any` slice
 // sees every run, `published` only the published ones. Records each query so a
 // test can assert what the page asked the server for.
-function galleryValue(queries: RunQuery[]): GalleryDataInput {
+function galleryValue(
+  queries: RunQuery[],
+  opts: { total?: number } = {},
+): GalleryDataInput {
   return {
     // The produced worklist the console holds locally. A listing must NOT merge
     // this in — the queried slice already carries the run.
@@ -115,7 +130,10 @@ function galleryValue(queries: RunQuery[]): GalleryDataInput {
         query.state === "any"
           ? ALL_RUNS
           : ALL_RUNS.filter((run) => run.publishedAt);
-      return runSummaryPage(rows, { ...query, state: "published" });
+      const page = runSummaryPage(rows, { ...query, state: "published" });
+      // A cabinet larger than one page: the backend's total counts every row the
+      // same query can serve, across the pages it takes to serve them.
+      return opts.total == null ? page : { ...page, total: opts.total };
     },
     testCases: TEST_CASES,
     testCasesStatus: "ready",
@@ -125,10 +143,10 @@ function galleryValue(queries: RunQuery[]): GalleryDataInput {
   } as unknown as GalleryDataInput;
 }
 
-function renderPage(queries: RunQuery[]) {
+function renderPage(queries: RunQuery[], opts: { total?: number } = {}) {
   return render(
     <MemoryRouter>
-      <GalleryDataProvider value={galleryValue(queries)}>
+      <GalleryDataProvider value={galleryValue(queries, opts)}>
         <RunsPage />
       </GalleryDataProvider>
     </MemoryRouter>,
@@ -162,6 +180,53 @@ describe("RunsPage", () => {
       sort: "date",
       dir: "desc",
     });
+  });
+
+  it("carries a coverage cell's gg configuration deep link into the query", async () => {
+    // The link a cell's "Runs" control writes. The bar offers no control for the
+    // configuration, so the URL is the only thing that can put it in the query, and
+    // a listing that dropped it would answer with every gg run of the model.
+    const queries: RunQuery[] = [];
+    render(
+      <MemoryRouter initialEntries={["/runs?ggConfigId=cfg-a"]}>
+        <GalleryDataProvider value={galleryValue(queries)}>
+          <RunsPage />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(queries.length).toBeGreaterThan(0));
+    expect(queries[0]).toMatchObject({ ggConfigId: "cfg-a" });
+
+    // Nothing on screen names the configuration, so the listing has to say it is
+    // narrowed at all — and clearing has to widen it again.
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(queries.at(-1)?.ggConfigId).toBeUndefined());
+  });
+
+  it("sizes the pager from the returned total and nothing else", async () => {
+    // The backend's `total` counts exactly the rows the same query can serve, so
+    // three rows over a page size of 20 is one page and the pager is absent rather
+    // than offering a second page that would render nothing.
+    const queries: RunQuery[] = [];
+    renderPage(queries);
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("offers every page the total covers and asks the server for its offset", async () => {
+    // The other direction of the same rule: a total spanning three pages offers
+    // exactly three, and the page the reader picks travels as the query's offset
+    // rather than being sliced out of the rows already in hand.
+    const queries: RunQuery[] = [];
+    renderPage(queries, { total: 45 });
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    const third = screen.getByRole("button", { name: "Page 3" });
+    expect(screen.queryByRole("button", { name: "Page 4" })).toBeNull();
+
+    fireEvent.click(third);
+    await waitFor(() => expect(queries.at(-1)).toMatchObject({ offset: 40 }));
   });
 
   it("re-queries the server on a header sort instead of sorting the page", async () => {
@@ -259,7 +324,18 @@ describe("RunsPage", () => {
     renderPage(queries);
     await waitFor(() => expect(rowNames()).toHaveLength(3));
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Harness" }), {
+    // The harness facet offers the first-party gg run mode alongside the CLI
+    // catalog — gg runs record `harnessSlug: "gg"` and must be filterable.
+    const harnessSelect = screen.getByRole("combobox", { name: "Harness" });
+    expect(
+      Array.from(harnessSelect.querySelectorAll("option")).map((o) => o.value),
+    ).toContain("gg");
+    fireEvent.change(harnessSelect, { target: { value: "gg" } });
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({ harness: "gg" }),
+    );
+
+    fireEvent.change(harnessSelect, {
       target: { value: "codex" },
     });
     await waitFor(() =>
@@ -339,7 +415,7 @@ function stopWorkers() {
   const value = {
     workers: [],
     activeId: "w1",
-    active: { id: "w1", label: "Worker", url: null, local: true, client },
+    active: { id: "w1", label: "Worker", url: "https://w1.example", client },
     setActive: () => {},
     addWorker: () => {},
     removeWorker: () => {},
@@ -348,7 +424,9 @@ function stopWorkers() {
 }
 
 // The console as the controls require it: a cancel-capable worker, a signed-in
-// account (seeded the way a reload restores one), and a seeded in-flight list.
+// account (seeded the way a reload restores one), a seeded in-flight list, and the
+// toast container the console mounts once for the whole app, which is where a
+// sweep's report lands.
 function renderConsole(runs: InProgressRun[]) {
   localStorage.setItem(
     "tcab.auth",
@@ -363,6 +441,7 @@ function renderConsole(runs: InProgressRun[]) {
             <SeedActive runs={runs} />
             <GalleryDataProvider value={galleryValue([])}>
               <RunsPage />
+              <ToastContainer />
             </GalleryDataProvider>
           </RunsRuntimeProvider>
         </AuthProvider>
@@ -383,6 +462,42 @@ describe("RunsPage global stop controls", () => {
     await waitFor(() => expect(rowNames()).toHaveLength(3));
 
     expect(screen.queryByRole("group", { name: "Stop runs" })).toBeNull();
+    // And the header does not lay its comment line out for a cluster that never
+    // arrives: the comment sits straight in the header rather than as one half of a
+    // row shared with something that renders nothing.
+    const comment = screen.getByText(
+      "// every result the cabinet has produced",
+    );
+    expect(comment.parentElement?.tagName).toBe("HEADER");
+  });
+
+  // The cluster used to ride the trailing edge of the tab strip, which worked until the
+  // strip grew a fifth tab: five tabs and three buttons is a bar that wraps onto a second
+  // row at an ordinary window width, and the row it wrapped onto pushed the page down. It
+  // sits on the header's comment line instead, which is a half-empty row already.
+  it("sits in the page header rather than in the tab strip", async () => {
+    renderConsole(TWO_WAITING);
+
+    const group = await screen.findByRole("group", { name: "Stop runs" });
+    const tabs = screen.getByRole("navigation", { name: "Runs sections" });
+    expect(tabs).not.toContainElement(group);
+    // On the comment line itself: the cluster and the comment share a parent, and that
+    // row is inside the page header.
+    const comment = screen.getByText(
+      "// every result the cabinet has produced",
+    );
+    expect(group.parentElement?.parentElement).toBe(comment.parentElement);
+    const header = comment.closest("header");
+    expect(header).not.toBeNull();
+
+    // And that row is the header's own, a sibling of the row the New-run button is on
+    // rather than a column of it. A header laid out as one column of somebody else's
+    // row gives its comment line only that column's width, which is not enough for the
+    // three buttons — they wrap onto a row of their own, which is the whole thing
+    // moving them here was meant to avoid.
+    const newRun = screen.getByRole("link", { name: "+ New run" });
+    expect(newRun.parentElement?.parentElement?.parentElement).toBe(header);
+    expect(comment.parentElement?.parentElement).toBe(header);
   });
 
   it("clears the waiting queue and reports how many it cancelled", async () => {
@@ -396,7 +511,7 @@ describe("RunsPage global stop controls", () => {
     fireEvent.click(clear);
 
     // Cheap enough to need no confirmation — it discards no work — and the count
-    // comes back in the bar rather than the press simply succeeding quietly.
+    // comes back as a toast rather than the press simply succeeding quietly.
     await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith("tok"));
     await screen.findByText("Canceled 2 waiting runs.");
   });
@@ -421,5 +536,196 @@ describe("RunsPage global stop controls", () => {
 
     await waitFor(() => expect(cancelActiveRuns).toHaveBeenCalledWith("tok"));
     await screen.findByText("Canceled 1 executing run.");
+  });
+});
+
+// --- A run finishing while the listing is filtered ---
+
+// The runs runtime as the console's notification layer holds it, captured from
+// inside the provider so a test can drive exactly what a completion push does:
+// prune the finished run from the in-progress list, then ask the data source to
+// re-read.
+function CaptureRuntime({ into }: { into: { current: RunsRuntime | null } }) {
+  into.current = useRunsRuntime();
+  return null;
+}
+
+// A cabinet the test mutates: the host answers every query off this array, so a
+// run "landing" server-side is a push rather than a re-render of fixed data.
+function liveGalleryValue(
+  cabinet: RunSummary[],
+  queries: RunQuery[],
+): GalleryDataInput {
+  return {
+    producedSummaries: [],
+    localIds: new Set<string>(),
+    writeups: {},
+    reviews: {},
+    runsLoading: false,
+    queryRunSummaries: async (query: RunQuery): Promise<RunQueryResult> => {
+      queries.push(query);
+      return runSummaryPage(cabinet, { ...query, state: "published" });
+    },
+    testCases: TEST_CASES,
+    testCasesStatus: "ready",
+    models: [],
+    modelsStatus: "ready",
+    canExecute: true,
+  } as unknown as GalleryDataInput;
+}
+
+// The one in-flight run, on the case the listing is filtered to.
+const ALPHA_ACTIVE = [
+  {
+    ...active("j-alpha", "running"),
+    testCaseSlug: "alpha",
+    testCaseVersion: "v2.0.0",
+  },
+];
+
+// The record that run leaves behind once it finishes.
+const ALPHA_FINISHED = summary("r-alpha-live", "alpha", {
+  published: false,
+  startedAt: "2026-01-05T00:00:00Z",
+  version: "v2.0.0",
+});
+
+// Every run link the log is currently showing, as its href.
+function rowLinks(): string[] {
+  return screen
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("href") ?? "");
+}
+
+describe("RunsPage with a filter applied", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("keeps a run in the list when it finishes", async () => {
+    const cabinet: RunSummary[] = [];
+    const queries: RunQuery[] = [];
+    const runtime = { current: null as RunsRuntime | null };
+    render(
+      <MemoryRouter initialEntries={["/runs?case=alpha"]}>
+        <RunsRuntimeProvider>
+          <CaptureRuntime into={runtime} />
+          <SeedActive runs={ALPHA_ACTIVE} />
+          <GalleryDataProvider value={liveGalleryValue(cabinet, queries)}>
+            <RunsPage />
+          </GalleryDataProvider>
+        </RunsRuntimeProvider>
+      </MemoryRouter>,
+    );
+
+    // The filtered listing holds nothing yet; the in-flight run leads it, linked
+    // to its live monitor.
+    await waitFor(() => expect(rowLinks()).toContain("/runs/j-alpha/live"));
+    expect(queries[0]).toMatchObject({ testCase: "alpha" });
+
+    // The run finishes: its record lands in the cabinet, the notification layer
+    // prunes it from the in-progress list and asks the data source to re-read.
+    await act(async () => {
+      cabinet.push(ALPHA_FINISHED);
+      runtime.current!.remove("j-alpha");
+      runtime.current!.requestRefresh();
+    });
+
+    // It must not vanish: the pinned live row gives way to the recorded row, still
+    // inside the same filtered query rather than only after a reload.
+    await waitFor(() => expect(rowLinks()).toContain("/runs/r-alpha-live"));
+    expect(rowLinks()).not.toContain("/runs/j-alpha/live");
+    expect(queries.at(-1)).toMatchObject({ state: "any", testCase: "alpha" });
+  });
+});
+
+// --- The pinned in-progress rows ---
+
+// When the seeded live run reports it started. Everything the row shows about it —
+// its start, its ticking duration — is measured from this and from nothing else.
+const LIVE_STARTED_AT = "2026-01-05T00:00:00Z";
+
+// A run already executing, carrying the whole identity a job knows at launch.
+const LIVE_ACTIVE = [
+  {
+    ...active("j-live", "running"),
+    testCaseSlug: "alpha",
+    engine: "simple-2d",
+    startedAt: LIVE_STARTED_AT,
+  },
+];
+
+// The same run before it started: waiting behind the queue, with no start to show.
+const WAITING_ACTIVE = [
+  { ...active("j-waiting", "queued"), testCaseSlug: "alpha" },
+];
+
+// One labelled cell of the pinned live row, by the caption its phone card shows.
+function liveCell(container: HTMLElement, label: string): string {
+  const row = container.querySelector("[data-active]");
+  return row?.querySelector(`[data-label="${label}"]`)?.textContent ?? "";
+}
+
+// The runs page around a seeded in-flight list, with the two columns that start
+// hidden turned on — the picker writes exactly this override, and the live start
+// and duration are the point of the test.
+function renderLive(runs: InProgressRun[]) {
+  localStorage.setItem(
+    "ttc:runlog:global:visible",
+    JSON.stringify({ timestamp: true, duration: true }),
+  );
+  return render(
+    <MemoryRouter>
+      <RunsRuntimeProvider>
+        <SeedActive runs={runs} />
+        <GalleryDataProvider value={liveGalleryValue([], [])}>
+          <RunsPage />
+        </GalleryDataProvider>
+      </RunsRuntimeProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("RunsPage in-progress rows", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse(LIVE_STARTED_AT) + 60_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("fills every field the run already knows, and ticks its duration", async () => {
+    const { container } = renderLive(LIVE_ACTIVE);
+    await act(async () => {});
+
+    // The engine rides the job's own lifted column, so a live row names it exactly
+    // as the finished row will.
+    expect(liveCell(container, "Engine")).toBe("simple-2d");
+    expect(liveCell(container, "Started")).toBe(
+      formatTimestamp(LIVE_STARTED_AT),
+    );
+    expect(liveCell(container, "Duration")).toBe("1m 0s");
+
+    // A second of wall clock is a second on the row: the shared clock ticks and the
+    // cell follows it, without the page being navigated or re-queried.
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(liveCell(container, "Duration")).toBe("1m 1s");
+  });
+
+  it("shows a run that has not started as not started, never as queue time", async () => {
+    // The run was enqueued a full hour ago and has still not begun. Neither cell may
+    // invent a figure out of that wait — the dash is the true answer — while the
+    // engine, fixed at launch, is known and resolves to the engineless run.
+    const { container } = renderLive(WAITING_ACTIVE);
+    await act(async () => {});
+
+    expect(liveCell(container, "Started")).toBe("—");
+    expect(liveCell(container, "Duration")).toBe("—");
+    expect(liveCell(container, "Engine")).toBe("none");
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_600_000);
+    });
+    expect(liveCell(container, "Duration")).toBe("—");
   });
 });

@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Avatar, GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  Avatar,
+  GradeBadge,
+  Panel,
+  RatingBadge,
+} from "@clockwyrks/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
@@ -12,18 +18,25 @@ import type {
   StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
-import type { Assertion, RunRecord } from "@test-cabinet/run-record";
+import type { Assertion, RunRecord } from "@clockwyrks/run-record";
 import {
   useGalleryData,
   type ValidationMedia,
 } from "../../../data/galleryContext";
 import { useTestCase } from "../../../data/useTestCase";
-import { topUpAfterReview } from "../../account/CoveragePlanPage";
+import { topUpAfterReview } from "../../account/coveragePlan";
 import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
+import { SubmitNotice } from "../../../components/SubmitNotice";
 import { ReviewItemAssets } from "./AssetResultSection";
+import { ValidationReplayPair } from "./ValidationReplayPair";
+import { ValidationMediaPair } from "./ValidationMediaPair";
+import { ReviewItemBrowser } from "./ReviewItemBrowser";
+import { ReviewItemHeading, capOutcome } from "./ReviewItemCap";
 import { DebugScriptList } from "./DebugScriptList";
 import {
+  AESTHETIC_META,
+  AESTHETIC_RATINGS,
   GRADE_LEVELS,
   GRADE_META,
   GRADE_MAX_POINTS,
@@ -31,15 +44,24 @@ import {
   RATINGS,
   RATING_META,
   VERDICT_META,
+  aggregateAestheticRating,
   aggregateOverallGrade,
   aggregateRating,
   aggregateScore,
+  automatedVerdicts,
   formatPoints,
+  formatWeight,
+  isAestheticRating,
   isGrade,
   isRating,
+  isToolchainGated,
+  reviewAesthetic,
+  reviewItemsForEngine,
   scoreChecklist,
   subItemVerdictId,
+  validatorReviewScore,
   verdictIdsForItem,
+  type AestheticRating,
   type GradeStatus,
   type Rating,
 } from "../../../data/ratings";
@@ -51,6 +73,8 @@ import {
   type VerdictDraft,
 } from "./autoVerdicts";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import type { ReviewModel } from "../../../data/galleryContext";
+import { ValidatorVerdict } from "./ValidatorVerdict";
 import styles from "../RunExec.module.scss";
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
@@ -59,13 +83,14 @@ const STATUSES: VerdictStatus[] = ["pass", "fail"];
 // label so a reviewer is reminded what each tier means without leaving the form.
 // Built from the shared RATING_META so it stays in lockstep with the tiers.
 const RATING_CRITERIA = RATINGS.map(
-  (rt) => `${RATING_META[rt].label} — ${RATING_META[rt].description}`,
+  (rt) => `${RATING_META[rt].label}: ${RATING_META[rt].description}`,
 ).join("\n\n");
 
-/** Format a point weight as `1 pt` / `2 pts`. */
-function pts(weight: number): string {
-  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
-}
+// The same reminder for the aesthetic scale, beside the run-wide Aesthetics
+// picker on a validator-rated run.
+const AESTHETIC_CRITERIA = AESTHETIC_RATINGS.map(
+  (rt) => `${AESTHETIC_META[rt].label}: ${AESTHETIC_META[rt].description}`,
+).join("\n\n");
 
 /**
  * The points label for a checklist item: a binary item shows its flat weight
@@ -76,7 +101,7 @@ function itemPoints(
   item: { weight: number; graded?: boolean },
   status: VerdictStatus | "" | undefined,
 ): string {
-  if (!item.graded) return pts(item.weight);
+  if (!item.graded) return formatWeight(item.weight);
   const available = item.weight * GRADE_MAX_POINTS;
   const earned =
     status && isGrade(status) ? GRADE_META[status].points * item.weight : 0;
@@ -114,7 +139,7 @@ function GradeChoice({
             role="radio"
             aria-checked={selected}
             aria-label={`${meta.label} (${meta.points} ${meta.points === 1 ? "pt" : "pts"})`}
-            title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
+            title={`${meta.label}, ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
             disabled={disabled}
             tabIndex={disabled ? -1 : selected || (!value && i === 0) ? 0 : -1}
             className={`${styles.verdictOption} ${styles.gradeOption}${
@@ -147,13 +172,11 @@ function GradeChoice({
 // drive it through the review -> publish lifecycle. A produced run's record is
 // already stored privately on the backend (the driver submits it when the run
 // finishes), so a run is reviewable as soon as it is produced and can be published
-// once it carries at least one review. On the web flow these are two distinct
-// actions (Submit review / Publish). The desktop's local core folds review +
-// publish into one *solo* command, so there the editor offers a single
-// "Publish run" that saves the review and publishes in one step.
+// once it carries at least one review. These are two distinct actions (Submit
+// review / Publish).
 //
 // Publishing is a one-way door: once the run is public the editor drops the
-// Publish action on both paths and keeps only the review controls, so a reviewer
+// Publish action and keeps only the review controls, so a reviewer
 // revising their own published review is never offered a second publish the
 // backend would refuse. This lifecycle is identical for every test type — a game
 // jam is reviewed and published exactly the way a test run is; only the shape of
@@ -173,10 +196,21 @@ function GradeChoice({
 // the item declares them — so the reviewer compares the target against the
 // evidence before judging. The run's existing reviews and the aggregate
 // rating/score are shown above the form.
+// On a VALIDATOR-RATED run the checklist walker is the same, but pre-filled: the
+// validators decided every point, and the points and functional rating stand
+// from the record before any review exists. Each verdict is seeded in the
+// desaturated machine-set style; the reviewer MAY override any point (per-point
+// restore and the bulk "Restore validator verdicts" undo it), and only the
+// verdicts that differ from the validators' — plus any the validators left
+// undecided — are submitted. Completeness is not required. The reviewer also
+// supplies the run-wide AESTHETIC tier and a writeup, and Publish is offered
+// without a review at all — a blatantly broken build needs no reviewer time to
+// reach the gallery, and a review can be added later (or never).
 export function RunReviewEditor({
   run,
   reviews,
   published,
+  validatorRated,
   onChanged,
 }: {
   run: RunRecord;
@@ -190,15 +224,15 @@ export function RunReviewEditor({
    * still revise their own review, which refreshes the public snapshot on its
    * own. */
   published: boolean;
+  /** Whether the run is validator-rated (the store's word, lifted with the
+   * detail): the aesthetics-only form above, and publish without a review. */
+  validatorRated: boolean;
   onChanged: () => void;
 }) {
   const runId = run.id;
   const subject = run.subject;
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
-  // The desktop's local worker collapses review/publish into one solo command, so
-  // the editor offers a single Publish action there.
-  const solo = worker?.local ?? false;
   const { account, token } = useAuth();
   const { confirm } = useConfirm();
   // The checklist items are catalog data: read them from the backend, keyed by
@@ -222,6 +256,12 @@ export function RunReviewEditor({
     [reviews, account],
   );
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  // The RUN-WIDE aesthetic tier on a validator-rated run — one tier for the
+  // whole build. Deliberately unset ("") until the reviewer chooses: the
+  // aesthetic scale has no neutral default the way the functional one defaults
+  // to "great", and pre-selecting Amazing would rate a build the reviewer never
+  // looked at.
+  const [aesthetic, setAesthetic] = useState<AestheticRating | "">("");
   const [writeup, setWriteup] = useState(ownReview?.writeup ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
@@ -283,6 +323,13 @@ export function RunReviewEditor({
   const auto = useMemo(() => autoVerdictMap(run), [run]);
   // The debug scripts that ran, for the run-list surfaced atop the editor.
   const debugScripts = useMemo(() => run.validation.debugScripts ?? [], [run]);
+  // The scoring model a validator-rated run's verdict is derived from: the loaded
+  // effective checklist (with each point's failure cap and domains) and the
+  // effective domains — the same shape the Verdict tab resolves from the catalog.
+  const validatorModel = useMemo<ReviewModel>(
+    () => ({ items, domains, validatorRated: true }),
+    [items, domains],
+  );
   // The verdict ids currently holding their pre-filled auto value (i.e. the reviewer
   // has not overridden them this session). A verdict in this set renders in the
   // desaturated auto variant; touching its Pass/Fail control drops it from the set,
@@ -332,6 +379,15 @@ export function RunReviewEditor({
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
   // re-reviewing keeps that reviewer's earlier answers.
+  //
+  // The backend serves the case's whole declared checklist, which is engine-
+  // independent; this run's checklist is that list restricted to the run's own
+  // engine. A point whose validator names a set of engines is meaningful only
+  // under those, so a run built on any other engine does not carry it: it was
+  // never driven, it must not be shown here, and a verdict recorded against it
+  // would be an override of a point the run's checklist does not carry — which
+  // `POST /runs/{id}/reviews` refuses outright (the backend validates the
+  // submitted checklist against `review_items_for_engine`).
   useEffect(() => {
     if (!backend) return;
     let cancelled = false;
@@ -342,8 +398,9 @@ export function RunReviewEditor({
         subject.testCaseVersion,
         subject.variant,
       )
-      .then((loaded) => {
+      .then((declared) => {
         if (cancelled) return;
+        const loaded = reviewItemsForEngine(declared, subject.engineSlug);
         // Verdicts are keyed by verdict id — the item's own id when it is graded
         // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
         // from, in precedence: the account's own prior verdict of the same id (a
@@ -392,6 +449,7 @@ export function RunReviewEditor({
     subject.testCaseSlug,
     subject.testCaseVersion,
     subject.variant,
+    subject.engineSlug,
     account?.id,
   ]);
 
@@ -408,6 +466,15 @@ export function RunReviewEditor({
     // Seed when the domain set or account changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domains, account?.id]);
+
+  // Seed the run-wide aesthetic tier from the account's own prior review (a
+  // validator-rated run) — a legacy stored row's per-domain tiers collapse to
+  // their worst via `reviewAesthetic`. Unset when the prior review carried none.
+  useEffect(() => {
+    setAesthetic(ownReview ? (reviewAesthetic(ownReview) ?? "") : "");
+    // Seed when the account changes; `ownReview` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
 
   // Seed the writeup from the account's own prior review, re-seeding when the
   // account resolves (it can load after mount). Mirrors the rating/verdict
@@ -452,12 +519,18 @@ export function RunReviewEditor({
         Boolean(verdicts[subItemVerdictId(item.id, sub.id)]?.status),
     );
   };
-  const allAddressed = items.every(itemAddressed);
+  // On a validator-rated run every point is pre-filled with the validators'
+  // verdict, and overrides are optional — there is nothing the reviewer MUST
+  // address.
+  const allAddressed = validatorRated || items.every(itemAddressed);
   // A jam is fully rated once the whole-game overall grade is picked (it has no
-  // domains); a domain-scored case once every domain carries a rating.
+  // domains); a validator-rated run once the run-wide aesthetic tier is chosen;
+  // a legacy domain-scored case once every domain carries a rating.
   const allRated = jam
     ? overall !== ""
-    : domains.every((domain) => ratings[domain.id]);
+    : validatorRated
+      ? aesthetic !== ""
+      : domains.every((domain) => ratings[domain.id]);
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
     // Explicitly setting a verdict's Pass/Fail is a manual override: drop it from
@@ -520,6 +593,25 @@ export function RunReviewEditor({
     [items, auto, verdicts],
   );
   const overriddenSet = useMemo(() => new Set(overriddenIds), [overriddenIds]);
+
+  // On a validator-rated run, what the review would submit as its checklist: the
+  // reviewer's OVERRIDES only — each draft whose verdict differs from the
+  // validators', plus any point the reviewer decided that the validators left
+  // undecided. Points not listed keep the validators' verdicts server-side.
+  const draftOverrides = useMemo<ReviewVerdict[]>(() => {
+    if (!validatorRated) return [];
+    const out: ReviewVerdict[] = [];
+    for (const item of items) {
+      for (const vid of verdictIdsForItem(item)) {
+        const draft = verdicts[vid] ?? { status: "", note: "" };
+        if (!draft.status) continue;
+        if (auto.get(vid)?.status === draft.status) continue;
+        const note = draft.note.trim();
+        out.push({ id: vid, status: draft.status, ...(note ? { note } : {}) });
+      }
+    }
+    return out;
+  }, [validatorRated, items, auto, verdicts]);
 
   // Restore every overridden point at once, from the rail. Confirmed first because
   // it discards the reviewer's own calls wholesale — the mirror image of "Mark
@@ -595,9 +687,19 @@ export function RunReviewEditor({
     const assertions = assertionsByVerdict.get(verdictId) ?? [];
     return (
       <>
-        {media.map((m) => (
-          <ValidationMediaPair key={m.id} media={m} />
-        ))}
+        {/* An output captured as an engine replay is a different pairing from an
+            image or a clip — its two panes share one clock and one frame index —
+            so it is dispatched here rather than branched inside the pair. The keys
+            are prefixed by kind so an output id reused across items of different
+            kinds remounts the right component instead of reconciling one pair's
+            hooks onto the other's. */}
+        {media.map((m) =>
+          m.kind === "replay" ? (
+            <ValidationReplayPair key={`replay:${m.id}`} media={m} />
+          ) : (
+            <ValidationMediaPair key={`media:${m.id}`} media={m} />
+          ),
+        )}
         {assertions.length > 0 && (
           <ul className={styles.assertionList}>
             {assertions.map((a, i) => (
@@ -668,9 +770,9 @@ export function RunReviewEditor({
                   }`}
                   title={
                     disabled
-                      ? "Excluded from scoring by an erratum — not rated"
+                      ? "Excluded from scoring by an erratum, so it is not rated"
                       : selected && isAuto
-                        ? "Auto-set from this run's debug script — click to override"
+                        ? "Auto-set from this run's debug script; click to override"
                         : undefined
                   }
                   onClick={() =>
@@ -712,7 +814,7 @@ export function RunReviewEditor({
               type="button"
               className={styles.verdictRestore}
               onClick={() => restoreAutoVerdicts([verdictId])}
-              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label} — what this run's debug script decided. Your note is kept.`}
+              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label}, what this run's debug script decided. Your note is kept.`}
               aria-label="Restore this verdict to the automated validation's result"
             >
               Restore
@@ -819,17 +921,23 @@ export function RunReviewEditor({
 
   // The reviewer's input as the worker contract carries it. A jam has no scoring
   // domains, so it submits no per-domain ratings — its graded categories, overall
-  // grade, and writeup are the whole review.
+  // grade, and writeup are the whole review. A validator-rated run's review
+  // carries the run-wide AESTHETIC tier, the writeup, and only the reviewer's
+  // verdict OVERRIDES (the deltas from the validators' verdicts, plus any point
+  // the validators left undecided) — never a functional rating, which the
+  // backend refuses (it is the validators' to decide, overrides folded in).
   function buildReview() {
     return {
-      ratings: jam
-        ? []
-        : domains.map((domain) => ({
-            domain: domain.id,
-            rating: ratings[domain.id] ?? "great",
-          })),
+      ratings:
+        jam || validatorRated
+          ? []
+          : domains.map((domain) => ({
+              domain: domain.id,
+              rating: ratings[domain.id] ?? "great",
+            })),
+      aesthetic: validatorRated && aesthetic ? aesthetic : null,
       writeup,
-      checklist: buildChecklist(),
+      checklist: validatorRated ? draftOverrides : buildChecklist(),
       // Only carried when revising an existing review; the backend ignores it on a
       // first submission and requires it on a content-changing edit.
       editNote: ownReview ? editNote.trim() : undefined,
@@ -856,8 +964,7 @@ export function RunReviewEditor({
 
   // --- Lifecycle actions ---
 
-  // Submit review: attribute this account's review to the run (web flow). On the
-  // solo desktop path this saves the local draft.
+  // Submit review: attribute this account's review to the run.
   const onSubmitReview = () => {
     // Editing a submitted review requires a note explaining the change; catch it
     // client-side for an immediate message rather than a round-trip rejection.
@@ -884,13 +991,9 @@ export function RunReviewEditor({
     });
   };
 
-  // Publish: clear the gate (web flow). On the solo desktop path this saves the
-  // review and runs review + publish in one step.
+  // Publish: clear the gate.
   const onPublish = () =>
     runAction("Published.", async () => {
-      if (solo) {
-        await client!.submitReview(runId, buildReview(), token!);
-      }
       // Publishing is asynchronous: enqueue and observe the release over its live
       // stream, surfacing each progress line, then confirm on the terminal result.
       setMessage("Publishing…");
@@ -907,7 +1010,7 @@ export function RunReviewEditor({
     return (
       <Panel>
         <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — connect the worker that produced this run (the
+          No worker connected. Connect the worker that produced this run (the
           gear in the top bar) to review and publish it.
         </p>
       </Panel>
@@ -915,8 +1018,11 @@ export function RunReviewEditor({
   }
 
   // Whether the run can be published: it carries at least one review (an existing
-  // one or one just submitted this session). The backend is the real gate.
-  const canPublish = reviews.length > 0 || submittedThisSession || solo;
+  // one or one just submitted this session) — or it is validator-rated, whose
+  // functional rating and score stand on their own with zero reviews. The backend
+  // is the real gate.
+  const canPublish =
+    validatorRated || reviews.length > 0 || submittedThisSession;
   // A run published this session (the enqueued publish reported success) reads as
   // published straight away, without waiting for the detail record to be refetched
   // — so the action disappears the moment it succeeds rather than lingering as a
@@ -973,6 +1079,10 @@ export function RunReviewEditor({
       ? subItemVerdictId(item.id, sub.id)
       : item.id
     : "";
+  // On a validator-rated version every point carries a failure cap; the walker
+  // shows it on every point (lit while the point's effective verdict is Fail) so
+  // the reviewer sees what each override is worth.
+  const slotCap = item && validatorRated ? (sub ?? item).failureCap : undefined;
   // The slot index of a category's first review item, and of a specific sub-item, so
   // the rail's category header and sub-item rows can jump to the right slot.
   const firstSlotOfItem = (itemIndex: number) =>
@@ -1017,11 +1127,36 @@ export function RunReviewEditor({
       break;
     }
   }
+  // On a validator-rated run every point arrives pre-decided, so "nearest
+  // unaddressed" would strand the walker on its first point. Previous/Next step
+  // to the adjacent point there instead, exactly as a read-only browse does.
+  const prevTarget = validatorRated
+    ? slotIndex > 0
+      ? slotIndex - 1
+      : -1
+    : prevUnreviewed;
+  const nextTarget = validatorRated
+    ? slotIndex < slots.length - 1
+      ? slotIndex + 1
+      : -1
+    : nextUnreviewed;
   // The live score from the current effective verdicts (auto pre-fills plus any
   // overrides), so the reviewer sees the running total before submitting. Mirrors
-  // how the published verdict scores its checklist.
+  // how the published verdict scores its checklist: a validator-rated run folds
+  // the reviewer's current overrides into the validators' verdicts through the
+  // same covered-score rule the stored figures use.
+  const gated = isToolchainGated(run.toolchain);
   const liveScore =
-    items.length > 0 ? scoreChecklist(items, buildChecklist()) : null;
+    items.length > 0
+      ? validatorRated
+        ? validatorReviewScore(
+            gated,
+            items,
+            automatedVerdicts(debugScripts),
+            draftOverrides,
+          )
+        : scoreChecklist(items, buildChecklist())
+      : null;
   // How many of this run's declared debug scripts actually ran to completion
   // against a conformant build (the debug-API gate). A shortfall — most visibly
   // zero, e.g. when the run built against a stale service image — means the
@@ -1085,7 +1220,31 @@ export function RunReviewEditor({
           reviewer sees what others recorded before adding their own. Each review
           links to its own page, where the active account's own review carries the
           Edit control that reopens this form to revise it. */}
-      <ExistingReviews reviews={reviews} items={items} runId={runId} />
+      <ExistingReviews
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        validatorRated={validatorRated}
+      />
+
+      {/* A validator-rated run's verdict header: the effective functional
+          rating and points (any stored reviews' overrides folded in) with the
+          aggregate aesthetic badge and the compact per-domain strip — shown
+          before any review exists, exactly as the Verdict tab shows them once
+          published. The per-item detail lives in the editable walker below;
+          nothing is rendered twice. */}
+      {validatorRated && (
+        <ValidatorVerdict run={run} model={validatorModel} reviews={reviews} />
+      )}
+
+      {/* With the review form collapsed (this account already carries a review)
+          the editable walker below is not mounted, so the read-only per-item
+          browser stands in as the single per-item surface — exactly what a
+          visitor sees on the published Verdict tab. Never rendered beside the
+          walker: the page shows one item list at a time. */}
+      {validatorRated && !showForm && items.length > 0 && (
+        <ReviewItemBrowser run={run} items={items} reviews={reviews} />
+      )}
 
       {/* The instrumentation debug scripts this run's automated-validation items
           declare: which ran to completion against a conformant build (the debug-API
@@ -1098,13 +1257,15 @@ export function RunReviewEditor({
           stays folded away: by that point the reviewer has already made the call, so
           an expanded table here is a screenful of scrolling between them and the
           review summary and actions below. */}
-      {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
-        <DebugScriptList
-          scripts={debugScripts}
-          heading="Automated validation"
-          collapsible
-        />
-      )}
+      {!validatorRated &&
+        debugScripts.length > 0 &&
+        (ownReview || submittedThisSession) && (
+          <DebugScriptList
+            scripts={debugScripts}
+            heading="Automated validation"
+            collapsible
+          />
+        )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
@@ -1121,7 +1282,37 @@ export function RunReviewEditor({
               each graded category is worth `weight × 10` and earns its tier's points
               — so it gets the same running total; it simply never declares automated
               validation, so it always takes the plain branch. */}
-          {liveScore && (
+          {validatorRated && liveScore && (
+            /* The live score with the reviewer's current overrides folded into
+               the validators' verdicts, plus how many checks ran — the script
+               detail itself lives on each point in the walker below, so there
+               is no second list to expand here. */
+            <div className={styles.notice}>
+              <div className={styles.liveScoreStatic}>
+                <span className={styles.liveScoreSummary}>
+                  Live score:{" "}
+                  <strong>
+                    {formatPoints(liveScore.earned)} / {liveScore.total} pts
+                  </strong>
+                </span>
+                {debugScripts.length > 0 && (
+                  <span className={styles.liveScoreChecks}>
+                    <span
+                      className={
+                        ranChecks < debugScripts.length
+                          ? styles.liveScoreChecksShort
+                          : undefined
+                      }
+                    >
+                      {ranChecks} / {debugScripts.length} check
+                      {debugScripts.length === 1 ? "" : "s"} ran
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {!validatorRated && liveScore && (
             <div className={styles.notice}>
               {debugScripts.length > 0 ? (
                 <>
@@ -1191,25 +1382,30 @@ export function RunReviewEditor({
                 <p className={styles.sectionLabel}>
                   {addressedSlots}/{slots.length} addressed
                 </p>
-                {/* Fail everything at once for a run that never launched. */}
-                <button
-                  type="button"
-                  className={styles.unplayable}
-                  onClick={() => void markUnplayable()}
-                  disabled={busy}
-                  title={
-                    jam
-                      ? "Mark the whole run unplayable — grade every category and the overall as Broken"
-                      : "Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
-                  }
-                  aria-label={
-                    jam
-                      ? "Mark the whole run unplayable: every category and the overall grade are Broken"
-                      : "Mark the whole run unplayable: every checklist item fails and every rating is broken"
-                  }
-                >
-                  Mark unplayable
-                </button>
+                {/* Fail everything at once for a run that never launched. Not
+                    offered on a validator-rated run, where the verdicts are the
+                    validators' and an override is the point-by-point exception,
+                    never a wholesale rewrite. */}
+                {!validatorRated && (
+                  <button
+                    type="button"
+                    className={styles.unplayable}
+                    onClick={() => void markUnplayable()}
+                    disabled={busy}
+                    title={
+                      jam
+                        ? "Mark the whole run unplayable: grade every category and the overall as Broken"
+                        : "Mark the whole run unplayable: set every checklist item to Fail and every rating to Broken"
+                    }
+                    aria-label={
+                      jam
+                        ? "Mark the whole run unplayable: every category and the overall grade are Broken"
+                        : "Mark the whole run unplayable: every checklist item fails and every rating is broken"
+                    }
+                  >
+                    Mark unplayable
+                  </button>
+                )}
                 {/* Put every overridden point back to the machine's call. Shown
                     only for a run that carries automated verdicts at all, and
                     inert until at least one is overridden — so it reads as the
@@ -1259,7 +1455,7 @@ export function RunReviewEditor({
                       ? undefined
                       : jam
                         ? it.title
-                        : `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`;
+                        : `${it.title}: ${anyFail ? "some Fail" : "all Pass"}`;
                     const subItems = it.graded ? [] : (it.subItems ?? []);
                     const expanded = isCurrent && subItems.length > 0;
                     return (
@@ -1368,23 +1564,25 @@ export function RunReviewEditor({
                 {sub && (
                   <span className={styles.checklistCategory}>{item.title}</span>
                 )}
-                <span className={styles.checklistTitle}>
-                  <span className={styles.checklistNumber}>
-                    {slotIndex + 1}.
-                  </span>{" "}
-                  {sub ? sub.title : item.title}{" "}
-                  {slotNotScored ? (
-                    <span className={styles.notScored}>Not scored</span>
-                  ) : (
-                    <>
-                      (
-                      {sub
-                        ? formatPoints(sub.weight ?? 1)
-                        : itemPoints(item, verdicts[item.id]?.status)}
-                      )
-                    </>
+                {/* The heading carries the point's failure cap at its right
+                edge on every capped point: lit while the effective verdict is
+                Fail (the cap is in force), dimmed otherwise — so the reviewer
+                sees what overriding this verdict is worth before recording it. */}
+                <ReviewItemHeading
+                  number={slotIndex + 1}
+                  title={sub ? sub.title : item.title}
+                  points={
+                    sub
+                      ? formatWeight(sub.weight ?? 1)
+                      : itemPoints(item, verdicts[item.id]?.status)
+                  }
+                  notScored={slotNotScored}
+                  cap={slotCap}
+                  outcome={capOutcome(
+                    verdicts[slotVerdictId]?.status,
+                    slotNotScored,
                   )}
-                </span>
+                />
                 {/* The point's prose: a sub-item's own description, or a whole item's
                 text (a category itself carries none). */}
                 {sub
@@ -1438,18 +1636,18 @@ export function RunReviewEditor({
                   <span
                     className={styles.navButton}
                     data-tooltip={
-                      prevUnreviewed < 0
-                        ? "No earlier unreviewed items"
+                      prevTarget < 0
+                        ? validatorRated
+                          ? "No earlier items"
+                          : "No earlier unreviewed items"
                         : undefined
                     }
                   >
                     <button
                       type="button"
                       className={styles.secondary}
-                      onClick={() =>
-                        prevUnreviewed >= 0 && setCurrent(prevUnreviewed)
-                      }
-                      disabled={prevUnreviewed < 0}
+                      onClick={() => prevTarget >= 0 && setCurrent(prevTarget)}
+                      disabled={prevTarget < 0}
                     >
                       ← Previous
                     </button>
@@ -1457,18 +1655,18 @@ export function RunReviewEditor({
                   <span
                     className={styles.navButton}
                     data-tooltip={
-                      nextUnreviewed < 0
-                        ? "No further unreviewed items"
+                      nextTarget < 0
+                        ? validatorRated
+                          ? "No further items"
+                          : "No further unreviewed items"
                         : undefined
                     }
                   >
                     <button
                       type="button"
                       className={styles.secondary}
-                      onClick={() =>
-                        nextUnreviewed >= 0 && setCurrent(nextUnreviewed)
-                      }
-                      disabled={nextUnreviewed < 0}
+                      onClick={() => nextTarget >= 0 && setCurrent(nextTarget)}
+                      disabled={nextTarget < 0}
                     >
                       Next →
                     </button>
@@ -1485,7 +1683,11 @@ export function RunReviewEditor({
               rows={8}
               value={writeup}
               onChange={(e) => setWriteup(e.target.value)}
-              placeholder="How did the build play? What worked, what was broken?"
+              placeholder={
+                validatorRated
+                  ? "How does the build look, sound, and feel to play? What stands out, and what falls flat?"
+                  : "How did the build play? What worked, what was broken?"
+              }
             />
           </label>
 
@@ -1500,7 +1702,7 @@ export function RunReviewEditor({
                 rows={2}
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
-                placeholder="Briefly explain what you changed and why — required, and saved to this review's edit history."
+                placeholder="Briefly explain what you changed and why. Required, and saved to this review's edit history."
               />
             </label>
           )}
@@ -1512,7 +1714,7 @@ export function RunReviewEditor({
             <fieldset className={styles.ratings}>
               <legend className={styles.fieldLabel}>Overall grade</legend>
               <p className={styles.notice}>
-                Your grade for the whole game — how good is this entry overall?
+                Your grade for the whole game. How good is this entry overall?
                 Required.
               </p>
               <GradeChoice
@@ -1525,6 +1727,44 @@ export function RunReviewEditor({
                   {GRADE_META[overall].emoji} {GRADE_META[overall].label}
                 </span>
               )}
+            </fieldset>
+          ) : validatorRated ? (
+            /* ONE run-wide AESTHETIC tier — how the whole build looks, sounds,
+            and feels to play; the run's aesthetic rating is the worst tier
+            across its reviews. Unset until chosen; required. */
+            <fieldset className={styles.ratings}>
+              <legend className={styles.fieldLabel}>
+                Aesthetics
+                <span
+                  className={styles.help}
+                  role="img"
+                  aria-label="Aesthetic criteria"
+                  title={AESTHETIC_CRITERIA}
+                >
+                  ?
+                </span>
+              </legend>
+              <label className={`${styles.field} ${styles.fieldStacked}`}>
+                <span className={styles.fieldLabel}>
+                  How does the whole build look, sound, and feel?
+                </span>
+                <select
+                  className={styles.select}
+                  value={aesthetic}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next !== "" && !isAestheticRating(next)) return;
+                    setAesthetic(next as AestheticRating | "");
+                  }}
+                >
+                  <option value="">Choose a tier…</option>
+                  {AESTHETIC_RATINGS.map((rt) => (
+                    <option key={rt} value={rt}>
+                      {AESTHETIC_META[rt].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </fieldset>
           ) : (
             /* One rating per scoring domain — the reviewer rates each independently
@@ -1576,13 +1816,18 @@ export function RunReviewEditor({
         </>
       )}
 
+      <SubmitNotice message={message} tone="ok" />
+      <SubmitNotice message={error} />
+
       {(() => {
         const reviewReady = writeup.trim() !== "" && allAddressed && allRated;
         const reviewTitle = reviewReady
           ? undefined
           : jam
             ? "Write a review, grade the whole game, and grade every category first"
-            : "Write a review, rate every domain, and give every checklist item a verdict first";
+            : validatorRated
+              ? "Write a review and choose the run's aesthetic tier first"
+              : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
         // Who is reviewing, shown left of the action buttons (in place of the
         // former standalone "Reviewing as …" bar): the signed-in account's avatar
@@ -1603,26 +1848,24 @@ export function RunReviewEditor({
               </>
             ) : (
               <span className={styles.reviewingAsWarn}>
-                <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link>{" "}
+                <Link to={routes.login(routes.runVerdict(runId))}>Sign in</Link>{" "}
                 to review and publish this run.
               </span>
             )}
           </div>
         ) : null;
-        // The solo desktop path offers a single Publish that saves the review and
-        // publishes in one step. The web flow splits into submit review and publish
-        // (the latter gated on the run having a review). A produced run's record is
-        // already stored on the backend (the driver pushes it on completion), so
-        // neither flow has a separate push step. The reviewer identity is left-aligned;
-        // the buttons are pushed to the right of the row.
+        // Submit review and Publish are separate actions (the latter gated on the
+        // run having a review). A produced run's record is already stored on the
+        // backend (the driver pushes it on completion), so there is no separate
+        // push step. The reviewer identity is left-aligned; the buttons are pushed
+        // to the right of the row.
         //
-        // An ALREADY-PUBLISHED run offers no Publish action on either path — it is
-        // public, the backend refuses a second publish, and a revised review
-        // refreshes the public snapshot by itself. What remains is the review
-        // control: the solo path, which has no separate submit button, gets the
-        // web flow's "Update review" so a desktop reviewer can still correct a
-        // published review. Every type behaves the same here — a game jam runs the
-        // identical submit -> publish lifecycle a test run does.
+        // An ALREADY-PUBLISHED run offers no Publish action — it is public, the
+        // backend refuses a second publish, and a revised review refreshes the
+        // public snapshot by itself. What remains is the "Update review" control,
+        // so a reviewer can still correct a published review. Every type behaves
+        // the same here — a game jam runs the identical submit -> publish
+        // lifecycle a test run does.
         const submitButton = (
           <button
             className={isPublished ? styles.primary : styles.secondary}
@@ -1633,24 +1876,6 @@ export function RunReviewEditor({
             {ownReview ? "Update review" : "Submit review"}
           </button>
         );
-        if (solo && !isPublished) {
-          return (
-            <div className={styles.actions}>
-              {reviewingAs}
-              <div className={styles.actionsEnd}>
-                <button
-                  className={styles.primary}
-                  onClick={onPublish}
-                  disabled={busy || needAccount || !reviewReady}
-                  title={needAccount ? "Sign in to publish" : reviewTitle}
-                >
-                  Publish run
-                </button>
-                {cancelButton}
-              </div>
-            </div>
-          );
-        }
         const publishButton = isPublished ? null : (
           <button
             className={styles.primary}
@@ -1661,7 +1886,11 @@ export function RunReviewEditor({
                 ? "Sign in to publish"
                 : !canPublish
                   ? "Submit at least one review before publishing"
-                  : undefined
+                  : validatorRated &&
+                      reviews.length === 0 &&
+                      !submittedThisSession
+                    ? "Publish without an aesthetic review; one can be added later"
+                    : undefined
             }
           >
             Publish run
@@ -1682,124 +1911,7 @@ export function RunReviewEditor({
           </div>
         );
       })()}
-
-      {message && <p className={`${styles.notice} ${styles.ok}`}>{message}</p>}
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
-  );
-}
-
-// One automated-validation output shown as a side-by-side pair: the case's
-// reference implementation (the baseline) beside this run's build (the actual), so
-// a reviewer compares expected-vs-observed behavior for the mechanic the auto
-// verdict judged. When only the actual side was produced it stands alone. For video
-// outputs the pair shares one Play/Pause control, sat in the output's title row:
-// Play restarts both clips from the top and plays them together (so the reference and
-// the run advance frame-for-frame), Pause stops both, and the clips loop so the
-// comparison keeps repeating. The two clips are muted so playing them together is not
-// a cacophony.
-function ValidationMediaPair({ media }: { media: ValidationMedia }) {
-  const isVideo = media.kind === "video";
-  const actualRef = useRef<HTMLVideoElement>(null);
-  const baselineRef = useRef<HTMLVideoElement>(null);
-  const hasBaseline = media.baselineUrl !== null;
-  const hasActual = media.actualUrl !== null;
-  const [playing, setPlaying] = useState(false);
-
-  // Restart both clips from the top and play them together; clicking Play again
-  // restarts. Pause stops both where they are.
-  const play = () => {
-    for (const ref of [baselineRef, actualRef]) {
-      const el = ref.current;
-      if (el) {
-        el.currentTime = 0;
-        void el.play();
-      }
-    }
-  };
-  const pause = () => {
-    for (const ref of [baselineRef, actualRef]) ref.current?.pause();
-  };
-
-  // Keep the toggle label in step with the clips even when the reviewer scrubs with
-  // the native controls: mirror the primary clip's play/pause events. Both clips are
-  // driven together, so tracking one is enough. (Looping never fires `pause`, so the
-  // label stays "Pause" across loops.)
-  useEffect(() => {
-    const el = (hasActual ? actualRef : baselineRef).current;
-    if (!el) return;
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    el.addEventListener("play", onPlay);
-    el.addEventListener("pause", onPause);
-    return () => {
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("pause", onPause);
-    };
-  }, [hasActual]);
-
-  // When the reviewer moves to another review item this pair is reused for that
-  // item's media (its output ids can collide with the previous item's, so React
-  // reconciles the same element rather than remounting): the video elements get new
-  // sources and stop, but swapping a `src` fires no `pause` event for the label-sync
-  // effect above to catch, leaving the toggle stuck on "Pause" over a stopped clip.
-  // Reset the label whenever the media changes so it always matches what is shown.
-  useEffect(() => {
-    setPlaying(false);
-  }, [media.actualUrl, media.baselineUrl]);
-
-  return (
-    <figure className={styles.validationOutput}>
-      <figcaption className={styles.validationOutputHeader}>
-        <span className={styles.validationOutputName}>{media.name}</span>
-        {isVideo && (hasActual || hasBaseline) && (
-          <button
-            type="button"
-            className={styles.validationPlay}
-            onClick={playing ? pause : play}
-            aria-pressed={playing}
-          >
-            {playing ? "⏸ Pause" : "▶ Play"}
-          </button>
-        )}
-      </figcaption>
-      <div
-        className={`${styles.mediaPanes}${
-          hasActual && hasBaseline ? "" : ` ${styles.mediaPanesSingle}`
-        }`}
-      >
-        {hasBaseline && (
-          <figure className={styles.mediaPane}>
-            <figcaption className={styles.mediaPaneLabel}>Reference</figcaption>
-            <MediaView
-              kind={media.kind}
-              url={media.baselineUrl!}
-              alt={`Reference ${media.name}`}
-              loop
-              muted
-              videoRef={baselineRef}
-            />
-          </figure>
-        )}
-        <figure className={styles.mediaPane}>
-          <figcaption className={styles.mediaPaneLabel}>This run</figcaption>
-          {hasActual ? (
-            <MediaView
-              kind={media.kind}
-              url={media.actualUrl!}
-              alt={`This run ${media.name}`}
-              loop
-              muted
-              videoRef={actualRef}
-            />
-          ) : (
-            <p className={styles.mediaMissing}>
-              This run did not produce this output.
-            </p>
-          )}
-        </figure>
-      </div>
-    </figure>
   );
 }
 
@@ -1814,22 +1926,33 @@ function ExistingReviews({
   reviews,
   items,
   runId,
+  validatorRated,
 }: {
   reviews: StoredReview[];
   items: ReviewItem[];
   runId: string;
+  /** On a validator-rated run the reviews carry the aesthetic channel (plus any
+   * verdict overrides): the
+   * aggregate badge is the aesthetic one, and there is no per-review score. */
+  validatorRated: boolean;
 }) {
   if (reviews.length === 0) return null;
 
   // A jam's rating badge is the aggregate overall grade (worst across reviews) in
   // place of the per-domain aggregate rating a domain-scored case shows.
   const jam = items.some((it) => it.graded);
-  const aggRating = jam ? null : aggregateRating(reviews.map((r) => r.ratings));
+  const aggRating =
+    jam || validatorRated
+      ? null
+      : aggregateRating(reviews.map((r) => r.ratings));
+  const aggAesthetic = validatorRated
+    ? aggregateAestheticRating(reviews.map((r) => reviewAesthetic(r)))
+    : null;
   const aggGrade = jam
     ? aggregateOverallGrade(reviews.map((r) => r.checklist))
     : null;
   const aggScore =
-    items.length > 0
+    items.length > 0 && !validatorRated
       ? aggregateScore(reviews.map((r) => scoreChecklist(items, r.checklist)))
       : null;
 
@@ -1849,9 +1972,14 @@ function ExistingReviews({
               <GradeBadge status={aggGrade} />
             </span>
           )}
+          {aggAesthetic && (
+            <span title="Aggregate aesthetic rating (worst across all reviews)">
+              <AestheticBadge rating={aggAesthetic} />
+            </span>
+          )}
           {aggScore && (
             <span className={styles.muted}>
-              {aggScore.earned.toFixed(1)} / {aggScore.total} pts (avg of{" "}
+              {formatPoints(aggScore.earned)} / {aggScore.total} pts (avg of{" "}
               {aggScore.reviews})
             </span>
           )}
@@ -1861,7 +1989,12 @@ function ExistingReviews({
         </span>
       </div>
 
-      <ReviewList reviews={reviews} items={items} runId={runId} />
+      <ReviewList
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        validatorRated={validatorRated}
+      />
     </div>
   );
 }

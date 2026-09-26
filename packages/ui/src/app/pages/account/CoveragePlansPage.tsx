@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
+import type { CoveragePlanSummary } from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -9,6 +9,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -118,8 +119,8 @@ export function CoveragePlansPage() {
         />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use coverage plans — they are saved to your account. Use
-          the account control in the top bar to register or log in.
+          Sign in to use coverage plans. They are saved to your account. Use the
+          account control in the top bar to register or log in.
         </p>
       </PageLayout>
     );
@@ -127,18 +128,18 @@ export function CoveragePlansPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--coverage"
-          comment={<>// your coverage plans</>}
-        />
-        <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
-          New plan
-        </Link>
-      </div>
+      <PromptHeader
+        command="--coverage"
+        comment={<>// your coverage plans</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
+            + New plan
+          </Link>
+        }
+      />
       <AccountTabs active="coverage" />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState size="section" label="Loading plans…" />
@@ -146,8 +147,9 @@ export function CoveragePlansPage() {
         <div className={styles.emptyState}>
           <p className={styles.empty}>
             You have no coverage plans yet. Create one to declare the cases and
-            harness/model combinations you want covered — reference reusable
-            groups from the Groups tab, or pin one-off entries directly.
+            the combinations you want covered — a harness with its model, or a
+            gg configuration with the models it binds. Reference reusable groups
+            from the Groups tab, or pin one-off entries directly.
           </p>
           <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
             Create your first plan
@@ -167,15 +169,15 @@ export function CoveragePlansPage() {
                     >
                       {plan.name}
                     </Link>
-                    {/* A paused plan with missing runs is otherwise indistinguishable
-                        from a stuck one, and the list is where that reads worst. */}
-                    {plan.paused && (
-                      <span className={styles.pausedBadge}>paused</span>
-                    )}
                   </span>
                   <span className={styles.rowSub}>
                     {plan.runsPerCell} runs/cell
-                    {plan.autoTopUp && " · tops up on review"}
+                    {/* Whether the plan feeds itself, as the dashboard's switch shows
+                        it: a halt leaves `paused` set, which blocks every top-up, so a
+                        halted plan is not "auto" whatever its flag says. A plan without
+                        this moves only when asked, which is why a missing-runs count
+                        beside it is not a stall. */}
+                    {plan.autoTopUp && !plan.paused && " · auto top-up"}
                     {plan.runsUnreviewed > 0 &&
                       ` · ${plan.runsUnreviewed} waiting on you`}
                   </span>

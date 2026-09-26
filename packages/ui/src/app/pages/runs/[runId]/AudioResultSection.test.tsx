@@ -33,9 +33,10 @@ describe("AudioResultSection", () => {
     const { rerender } = render(<AudioResultSection view={view()} />);
     expect(screen.queryByRole("link", { name: "clip.mid" })).toBeNull();
     rerender(<AudioResultSection view={view({ midiUrl: "score.mid" })} />);
-    expect(
-      screen.getByRole("link", { name: "clip.mid" }),
-    ).toHaveAttribute("href", "score.mid");
+    expect(screen.getByRole("link", { name: "clip.mid" })).toHaveAttribute(
+      "href",
+      "score.mid",
+    );
   });
 
   it("notes when the clip could not be served", () => {

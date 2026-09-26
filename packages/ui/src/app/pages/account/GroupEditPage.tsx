@@ -6,7 +6,7 @@ import type {
   CoverageGroupKind,
   ReviewPlanCase,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
@@ -14,11 +14,12 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { routes } from "../../routes";
 import { ComboPicker, CasePicker } from "./coveragePickers";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
 // The coverage group editor (`/account/groups/new` and `/account/groups/:groupId/
-// edit`): a group's name, kind (model combinations or cases — fixed once created),
+// edit`): a group's name, kind (combinations or cases — fixed once created),
 // and members. Save creates or updates and returns to the Groups tab. Console-only;
 // gated on a signed-in account.
 export function GroupEditPage() {
@@ -46,9 +47,7 @@ export function GroupEditPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.resolve(
-      editing ? (backend.listCoverageGroups?.(token) ?? []) : [],
-    )
+    Promise.resolve(editing ? (backend.listCoverageGroups?.(token) ?? []) : [])
       .then((groups) => {
         if (!active) return;
         if (editing) {
@@ -121,7 +120,7 @@ export function GroupEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage groups — they are saved to your account.
+          Sign in to edit coverage groups. They are saved to your account.
         </p>
       </PageLayout>
     );
@@ -137,8 +136,6 @@ export function GroupEditPage() {
           </h1>
         </div>
       </header>
-
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
         <LoadingState label="Loading…" />
@@ -170,7 +167,7 @@ export function GroupEditPage() {
               disabled={editing}
               onClick={() => setKind("combo")}
             >
-              Model combinations
+              Combinations
             </button>
             <button
               type="button"
@@ -191,6 +188,8 @@ export function GroupEditPage() {
           ) : (
             <CasePicker cases={cases} onChange={setCases} />
           )}
+
+          <SubmitNotice message={error} />
 
           <div className={styles.editorActions}>
             <button

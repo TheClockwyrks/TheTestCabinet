@@ -6,9 +6,9 @@ import {
   ReliabilityRingWidget,
   type DonutSegment,
   type ReliabilitySegment,
-} from "@test-cabinet/ui";
-import { rollupRuns } from "@test-cabinet/run-stats/rollup";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/ui";
+import { rollupRuns } from "@clockwyrks/run-stats/rollup";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   useVersionScope,
@@ -17,7 +17,6 @@ import {
 } from "../../../components/VersionScope";
 import type { ModelSummary } from "../../../data/models";
 import {
-  meanReported,
   modelCaseOptions,
   runIsModel,
   standInField,
@@ -50,8 +49,14 @@ const VARIANT_PARAM = "variant";
 // stable across renders. Each returns null for a run that did not report the
 // figure, which keeps it out of the average and out of the field rather than
 // dragging either toward zero.
-const costValue = (run: RunSummary): number | null => run.metrics.cost.comparable;
-const tokensValue = (run: RunSummary): number | null => totalTokens(run.metrics);
+const costValue = (run: RunSummary): number | null =>
+  run.metrics.cost.comparable;
+const tokensValue = (run: RunSummary): number | null =>
+  totalTokens(run.metrics);
+// The harness session alone. Null on a record written before the stage
+// durations were measured, which keeps it out of the mean and the field.
+const sessionValue = (run: RunSummary): number | null =>
+  run.metrics.sessionSeconds ?? null;
 // A run's reviewer score as a fraction of the points on offer. A checklist with
 // nothing on offer has no fraction to contribute, so it is unreported rather than
 // a perfect (or zero) score.
@@ -87,7 +92,9 @@ function OverviewContent({ model }: { model: ModelSummary }) {
     useCohortSelection(options);
 
   if (loading) {
-    return <LoadingState size="section" label={`Loading ${model.name} runs…`} />;
+    return (
+      <LoadingState size="section" label={`Loading ${model.name} runs…`} />
+    );
   }
 
   if (!testCase || !variant) {
@@ -218,8 +225,7 @@ function CohortPicker({
         >
           {options.map((option) => (
             <option key={option.slug} value={option.slug}>
-              {option.name} ({option.runs}{" "}
-              {option.runs === 1 ? "run" : "runs"})
+              {option.name} ({option.runs} {option.runs === 1 ? "run" : "runs"})
             </option>
           ))}
         </select>
@@ -338,14 +344,10 @@ function CohortReport({
     () => ({
       cost: standInField(fieldCompleted, model.modelIds, costValue),
       tokens: standInField(fieldCompleted, model.modelIds, tokensValue),
+      session: standInField(fieldCompleted, model.modelIds, sessionValue),
       score: standInField(fieldCompleted, model.modelIds, scoreValue),
     }),
     [fieldCompleted, model.modelIds],
-  );
-
-  const meanRuntime = useMemo(
-    () => meanReported(modelCompleted, (run) => run.metrics.runTimeSeconds),
-    [modelCompleted],
   );
 
   if (loading) {
@@ -402,17 +404,23 @@ function CohortReport({
                 }
               />
               <Tile
-                label="Mean run time"
-                value={meanRuntime === null ? "—" : formatRunTime(meanRuntime)}
+                label="Mean session time"
+                value={
+                  standings.session
+                    ? formatRunTime(standings.session.value)
+                    : "—"
+                }
               />
             </div>
             {/* The averages above are over completed runs, the two rings below
                 over every run — say so rather than let the two disagree
-                silently. */}
+                silently. The session mean narrows further, to the completed runs
+                that recorded a session duration. */}
             <p className={styles.note}>
               Means are over the {modelCompleted.length} completed{" "}
               {modelCompleted.length === 1 ? "run" : "runs"}; the breakdowns
-              below cover all {rollup.runs}.
+              below cover all {rollup.runs}. Mean session time covers the
+              completed runs that recorded one.
             </p>
           </section>
 
@@ -444,10 +452,10 @@ function CohortReport({
   );
 }
 
-// The three comparisons, each placing one of the model's figures among the other
+// The comparisons, each placing one of the model's figures among the other
 // models that ran the same cohort. A figure the model never reported has no row
 // (there is nothing to place), and a cohort this model is alone in says so once
-// rather than three times.
+// rather than once per figure.
 function ComparisonBlock({
   cohortLabel,
   standings,
@@ -457,6 +465,7 @@ function ComparisonBlock({
   standings: {
     cost: FieldStanding | null;
     tokens: FieldStanding | null;
+    session: FieldStanding | null;
     score: FieldStanding | null;
   };
   modelName: string;
@@ -464,9 +473,12 @@ function ComparisonBlock({
   // Each measure has its own field — a model whose prices could not be resolved
   // is in the token field but not the cost one — so the headline count is the
   // widest of them rather than whichever measure happened to be listed first.
-  const present = [standings.cost, standings.tokens, standings.score].filter(
-    (standing): standing is FieldStanding => standing !== null,
-  );
+  const present = [
+    standings.cost,
+    standings.tokens,
+    standings.session,
+    standings.score,
+  ].filter((standing): standing is FieldStanding => standing !== null);
   if (present.length === 0) return null;
   const others = Math.max(...present.map((s) => s.fieldSize)) - 1;
 
@@ -483,9 +495,10 @@ function ComparisonBlock({
       ) : (
         <Panel className={styles.comparisons}>
           <p className={styles.sectionLede}>
-            Measured against the {others} other {others === 1 ? "model" : "models"}{" "}
-            with completed runs of {cohortLabel} — each model reduced to its own
-            mean, so a model run many times does not count many times.
+            Measured against the {others} other{" "}
+            {others === 1 ? "model" : "models"} with completed runs of{" "}
+            {cohortLabel}. Each model is reduced to its own mean, so a model run
+            many times does not count many times.
           </p>
           <Standing
             label="Cost per run"
@@ -498,6 +511,12 @@ function ComparisonBlock({
             standing={standings.tokens}
             format={(value) => formatCompact(Math.round(value))}
             comparison="heavier than"
+          />
+          <Standing
+            label="Session duration"
+            standing={standings.session}
+            format={(value) => formatRunTime(value)}
+            comparison="slower than"
           />
           <Standing
             label="Reviewer score"
@@ -561,9 +580,7 @@ function Tile({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.tile} role="listitem">
       <span className={styles.tileLabel}>{label}</span>
-      <span
-        className={`${styles.tileValue}${muted ? ` ${styles.muted}` : ""}`}
-      >
+      <span className={`${styles.tileValue}${muted ? ` ${styles.muted}` : ""}`}>
         {value}
       </span>
     </div>
@@ -589,6 +606,11 @@ function outcomeSegments(
       label: "Harness errors",
       value: outcomes.harness_error,
       tone: "harnessError",
+    },
+    {
+      label: "Execution ceilings",
+      value: outcomes.limit_exceeded,
+      tone: "limitExceeded",
     },
     { label: "Hangs", value: outcomes.hung, tone: "hung" },
   ];

@@ -10,9 +10,7 @@
 # internal-ingress component routes (artifacts.tcab.testcabinet.ai → tcab-artifacts,
 # arena.tcab.testcabinet.ai → tcab-arena).
 #
-# These are env VALUES, not container `image:` fields, so kustomize's `images:`
-# transformer cannot reach them — same rationale as patch-dispatcher-driver-image.yaml
-# / patch-dispatcher-publisher.yaml, hence a patch.
+# These are env VALUES, so an overlay patch is what sets them.
 #
 # TCAB_BACKEND_AUTH_URL is the backend's SERVER-SIDE token-verify URL and is
 # deliberately NOT touched here — it stays the in-cluster http://tcab-auth:8789. Only

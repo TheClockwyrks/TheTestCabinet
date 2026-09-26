@@ -1,11 +1,12 @@
 {
-  "name": "@test-cabinet/web",
+  "name": "@clockwyrks/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the console UI with the Tauri app via @test-cabinet/ui; talks to a backend (catalog + published data) and a set of worker servers (execution) over HTTP.",
+  "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the gallery UI with the static site via @clockwyrks/ui; talks to a backend (catalog, published data, and run execution) over HTTP.",
   "scripts": {
+    "predev": "tsc -b ../../packages/run-record",
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -21,8 +22,8 @@
     "@opentelemetry/resources": "2.0.1",
     "@opentelemetry/sdk-trace-web": "2.0.1",
     "@opentelemetry/semantic-conventions": "1.36.0",
-    "@test-cabinet/run-record": "*",
-    "@test-cabinet/ui": "*",
+    "@clockwyrks/run-record": "*",
+    "@clockwyrks/ui": "*",
     "react": "^19",
     "react-dom": "^19",
     "react-router": "^7.6.0"
@@ -32,7 +33,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
     "sass": "^1",
-    "typescript": "^5",
+    "typescript": "^6",
     "vite": "^6"
   }
 }

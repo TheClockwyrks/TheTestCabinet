@@ -1,0 +1,91 @@
+{
+  "sessionId": "gg-<issue-slug>-<model-slug>",
+  "workspaceDir": "/home/ttc/gg-worktrees/<model-slug>",
+  "prompt": "The workspace is the repository this issue describes. Implement the issue below. Run the gates it names before you finish, and end your session by calling finish with a short summary once the change is complete.\n\n<paste the tasks/ file here>",
+  "modelWindows": { "<openrouter/model-id>": 1048576 },
+  "modelModalities": { "<openrouter/model-id>": ["text"] },
+  "modelProviders": {
+    "<openrouter/model-id>": [
+      { "provider": "Z.AI", "quantization": "fp8" },
+      { "provider": "Baidu", "quantization": "fp8" }
+    ]
+  },
+  "capabilitySet": {
+    "preset": "issue-tools",
+    "limits": {
+      "maxParallel": 16,
+      "replayMaxBytes": 268435456,
+      "maxTurns": 300,
+      "maxRuntimeSecs": 5400,
+      "modelCallTimeoutSecs": 900,
+      "maxConsecutiveErrors": 5,
+      "maxCost": 25
+    },
+    "agents": [
+      {
+        "slug": "root",
+        "name": "Root",
+        "modelId": "<openrouter/model-id>",
+        "capabilities": [
+          {
+            "id": "shell",
+            "enabled": true,
+            "implementation": "offload",
+            "params": { "maxLines": 250, "maxChars": 4096 }
+          },
+          {
+            "id": "read-file",
+            "enabled": true,
+            "implementation": "unlimited",
+            "params": { "lineCap": 250 }
+          },
+          { "id": "write-file", "enabled": true, "params": {} },
+          { "id": "edit-file", "enabled": true, "params": {} },
+          { "id": "list-dir", "enabled": true, "params": {} },
+          { "id": "search", "enabled": true, "params": {} },
+          {
+            "id": "tasks",
+            "enabled": true,
+            "params": { "maxTasks": 100, "mode": "simple" }
+          }
+        ],
+        "tools": [
+          "shell",
+          "read_file",
+          "write_file",
+          "edit_file",
+          "list_dir",
+          "tree",
+          "search",
+          "add_task",
+          "update_task",
+          "set_blocked_by",
+          "complete_task",
+          "remove_task"
+        ],
+        "operations": [],
+        "openingTurn": {
+          "modules": ["files", "shell"],
+          "functions": [
+            "docs.search",
+            "views.open_docs_view",
+            "views.open_text",
+            "views.open_file",
+            "files.search"
+          ],
+          "tree": { "include": true, "depth": 2 }
+        },
+        "hooks": [
+          {
+            "event": "pre-shell",
+            "name": "no destructive git or rm",
+            "action": {
+              "type": "built-in",
+              "script": "guard-destructive-shell"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

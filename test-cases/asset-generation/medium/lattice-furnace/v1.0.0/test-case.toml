@@ -1,0 +1,123 @@
+slug = "lattice-furnace"
+experimental = true
+name = "Lattice Furnace"
+difficulty = "medium"
+tags = ["sprite-sheet", "machine"]
+summary = """
+Draw the Lattice furnace: a flat, top-down 2D 2x2 coal-fired smelter, as a 64x64 \
+sprite sheet of twelve frames in two states — a cold "off" idle (four frames) and a \
+"smelting" loop (eight frames) where a glowing firebox roils around a pulsing \
+white-hot core — produced one drawing operation at a time. The steel body sits in \
+the shared Lattice chassis palette; heat is its working accent and appears only in \
+the firebox; the coal fuel packed around the fire is drawn, but the ore being \
+smelted is not."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 64x64 transparent canvas (a separate file). The furnace
+# covers a 2x2 block of 32px tiles, so one frame is 64x64 — a small footprint,
+# plainly smaller than the assembler's 3x3 96x96. Fixing the frame size keeps every
+# run comparable.
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 64x64 file — and the two named
+# animation sequences a reviewer plays back. The 12 frames hold two states:
+#   off      0-3   (fps 6)  — a cold, dark firebox; a faint banked ember breathes.
+#   smelting 4-11  (fps 12) — the firebox blazing, a roiling pool and pulsing core.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+# The cold idle — a slow, low ember breath the furnace rests in when it has no ore
+# to smelt.
+[[sheet.sequence]]
+slug = "off"
+name = "Furnace — off (idle)"
+frames = [0, 1, 2, 3]
+fps = 6
+
+# The working state — the firebox alight, smelting.
+[[sheet.sequence]]
+slug = "smelting"
+name = "Furnace — smelting"
+frames = [4, 5, 6, 7, 8, 9, 10, 11]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

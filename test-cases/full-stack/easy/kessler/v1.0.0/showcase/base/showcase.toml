@@ -1,0 +1,20 @@
+# The base variant's carousel, in the order it is presented. The replay leads:
+# it is the entry the catalog's preview stage plays, and it is one sustained
+# stretch of a real run rather than a moment. All three stills are frames of
+# that same take.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "One wave played out, the rings taken apart and the salvage run down"
+
+[[media]]
+file = "full-rings.png"
+name = "The three rings intact, the ball outbound on the opening serve"
+
+[[media]]
+file = "mid-demolition.png"
+name = "Six balls in the sky, the shield armed, and the rings most of the way gone"
+
+[[media]]
+file = "salvage-inbound.png"
+name = "A salvage pod on the last of its fall, inside the deflector's span"

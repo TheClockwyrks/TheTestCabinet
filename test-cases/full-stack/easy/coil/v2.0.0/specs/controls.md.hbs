@@ -1,0 +1,83 @@
+# Coil — Controls
+
+This file fixes the actions a player drives the game with, the keys bound to
+each, and what each one does on each screen. The screens themselves are in
+`specs/ui.md`, and the turning rules a steering request obeys are in
+`specs/movement.md`. Every figure below carries the name this specification gives
+it.
+
+## How input reaches the game
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the keyboard and the pointer belong to the
+runtime layer you write. What the game reads from that layer is one press edge
+per action per frame, raised from the keys bound to that action, and the pointer
+and touch positions `specs/ui.md` puts over the menus. How the layer produces
+those edges and those positions is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+The keyboard belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. The game registers the actions below on the
+`LAYOUT` (`dpad-4`) touch layout and reads one press edge per action per frame
+from it.
+{{else}}
+The keyboard belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. The game registers the actions below on the
+`LAYOUT` (`dpad-4`) touch layout, and the player controller the game mode adds is
+the one place they are read, one press edge per action per frame.
+{{/if}}
+
+Every action is a press edge. Holding a key does nothing beyond the press that
+began it, and no action repeats while it is held.
+
+The keys below are the whole of how a round is played. The menus take a pointer
+and a touch contact as well, over the hit region each menu item occupies, and
+`specs/ui.md` states what each does there.
+
+## The actions
+
+`ACTIONS` holds the actions the game registers, and `BINDINGS` maps each to the
+keys that fire it. A key is named by its `KeyboardEvent.code`, so the bindings
+hold whatever keyboard layout the player types on.
+
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `KeyP` |
+| `mute` | `KeyM` |
+
+The two sets bound to the four direction actions are interchangeable. `KeyW`
+does exactly what `ArrowUp` does, wherever `up` is read.
+
+## What each action does
+
+An action's effect depends on the screen it is read on. `specs/ui.md` names the
+screens and states which of them carry a menu.
+
+| Action | On a menu-bearing screen | On `playing` |
+| --- | --- | --- |
+| `up` | Moves the highlight up one item, wrapping at the ends. | Requests a turn to `up`. |
+| `down` | Moves the highlight down one item, wrapping at the ends. | Requests a turn to `down`. |
+| `left` | Nothing. | Requests a turn to `left`. |
+| `right` | Nothing. | Requests a turn to `right`. |
+| `confirm` | Accepts the highlighted item. | Nothing. |
+| `back` | Leaves the screen for the one it was reached from. | Pauses the round. |
+| `pause` | Nothing, except on `paused`, where it resumes the round. | Pauses the round. |
+| `mute` | Toggles sound. | Toggles sound. |
+
+`mute` is read on every screen and does the same thing on each. `back` and
+`pause` both pause a live round, so a player reaches the pause menu with either
+`Escape` or `KeyP`.
+
+A steering request is buffered rather than applied where it is read, and
+`specs/movement.md` fixes the buffer, the tick that applies it, and which
+requests are discarded.
+
+## Out of scope
+
+- Gamepad input.
+- Rebinding. `BINDINGS` is fixed and the game offers no way to change it.

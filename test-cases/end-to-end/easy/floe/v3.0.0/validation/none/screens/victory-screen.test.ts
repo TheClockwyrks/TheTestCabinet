@@ -1,0 +1,131 @@
+// Floe — screens/victory-screen: the victory screen reports the run it ended.
+//
+// `specs/ui.md` fixes its contents in the screens table: `victory` shows "The
+// final score, the levels cleared (`8`), the lives remaining, and a menu of
+// `ENDING_ITEMS` (`PLAY AGAIN`, `MENU`) in that order." Three figures and two
+// entries, and a screen that says only "YOU WIN" has told the player nothing
+// about the run they just finished.
+//
+// THE THREE FIGURES ARE POSED APART FROM EACH OTHER AND FROM THE COPY. The score
+// is `437`, the lives `12`, and the levels cleared are `TOTAL_LEVELS` (`8`) — no
+// two of them are the same number, so each is found on its own and a build that
+// drew one figure where another belonged reads as a miss rather than as a pass.
+// The score is an arbitrary figure and the lives are in double figures, which
+// `specs/progression.md`'s bonus lives make reachable: a figure read as a number
+// is answered by any run that spells it, and a screen's own decoration carries
+// small numbers of its own. The levels cleared can be no figure but
+// `TOTAL_LEVELS`, so that reading is the weakest of the three and the other two
+// carry the point.
+//
+// THE LEVEL IS POSED AT `TOTAL_LEVELS`, WHICH IS WHERE A VICTORY HAPPENS.
+// `specs/progression.md` wins the run on the hop that clears level `8`, so a
+// build is entitled to draw the levels cleared from its own `level` rather than
+// from the constant, and a check that posed the victory screen at level `1` would
+// fail a perfectly compliant build over its own arrangement.
+//
+// THE FIGURES ARE READ AS NUMBERS, THE ENTRIES AS SUBSTRINGS. `specs/ui.md`
+// fixes what the screen reports and leaves how it is set to the build, so
+// `screenNumbers` reads the figures the screen drew however they are set: the
+// `8` of "LEVELS CLEARED 8" counts, the `8` inside a score of `1834` does not,
+// and an arcade's zero-padded `000437` reports the score it reports. A menu
+// entry is matched loosely instead, because a build is free to set a marker
+// against it ("> PLAY AGAIN <").
+//
+// THE HUD IS NOT PART OF THIS SCREEN'S COPY, and here that matters most: the
+// HUD bar carries a score readout, a lives readout and a level label
+// (`specs/ui.md`), which are the very figures this screen must report. A check
+// that read the whole frame would pass a victory screen that reported nothing
+// at all, off a HUD drawn behind it. Both readings here — `screenNumbers` for
+// the figures, the shared harness's `drewTextAnywhere` over `screenText` for
+// the two entries — take only what the build drew over the strait, where
+// `specs/ui.md` puts the screens.
+//
+// THE SCREEN IS POSED. That a run reaches it is `progression.victory-on-level-8`;
+// what its two entries do is `screens.victory-play-again` and
+// `screens.victory-menu`. This point reads what it says.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertContains,
+  assertEqual,
+  assertGreaterThan,
+  assertTrue,
+} from "../assert";
+import { drewTextAnywhere } from "../case-harness/index";
+import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  poseEnding,
+  screenNumbers,
+  screenRuns,
+  screenText,
+  screenTokens,
+} from "./screens";
+
+/**
+ * The run the screen must report.
+ *
+ * Three figures no two of which are the same number, so the three readings below
+ * cannot answer for one another, and neither of the two posed here is one a
+ * screen's own decoration carries: an arbitrary score, and lives in double
+ * figures, which `specs/progression.md`'s bonus lives make reachable. The levels
+ * cleared are the specification's own `TOTAL_LEVELS`.
+ */
+const SCORE = 437;
+const LIVES = 12;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("draws the final score, the levels cleared, the lives left and both entries", async () => {
+  await poseEnding(h, "victory", TOTAL_LEVELS);
+  await h.debug.setScore(SCORE);
+  await h.debug.setLives(LIVES);
+
+  const posed = await h.snapshot();
+  assertEqual(posed.screen, "victory", "the pose opened the victory screen");
+  assertEqual(posed.score, SCORE, "with the score this check reads back");
+  assertEqual(posed.lives, LIVES, "and the lives it reads back");
+
+  const calls = await h.frameCalls();
+  await captureStill(h, "victory");
+
+  const runs = screenRuns(calls);
+  assertGreaterThan(
+    runs.length,
+    0,
+    "the victory screen to draw text over the strait at all (specs/ui.md)",
+  );
+  const figures = screenNumbers(calls);
+  const drew = ` — the strait drew ${JSON.stringify(screenTokens(calls))}`;
+  assertContains(
+    figures,
+    SCORE,
+    `the victory screen reports the final score (specs/ui.md)${drew}`,
+  );
+  assertContains(
+    figures,
+    TOTAL_LEVELS,
+    `and the levels cleared, TOTAL_LEVELS (specs/ui.md)${drew}`,
+  );
+  assertContains(
+    figures,
+    LIVES,
+    `and the lives remaining (specs/ui.md)${drew}`,
+  );
+  const text = screenText(calls);
+  for (const item of ENDING_ITEMS) {
+    assertTrue(
+      drewTextAnywhere(text, item),
+      `and draws ${JSON.stringify(item)} (specs/ui.md) — the strait drew ` +
+        JSON.stringify(runs),
+    );
+  }
+});

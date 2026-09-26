@@ -17,7 +17,7 @@ when a budget period settles with the treasury at or past the debt limit and the
 balance still negative.
 
 This directory is the authored **reference implementation** of the case's `base` variant
-(the standard *New City* start) — the *correct*, ground-truth build the case is judged
+(the standard _New City_ start) — the _correct_, ground-truth build the case is judged
 against. It is a self-contained static web app whose **core simulation is authored in Rust
 and compiled to WebAssembly** (the case requirement) and driven by a thin **TypeScript** view
 layer rendering to a single **HTML5 canvas**, bundled with **Vite** (`base: "./"`). No
@@ -46,9 +46,9 @@ Junction is a **full-stack** case: every sprite, animation, particle effect, and
 game plays was **produced during the build** with the asset-generation tools on the run
 image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) and
 committed under [`assets/`](assets/) — see the case's `specs/assets.md`. At runtime the game
-only *loads* those committed files; the tools are not invoked by the build. The particle
+only _loads_ those committed files; the tools are not invoked by the build. The particle
 systems (pollution haze, construction dust, milestone fireworks) are played live through
-**`@test-cabinet/particle-runtime`** (vendored under [`vendor/`](vendor/) so a plain
+**`@clockwyrks/particle-runtime`** (vendored under [`vendor/`](vendor/) so a plain
 `npm ci` resolves it outside the monorepo), and the sounds through the Web Audio API.
 
 ## Controls
@@ -56,7 +56,7 @@ systems (pollution haze, construction dust, milestone fireworks) are played live
 - **New city** — the title menu's `NEW CITY` starts a fresh valley; `HOW TO PLAY` shows the
   primer. `TRY AGAIN` from the bankruptcy screen starts over.
 - **Zone / build** — pick a tool from the bottom build palette (`RES COM IND ROAD RAIL STATN
-  PWR WIRE WTR PIPE RAZE`, left to right), then act on the map: **drag** to paint a zone
+PWR WIRE WTR PIPE RAZE`, left to right), then act on the map: **drag** to paint a zone
   rectangle or lay an L-shaped road / rail / wire / pipe run; **click** to stamp a single
   station, power plant, or water source. Click the active tool again (or `Esc` /
   right-click) to drop it. Illegal tiles show a refusal reason; a drag run stops at the
@@ -118,7 +118,7 @@ any base path, including a per-run sub-path.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems, and
   audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — the asset generators that produced [`assets/`](assets/)
   (`gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, `gen-audio.sh`, invoking the
   `PATH` tools).

@@ -9,8 +9,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde::de::{Error as DeError, MapAccess, SeqAccess, Visitor};
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use time::OffsetDateTime;
 
+use crate::engine::ResolvedEngine;
 use crate::error::{Error, Result};
 use crate::execution::{RepoSeeder, SeedRequest, SeededRepo};
 
@@ -70,19 +74,103 @@ impl FsRepoSeeder {
     }
 
     /// Vendor the case's declared runtime packages — and their transitive
-    /// `@test-cabinet` closure — out of the host package store into
+    /// `@clockwyrks` closure — out of the host package store into
     /// [`TCAB_VENDOR_DIR`](crate::test_case::TCAB_VENDOR_DIR) inside `repo`.
     ///
-    /// The staged packages already reference their `@test-cabinet` siblings by a
-    /// relative `file:` path (for example particle-runtime → `file:../run-record`),
-    /// so copying the whole closure into the same directory layout preserves those
-    /// links; the case's `package.json` then resolves the top-level package by the
-    /// in-repo relative path the seeder wrote it to. Nothing outside the repo is
-    /// referenced, so the dependency resolves wherever the tree lives.
+    /// The case's own workspace `package.json` already declares each one as the
+    /// matching in-repo relative `file:` dependency (resolution validates that it
+    /// does), so this only fills in the copies the declaration points at: unlike
+    /// [`Self::vendor_engine`], nothing here rewrites the shipped file.
     fn vendor_packages(&self, repo: &Path, packages: &[String]) -> Result<()> {
-        let dest_root = repo.join(crate::test_case::TCAB_VENDOR_DIR);
+        self.vendor_closure(&repo.join(crate::test_case::TCAB_VENDOR_DIR), packages)
+    }
+
+    /// Vendor the run's selected [engine](crate::engine) into `repo`, returning
+    /// the version that landed.
+    ///
+    /// Three things happen here, and only here:
+    ///
+    /// 1. the engine's package and its `@clockwyrks` closure are copied into
+    ///    [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR) — a *separate*
+    ///    tree from the case's own `.vendor/packages`, so the produced repository
+    ///    (and its diff) still says which vendored code is the case's and which is
+    ///    the run's;
+    /// 2. the engine's own documentation is copied to
+    ///    [`ENGINE_DOCS_DIR`](crate::execution::ENGINE_DOCS_DIR), because an engine
+    ///    documents itself from its package and a case's specs never restate it;
+    /// 3. the seeded workspace `package.json` gains a relative `file:` dependency
+    ///    on the vendored copy.
+    ///
+    /// Step 3 is the **one** place the harness edits a build's `package.json`, and
+    /// it is what an engine being a run dimension forces: the case is frozen and
+    /// does not know which engine this run picked, so it cannot declare the
+    /// dependency itself. The `packages` key is the mirror image — declared by the
+    /// case, already present in the `package.json` it ships, and deliberately never
+    /// rewritten (see [`Self::vendor_packages`]).
+    ///
+    /// An engine with no runtime vendors nothing and reports no version.
+    /// [`seed`](RepoSeeder::seed) already gates on
+    /// [`ResolvedEngine::provides_runtime`], so that arm is a second statement of
+    /// the same rule rather than a live path — but it is what makes calling this
+    /// with any resolved engine safe.
+    fn vendor_engine(&self, repo: &Path, engine: &ResolvedEngine) -> Result<Option<String>> {
+        let Some(package) = engine.package() else {
+            return Ok(None);
+        };
+
+        // The whole `@clockwyrks` closure, exactly as a case's own packages are
+        // vendored: the staged engine package references its siblings by relative
+        // `file:` paths, which only resolve if the siblings land beside it.
+        let roots = [package.to_string()];
+        self.vendor_closure(&repo.join(crate::test_case::TCAB_ENGINE_DIR), &roots)?;
+
+        let staged = self.package_store.join(package);
+        // Read the version from the *staged* package rather than the copy just
+        // written: they are the same bytes, and naming the store in a failure
+        // points at the thing an operator has to fix.
+        let version = staged_package_version(&staged, package)?;
+
+        if let Some(docs) = engine.docs() {
+            let src = staged.join(docs);
+            if !src.is_dir() {
+                // The in-container path the prompt shows the model, not the host
+                // path: this failure is about what the run would tell the model to
+                // read, so it names it in the model's terms.
+                let in_container = format!(
+                    "{}/{}",
+                    crate::execution::WORKSPACE_DIR,
+                    crate::execution::ENGINE_DOCS_DIR
+                );
+                return Err(Error::Seeding(format!(
+                    "engine `{}` docs `{docs}` are missing from the staged package at `{}` \
+                     (the build is pointed at `{in_container}`); rebuild and restage the \
+                     package (`npm run build:packages`; `node scripts/stage-tcab-packages.mjs`)",
+                    engine.slug(),
+                    src.display(),
+                )));
+            }
+            copy_into(&src, &repo.join(crate::execution::ENGINE_DOCS_DIR))?;
+        }
+
+        add_engine_dependency(repo, package)?;
+        Ok(Some(version))
+    }
+
+    /// Copy `roots` and their transitive `@clockwyrks` dependency closure out of
+    /// the host package store into `dest_root`, one directory per package name.
+    ///
+    /// Shared by the two things that vendor out of that store — a case's declared
+    /// `packages` and the run's engine — because the walk is the same walk and
+    /// only the destination differs. The staged packages reference their
+    /// `@clockwyrks` siblings by a relative `file:` path (for example
+    /// particle-runtime → `file:../run-record`), so copying the whole closure into
+    /// one directory layout preserves those links; the dependent's `package.json`
+    /// then resolves the top-level package by the in-repo relative path it was
+    /// written to. Nothing outside the repo is referenced, so the dependency
+    /// resolves wherever the tree lives.
+    fn vendor_closure(&self, dest_root: &Path, roots: &[String]) -> Result<()> {
         let mut seen = std::collections::HashSet::new();
-        let mut queue: Vec<String> = packages.to_vec();
+        let mut queue: Vec<String> = roots.to_vec();
         while let Some(name) = queue.pop() {
             if !seen.insert(name.clone()) {
                 continue;
@@ -90,16 +178,16 @@ impl FsRepoSeeder {
             let src = self.package_store.join(&name);
             if !src.is_dir() {
                 return Err(Error::Seeding(format!(
-                    "runtime package `{name}` not found in the package store at `{}` — \
-                     the driver image bakes it under `{}`; for a local checkout, stage \
-                     the packages there (`node scripts/stage-tcab-packages.mjs`) or point \
-                     `TCAB_PACKAGE_STORE` at a staged copy",
+                    "runtime package `{name}` is not in the package store at `{}` (the driver \
+                     image bakes it under `{}`); stage the packages \
+                     (`node scripts/stage-tcab-packages.mjs`) or point `TCAB_PACKAGE_STORE` \
+                     at one",
                     self.package_store.display(),
                     crate::test_case::TCAB_PACKAGES_DIR,
                 )));
             }
             copy_into(&src, &dest_root.join(&name))?;
-            // Follow the package's own `@test-cabinet` dependencies so the whole
+            // Follow the package's own `@clockwyrks` dependencies so the whole
             // closure lands and every relative `file:` link inside it resolves.
             for dep in tcab_dependencies(&src)? {
                 queue.push(dep);
@@ -163,6 +251,18 @@ impl RepoSeeder for FsRepoSeeder {
             self.vendor_packages(&repo, &test_case.packages)?;
         }
 
+        // The run's selected engine is vendored next — after the workspace and the
+        // case's own packages, before everything else — because it is the one step
+        // that *edits* a seeded file: the `file:` dependency it injects has to go
+        // into the final `package.json` the case shipped, not a copy something
+        // later overwrites. A run with no engine, or with one that supplies no
+        // runtime, seeds nothing here and records no version, leaving the seeded
+        // tree exactly as the case shipped it.
+        let engine_version = match request.engine {
+            Some(engine) if engine.provides_runtime() => self.vendor_engine(&repo, engine)?,
+            _ => None,
+        };
+
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
         // the workspace, so joining them onto the repo root is safe. A spec whose
@@ -173,8 +273,12 @@ impl RepoSeeder for FsRepoSeeder {
         for spec in request.specs {
             let dest = repo.join(&spec.dest);
             if is_handlebars(&spec.source_path) {
-                let rendered =
-                    crate::prompt::render_spec(test_case, request.variant, &spec.source_path)?;
+                let rendered = crate::prompt::render_spec(
+                    test_case,
+                    request.variant,
+                    &spec.source_path,
+                    request.engine,
+                )?;
                 write_file(&dest, &rendered)?;
             } else {
                 copy_file(&spec.source_path, &dest)?;
@@ -269,6 +373,7 @@ impl RepoSeeder for FsRepoSeeder {
         Ok(SeededRepo {
             path: repo,
             initial_commit,
+            engine_version,
         })
     }
 }
@@ -710,7 +815,7 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
 }
 
 /// Attach the live-preview `live` block to a seeded tool config when a viewer is
-/// observing the run (a driver or the Tauri app), so the binary streams each
+/// observing the run (a driver), so the binary streams each
 /// re-rendered preview back to the host. A no-op for an unobserved run.
 fn add_live(config: &mut serde_json::Value, live: Option<&crate::preview::LivePreviewEndpoint>) {
     if let Some(live) = live {
@@ -918,11 +1023,23 @@ fn seed_audio_tool(
         "preview": preview,
         "wav": crate::test_case::AUDIO_CLIP_WAV_DEST,
     });
-    if let Some(pack) = &audio.sample_pack {
-        config["sample_pack"] = serde_json::json!(pack);
-    }
-    if let Some(bank) = &audio.instrument_bank {
-        config["instrument_bank"] = serde_json::json!(bank);
+    // The seeded config pins the pack the binary must load, under the key that
+    // binary reads. A case's declaration lives in one ordered list for every test
+    // type (`audio_packs`), so the pin is its first entry routed by the asset kind:
+    // `sfx-sample` plays a sample pack, `music` an instrument bank, and `sfx-synth`
+    // neither. The pin is what `check_identity` holds the loaded pack against, so a
+    // staged pack that is not the declared one fails at load rather than rendering
+    // the wrong sound.
+    if let Some(pack) = test_case.audio_packs.first() {
+        match test_case.asset_kind {
+            crate::test_case::AssetKind::SfxSample => {
+                config["sample_pack"] = serde_json::json!(pack);
+            }
+            crate::test_case::AssetKind::Music => {
+                config["instrument_bank"] = serde_json::json!(pack);
+            }
+            _ => {}
+        }
     }
     if test_case.asset_kind.emits_midi() {
         config["mid"] = serde_json::json!(crate::test_case::AUDIO_CLIP_MID_DEST);
@@ -971,47 +1088,99 @@ fn seed_adversarial(test_case: &crate::TestCaseVersion, _repo: &Path) -> Result<
     Ok(())
 }
 
+/// The message on the commit the seeder makes after laying the workspace down.
+///
+/// Exported because it is a **contract with the code analyzer**, not an implementation
+/// detail. When a run record carries no seed commit, the analyzer's authored-set ladder
+/// falls back to the tree's single root commit — and this message is the *only* thing
+/// distinguishing a seed root from one the model created with its own `git init`. Taking
+/// the root unconditionally would fail in the worst direction: the seeded set would
+/// swallow the model's own work and the run would report near-zero authored code, stamped
+/// as an exact measurement. Changing this string retires that fallback for every tree
+/// seeded afterwards, so it lives in one place where both sides can see it.
+pub const SEED_COMMIT_MESSAGE: &str = "Seed test case";
+
 /// Initialize a fresh git repository with a single commit and no remote, and
 /// return the initial commit hash.
 fn init_repo(repo: &Path) -> Result<String> {
     git(repo, &["init", "--quiet", "--initial-branch", "main"])?;
     // Use repository-local identity so seeding does not depend on the host's
     // global git configuration.
-    git(repo, &["config", "user.name", "The Test Cabinet"])?;
-    git(repo, &["config", "user.email", "runs@test-cabinet.invalid"])?;
+    git(repo, &["config", "user.name", "Clockwyrks"])?;
+    git(repo, &["config", "user.email", "runs@clockwyrks.invalid"])?;
+    // Directories that live in the workspace but are not part of what the model is
+    // building, and so must never be tracked. See `exclude_from_git` for why this is
+    // `.git/info/exclude` rather than a committed `.gitignore`.
+    let mut excluded = Vec::new();
+    // gg's own dotdir — the capture journal it streams *while the session runs*, its
+    // assembled sidecar, its skills library. Unconditional: it is created during the
+    // run, not by seeding, so there is nothing to probe for, and the exclusion has to
+    // be in place before the model's first commit. Excluding it for a non-gg harness
+    // (which writes nothing there) costs nothing.
+    excluded.push(crate::gg::GG_WORKSPACE_DIR);
     // A game jam's seeded previous-entries folder is reference material, not part of
-    // the submission. Exclude it locally through `.git/info/exclude` — an uncommitted
-    // ignore that keeps it out of both the seed commit's `add --all` below and the
-    // model's own `git add -A` during the run — rather than editing a committed
-    // `.gitignore` (the model's file to own). The exclude travels with the repo's
-    // `.git` into the run container, so it applies for the whole session.
+    // the submission.
     if repo
         .join(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
         .is_dir()
     {
-        let exclude = repo.join(".git").join("info").join("exclude");
-        let entry = format!("/{}/\n", crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
-        // `git init` creates `.git/info/`; append so any git-managed default excludes
-        // stay intact.
-        let mut contents = fs::read_to_string(&exclude).unwrap_or_default();
-        if !contents.ends_with('\n') && !contents.is_empty() {
-            contents.push('\n');
-        }
-        contents.push_str(&entry);
-        fs::write(&exclude, contents).map_err(seed_err)?;
+        excluded.push(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
     }
+    exclude_from_git(repo, &excluded)?;
     git(repo, &["add", "--all"])?;
-    // Vendored runtime packages live under `.tcab/packages/` and carry `dist/`
-    // subtrees; a case's own `.gitignore` (which ignores `dist/` for its build
-    // output) would otherwise exclude them from `add --all`. Force them in so the
-    // produced repository is self-contained and installable. `--force` on a path
-    // that is not present would error, so guard on the directory existing.
-    if repo.join(crate::test_case::TCAB_VENDOR_DIR).is_dir() {
-        git(repo, &["add", "--force", crate::test_case::TCAB_VENDOR_DIR])?;
+    // Vendored code lives under `.vendor/` and carries `dist/` subtrees; a case's own
+    // `.gitignore` (which ignores `dist/` for its build output) would otherwise
+    // exclude it from `add --all`. Force it in so the produced repository is
+    // self-contained and installable — an unforced `dist/` would leave the published
+    // tree with a dependency whose code is missing. Both vendored trees need this for
+    // the same reason and are listed together: the case's own declared packages, and
+    // the run's engine runtime. `--force` on a path that is not present would error,
+    // so each is guarded on the directory existing.
+    for vendored in [
+        crate::test_case::TCAB_VENDOR_DIR,
+        crate::test_case::TCAB_ENGINE_DIR,
+    ] {
+        if repo.join(vendored).is_dir() {
+            git(repo, &["add", "--force", vendored])?;
+        }
     }
-    git(repo, &["commit", "--quiet", "--message", "Seed test case"])?;
+    git(
+        repo,
+        &["commit", "--quiet", "--message", SEED_COMMIT_MESSAGE],
+    )?;
     let output = git(repo, &["rev-parse", "HEAD"])?;
     Ok(output.trim().to_string())
+}
+
+/// Git-ignore each of `dirs` — workspace-relative directory names — in the freshly
+/// initialized `repo` by appending an anchored `/<dir>/` pattern to
+/// `.git/info/exclude`.
+///
+/// `.git/info/exclude` rather than a committed `.gitignore` because `.gitignore` is the
+/// model's file to own: a seeded entry there would show up in its diffs, could be edited
+/// or deleted mid-run, and would ship in the published repository. The exclude file is
+/// uncommitted, invisible to `git status`, and travels with the repo's `.git` into the run
+/// container, so a single write at seed time governs the whole session — both the seed
+/// commit's `add --all` and every `git add -A` the model itself runs.
+///
+/// Patterns are anchored (`/name/`) so they match only at the repository root: a `.gg/`
+/// the model happens to create deeper in its own source tree is its business.
+fn exclude_from_git(repo: &Path, dirs: &[&str]) -> Result<()> {
+    if dirs.is_empty() {
+        return Ok(());
+    }
+    let exclude = repo.join(".git").join("info").join("exclude");
+    // `git init` creates `.git/info/exclude` with commented-out defaults; append so those
+    // stay intact, and tolerate its absence in case a future git stops writing it.
+    let mut contents = fs::read_to_string(&exclude).unwrap_or_default();
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        contents.push('\n');
+    }
+    for dir in dirs {
+        contents.push_str(&format!("/{dir}/\n"));
+    }
+    fs::write(&exclude, contents).map_err(seed_err)?;
+    Ok(())
 }
 
 /// Run a git command in `repo`, returning its stdout, or a seeding error.
@@ -1184,16 +1353,36 @@ fn seed_err(err: std::io::Error) -> Error {
 /// The host package store to vendor runtime packages from: the `TCAB_PACKAGE_STORE`
 /// override when set, otherwise the baked-image default
 /// ([`TCAB_PACKAGES_DIR`](crate::test_case::TCAB_PACKAGES_DIR)).
-fn package_store_dir() -> PathBuf {
+///
+/// Shared with [`EngineCatalog::new`](crate::engine::EngineCatalog::new), which
+/// reads an engine's version out of the same store, so a default-constructed
+/// catalog and a default-constructed seeder can never disagree about which store
+/// a run's engine comes from.
+pub(crate) fn package_store_dir() -> PathBuf {
     std::env::var_os("TCAB_PACKAGE_STORE")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_PACKAGES_DIR))
 }
 
-/// The `@test-cabinet/*` dependency names declared in a staged package's
+/// The host audio store a run's declared packs are staged out of: the
+/// `TCAB_AUDIO_STORE` override when set, otherwise the baked-image default
+/// ([`TCAB_AUDIO_STORE_DIR`](crate::test_case::TCAB_AUDIO_STORE_DIR)).
+///
+/// The same override shape as [`package_store_dir`], and for the same reason: the
+/// driver image bakes one store, and a local checkout points at a fetched one
+/// (`scripts/fetch-audio-store.sh`) rather than needing a credential of its own.
+/// Unlike the package store, nothing here is vendored into the run repository —
+/// [`crate::audio_stage`] materializes it in the container, outside the workspace.
+pub(crate) fn audio_store_dir() -> PathBuf {
+    std::env::var_os("TCAB_AUDIO_STORE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_AUDIO_STORE_DIR))
+}
+
+/// The `@clockwyrks/*` dependency names declared in a staged package's
 /// `package.json` — the edges the vendoring closure walk follows. A package with
 /// no such dependencies (or an unreadable/oddly-shaped manifest) contributes no
-/// edges; only names under the `@test-cabinet/` scope are followed, since those
+/// edges; only names under the `@clockwyrks/` scope are followed, since those
 /// are the siblings that also live in the store.
 fn tcab_dependencies(package_dir: &Path) -> Result<Vec<String>> {
     let manifest = package_dir.join("package.json");
@@ -1214,10 +1403,272 @@ fn tcab_dependencies(package_dir: &Path) -> Result<Vec<String>> {
         .and_then(|v| v.as_object())
         .into_iter()
         .flat_map(|map| map.keys())
-        .filter(|name| name.starts_with("@test-cabinet/"))
+        .filter(|name| name.starts_with("@clockwyrks/"))
         .cloned()
         .collect();
     Ok(deps)
+}
+
+/// The `version` a staged package declares, read out of its `package.json`.
+///
+/// The single source of truth for an engine's version: this is what a run records
+/// as the engine version it was built on, and it is the same read
+/// [`EngineCatalog`](crate::engine::EngineCatalog) performs to answer
+/// [`ResolvedEngine::version`](crate::engine::ResolvedEngine::version) for the
+/// case's declared range. The number is therefore never copied into `engine.toml`,
+/// where it would be a second place to bump.
+///
+/// It is
+/// held to being a real, non-empty string. A missing, non-string, or blank
+/// `version` is a staging fault — a package built from a manifest that never got
+/// one, or a store populated by hand — and the honest response is to refuse the
+/// run: a recorded version is compared across months of runs, and a placeholder
+/// would quietly claim two different engines were the same one.
+pub(crate) fn staged_package_version(package_dir: &Path, package: &str) -> Result<String> {
+    let manifest = package_dir.join("package.json");
+    let raw = fs::read_to_string(&manifest).map_err(|err| {
+        seed_ctx(
+            format!("reading staged package manifest `{}`", manifest.display()),
+            err,
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|err| {
+        Error::Seeding(format!(
+            "staged package manifest `{}` is not valid JSON: {err}",
+            manifest.display()
+        ))
+    })?;
+    value
+        .get("version")
+        .and_then(|version| version.as_str())
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            Error::Seeding(format!(
+                "staged package `{package}` declares no `version` string in `{}`; rebuild \
+                 and restage it (`npm run build:packages`; \
+                 `node scripts/stage-tcab-packages.mjs`)",
+                manifest.display(),
+            ))
+        })
+}
+
+/// The dependency spec a seeded workspace depends on the vendored engine by: an
+/// in-repo relative `file:` path into
+/// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR).
+///
+/// The engine counterpart of `test_case::tcab_package_file_dep`, and relative for
+/// the same reason: the produced tree is cloned, published, and validated
+/// elsewhere, so a dependency that named a host path would resolve only on the
+/// machine that seeded it.
+fn engine_file_dep(package: &str) -> String {
+    format!("file:./{}/{package}", crate::test_case::TCAB_ENGINE_DIR)
+}
+
+/// Declare the vendored engine in the seeded workspace's `package.json`, so the
+/// build imports the runtime by its bare package name and `npm install` resolves
+/// it out of the repository.
+///
+/// The rewrite preserves the file's key order and re-emits it with two-space
+/// indentation and a trailing newline — the shape every case ships and the one
+/// `npm` itself writes. That matters more here than anywhere else the harness
+/// touches a file: this `package.json` is authored by a human, read by the model,
+/// and diffed by everything downstream, so a re-serialization that sorted `name`
+/// after `dependencies` would turn a one-line addition into a whole-file change
+/// the model has to reason about.
+///
+/// A `package.json` that is absent, unreadable, or not a JSON object is an error
+/// rather than something to invent: a case that supports any engine but
+/// [`NONE_SLUG`](crate::engine::NONE_SLUG) must ship a workspace `package.json`
+/// (resolution enforces it), so reaching here without one means the case and the
+/// run disagree — and writing a fresh one would hand the model a workspace that
+/// matches none of its specs.
+fn add_engine_dependency(repo: &Path, package: &str) -> Result<()> {
+    let manifest = repo.join("package.json");
+    let raw = fs::read_to_string(&manifest).map_err(|err| {
+        Error::Seeding(format!(
+            "reading the seeded workspace `package.json` at `{}`: {err} (a case supporting \
+             any engine other than `{}` must ship one)",
+            manifest.display(),
+            crate::engine::NONE_SLUG,
+        ))
+    })?;
+    let mut document: JsonNode = serde_json::from_str(&raw).map_err(|err| {
+        Error::Seeding(format!(
+            "the seeded workspace `package.json` at `{}` is not valid JSON: {err}",
+            manifest.display()
+        ))
+    })?;
+
+    let JsonNode::Object(entries) = &mut document else {
+        return Err(Error::Seeding(format!(
+            "the seeded workspace `package.json` at `{}` is not a JSON object",
+            manifest.display()
+        )));
+    };
+    // Create `dependencies` when the case ships none — a workspace with only
+    // `devDependencies`, say — so the engine still arrives. Appending it keeps the
+    // rest of the file where the author put it.
+    if !entries.iter().any(|(key, _)| key == "dependencies") {
+        entries.push(("dependencies".to_string(), JsonNode::Object(Vec::new())));
+    }
+    let dependencies = entries
+        .iter_mut()
+        .find(|(key, _)| key == "dependencies")
+        .map(|(_, value)| value)
+        .expect("`dependencies` was just ensured to exist");
+    let JsonNode::Object(dependencies) = dependencies else {
+        return Err(Error::Seeding(format!(
+            "the seeded workspace `package.json` at `{}` declares a `dependencies` \
+             that is not an object",
+            manifest.display()
+        )));
+    };
+    set_entry(
+        dependencies,
+        package,
+        JsonNode::Leaf(serde_json::Value::String(engine_file_dep(package))),
+    );
+
+    let mut rendered = serde_json::to_string_pretty(&document).map_err(|err| {
+        Error::Seeding(format!(
+            "re-serializing the seeded workspace `package.json` at `{}`: {err}",
+            manifest.display()
+        ))
+    })?;
+    rendered.push('\n');
+    fs::write(&manifest, rendered)
+        .map_err(|err| seed_ctx(format!("writing `{}`", manifest.display()), err))?;
+    Ok(())
+}
+
+/// Set `key` in an ordered object, replacing the value of an existing key **in
+/// place** rather than moving it to the end.
+///
+/// Position is content in a file a human authored: re-pointing a dependency that
+/// is already declared should read as a changed line, not a moved one.
+fn set_entry(entries: &mut Vec<(String, JsonNode)>, key: &str, value: JsonNode) {
+    match entries.iter_mut().find(|(existing, _)| existing == key) {
+        Some((_, slot)) => *slot = value,
+        None => entries.push((key.to_string(), value)),
+    }
+}
+
+/// A JSON document that remembers the order its object keys were written in.
+///
+/// [`serde_json::Value`] cannot: its map is a `BTreeMap`, so a parse-edit-write
+/// round trip re-emits every object alphabetically. The `preserve_order` feature
+/// that would change this is a *workspace-wide* switch on a shared dependency — it
+/// would silently reorder every other JSON this workspace emits, including
+/// generated contracts — which is far too broad a change to buy one file's key
+/// order. Seeding rewrites exactly one file, the workspace `package.json` the
+/// engine dependency is injected into, so it carries its own model instead.
+///
+/// Values are held as a tree rather than as raw text (`serde_json::value::RawValue`
+/// would preserve the original bytes) so the whole document re-indents
+/// consistently: a file authored with four spaces comes back out with the two the
+/// rest of the tree uses, rather than half-and-half.
+#[derive(Debug, Clone, PartialEq)]
+enum JsonNode {
+    /// An object, in the order its keys appeared.
+    Object(Vec<(String, JsonNode)>),
+    /// An array, in order.
+    Array(Vec<JsonNode>),
+    /// A string, number, boolean, or null — a value with no key order of its own,
+    /// carried verbatim.
+    Leaf(serde_json::Value),
+}
+
+impl<'de> Deserialize<'de> for JsonNode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        deserializer.deserialize_any(JsonNodeVisitor)
+    }
+}
+
+/// Builds a [`JsonNode`] from whatever the document actually holds.
+///
+/// Every method is driven by `deserialize_any`, so the shape of the input decides
+/// the arm — which is what lets a `package.json` be read without a schema for it.
+struct JsonNodeVisitor;
+
+impl<'de> Visitor<'de> for JsonNodeVisitor {
+    type Value = JsonNode;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("any JSON value")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(
+        self,
+        mut map: A,
+    ) -> std::result::Result<Self::Value, A::Error> {
+        let mut entries: Vec<(String, JsonNode)> = Vec::new();
+        while let Some((key, value)) = map.next_entry::<String, JsonNode>()? {
+            // A duplicate key is malformed JSON that parsers accept: keep the last
+            // value (what every JSON reader resolves to) at the first key's
+            // position (what a reader of the file sees).
+            set_entry(&mut entries, &key, value);
+        }
+        Ok(JsonNode::Object(entries))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(
+        self,
+        mut seq: A,
+    ) -> std::result::Result<Self::Value, A::Error> {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element::<JsonNode>()? {
+            items.push(item);
+        }
+        Ok(JsonNode::Array(items))
+    }
+
+    fn visit_unit<E: DeError>(self) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(serde_json::Value::Null))
+    }
+
+    fn visit_bool<E: DeError>(self, value: bool) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(value.into()))
+    }
+
+    fn visit_i64<E: DeError>(self, value: i64) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(value.into()))
+    }
+
+    fn visit_u64<E: DeError>(self, value: u64) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(value.into()))
+    }
+
+    fn visit_f64<E: DeError>(self, value: f64) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(value.into()))
+    }
+
+    fn visit_str<E: DeError>(self, value: &str) -> std::result::Result<Self::Value, E> {
+        Ok(JsonNode::Leaf(value.into()))
+    }
+}
+
+impl Serialize for JsonNode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            JsonNode::Object(entries) => {
+                let mut map = serializer.serialize_map(Some(entries.len()))?;
+                for (key, value) in entries {
+                    map.serialize_entry(key, value)?;
+                }
+                map.end()
+            }
+            JsonNode::Array(items) => {
+                let mut seq = serializer.serialize_seq(Some(items.len()))?;
+                for item in items {
+                    seq.serialize_element(item)?;
+                }
+                seq.end()
+            }
+            JsonNode::Leaf(value) => value.serialize(serializer),
+        }
+    }
 }
 
 /// The edge length of a seeded blank voxel preview, matching the mesh renderer's

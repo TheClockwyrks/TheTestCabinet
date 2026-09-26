@@ -426,8 +426,11 @@ fn score_case(
         first_mismatch_tick: score.first_mismatch_tick,
         detail,
         // Recorded whether or not the run passed: for a passing run this is what
-        // playback verifies itself against, and for a wrong or over-ceiling one it
-        // shows exactly what the engine produced at each snapshot.
+        // playback verifies itself against (the console's player compares the frames
+        // it draws to these at the graded ticks inside the played window), and for a
+        // wrong or over-ceiling one it shows exactly what the engine produced at each
+        // snapshot. These are checksums the host derived from the returned state, not
+        // ones the engine merely reported — see `lattice_host::score_against`.
         snapshots: run
             .snapshots
             .iter()
@@ -504,12 +507,12 @@ fn input_label(test_case: &TestCaseVersion, case: &PerformanceCase) -> String {
 fn run_failure_detail(err: &RunError, pass_limit: u64, run_ceiling: u64) -> String {
     match err {
         RunError::Load(inner) => format!("the engine failed to load: {inner}"),
-        RunError::Invoke(InvokeError::OutOfFuel) if run_ceiling > pass_limit => format!(
+        RunError::Invoke(InvokeError::OutOfFuel { .. }) if run_ceiling > pass_limit => format!(
             "the engine exhausted its runway ({run_ceiling} fuel, {}x the {pass_limit} ceiling) \
              before finishing — too slow to even measure",
             run_ceiling / pass_limit.max(1)
         ),
-        RunError::Invoke(InvokeError::OutOfFuel) => {
+        RunError::Invoke(InvokeError::OutOfFuel { .. }) => {
             format!("the engine exhausted the {pass_limit} fuel ceiling before finishing")
         }
         other => format!("the engine failed during the run: {other}"),

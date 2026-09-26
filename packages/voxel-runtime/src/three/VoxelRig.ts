@@ -138,7 +138,8 @@ export class VoxelRig {
    */
   playAnimation(animation: AnimationSpec | string | null): void {
     if (animation === null) {
-      this.activeAnimation = this.rig.animations?.find((a) => a.autoPlay) ?? null;
+      this.activeAnimation =
+        this.rig.animations?.find((a) => a.autoPlay) ?? null;
     } else if (typeof animation === "string") {
       this.activeAnimation =
         this.rig.animations?.find((a) => a.name === animation) ?? null;

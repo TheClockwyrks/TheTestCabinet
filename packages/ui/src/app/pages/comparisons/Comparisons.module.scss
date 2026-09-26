@@ -1,0 +1,445 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+// Styling specific to the harness-comparison surfaces (list, create/edit,
+// detail). Generic form controls (fields, selects, buttons, notices) come from
+// `runs/RunExec.module.scss` (`exec`), mirroring the coverage-plan pages; this
+// module holds only what is particular to comparisons: the list cards, the
+// detail page's controls strip and figure column, and the per-arm rows inside
+// its score & pass-rate widget.
+
+// The "nothing here" line — a signed-out prompt, a failed read, an empty list.
+// It carries no margin of its own anywhere it is used: out on the backdrop its
+// container's gap spaces it, and inside a `<Panel>` the panel's padding does.
+// Left to the user agent it would instead be spaced by a 1em default while
+// everything around it is spaced by a token.
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-md;
+
+  .empty {
+    max-width: 42rem;
+  }
+}
+
+// The comparison's own description, under the detail header and out on the
+// backdrop. Its own class rather than `.empty`'s: a description is prose the
+// comparison *has*, and a stylesheet should say what an element is. Like every
+// other block in the header stack it states its bottom gap in a token, so the
+// rhythm from the title down to the controls strip is one mechanism rather than
+// a token above and a user-agent default below.
+.description {
+  margin: 0 0 t.$space-lg;
+  max-width: 42rem;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// A detail page's header: a back chevron + title on the left, actions
+// (Edit/Publish/Trigger) pushed to the right edge — the same shape the coverage
+// plan and model detail pages use.
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.detailTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: t.$font-xl;
+  color: t.$color-accent;
+  @include h.halo-glow;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// The controls summary strip on the detail page: the held-constant case,
+// version, variant, model, auth mode, orchestrator — read-only, so a viewer
+// never has to wonder what was fixed while reading the arm charts below.
+.controlsStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md t.$space-xl;
+  margin-bottom: t.$space-xl;
+  padding-bottom: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.controlStat {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// The strip sits directly on the animated backdrop rather than in a panel, so
+// both its labels and its values take the readability halo.
+.controlStatLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @include h.halo;
+}
+
+.controlStatValue {
+  font-family: var(--ttc-font);
+  color: t.$color-text;
+  @include h.halo;
+}
+
+// A visible warning banner for a confound (a control that drifted across an
+// arm's runs) — deliberately loud, since a comparison whose arms aren't truly
+// comparable is worse than no comparison (docs/comparisons/experiments.md).
+.confoundBanner {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  background: color-mix(in srgb, t.$color-warning 12%, transparent);
+  border: t.$border-hairline solid t.$color-warning;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  margin-bottom: t.$space-xl;
+  color: t.$color-text;
+}
+
+// One confound, named. The banner is a flex column with its own gap, so each
+// line carries no margin — the same shape the run detail layout's failure
+// banner uses. A bare `<p>` here would add a 1em user-agent margin on top of
+// that gap, and two of them would stack it.
+.confoundNote {
+  margin: 0;
+}
+
+.confoundTitle {
+  color: t.$color-warning;
+  font-family: var(--ttc-font);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: t.$font-sm;
+}
+
+// The presented (never a verdict) ratio callout for a two-arm comparison —
+// "Kilo's median cost is ~6.8x Pi's" — a single plain sentence, not a badge.
+.ratioCallout {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  // Stated in full: the callout is a `<p>`, so leaving the top edge unset hands
+  // it to the user agent's 1em, which only happens to disappear because the
+  // block above it collapses a larger margin into it.
+  margin: 0 0 t.$space-xl;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+}
+
+// The detail page's figure column: every section — the three charts and the
+// score/pass-rate block — is a widget, and this is the single mechanism spacing
+// them. Nothing in the column sets its own vertical margins, so the gaps read
+// identically whether a section happens to be a chart or not.
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+}
+
+// The per-arm rows inside the score & pass-rate widget. They sit on the widget's
+// own surface rather than each being a card of its own: a panel inside a panel
+// reads as a second, competing surface, and the arms are rows of one block.
+.armRows {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.armRow {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+
+  // A hairline between arms, never above the first — the widget's header is
+  // already the rule above it.
+  & + & {
+    padding-top: t.$space-lg;
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+}
+
+.armRowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// "No scored runs yet." inside a widget. Panel-bound, so unlike `.empty` out on
+// the backdrop it deliberately takes no readability halo.
+.armEmpty {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+.armSwatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  flex: none;
+}
+
+.armLabel {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  font-size: t.$font-lg;
+}
+
+.armN {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The automated-only score: the mean fraction plus every run's own point,
+// mirroring the statistics page's "at small n the points matter more than any
+// single summary."
+.scoreRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.scoreMean {
+  font-family: var(--ttc-font);
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.scorePoint {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+}
+
+// The pass-rate meter: a filled bar for the observed rate, with a lighter band
+// overlaid across the Wilson interval so the uncertainty at small n is visible
+// rather than implied by the point estimate alone. Mirrors the coverage
+// plan's `.groupBar` track.
+.meter {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 20rem;
+  height: 0.6rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  background: t.$color-accent;
+}
+
+.meterInterval {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, t.$color-text 35%, transparent);
+}
+
+.meterRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.meterLabel {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.editor {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-top: calc(#{t.$space-md} * 2);
+}
+
+.nameField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-lg;
+  max-width: 32rem;
+}
+
+// A list of comparison cards (the Comparisons tab).
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// One comparison as a card: the name over its muted subtitle on the left, the
+// roll-up stats and the row's actions on the right. The card element itself is
+// not an anchor — a card-wide `<a>` cannot hold the delete button (interactive
+// content inside a link), and it dragged the app-wide `a:hover` underline across
+// the stats and the badge. The whole card is still a click target and still
+// lights up on hover: the title link stretches an invisible overlay across the
+// card (`.rowTitleLink::after`), the same shape the home page's thumbnail cards
+// use. So this is the card's positioning context.
+.rowCard {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+  color: inherit;
+
+  // Whole-card hover feedback, matching every other card in the app that
+  // navigates (home thumbnails, tournament rows): the border takes the accent.
+  &:hover {
+    border-color: t.$color-accent;
+  }
+
+  // …and the title underlines from anywhere on the card, so the feedback names
+  // where the click goes. The underline is still only ever on the title's own
+  // text — which is the whole point of the card not being an anchor.
+  &:hover .rowTitleLink {
+    text-decoration: underline;
+  }
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+// The card's one link, and the card's whole click target. The underline is
+// scoped to it — rather than left to the global `a:hover` rule, which would
+// underline every span the card contains — while the `::after` overlay carries
+// the anchor's hit area out to the card's edges. One link per row, so a screen
+// reader is still offered the name once.
+.rowTitleLink {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+  text-decoration: none;
+
+  // Invisible, and positioned against `.rowCard` rather than the anchor: it is
+  // the card's hit area, not a decoration.
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+.rowSub {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// Painted over the title link's card-wide overlay so the stats stay legible,
+// but inert to the pointer so they click through to the link like the rest of
+// the card — only the row's own controls take the pointer back (`.rowActions`).
+// The same treatment the home page's thumbnail badges get over their overlay
+// link.
+.rowRight {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+// The row's own controls (deleting the comparison), beside its stats. The one
+// part of the card that is not a shortcut into the comparison, so it takes the
+// pointer back from the inert column around it.
+.rowActions {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.rowStat {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+.publishedBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-positive;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}

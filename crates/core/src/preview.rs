@@ -12,8 +12,7 @@
 //! (as `live.endpoint`/`live.token`). After each operation the binary connects
 //! back and streams the freshly rendered frame here; the listener decodes it into
 //! an [`AssetPreview`] and hands it to a [`PreviewSink`] — the worker relays it
-//! over the run's event stream, the desktop shell emits it to the webview, and the
-//! command line ignores it. This rides the same per-run live channel every other
+//! over the run's event stream and the command line ignores it. This rides the same per-run live channel every other
 //! update uses; the frames are deliberately **not** recorded, since the post-run
 //! view regenerates everything authoritatively from the action log.
 //!
@@ -136,8 +135,7 @@ pub struct AssetPreview {
 /// Receives [`AssetPreview`]s as the drawing binary streams them during a run.
 ///
 /// A runner implements this to relay live frames to its viewer: the worker
-/// broadcasts them on the run's event stream, the desktop shell emits them to the
-/// webview. It takes `&self` (not `&mut`) so the orchestrator can share it with the
+/// broadcasts them on the run's event stream. It takes `&self` (not `&mut`) so the orchestrator can share it with the
 /// listener task that runs concurrently with the harness session, which owns the
 /// run's [`EventSink`](crate::event::EventSink) exclusively.
 pub trait PreviewSink: Send + Sync {
@@ -180,7 +178,7 @@ impl LivePreview {
     pub async fn start(sink: Arc<dyn PreviewSink>) -> std::io::Result<Self> {
         let listener = TcpListener::bind(("0.0.0.0", 0)).await?;
         let port = listener.local_addr()?.port();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = cuid2::create_id();
         let endpoint = LivePreviewEndpoint {
             endpoint: format!("{HOST_INTERNAL}:{port}"),
             token: token.clone(),
@@ -251,7 +249,7 @@ struct FrameHeader {
     /// The number of `rig.json` bytes that follow the glb body, for a skinned run —
     /// the rig the live viewer deforms the glb with. `0`/absent for every other kind.
     /// When set, the glb body is the skin-preserving whole-body mesh (kept raw, not
-    /// decoded to a plain [`Mesh`]). A skinned frame is the one case that carries two
+    /// decoded to a plain mesh). A skinned frame is the one case that carries two
     /// bodies (glb + rig); every other kind carries at most one (mesh, system, or audio).
     #[serde(default)]
     rig_length: usize,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Panel } from "@test-cabinet/ui";
-import type { TournamentRecord } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { TournamentRecord } from "@clockwyrks/run-record";
 import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
 import { useControllerName } from "../../data/useControllerName";
@@ -70,7 +70,7 @@ export function TournamentsList() {
     return (
       <Panel>
         <p className={styles.empty}>
-          No tournaments yet — run one from a case&rsquo;s Arena tab.
+          No tournaments yet. Run one from a case&rsquo;s Arena tab.
         </p>
       </Panel>
     );

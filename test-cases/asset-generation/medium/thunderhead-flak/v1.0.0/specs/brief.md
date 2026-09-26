@@ -1,19 +1,19 @@
 # Thunderhead Flak Burst — particle brief
 
-You are authoring the **anti-air flak burst** for *Thunderhead*, a naval
+You are authoring the **anti-air flak burst** for _Thunderhead_, a naval
 fleet-command game — the mid-air puff a proximity shell makes when it detonates
 near an aircraft. It is a **one-shot** volumetric effect: a brief fiery
 detonation, an outward burst of hot sparks and shrapnel, and a lingering dark
-smoke puff that drifts and dissipates. You are authoring the *effect* as a
+smoke puff that drifts and dissipates. You are authoring the _effect_ as a
 **system**, not a single frozen frame.
 
 ## The field
 
 - A **48×48×48** volume, transparent background. `x` is across, `y` is **up**, `z`
   is depth; forward is `+z`. The burst is centered in the volume so it reads from
-  any orbit angle — the review UI and the game render it from an **orbiting 3D
-  camera**, so it must read as a flak burst from every side, not just from one
-  face.
+  any orbit angle — the game, and any viewer that plays it, renders it from an
+  **orbiting 3D camera**, so it must read as a flak burst from every side, not
+  just from one face.
 - The effect runs for **~1500 ms** at **60 fps** and does **not loop**: it is a
   one-shot detonation that fires at the start and **decays cleanly to empty** by
   the end. There is no steady state to settle into.
@@ -103,14 +103,14 @@ Ease the curves (rise/fall smoothly) rather than snapping between values.
 Use only these colors — stated as gradient stops over each particle's life, and as
 the only hues allowed in the burst (no blues, greens, or purples):
 
-| Role | Hex |
-| --- | --- |
-| White-hot core | `#fff4d6` |
+| Role                  | Hex       |
+| --------------------- | --------- |
+| White-hot core        | `#fff4d6` |
 | Core burnout (orange) | `#ff8a2a` |
-| Hot spark | `#ff6a1a` |
-| Spark ember (deep) | `#c0300c` |
-| Smoke (grey) | `#5a5a5e` |
-| Smoke (black) | `#1a1a1c` |
+| Hot spark             | `#ff6a1a` |
+| Spark ember (deep)    | `#c0300c` |
+| Smoke (grey)          | `#5a5a5e` |
+| Smoke (black)         | `#1a1a1c` |
 
 A natural read: the **core** runs `#fff4d6` → `#ff8a2a`; the **sparks** run
 `#ff6a1a` → `#c0300c`; the **smoke** runs `#5a5a5e` → `#1a1a1c` as it fades.
@@ -119,16 +119,17 @@ A natural read: the **core** runs `#fff4d6` → `#ff8a2a`; the **sparks** run
 
 The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
-per-particle size/opacity/color curves that the review UI and the game
-**simulate live**. Build it up in sensible layers: add the core, spark, and smoke
-emitters; set the forces (gravity, drag, radial push, and the smoke's buoyancy);
-then set each emitter's color gradient, opacity curve, and size curve.
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the core, spark, and
+smoke emitters; set the forces (gravity, drag, radial push, and the smoke's
+buoyancy); then set each emitter's color gradient, opacity curve, and size
+curve.
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the timing, the
+slightly from play to play**; judge its _character_ — the read, the timing, the
 motion — across replays and from multiple orbit angles, not any single frame. The
 field size, duration, and fps are already seeded in a config beside your
 workspace, so no operation needs those flags. Run `particle-3d --help` for the

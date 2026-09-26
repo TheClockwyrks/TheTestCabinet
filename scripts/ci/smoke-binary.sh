@@ -4,10 +4,9 @@
 # this binary flat-out broken?" — it runs no build, needs no container runtime or
 # API keys, and simply executes the binary it is given.
 #
-# It is shared on purpose: the CI binary job (scripts/ci/binary-smoke.sh) runs it
-# on the freshly built host binary, and the release pipeline runs the very same
-# check on each platform's shipped artifact. So the gate that guards CI is exactly
-# the gate that guards a release.
+# The CI binary jobs (scripts/ci/binary-smoke.sh) run it on the freshly built
+# binary, and on a release tag that same smoke-tested binary is what the pipeline
+# publishes. So the gate that guards CI is exactly the gate that guards a release.
 #
 # Usage: smoke-binary.sh <path-to-tcab-binary>
 set -euo pipefail

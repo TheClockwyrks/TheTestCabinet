@@ -130,7 +130,15 @@ export function NotificationsLayer() {
         runtime.track(action.run);
         break;
       case "update":
-        runtime.update(action.runId, { state: action.state });
+        runtime.update(action.runId, {
+          state: action.state,
+          // Only when this event named a start. An event that omits one says nothing
+          // about the run's start, so spreading a `startedAt: undefined` in — which
+          // `update` would happily write — would blank a row that already knows it.
+          ...(action.startedAt !== undefined
+            ? { startedAt: action.startedAt }
+            : {}),
+        });
         break;
       case "remove":
         runtime.remove(action.runId);
@@ -188,7 +196,9 @@ export function NotificationsLayer() {
         results,
       );
       for (const activeRun of toTrack) runtime.track(activeRun);
-      for (const { runId, state } of toUpdate) runtime.update(runId, { state });
+      // Everything an entry carries besides the id *is* the patch, so the two stay
+      // in step as the reconciliation learns to repair more fields.
+      for (const { runId, ...patch } of toUpdate) runtime.update(runId, patch);
       for (const runId of toRemove) runtime.remove(runId);
       // A pruned run has finished; nudge the data source to re-read produced runs
       // so it reappears as a completed run rather than simply vanishing.
@@ -210,8 +220,7 @@ export function NotificationsLayer() {
       worker.client.subscribeToNotifications({
         onNotification: handlePush,
         onRunLifecycle: handleRunLifecycle,
-        // A transport fault is non-fatal: the web EventSource reconnects on its
-        // own; a desktop listen error just means no notifications until retried.
+        // A transport fault is non-fatal: the EventSource reconnects on its own.
         onError: () => {},
         // The feed carries no backlog, so anything published while the channel was
         // down is never replayed. Reconcile against the active list on every

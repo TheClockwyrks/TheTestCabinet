@@ -1,0 +1,61 @@
+# The one and only Orrery variant: the whole machine, both modes. Listed as the
+# single entry in the case manifest's `variants`, so it is the default and every
+# run is a run of it. Every path here would resolve against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The full machine-building game: the build's own Campaign course and the fixed ten-challenge Extras shelf."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# Campaign and Extras are not variants. They are modes the player picks from the
+# title menu, the way Refract's Campaign and Cascade are modes inside its single
+# variant, so both `specs/modes/campaign.md` and `specs/modes/extras.md` are
+# COMMON specs declared in `test-case.toml` and seeded for every run. A build
+# ships both.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# The curated catalog presentation: the description a case page carries and the
+# carousel the catalog's preview stage plays. It is captured from a reference
+# build below rather than authored by hand — one unbroken half-minute of real
+# play, driven through the game's own keyboard and pointer by
+# `showcase/capture/base.showcase-capture.test.ts`, plus three stills from the
+# same take. Nothing here is seeded and no run ever loads it, so it costs a run
+# nothing; resolution does hard-fail on a missing or malformed entry, which is
+# why `tcab capture-baselines orrery v1.0.0 --dry-run` is the cheap check on it.
+#
+# Not to be confused with the SEEDED `specs/showcase.md`, which asks a build for
+# a showcase of its own inside the repository it writes. That one is part of what
+# a run delivers; this one is how the case is presented before anyone runs it.
+showcase = "showcase/base"
+
+# The authored, *correct* playable build of this variant, one directory per
+# supported engine, because the build a reference demonstrates differs under each.
+# This table names EXACTLY the three engines `test-case.toml` supports; the
+# resolver checks both directions, so an engine without a reference and a
+# reference without an engine each refuse the whole case. No reference directory
+# is ever seeded into a run: each is the authored answer, built with the case's
+# own `[build]` commands and held to the same four toolchain gates a run is, and
+# each is what `tcab capture-baselines` drives to synthesize the baseline half of
+# every review item's validation media for its engine. This is a full-stack case,
+# so each of these builds also PRODUCED its own sprites, aperture sheets,
+# particle systems and audio during authoring — one pass by hand through its
+# `scripts/gen-*.sh`, mapped in its `ASSET-LAYOUT.md` — and committed them beside
+# itself under `assets/`. The build itself only loads them, so `npm ci &&
+# npm run build` is self-contained and runs with the generation binaries absent.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` table names the three starter projects directly, one per engine,
+# and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

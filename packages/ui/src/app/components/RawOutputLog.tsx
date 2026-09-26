@@ -20,8 +20,7 @@ interface RawOutputLogProps {
 // terminal-style log. Unlike `EventFeed`, these lines are plain text with no
 // type, so there is no per-type color — only `stderr` is tinted to set it apart.
 // Virtualized like the event feed so a long run's output stays responsive.
-// Surfaced only on the runner hosts (web/Tauri); the public site shows the TTC
-// stream alone.
+// Surfaced only on the web console; the public site shows the TTC stream alone.
 export function RawOutputLog({
   lines,
   emptyLabel,

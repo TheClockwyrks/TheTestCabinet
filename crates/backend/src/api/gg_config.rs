@@ -1,0 +1,309 @@
+//! The saved **gg configuration** endpoints (`/gg/configs`).
+//!
+//! A gg run is configured by a declarative
+//! [capability set](test_cabinet_core::gg::GgCapabilitySet) rather than the flat
+//! `(harness, model, orchestrator)` tuple a third-party-harness run carries — so
+//! the configuration, not the harness, is the thing worth naming and reusing. An
+//! operator registers configurations here (the account section's gg tab), and the
+//! new-run form offers them in the harness slot once `gg` is picked as the
+//! orchestrator: the picked configuration supplies the capability set and the row's
+//! model binds its [primary slot](test_cabinet_core::gg::PRIMARY_SLOT).
+//!
+//! Everything is per-account (attributed to the token's account via [`AuthUser`])
+//! and private to that operator, exactly like the reviewer's
+//! [coverage](super::coverage) tooling. The console additionally offers a handful
+//! of code-defined *built-in* configurations (`full`, `minimal`, `no-compaction`,
+//! `shell-only`); those are read-only and never stored here, so this surface only
+//! ever holds what the operator authored.
+//!
+//! Deleting a configuration does not disturb runs launched from it: every gg run
+//! records its own resolved capability set, so the analysis surfaces keep slicing
+//! by what actually ran.
+
+#[cfg(test)]
+#[path = "gg_config.test.rs"]
+mod tests;
+
+use axum::Json;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
+use test_cabinet_core::gg::{GgCapabilitySet, is_valid_agent_slug};
+
+use crate::auth::AuthUser;
+use crate::error::ApiError;
+
+use super::AppState;
+
+/// The longest a configuration's display name may be. Names are shown in a
+/// dropdown, so a pasted wall of text is rejected rather than truncated.
+pub(crate) const MAX_NAME_LEN: usize = 80;
+
+/// The longest a configuration's description may be — a one-line note, not a
+/// document.
+pub(crate) const MAX_DESCRIPTION_LEN: usize = 280;
+
+/// An operator's saved, reusable gg configuration: a named
+/// [capability set](GgCapabilitySet) the new-run form can launch as-is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgConfig {
+    /// The configuration's opaque id (minted on create).
+    pub id: String,
+    /// The operator-chosen display name.
+    pub name: String,
+    /// A one-line note on what the configuration is for. Empty when unset.
+    pub description: String,
+    /// The capability set a run launched from this configuration carries. Every agent
+    /// is written out in full, whether it was declared inline or imported from a
+    /// [saved agent](super::GgSavedAgent): gg is handed a configuration whose agents are
+    /// already whole and resolves no reference of its own.
+    pub capability_set: GgCapabilitySet,
+    /// Where each imported agent came from. A profile declared inline has no entry, so
+    /// a configuration that imports nothing carries an empty list.
+    pub agent_sources: Vec<GgAgentSource>,
+    /// RFC 3339 of when the configuration was last saved.
+    pub updated_at: String,
+}
+
+/// The provenance of one agent in a configuration: the [saved
+/// agent](super::GgSavedAgent) it was imported from, and the fields this
+/// configuration pins itself.
+///
+/// This is what makes an import a live reference rather than a copy. A field named in
+/// [`overrides`](Self::overrides) is taken from the configuration's own resolved agent;
+/// every other field is taken from the saved agent as it stands, so editing the saved
+/// agent reshapes each configuration that imported it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentSource {
+    /// The [id](test_cabinet_core::gg::GgAgentConfig::id) the imported profile carries in
+    /// this configuration's capability set — the reference that ties this source to its
+    /// profile. An id is never rewritten, so an operator renaming either side leaves the
+    /// import following what it always followed.
+    pub profile_id: String,
+    /// The [id](super::GgSavedAgent::id) of the saved agent it follows. An id
+    /// no longer on the account leaves the profile as the ordinary inline agent the
+    /// capability set already holds.
+    pub agent_id: String,
+    /// The agent fields this configuration overrides, each a path into the profile:
+    /// `model`, `tools`, `operations`, `customInstructions`, `systemPromptTemplate`,
+    /// `promptCacheTtl`, `loopDetection`, `subagents`, `hooks`, or
+    /// `capabilities.<capability id>` for one capability.
+    pub overrides: Vec<String>,
+}
+
+/// The create/update body for a gg configuration (the server assigns `id` and
+/// `updatedAt`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgConfigInput {
+    /// The operator-chosen display name.
+    pub name: String,
+    /// A one-line note on what the configuration is for.
+    #[serde(default)]
+    pub description: String,
+    /// The capability set to save, with every agent resolved.
+    pub capability_set: GgCapabilitySet,
+    /// Where each imported agent came from.
+    #[serde(default)]
+    pub agent_sources: Vec<GgAgentSource>,
+}
+
+/// `GET /gg/configs` — every configuration the token account owns, by name.
+pub async fn list_configs(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Vec<GgConfig>>, ApiError> {
+    let configs = state
+        .db
+        .list_gg_configs(&user.0.id)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(configs))
+}
+
+/// `POST /gg/configs` — register a configuration.
+pub async fn create_config(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(input): Json<GgConfigInput>,
+) -> Result<Json<GgConfig>, ApiError> {
+    let config = config_from_input(new_id(), input, &now()?)?;
+    state
+        .db
+        .insert_gg_config(&user.0.id, &config)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(config))
+}
+
+/// `PUT /gg/configs/{id}` — update a configuration in place. 404 when the id is not
+/// the caller's.
+pub async fn update_config(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+    Json(input): Json<GgConfigInput>,
+) -> Result<Json<GgConfig>, ApiError> {
+    let config = config_from_input(id, input, &now()?)?;
+    let updated = state
+        .db
+        .update_gg_config(&user.0.id, &config)
+        .await
+        .map_err(ApiError::from)?;
+    if !updated {
+        return Err(ApiError::not_found("gg configuration not found"));
+    }
+    Ok(Json(config))
+}
+
+/// `DELETE /gg/configs/{id}` — delete a configuration. Runs already launched from
+/// it keep their own recorded capability set. 404 when the id is not the caller's.
+pub async fn delete_config(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state
+        .db
+        .delete_gg_config(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?;
+    if !deleted {
+        return Err(ApiError::not_found("gg configuration not found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A fresh opaque id for a configuration.
+pub(crate) fn new_id() -> String {
+    cuid2::create_id()
+}
+
+/// The current time as an RFC 3339 `updatedAt` string.
+pub(crate) fn now() -> Result<String, ApiError> {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting updatedAt: {e}")))
+}
+
+/// Build a stored configuration from a create/update body, validating the name, the
+/// description, each profile's [slug](test_cabinet_core::gg::GgAgentConfig::id) and the
+/// [slot mapping](test_cabinet_core::gg::GgCapabilitySet::slot_defects). Unlike a launch,
+/// an *unbound* slot is fine here: a saved configuration is a reusable capability set, and
+/// the new-run form supplies a model for each of its launch inputs.
+///
+/// A slug collision is refused here and checked again at launch, because a configuration
+/// that imports a [saved agent](super::GgSavedAgent) follows that agent's slug, and the
+/// saved agent can be renamed after this configuration was stored.
+pub(crate) fn config_from_input(
+    id: String,
+    input: GgConfigInput,
+    updated_at: &str,
+) -> Result<GgConfig, ApiError> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() {
+        return Err(ApiError::bad_request("a gg configuration needs a name"));
+    }
+    if name.chars().count() > MAX_NAME_LEN {
+        return Err(ApiError::bad_request(format!(
+            "a gg configuration name may be at most {MAX_NAME_LEN} characters"
+        )));
+    }
+    let description = input.description.trim().to_string();
+    if description.chars().count() > MAX_DESCRIPTION_LEN {
+        return Err(ApiError::bad_request(format!(
+            "a gg configuration description may be at most {MAX_DESCRIPTION_LEN} characters"
+        )));
+    }
+    if let Some(defect) = authored_capability_set_defect(&input.capability_set) {
+        return Err(ApiError::bad_request(defect));
+    }
+    Ok(GgConfig {
+        id,
+        name,
+        description,
+        capability_set: input.capability_set,
+        agent_sources: input.agent_sources,
+        updated_at: updated_at.to_string(),
+    })
+}
+
+/// The first reason `set` cannot be stored as an **authored** configuration, or `None` when its
+/// profiles and slots are sound.
+///
+/// Authored, because it reads the two halves of a profile's identity that only an authored
+/// document carries: the internal [id](test_cabinet_core::gg::GgAgentConfig::id) every reference
+/// in it points at, and the [slug](test_cabinet_core::gg::GgAgentConfig::slug) the operator wrote.
+/// A launch reads [`launched_capability_set_defect`] instead.
+pub(crate) fn authored_capability_set_defect(set: &GgCapabilitySet) -> Option<String> {
+    if let Some(defect) = slug_defect(set) {
+        return Some(defect);
+    }
+    for agent in &set.agents {
+        if agent
+            .id
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Some(format!("the `{}` agent carries no internal id", agent.slug));
+        }
+    }
+    if let Some(duplicate) = set.duplicate_agent_keys().first() {
+        return Some(format!(
+            "two agent profiles carry the internal id `{duplicate}`"
+        ));
+    }
+    set.slot_defects().into_iter().next()
+}
+
+/// The first reason `set` cannot be **launched**, or `None` when it is runnable.
+///
+/// A launched set has had its slots bound and its internal ids resolved away, so what is left to
+/// check is that the resolution actually happened and that the slugs everything now names a profile
+/// by are sound. The slug checks run again here rather than being trusted from the save, because a
+/// configuration that imports a [saved agent](super::GgSavedAgent) follows that agent's slug and the
+/// saved agent can be renamed after the configuration was stored.
+pub(crate) fn launched_capability_set_defect(set: &GgCapabilitySet) -> Option<String> {
+    if let Some(defect) = slug_defect(set) {
+        return Some(defect);
+    }
+    if let Some(unresolved) = set.unresolved_agent_keys().first() {
+        return Some(format!(
+            "the `{unresolved}` agent still carries an internal id"
+        ));
+    }
+    if let Some(slot) = set.model_slots.first() {
+        return Some(format!(
+            "the set still declares the `{}` model slot",
+            slot.name
+        ));
+    }
+    None
+}
+
+/// The slug rules both shapes are held to: every profile's slug is well-formed, and no two carry
+/// one. Shared so a configuration cannot be stored under rules a launch does not apply.
+fn slug_defect(set: &GgCapabilitySet) -> Option<String> {
+    for agent in &set.agents {
+        if !is_valid_agent_slug(agent.slug.trim()) {
+            return Some(format!(
+                "the `{}` agent's slug is not lowercase letters and digits in groups separated \
+                 by single hyphens",
+                agent.name
+            ));
+        }
+    }
+    set.duplicate_agent_slugs()
+        .first()
+        .map(|duplicate| format!("two agent profiles carry the slug `{duplicate}`"))
+}

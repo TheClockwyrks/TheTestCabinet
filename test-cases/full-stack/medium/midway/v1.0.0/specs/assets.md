@@ -23,14 +23,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so all UI/HUD chrome is drawn **in
 code** (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | path/ground tiles, ride & stall sprites, scenery, HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | the guest and ride animations |
-| `particle-2d` | a particle system → a `system.json` | fireworks, stall steam, ride sparkle, litter puffs |
-| `sfx-synth` | a procedural sound → a `.wav` | coin / ding / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer purchase / ride / alarm cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the cheerful carnival bed |
+| Tool          | Produces                                                       | Used for                                                    |
+| ------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `draw`        | one sprite → a PNG                                             | path/ground tiles, ride & stall sprites, scenery, HUD icons |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                          | the guest and ride animations                               |
+| `particle-2d` | a particle system → a `system.json`                            | fireworks, stall steam, ride sparkle, litter puffs          |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | coin / ding / alarm cues from raw synthesis                 |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer purchase / ride / alarm cues                         |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the cheerful carnival bed                                   |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is
@@ -49,9 +49,10 @@ the exact initialize / operate / render commands and how to name the output path
   the asset. You do **not** place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or
   sequenced notes and render a PCM `.wav`; `music` also emits a portable `.mid` score
-  alongside its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack /
-  instrument bank** already in the image (browse it via the tool's help); a synth
-  from `sfx-synth` needs no pack.
+  alongside its `.wav`. `sfx-sample` draws on the `combat-core` sample pack and
+  `music` on the `gm-lite` instrument bank, both present in the container (browse
+  them with `list-samples` and `list-instruments`); a synth from `sfx-synth` needs
+  no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -66,8 +67,8 @@ path like `/runs/<id>/build/`). So:
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory
   glob (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true,
-  query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -132,7 +133,7 @@ looping while it runs, etc.). Draw guests at a size that fits comfortably on a p
 tile (the guest color from `specs/overview.md`); you may produce staff as their own
 small sprites/sheets so a worker reads as distinct from a guest (`specs/staff.md`).
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The park's celebrations, vents, and puffs are **particle systems** you author with
 `particle-2d` and **play live** — not flat shapes or hand-coded effects. `particle-2d`
@@ -152,7 +153,7 @@ authors a system (emitters, forces, per-particle size/opacity/color curves) whos
   litter** (or when litter is dropped), tying the cleanup to something you can see
   (`specs/staff.md`).
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a
@@ -178,8 +179,8 @@ Web Audio API. Land them under, for example, `assets/audio/`.
   stall sale), a **ride ding / bell** (a ride starting), and a **low-cash or
   ride-broken alarm** with `sfx-synth` and/or `sfx-sample`, and a soft
   **crowd or ride hum** loop. `sfx-synth` builds a sound from synth voices alone;
-  `sfx-sample` layers over the baked sample pack (browse it via its `--help`) for a
-  richer result — use whichever suits each cue.
+  `sfx-sample` layers over the `combat-core` sample pack (browse it with `list-samples`)
+  for a richer result — use whichever suits each cue.
 - **Music** — produce a **cheerful carnival music bed** with `music`: a bright, bouncy
   fairground loop under the park. `music` emits both a `.wav` (the ready asset you play)
   and a `.mid` score alongside it; **play the `.wav`** (the `.mid` is a portable

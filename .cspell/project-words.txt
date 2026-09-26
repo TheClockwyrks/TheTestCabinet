@@ -1,540 +1,667 @@
-# Project-specific words accepted by cspell. One word per line, case-insensitive.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# @cspell/dict-en_us (4.4.35) does not carry.
 # Add a word here when it is a real domain or spec term that the default
+# Adversarial (Foray) controller vocabulary and Rust toolchain.
+# Arc Foundry electro-industrial GemTD test case.
+# Arc Foundry redesign — combination-tower ids, abilities, terms.
+# Arc Foundry reference-mockup CSS identifiers (harness-side only).
+# Arc Foundry vocabulary (compound item ids / screen names).
+# are written for.
+# Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
+# Asset-generation: Foray (foray) colony sprites.
+# bindings the vitest validators draw on, and rendering/pacing terms of art.
+# Caldera hex-terrain strategy tower-defense test case.
+# Canvas 2D's storage model, in the Shatter v2.0.1 changelog: `getImageData`
+# Carom v3.0.0 manifest prose: the vitest runner the case's in-process validators
+# Cascade (Klondike solitaire) vocabulary.
+# celestial challenge names, and the spec's hold/rotation terms.
+# controls, code identifiers in mockups, and common dev abbreviations.
+# Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
+# Deepcore reference-mockup CSS identifiers (harness-side only).
 # dictionary does not know. See `cspell.json` and the `spell` script in
-# `package.json`.
-
+# domain-tailored instrument banks (cinematic / synthwave).
+# Fathom (fathom) reference mockup class names.
+# Fathom v2.0.0 changelog prose. Ordinary English the locked
+# First cases per new asset-generation kind (material, skinned, audio, ui, music).
+# Floe arctic-crossing case family (critter + pursuing polar bear).
+# Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
+# Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
+# Game-jam vocabulary.
+# Gantry showcase capture driver: the Chromium GL backend, the VP9 encoder and the prober it shells out to, all named verbatim on a command line.
+# Gantry v1.0.0 authoring notes and manifest prose: the load model — static
+# Generic asset-pack test-case prose (2D / particle / music briefs) and the
+# in — a cell with no pose, a tape row not shown, a machine with no set sigil.
+# Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
+# Junction reference-impl DESIGN/README (Rust→wasm city builder).
+# Kessler (kessler) orbital-demolition full-stack case: the screen id, pod kinds, and asset names.
+# Klondike solitaire (Cascade) test case vocabulary.
+# Lattice (lattice) renderer asset sprites.
+# Lattice (lattice) simulation & spec vocabulary.
+# Lattice performance-case spec prose (British spelling; simulation term of art).
+# Locomotivation (Frogger-style rail-yard hauling full-stack case): title + coined/domain terms.
+# Meltdown (meltdown) domain terms.
+# Meltdown (meltdown) reference mockup class names.
 # Models
-Devstral
-
-# Test case titles / mode names.
-Carom
-Gyre
-Galaga
-
+# Orrery v1.0.0 review checklist: the coinages the per-item behaviors are stated
+# Orrery v1.0.0: the case's own vocabulary — arm variants, fault names, the
+# Project-specific words accepted by cspell. One word per line, case-insensitive.
+# R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
+# Refract v1.0.0 manifest prose: the silhouette-mask comparison the board
+# rendering validators describe.
+# returns color with the alpha divided back out of the premultiplied store.
+# Siege first-person voxel last-stand test case.
+# Siege-rifle / siege-turret asset-gen briefs (firearm & 3D-modeling terms).
+# Simple 2D engine docs: DOM event names and key codes, the @napi-rs/canvas
+# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
+# solves under inertial loads derived from prescribed motion.
 # Spec and gameplay vocabulary.
+# Spec, changelog, and reference-impl vocabulary: coined game terms, audio
+# Spectra (spectra) manifest validation ids (coined identifiers).
+# Spectra (spectra) reference mockup class names.
+# splits out of words like **GEN**erator and **PRIO**rity.
+# Standard input-device term (siege-rifleman brief).
+# Sunfront tug-of-war game + Duneforged voxel asset cases (unit & structure roster).
+# Surface-extraction meshing vocabulary (mc/sn/dc binaries + wgpu renderer).
+# Test case titles / mode names.
+# The `controls.setmaze-houses-predators` review item id (Fathom v3.0.0).
+# Thunderhead (thunderhead) fleet-command case.
+# Thunderhead reference-mockup CSS identifiers and manifest ids (harness-side only).
+# Tooling.
+# Valence (valence) domain terms and reference mockup class names.
+# Voxel asset-generation test cases (Skyshard interceptor, Ironward siege tank).
+# Voxel-animation rig & F-curve vocabulary.
+# Wick v1.0.0: the enemy roster, the weapon re-hit intervals, and the checklist ids.
+# Wireworm circuit-board arcade case family (data-worm + charged nodes).
+# Wireworm reference-mockup CSS identifiers (harness-side only).
+# `package.json`.
+abil
+abyssal
+accum
+activatable
+adamite
+Aegi
+Aegis
+Aetherfall
+aimable
+alikes
+amortised
+anglerfish
+arcnode
+argenite
+arpeggiated
+assembler
+assemblers
+aurite
+auroralance
+autocannon
+autofire
+automatable
+automove
 autoplay
+autorepeat
+autorepeats
 autotile
 autotiled
 autotiles
-deadzone
-despawn
-despawns
-keybinds
-letterboxed
-playfield
-tileable
-tileability
-tileset
-WASD
-
-# Tooling.
-tcab
-
-# Fathom (fathom) reference mockup class names.
+AZERTY
+backbeats
+backgrounded
+Backquote
+Balatro
+Bastion
+battlespace
+BAYFILL
+beatability
+bezelled
+biarm
+binarize
+binarized
+binaryen
+bindgen
 bioluminescent
+bitcrush
+bitfield
+blightcoil
+blit
+blits
+blitted
+blobbiness
+blockwork
+Bloons
+bmesh
+boardable
+Bombard
+bondsnap
+bottombar
+bpanel
+bpy
+buildability
+buildables
+buildkit
+Bulwark
+burnhit
+burnup
 bylight
+camo
+Capturable
+Carom
+ccore
+cdylib
+centerplane
+Chebyshev
+chevron
+chevrons
+chippable
+chiptune
+chokepoint
+chokepoints
+cindrite
+cliffed
+clockwyrks
+cloudflarestorage
+cobaltine
+comborecipe
+comboupgrade
+Consolas
 cooldown
 cooldowns
-Flarefish
-notell
-respawn
-respawns
-desaturated
-pacman
-teleporting
-dodgeable
-Capturable
-
-# Spectra (spectra) reference mockup class names.
-pbullet
-ebullet
-
-# Spectra (spectra) manifest validation ids (coined identifiers).
-flyin
-nonfiring
-autorepeat
-
-# Meltdown (meltdown) domain terms.
-chokepoint
+coprime
+coreshell
+corroder
+corruptors
+counterline
+counterplay
+craftable
+crafter
+crafters
+crenellated
+criss
+criticals
+crits
+crossable
+crossguard
+cryenite
 cryo
-pathfinds
-pathing
-slingshotting
-slowable
-strobing
-targetable
-unbuildable
-unitless
-
-# Meltdown (meltdown) reference mockup class names.
+CSPRNG
+ctrls
+cuprite
+cutscenes
+deadzone
+debuff
+deckbuilder
+deckbuilding
+deenergize
+deenergized
+deepcore
+deeppockets
+deepstart
+deepstone
+desaturated
+despawn
+despawning
+despawns
+dests
+desync
+detuned
+Devstral
+difficultyselect
+diggable
+dischargerig
+disjointness
+distinguishability
+dmgboard
+dodgeable
+dogfighter
+dogfighting
+dragdrop
+drillable
+driveable
+dropship
+Duneforged
+ebullet
+echolocation
+erator
+eyelessness
+Factorio
+ferron
+ffprobe
+fielddraw
+fingerpicked
+fingerpicking
+firemode
+firerate
+Flak
+Flakhound
+Flarefish
+flarefish
+flyin
+forcings
+foregrip
+forkarray
+fountaining
+FreeCell
+frogger
+frontmost
+fusecluster
+Galaga
+gameover
+gangline
+gatherable
+gatherables
+gemmed
+gemtd
+genmaze
+GIVEUP
+glimmerfin
+glissandos
+gloamfin
+gloamfins
+gltf
+granularities
+grayscale
+greebles
+growthtail
+Gyre
+halcite
+handguard
+hatchery
+headlessly
 heatbar
 heatlabel
 heatmeter
-
-# Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
-gloamfin
-gloamfins
-lanternjaw
-lanternjaws
-flarefish
-glimmerfin
-anglerfish
-grayscale
-tintable
-echolocation
-eyelessness
-abyssal
-rgba
-rrggbb
-rrggbbaa
-
-# Asset-generation: Foray (foray) colony sprites.
-recolorable
-mandibled
-scorable
-
-# Lattice (lattice) renderer asset sprites.
-Lattice
-Factorio
-splitter
-splitters
+heightfield
+hexarm
+hitbox
+hitmarker
+hitpoints
+hitscan
+hollowdeep
+hotbar
+hotspot
+hoverable
+hpbar
+hypot
+impls
+informationally
+inlines
+inplace
 inserter
 inserters
-assembler
-assemblers
-chevron
-chevrons
+inspectable
+integ
+interp
+invuln
+ionprism
+ironward
+jetpack
+jetpacking
+jetpacks
+kessler
+keybinds
+keyframing
+keypress
+keyup
+killable
+kinetostatic
+knockback
+Lancer
+landvalue
+lanternjaw
+lanternjaws
+Lattice
+lerp
+letterboxed
+letterboxing
+levelclear
+levelup
+levelups
+libvpx
+loadouts
+locomotivation
+lofi
+loopable
+lowpass
+Lumen
+Macromass
+mand
+mandibled
+mapselect
+marlite
+matchover
+matchup
+matchups
+mecha
+mechs
+Menlo
+menuless
+mesher
+meshers
+mesoscale
+midwave
+Mirrorwright
+misattributed
+misrotated
+mktemp
+modeselect
+Monatom
+Monatoms
+Monolith
+motherload
+mothwing
+mothwings
+mouselook
+mult
+multiball
+multiplicatively
+multiset
+multishot
+multishots
+muteable
+napi
+needbar
+neighbour
+neighbours
+nobuild
+nonblank
+nonfiring
+nonking
+nostack
+notell
+nullcore
+numpad
+offsuit
+openrouter
+overcurrent
+overfitting
+overretracted
+overworld
+pacman
+pagehide
+panelwork
+passability
+pathable
+pathed
+pathfind
+pathfinding
+pathfinds
+pathing
+pbullet
+peekable
+Perlin
+permadeath
+pickable
+pickupable
+platformer
+playables
+playband
+playfield
+playstyle
+playtest
+playtesting
+playthrough
+pointerdown
+poseless
+presign
+presigned
+pressable
+prio
+PRNG
+prowed
+pyronium
+quickjs
+railgun
+rangerate
+reactorpile
+readback
+realpath
+rebalances
+reband
+recenters
+recolorable
+rects
+redeals
+redoubt
+redoubts
+refiller
+regen
+regenerable
+regrant
+regranted
+reharmonize
+rehit
+Reliquary
+relocks
+repath
+repathed
+repaths
+replayability
+reskin
+reskinned
+reskins
+resonite
+respaces
+respawn
+respawned
+respawning
+respawns
+resynced
+retarget
+retargets
+retuned
+retunes
+rgba
+ringmod
+rity
+rlib
+roadline
+rockbed
+roguelike
+roselite
+roughterrain
+rowless
+royale
+rquickjs
+rrggbb
+rrggbbaa
+rupturenode
+rustc
+rustup
+sandboxed
+sawtooths
+scaffolder
+scanline
+scanlines
+Scarab
+schemars
+scorable
+Scourge
+scroller
+seedable
+Sela
+Sentinel
+serp
+serpentines
+setless
+setmaze
+setpoints
 sideload
 sideloaded
 sideloading
-
-# Lattice (lattice) simulation & spec vocabulary.
-desync
-sandboxed
-varint
-forcings
-
-# Adversarial (Foray) controller vocabulary and Rust toolchain.
-overfitting
-passability
-pathfind
-pathfinding
-dests
-buildkit
-cdylib
-rlib
-rustc
-rustup
-bindgen
-binaryen
-wasmtime
-schemars
-wasip
-
-# Voxel asset-generation test cases (Skyshard interceptor, Ironward siege tank).
-skyshard
-ironward
-centerplane
-
-# Klondike solitaire (Cascade) test case vocabulary.
-untimed
-FreeCell
-frontmost
-redeals
-peekable
-
-# Sunfront tug-of-war game + Duneforged voxel asset cases (unit & structure roster).
-Sunfront
-Duneforged
-Scarab
-Sentinel
-Bulwark
-Lancer
-Bombard
-Flakhound
-Sunhawk
-Lumen
-Monolith
-Aegis
-Aegi
-Reliquary
-Bastion
-Skyworks
-hatchery
-Flak
-hitscan
-autocannon
-crenellated
-mechs
-prowed
-sponsons
-
-# Voxel-animation rig & F-curve vocabulary.
-interp
-keyframing
-
-# Surface-extraction meshing vocabulary (mc/sn/dc binaries + wgpu renderer).
-wgpu
-mesher
-meshers
-unioning
-unioned
-panelwork
-blobbiness
-playables
-aimable
-sawtooths
-
-# Siege first-person voxel last-stand test case.
-Scourge
-redoubt
-redoubts
-blockwork
-strongpoint
-heightfield
-viewmodel
-mouselook
-hitmarker
-killable
-toggleable
-inspectable
-unpressured
-respawning
-loadouts
-
-# Caldera hex-terrain strategy tower-defense test case.
-hotbar
-buildability
-buildables
-unpowered
-chokepoints
-Perlin
-crossable
-cliffed
-
-# Wireworm circuit-board arcade case family (data-worm + charged nodes).
-scanline
-scanlines
-underglow
-criticals
-Chebyshev
-refiller
-corruptors
-deenergize
-twohit
-travelling
-# Wireworm reference-mockup CSS identifiers (harness-side only).
-playband
-mand
-ccore
-
-# Floe arctic-crossing case family (critter + pursuing polar bear).
-respawned
-gangline
-
-# Thunderhead (thunderhead) fleet-command case.
-battlespace
+siegeworks
 sightline
 sightlines
-reskins
-triaging
-matchup
-matchups
-railgun
-dogfighter
-dogfighting
-granularities
-unpossessed
-playstyle
-# Thunderhead reference-mockup CSS identifiers and manifest ids (harness-side only).
-hpbar
-firemode
-autofire
-# R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
-presign
-presigned
-cloudflarestorage
-
-# First cases per new asset-generation kind (material, skinned, audio, ui, music).
-worley
-triplanar
-unoccluded
-mesoscale
-sulphurous
-hotspot
-mecha
-chiptune
-bitcrush
-bezelled
-voicings
-reharmonize
-loopable
-bmesh
-gltf
-bpy
-
-# Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
-# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
-hollowdeep
-deepstart
-unmined
-siegeworks
-gatherable
-gatherables
-roughterrain
-zoneable
-roadline
-terraforming
-unstaffed
-pathed
-topbar
-bottombar
-needbar
-
-# Standard input-device term (siege-rifleman brief).
-numpad
-
-# Spec, changelog, and reference-impl vocabulary: coined game terms, audio
-# controls, code identifiers in mockups, and common dev abbreviations.
-unmute
-muteable
-undoable
-unseeable
-wavefronts
-alikes
-invuln
-deenergized
-repath
-reband
-retunes
-retuned
-rebalances
-playtesting
-playtest
-impls
-inlines
-rects
-CSPRNG
-serp
-modeselect
-gameover
-Vite
-
-# Valence (valence) domain terms and reference mockup class names.
-Monatom
-Monatoms
-Macromass
-camo
-strippable
-untargetable
-multiplicatively
-ctrls
-Bloons
-stackable
-chippable
-mapselect
-unslowed
-unbonded
-bondsnap
-hitpoints
-inplace
-automatable
-fountaining
-
-# Junction reference-impl DESIGN/README (Rust→wasm city builder).
-PRNG
-blit
-STATN
-landvalue
-Menlo
-Consolas
-tunables
-mult
-openrouter
-svgl
-uncurated
-scaffolder
-
-# Siege-rifle / siege-turret asset-gen briefs (firearm & 3D-modeling terms).
-unrigged
-handguard
-foregrip
-greebles
-
-# Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
-# Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
-# splits out of words like **GEN**erator and **PRIO**rity.
-Sela
-supercover
-regen
-blitted
-unmuted
-erator
-prio
-rity
-pathable
-subemitter
-headlessly
-accum
-lerp
-
-# Arc Foundry electro-industrial GemTD test case.
-gemtd
-genmaze
-undertuned
-undertune
-informationally
-reskin
-reskinned
-serpentines
-criss
-tanky
-arcnode
-# Arc Foundry reference-mockup CSS identifiers (harness-side only).
-integ
-tchip
-targ
-abil
-slowhit
-burnhit
-# Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
-deepcore
-vhera
-motherload
-coreshell
-deepstone
-rockbed
-resonite
-cryenite
-pyronium
-ferron
-marlite
-cuprite
-argenite
-cobaltine
-voltite
-halcite
-adamite
-cindrite
-verdite
-roselite
-aurite
-jetpack
-jetpacks
-jetpacking
-unminable
-diggable
-dropship
-knockback
-permadeath
-undrilled
-undrillable
-drillable
-recenters
-keypress
-# Deepcore reference-mockup CSS identifiers (harness-side only).
-activatable
-bpanel
-retarget
-xtal
-# Arc Foundry redesign — combination-tower ids, abilities, terms.
-fusecluster
-staticweb
+SKRS
+skyshard
+Skyworks
 slagdriver
-corroder
-ionprism
-forkarray
-nullcore
-rupturenode
-blightcoil
-reactorpile
-auroralance
-overcurrent
-multishot
-multishots
-multiset
-debuff
-crits
-hoverable
-transpiles
-
-# Locomotivation (Frogger-style rail-yard hauling full-stack case): title + coined/domain terms.
-locomotivation
-stardew
-frogger
-boardable
-beatability
-subfolders
-cutscenes
-teleporter
-teleporters
-triggerable
-pickupable
-
-# Game-jam vocabulary.
-Balatro
-deckbuilder
-deckbuilding
-roguelike
-royale
+slingshotting
+slowability
+slowable
+slowhit
+splitter
+splitters
+sponsons
+stackable
 Stardew
-unfun
-driveable
-matchover
-seedable
+stardew
+staticweb
+STATN
 steppable
-replayability
-counterplay
-
-# Cascade (Klondike solitaire) vocabulary.
-automove
-dragdrop
-nonking
-offsuit
-tankier
-deeppockets
+strippable
+strobing
+strongpoint
+subemitter
+subfolders
+substep
 suddendeath
-difficultyselect
-growthtail
-# Arc Foundry vocabulary (compound item ids / screen names).
-dischargerig
-comborecipe
-comboupgrade
-teslaprime
-firerate
-rangerate
-midwave
-nostack
-dmgboard
-
-# Lattice performance-case spec prose (British spelling; simulation term of art).
-neighbours
-forcings
-
-# Generic asset-pack test-case prose (2D / particle / music briefs) and the
-# domain-tailored instrument banks (cinematic / synthwave).
+sulphurous
+Sunfront
+Sunhawk
+supercover
+svgl
+swiftshader
 synthwave
 taiko
-overworld
+tailmost
+tankier
+tanky
+tappable
+targ
+targetable
+tcab
+tchip
+teleporter
+teleporters
+teleporting
+terraforming
+teslaprime
+tileability
+tileable
+tileset
+tintable
+toggleable
+topbar
 topdown
-platformer
-scroller
-lofi
-arpeggiated
-backbeats
-fingerpicked
-fingerpicking
-glissandos
-gemmed
-counterline
-crossguard
-coprime
-bitfield
-
-# Fathom v2.0.0 changelog prose. Ordinary English the locked
-# @cspell/dict-en_us (4.4.35) does not carry.
-misattributed
-
-# Canvas 2D's storage model, in the Shatter v2.0.1 changelog: `getImageData`
-# returns color with the alpha divided back out of the premultiplied store.
+transpiles
+travelled
+travelling
+triaging
+triarm
+triggerable
+triplanar
+tunables
+twohit
+unbonded
+unbuffed
+unbuildable
+uncurated
+undeclarable
+underglow
+undertune
+undertuned
+undoable
+undos
+undrawn
+undrillable
+undrilled
+unflawed
+unfuelled
+unfun
+unheld
+unhighlighted
+unindexed
+unioned
+unioning
+unitless
+unlaunched
+unmarks
+unminable
+unmined
+unmute
+unmuted
+unmutes
+unmuting
+unoccluded
+unparked
+unperformable
+unpermitted
+unpossessed
+unpowered
 unpremultiplied
+unpressured
+unranked
+unrigged
+unscrolled
+unseeable
+unslowed
+unspends
+unstaffed
+untargetable
+untargeted
+unthinned
+untimed
+unzipper
+varint
+verdite
+vhera
+viewmodel
+Vite
+vitest
+voicings
+voltite
+WASD
+wasi
+wasip
+wasmtime
+waveclear
+wavefronts
+webgl
+wgpu
+worley
+xtal
+zoneable

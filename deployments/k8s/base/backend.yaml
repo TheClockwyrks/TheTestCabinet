@@ -2,7 +2,7 @@
 # plus a ClusterIP Service. SQLite is single-writer, so replicas stays 1; point
 # TCAB_BACKEND_DATABASE_URL at a postgres:// instance to drop that pin and the
 # volume (see deployment/backups.md). The image must include a headless Chromium
-# (deployments/images/backend.Dockerfile).
+# (deployments/images/services.Dockerfile, `--target backend`).
 apiVersion: v1
 kind: Service
 metadata:
@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest # CI publishes ghcr.io/<owner>/tcab-backend; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-backend:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-backend:<git-sha>
           ports:
             - containerPort: 8787
           env:
@@ -57,6 +57,15 @@ spec:
             # proof/asset media against the data plane. The artifact BYTES never transit
             # the backend — this is just the URL the console fetches them from.
             - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "http://tcab-artifacts:8790"
+            # The artifact service as THIS POD reaches it. Distinct from the
+            # advertised URL above, which is whatever a browser can resolve and is
+            # repointed per overlay (a port forward locally, a VPN hostname on the
+            # azure overlays). The backend calls this one itself, to prune a deleted
+            # run's tree and to sweep the trees no run row references. Set in the base
+            # so every overlay inherits it; an overlay that repoints the advertised URL
+            # must leave this one on in-cluster Service DNS.
+            - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
             # The public base URL of the arena service, reported to the console via
             # GET /config so it can POST adversarial matches/tournaments and stream

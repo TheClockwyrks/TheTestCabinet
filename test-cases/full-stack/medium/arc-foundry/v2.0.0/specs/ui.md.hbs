@@ -1,0 +1,206 @@
+# Arc Foundry — Screens, menus, and audio
+
+This file fixes the screens Arc Foundry moves between, what each menu contains and where
+each of its choices leads, and the audio cues the game plays. The status bar and the
+build panel are in `specs/hud.md`, and the input that drives these screens is in
+`specs/controls.md`.
+
+## Presentation
+
+Arc Foundry fixes no palette, no font, no menu layout, and no artwork.
+`specs/overview.md` states the visual design and what a player must read at a glance;
+everything else about the look is yours. One requirement is this file's own: every piece
+of text a screen shows is legible against whatever sits behind it at the logical stage
+size `STAGE_W x STAGE_H` (`1280 x 720`).
+
+## Screens
+
+The game is a state machine over eight screens. Its screen identifier is one of these
+eight values.
+
+| Screen | Identifier | What it is |
+| --- | --- | --- |
+| Title | `title` | The main menu, and where the game opens. |
+| Map select | `mapselect` | The choice of one of the three maps. |
+| Difficulty select | `difficultyselect` | The choice of one of the three difficulties. |
+| How to play | `howto` | The rules, in a player's words. |
+| Playing | `playing` | The live yard, in a build phase, a wave, or the finale. |
+| Paused | `paused` | The pause menu, over a frozen yard. |
+| Victory | `victory` | The run was won. |
+| Overload | `overload` | The run was lost. |
+
+### `title`
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `ARC FOUNDRY` |
+| Tagline | `TAGLINE_TEXT` | `GROUND THE LOAD` |
+| Menu | `TITLE_ITEMS` | `SALVAGE`, `HOW TO PLAY`, in that order |
+
+The item at the current menu index is highlighted and drawn distinctly from the others.
+`SALVAGE` leads to `mapselect` and `HOW TO PLAY` leads to `howto`. A dim slice of a yard
+may show behind the menu.
+
+### `mapselect`
+
+Lists the three maps of `specs/yard.md`, The Substation, The Switchyard, and The
+Transformer Yard, each with its name and a preview of its waypoint layout, and The
+Transformer Yard's preview showing its two fixed housings. A `BACK` choice returns to
+`title`. Choosing a map leads to `difficultyselect`.
+
+### `difficultyselect`
+
+Lists Easy, Medium, and Hard, each showing its wave count and how tough its Load grows,
+as `specs/difficulty.md` states, before it is chosen. A `BACK` choice returns to
+`mapselect`. Choosing a difficulty begins the run on the chosen map at that difficulty.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It covers:
+
+- the goal, which is keeping the Load from reaching the collector;
+- that a stamped rock rolls a random component type at a random quality where it lands,
+  and that placing it is free;
+- that each level harvests exactly one roll and every other rock hardens into an inert
+  blocker;
+- that committing the harvest is what starts the wave, and that there is no send control;
+- that every rock and every component is a wall, so the yard is a maze the player builds,
+  and that a placement which would seal a leg of the chain is refused;
+- that the Load reaches each numbered waypoint in order, and that a flyer ignores the
+  maze;
+- that two matching components fold into one a tier higher, and that a recipe folds base
+  components into a combination tower;
+- that Charge buys refinement and combination-tower upgrades and nothing else;
+- the controls, naming each key bound in `specs/controls.md`.
+
+A `BACK` choice returns to `title`.
+
+### `playing`
+
+The live yard, its structures, the Load, the projectiles, and the effects, with the
+status bar and the build panel of `specs/hud.md`. It covers the build phase, the wave,
+and the finale alike. The game can be paused in place here: the simulation freezes, the
+yard stays visible with no menu over it, and the status bar reads `PAUSED`.
+
+The pause menu is opened from here, by `KeyP` and by `Escape`; `specs/controls.md`
+states how each of the two resolves.
+
+### `paused`
+
+The pause menu, over a yard that is visible and frozen behind it. It offers `RESUME`,
+`RESTART`, and `QUIT TO MENU`. `RESUME` returns to `playing` and clears any in-place
+pause, `RESTART` begins a fresh run on the same map at the same difficulty, and
+`QUIT TO MENU` returns to `title`.
+
+`Escape` and `KeyP` each close the pause menu and resume the run, doing exactly what
+`RESUME` does.
+
+### `victory`
+
+Shown after wave `N` is cleared and the finale of `specs/campaign.md` has run. It shows
+the Maze Rating, the number of waves survived, which is `N`, and the Grid Integrity
+remaining. It offers `PLAY AGAIN`, which replays the run on the same map at the same
+difficulty, and `MENU`, which returns to `title`. The yard is not shown behind it, so
+the status bar and the build panel of `specs/hud.md` are not drawn.
+
+### `overload`
+
+Shown the moment Grid Integrity reaches `0`. It shows the wave reached, and no Maze
+Rating, because the finale is never reached from a defeat. It offers `TRY AGAIN` and
+`MENU`, leading to the same places. The yard is not shown behind it, so the status bar
+and the build panel of `specs/hud.md` are not drawn.
+
+## Menu navigation
+
+Every menu is fully operable with the pointer alone, with a touch contact alone, and with
+the keyboard actions of `specs/controls.md` alone. The three reach the same entries, and
+no menu needs more than one of them.
+
+Where a menu draws its entries is this build's, so each entry occupies a rectangular hit
+region the build lays out and reports through the `menuButtons` reading of
+`specs/instrumentation.md`. That reported rectangle is the region the pointer and the
+touch rules below act over.
+
+| Input | Effect |
+| --- | --- |
+| The up action | Moves the highlight up one entry, wrapping from the first entry to the last. |
+| The down action | Moves the highlight down one entry, wrapping from the last entry to the first. |
+| The confirm action | Takes the highlighted entry. |
+| The back action | Takes the entry that returns to the previous screen. |
+| A pointer moved onto an entry's region | The highlight moves to that entry. |
+| A pointer pressed and released inside one entry's region | The highlight moves to that entry, and that entry is taken. |
+| A touch contact landing inside an entry's region, or traveling onto one | The highlight moves to that entry. |
+| A touch contact landing and lifting inside one entry's region | The highlight moves to that entry, and that entry is taken. |
+
+An entry is taken only when both edges of the gesture fall inside one entry's region: the
+press and the release for a pointer, the landing and the lift for a touch contact. Two
+edges in different regions take no entry, and an edge outside every region takes none.
+Every menu that this file gives a `BACK` entry can also be left with the back action.
+
+### What is highlighted on arrival
+
+A menu reached other than by returning to it opens with its first entry highlighted, at
+menu index `0`. Returning to a menu highlights the entry that led away from it.
+
+| Returning to | From | Highlighted on arrival |
+| --- | --- | --- |
+| `title` | `howto` | `HOW TO PLAY` |
+| `title` | `mapselect` | `SALVAGE` |
+| `title` | `QUIT TO MENU` on `paused`, or `MENU` on `victory` or `overload` | `SALVAGE` |
+| `mapselect` | `difficultyselect` | The map entry that was chosen |
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write. Define and play exactly the twelve cues
+in `CUES`, under exactly these names, one per event:
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Define exactly the twelve cues in `CUES` from
+`initialize`, binding each to the file `specs/assets.md` produces for it, and play them
+by name from `update`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus. Define exactly the twelve cues in `CUES` from
+the game instance's `initialize`, binding each to the file `specs/assets.md` produces for
+it, and play them by name from the world's audio inside a tick, under exactly these
+names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `stamp` | `CUES.stamp` | A rock lands and rolls. |
+| `fire-bolt` | `CUES.fireBolt` | A Capacitor, a Choke, or a Rectifier fires. |
+| `fire-spark` | `CUES.fireSpark` | An Emitter fires. |
+| `fire-chain` | `CUES.fireChain` | A Coil fires. |
+| `fire-discharge` | `CUES.fireDischarge` | An Arc-Node or a Discharge Rig fires. |
+| `combine` | `CUES.combine` | A combine of either kind resolves. |
+| `kill` | `CUES.kill` | A unit dies. |
+| `leak` | `CUES.leak` | A unit grounds out at the collector. |
+| `slow` | `CUES.slow` | A slow is applied to a unit. |
+| `burn` | `CUES.burn` | A burn is applied to a unit. |
+| `settle` | `CUES.settle` | Unharvested candidates harden into blockers at wave start. |
+| `music` | `CUES.music` | Looped under the yard from the first build phase onward. |
+
+A combination tower's shot plays the cue of the family its dominant output belongs to.
+Each of the eleven effect cues is a distinct sound, so the events are told apart by ear.
+
+{{#if (eq engine.slug "none")}}
+Each cue is played on the update its event happens, and at most once on that update; an
+update that raises the same event several times plays its cue once. The music cue loops
+until the game ends. Muting and the first-interaction unlock belong to the runtime layer
+you write: the game binds the mute action to that layer's mute bit, toggles it from any
+screen, and stays fully playable with sound muted.
+{{else}}
+Each cue is played on the frame its event happens, by the code that raised it, and at
+most once on that frame; a frame that raises the same event several times plays its cue
+once. The music cue loops until the game ends. Muting and the first-interaction unlock
+belong to the engine: the game binds the mute action to the engine's mute bit, toggles it
+from any screen, and stays fully playable with sound muted.
+{{/if}}
+
+## Out of scope
+
+- Network play, and any progress persisted between sessions.
+- Gamepad input.
+- A map editor or generated maps. The three maps of `specs/yard.md` are the whole set.
+- Any Load type, component type, quality tier, combination tower, or mechanic beyond
+  those this specification states.

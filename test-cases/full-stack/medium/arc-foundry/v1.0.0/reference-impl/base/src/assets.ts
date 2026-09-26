@@ -18,7 +18,7 @@
 //   assets/fx/*.system.json  the produced electrical particle systems
 //   assets/audio/*.wav       the produced sfx + music
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { COMBO_ORDER, COMPONENT_ORDER, LOAD_ORDER } from "./constants";
 import type { ComboType, ComponentType, Cue, FxKind, LoadType, Tier } from "./types";
 

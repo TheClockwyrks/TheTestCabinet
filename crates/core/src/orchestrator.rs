@@ -44,10 +44,6 @@ const MANIFEST_FILE: &str = "orchestrator.toml";
 /// The slug of the default, single-session orchestrator.
 pub const ONE_SHOT_SLUG: &str = "one-shot";
 
-/// The slug of the built-in [Ralph](../../../orchestrators/ralph/) multi-session
-/// orchestrator.
-pub const RALPH_SLUG: &str = "ralph";
-
 /// The token the `tcab-session` wrapper carries in place of the prompt argument.
 /// It is rendered into the wrapper as an ordinary argv element, then the quoted
 /// form is swapped for `"$1"`, so the wrapper substitutes its first argument
@@ -77,17 +73,13 @@ fn built_in(slug: &str) -> Option<BuiltIn> {
             manifest_toml: include_str!("../../../orchestrators/one-shot/orchestrator.toml"),
             runner: include_str!("../../../orchestrators/one-shot/runner.sh"),
         }),
-        RALPH_SLUG => Some(BuiltIn {
-            manifest_toml: include_str!("../../../orchestrators/ralph/orchestrator.toml"),
-            runner: include_str!("../../../orchestrators/ralph/runner.sh"),
-        }),
         _ => None,
     }
 }
 
 /// The slugs of every built-in orchestrator, for enumeration (for example by a
 /// CLI listing). Kept in step with `built_in`.
-pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG, RALPH_SLUG];
+pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG];
 
 /// An orchestrator's declarative manifest, authored as `orchestrator.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -201,7 +193,7 @@ impl OrchestratorCatalog {
     fn load_builtin(slug: &str) -> Result<Orchestrator> {
         let built_in = built_in(slug).ok_or_else(|| {
             Error::Orchestrator(format!(
-                "unknown orchestrator `{slug}` (built-in orchestrators: {})",
+                "unknown slug `{slug}` (built-in: {})",
                 BUILT_IN_SLUGS.join(", ")
             ))
         })?;
@@ -467,26 +459,11 @@ async fn read_session_log(
     }
 }
 
-/// Sum two optional token counts the way the run's totals must combine across
-/// sessions: an unreported class on both sides stays unreported (`None`), so a
-/// genuinely-empty class is never silently treated as zero; otherwise the present
-/// values add (an unreported side contributing zero). This mirrors how a single
-/// harness reports its own classes, so summing one session reproduces it exactly.
-fn add_optional(a: Option<u64>, b: Option<u64>) -> Option<u64> {
-    match (a, b) {
-        (None, None) => None,
-        (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
-    }
-}
-
-/// Add one session's token counts into a running total.
+/// Add one session's token counts into a running total. Delegates to the shared
+/// [`TokenCounts::plus`], which applies exactly this per-class "unreported folds to
+/// zero, but stays `None` when neither side reports it" rule.
 fn add_tokens(total: TokenCounts, next: TokenCounts) -> TokenCounts {
-    TokenCounts {
-        uncached_input: add_optional(total.uncached_input, next.uncached_input),
-        cached_input: add_optional(total.cached_input, next.cached_input),
-        output: add_optional(total.output, next.output),
-        reasoning: add_optional(total.reasoning, next.reasoning),
-    }
+    total.plus(next)
 }
 
 /// Write a file into a started run container at an absolute path, with the given
@@ -496,7 +473,7 @@ fn add_tokens(total: TokenCounts, next: TokenCounts) -> TokenCounts {
 /// `sh -c` script that base64-decodes them into the destination (after creating
 /// its parent) and `chmod`s it. Base64 is shell-safe, so no stdin piping or byte
 /// escaping is needed.
-async fn write_container_file(
+pub(crate) async fn write_container_file(
     runtime: &dyn ContainerRuntime,
     container: &ContainerHandle,
     dest: &str,
@@ -663,7 +640,7 @@ pub(crate) async fn drive_orchestrator(
     // is what keeps the run's terminal state honest.
     if streamed.output.idle_timed_out {
         let detail = format!(
-            "orchestrator `{}` runner produced no output for {}s and was stopped as hung",
+            "orchestrator `{}` runner produced no output for {}s",
             orchestrator.slug(),
             HARNESS_IDLE_TIMEOUT.as_secs()
         );
@@ -698,9 +675,9 @@ pub(crate) async fn drive_orchestrator(
             });
         }
         let detail = format!(
-            "orchestrator `{}` runner exited with code {}",
+            "code {} from orchestrator `{}`'s runner",
+            streamed.output.exit_code,
             orchestrator.slug(),
-            streamed.output.exit_code
         );
         events.emit(&crate::event::HarnessEvent {
             timestamp: now_timestamp(),
@@ -751,9 +728,8 @@ pub(crate) async fn drive_orchestrator(
     let truncated = segments.iter().filter(|s| !s.terminated).count();
     if truncated > 0 || segments.is_empty() {
         let message = format!(
-            "the token usage recorded for this run is incomplete: {truncated} of {} \
-             harness session(s) read from the {source} ended without their closing \
-             marker, so the harness's final usage report did not survive",
+            "recorded token usage is incomplete: {truncated} of {} harness sessions read \
+             from the {source} ended without their closing marker",
             segments.len()
         );
         tracing::warn!(
@@ -781,6 +757,18 @@ pub(crate) async fn drive_orchestrator(
         reported_cost,
         raw_output: streamed.raw_output,
         translated_events: streamed.translated_events,
+        // A third-party harness session emits no gg session summary.
+        gg_summary: None,
+        // The tool-call tally is accumulated across the whole (possibly
+        // multi-session) runner stream by the one parser that translated it.
+        tool_calls: streamed.tool_calls,
+        // Cooperative cancellation is a gg path: a third-party harness is driven through
+        // its own runner and has no wind-down protocol to ask it for, so nothing here
+        // ever observes the run's cancellation latch. The driver knows this and does not
+        // wait on one — it destroys a canceled third-party run outright rather than
+        // asking it to unwind (see the driver's `cancel` module) — so a session that
+        // reaches this point was never canceled.
+        canceled: false,
     })
 }
 
@@ -797,9 +785,11 @@ async fn resolve_home(
     let output = runtime.exec(container, &command).await?;
     let home = output.stdout.trim();
     if output.exit_code != 0 || home.is_empty() {
-        return Err(Error::Orchestrator(
-            "could not resolve the run user's home directory in the container".to_string(),
-        ));
+        return Err(Error::Orchestrator(format!(
+            "could not resolve the run user's home directory in the container (exit {}, \
+             $HOME {home:?})",
+            output.exit_code
+        )));
     }
     Ok(home.to_string())
 }

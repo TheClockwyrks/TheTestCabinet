@@ -20,10 +20,11 @@ operations down and draw the current **waveform + spectrogram** to `waveform.png
 You cannot hear your clip, so **read `waveform.png` after you render** to judge the
 envelope and spectral content and decide what to do next.
 
-You are mixing over a baked **sample library** — the `combat-core` pack. Because you
-cannot audition audio, browse it by metadata: `sfx-sample list-samples` (optionally
-`--tag <tag>`) lists the clips, and `sfx-sample sample-info --name <name>` reads one
-clip's tags, duration, and description. Do that **first**, then place layers.
+You are mixing over a **sample library** — the `combat-core` pack. Because you
+cannot audition audio, browse it by metadata: `sfx-sample list-samples`
+(optionally `--tag <tag>`) lists the clips, and
+`sfx-sample sample-info --name <name>` reads one clip's tags, duration, and
+description. Do that **first**, then place layers.
 
 Each operation is an ordinary subcommand with flags, for example:
 

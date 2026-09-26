@@ -1,5 +1,5 @@
 // Small fetch helpers shared by the backend and worker HTTP transports.
-import { readTextWithProgress } from "../client";
+import { HttpReadError, readTextWithProgress } from "../client";
 import type { ProgressCallback } from "../client";
 
 export function joinUrl(base: string, path: string): string {
@@ -24,7 +24,7 @@ export async function getJson<T>(
   const res = await fetch(joinUrl(base, path), {
     headers: { accept: "application/json", ...bearer(token) },
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
@@ -46,7 +46,7 @@ export async function postJson<T>(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
@@ -67,7 +67,7 @@ export async function putJson<T>(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
@@ -88,7 +88,7 @@ export async function putVoid(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
 }
 
 // PUT raw bytes (not JSON) with an explicit content type, sending `token` as a
@@ -111,7 +111,7 @@ export async function putBytes<T>(
     },
     body,
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
@@ -130,7 +130,7 @@ export async function delJson<T>(
       ...bearer(token),
     },
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
@@ -145,12 +145,12 @@ export async function delVoid(
     method: "DELETE",
     headers: { ...bearer(token) },
   });
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
 }
 
 export async function getText(base: string, path: string): Promise<string> {
   const res = await fetch(joinUrl(base, path));
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return res.text();
 }
 
@@ -163,7 +163,7 @@ export async function getTextStreamed(
   onProgress?: ProgressCallback,
 ): Promise<string> {
   const res = await fetch(joinUrl(base, path));
-  if (!res.ok) throw await httpError(res);
+  if (!res.ok) throw await httpError(res, path);
   return readTextWithProgress(res, onProgress);
 }
 
@@ -208,9 +208,24 @@ export async function getNdjsonStreamed<T>(
   return parseNdjson<T>(await getTextStreamed(base, path, onProgress));
 }
 
-// Turns a non-2xx response into an Error, preferring the backend's error
-// envelope (`{ error: { code, message } }`) when present.
-async function httpError(res: Response): Promise<Error> {
+// Turns a non-2xx response into an `HttpReadError`, preferring the backend's
+// error envelope (`{ error: { code, message } }`) when present.
+//
+// This layer wraps a message the backend already wrote as a sentence, so it adds
+// only what it uniquely knows — the path that was requested and the status it
+// came back with — and leaves the claim of failure to the detail it carries.
+//
+// The status also rides on the error as a NUMBER. A caller deciding whether a
+// read came back absent or failed (the live gallery's `readRun`, via
+// `isAbsence`) reads that field. It used to read the status back out of this
+// message with a regular expression, which made `detail` — the backend's own
+// words, and free to quote a URL or an upstream's reply — part of the control
+// flow: a `500` whose message happened to contain "HTTP 404" rendered as "No run
+// found for <id>".
+//
+// The path is passed rather than read off `res.url`, which a synthesized
+// `Response` (every test double, and some polyfills) leaves empty.
+async function httpError(res: Response, path: string): Promise<Error> {
   let detail = res.statusText;
   try {
     const body = (await res.json()) as { error?: { message?: string } };
@@ -218,5 +233,5 @@ async function httpError(res: Response): Promise<Error> {
   } catch {
     /* non-JSON body; keep the status text */
   }
-  return new Error(`${res.status} ${detail}`);
+  return new HttpReadError(path, res.status, detail);
 }

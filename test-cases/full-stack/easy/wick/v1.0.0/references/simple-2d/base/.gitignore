@@ -1,0 +1,29 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the engine is vendored into this
+# repository at `.vendor/engine/@clockwyrks/simple-2d/`, prebuilt, and its own
+# `dist/` is committed with the project. An unanchored `dist/` would match that
+# directory too and leave the build unable to resolve the engine.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Asset-authoring scratch. Only the finished PNG, `.wav`, and `.mid` files under
+# `assets/` are committed, never the intermediate configuration, action log, or
+# preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

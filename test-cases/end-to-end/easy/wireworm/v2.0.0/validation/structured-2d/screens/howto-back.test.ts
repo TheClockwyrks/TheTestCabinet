@@ -1,0 +1,61 @@
+// Wireworm — screens/howto-back: `back` on the how-to screen returns to the
+// title.
+//
+// One transition of the menu state machine `specs/ui.md` fixes: on `howto`,
+// "`back` returns to `title`". The screen is POSED with the surface's own
+// `setScreen` rather than reached through the title menu, so what this decides
+// is the return alone: whether confirming HOW TO PLAY opens the screen is
+// `screens/title-howto`'s to decide, and a build that cannot open the how-to
+// screen and one that cannot leave it grade differently.
+//
+// WHICH ENTRY THE RETURN SELECTS is `screens/howto-back-selects-howto`'s point,
+// not this one: a build that returns to the wrong entry still returns, and the
+// two have to grade apart.
+//
+// The press is the `back` action's own bound key — `Escape`, which also drives
+// `pause`, so the build has to resolve it as the back on a screen showing no
+// live play (`specs/controls.md`) — dispatched as a real key event at the target
+// the engine listens on.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { TITLE_ITEMS } from "../constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  tapAction,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title from the how-to screen", async () => {
+  resetTo(h);
+  h.debug.setMenuIndex(TITLE_ITEMS.length - 1);
+  h.debug.setScreen("howto");
+  assertEqual(
+    h.snapshot().screen,
+    "howto",
+    "setScreen poses the how-to screen (specs/instrumentation.md)",
+  );
+
+  await tapAction(h, "back");
+  await h.advance(1);
+  captureStill(h, "title");
+
+  const returned = h.snapshot();
+  assertEqual(
+    returned.screen,
+    "title",
+    "back on the how-to screen returns to the title (specs/ui.md)",
+  );
+});

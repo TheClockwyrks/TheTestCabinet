@@ -36,6 +36,15 @@ function footprint(e) {
       for (let dx = 0; dx < 3; dx++) tiles.push([e.x + dx, e.y + dy]);
     return tiles;
   }
+  if (e.type === "furnace") {
+    // A 2×2 block anchored top-left.
+    return [
+      [e.x, e.y],
+      [e.x + 1, e.y],
+      [e.x, e.y + 1],
+      [e.x + 1, e.y + 1],
+    ];
+  }
   if (e.type === "splitter") {
     // Second tile is one step perpendicular-clockwise of `dir` (E/W → (x, y+1);
     // N/S → (x+1, y)). The bus layout only emits east-facing splitters.
@@ -63,28 +72,28 @@ function cropTop(scenario, rows, ticks) {
   };
 }
 
-const read = (name) =>
-  JSON.parse(readFileSync(join(casesDir, name), "utf8"));
+const read = (name) => JSON.parse(readFileSync(join(casesDir, name), "utf8"));
 
-// The top bands are deterministic: circuit unit (rows 0–6, the full copper chain
-// copper-ore→copper-plate→copper-cable→circuit plus an iron-plate feed), gear unit
-// (rows 7–9, iron-ore→iron-plate→iron-gear), smelt unit (rows 10–20, an ore bus
-// tapped into a wide row of plate assemblers with a curve + side-load merge), then a
-// two-row ore belt unit carrying a splitter. Cropping at a band boundary keeps the
-// slice self-contained. Large runs a band deeper to also show a farm unit — a whole
-// row of assemblers tapped straight off one ore bus, the density workhorse.
+// The main-bus factory fills the whole grid (machinery edge to edge), so — unlike
+// the old banded layout — there is no clean top-of-grid slice; the preview shows the
+// WHOLE factory at a shortened tick count. `cropTop` with the full height keeps every
+// entity and just re-times the run; ~24k ticks is long enough that the sub-buses have
+// filled and the stations are steadily crafting, so a viewer sees the finished flow
+// (ore smelted on the left, plate/copper sub-buses running east lined with gear and
+// cable stations, the machine works building circuit → transport-belt → inserter →
+// assembler, belts of all three tiers moving at their own speeds, single-item sinks).
 const PREVIEW = [
   {
-    name: "Medium factory — top (copper chain + iron chain + smelt)",
+    name: "Medium factory (48×32 main bus)",
     blurb:
-      "A portion of the held-out `medium` scored scenario (48×32): every source emits only raw ore. Top band crafts circuits from a real copper chain (copper-ore→copper-plate→copper-cable) merged with an iron-plate feed; below it iron-ore→iron-plate→iron-gear, then an ore bus tapped into a wide row of plate assemblers (curve + side-load merge) and a balancing splitter.",
-    scenario: cropTop(read("medium.json"), 23, 5000),
+      "The whole held-out `medium` scored scenario (48×32) at a shortened tick count. A real main bus: raw iron/copper ore and coal enter on the far left, and each ore is merged 1:1 with coal and fed into a bank of 2×2 coal-fired furnaces that smelt it to plate (a single coal source is split between the two furnace banks). Iron- and copper-plate sub-buses then run east lined with gear and cable stations, and a machine works builds circuit, transport-belt, inserter, and assembler. Watch the furnaces switch between their cold and smelting states; machinery spans the full width; belts of all three tiers move at their own speeds; every sink takes one item.",
+    scenario: cropTop(read("medium.json"), 32, 24000),
   },
   {
-    name: "Large factory — top (chains + smelt + assembler farm)",
+    name: "Large factory (72×40 main bus)",
     blurb:
-      "A portion of the held-out `large` scored scenario (72×40): the same ore-only craft tree, one band deeper to include a farm unit — a full row of assemblers tapped straight off one ore bus, dumping to sinks. Shows the density (empty-belt ~11%) and the full copper→circuit chain.",
-    scenario: cropTop(read("large.json"), 30, 5000),
+      "The whole held-out `large` scored scenario (72×40) at a shortened tick count — the same coal-fired main-bus design, wider and taller: larger furnace banks smelting ore + coal, more sub-bus lanes, more product stations spread across the interior, and the full copper→cable→circuit chain feeding the machine works. Shows the coal split between banks, the ore+coal merges feeding the furnaces, the tapped intermediate buses, machine crafting through to single-item sinks, and the tiered belt speeds.",
+    scenario: cropTop(read("large.json"), 40, 24000),
   },
 ];
 

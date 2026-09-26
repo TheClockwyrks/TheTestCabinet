@@ -1,0 +1,7 @@
+[[media]]
+file = "gameplay.json.gz"
+name = "Match play among the swaying, spinning obstacles"
+
+[[media]]
+file = "mid-match.png"
+name = "The obstacles caught mid-turn"

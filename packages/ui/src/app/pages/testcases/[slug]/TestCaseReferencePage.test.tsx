@@ -1,6 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { TestCaseDetail, VariantSummary } from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
@@ -13,9 +19,11 @@ vi.mock("../../../components/PageLayout", () => ({
 }));
 
 // The catalog is injected through `useTestCase`; mock it so each test seeds an
-// exact fixture. The gallery data is read by both the layout (run/arena
-// affordances) and the sheet view (the reference-media resolver), so it is stubbed
-// per test — a host with no resolver at all is a case the view must handle.
+// exact fixture. The gallery data is read by the layout (run/arena affordances
+// and the coordinate resolver) and the sheet view (the reference-media
+// resolver), so it is stubbed per test — a host with no media resolver at all is
+// a case the view must handle, and a NEW `fetchCaseVariant` per test keeps the
+// layout's per-resolver resolution cache from leaking between tests.
 const catalog = vi.fn<() => { testCases: TestCaseDetail[]; status: string }>();
 // The layout resolves the case it is about through `useTestCase` (a per-slug
 // fetch), so the stub answers from the fixture catalog each test seeds — the same
@@ -45,10 +53,25 @@ function variant(extra: Partial<VariantSummary> = {}): VariantSummary {
   return {
     slug: "base",
     name: "Base",
-    referenceBuild: null,
+    referenceBuilds: {},
     referenceSheet: null,
     ...extra,
   } as VariantSummary;
+}
+
+// The gallery-data stub for one test: the affordance flags, a fresh coordinate
+// resolver answering with exactly the given variant, and (optionally) the
+// media resolver.
+function seedGalleryData(
+  resolved: VariantSummary,
+  extra: Record<string, unknown> = {},
+) {
+  galleryData.mockReturnValue({
+    canExecute: false,
+    arena: undefined,
+    fetchCaseVariant: () => Promise.resolve(resolved),
+    ...extra,
+  });
 }
 
 // A catalog entry carrying only the fields the Reference tab and its layout read.
@@ -64,6 +87,8 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
     variants: [variant()],
+    variantsByVersion: { "v1.0.0": [{ slug: "base", name: "Base" }] },
+    enginesByVersion: { "v1.0.0": ["none"] },
     changelog: [],
     errata: [],
     sheet: {
@@ -76,38 +101,40 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   } as TestCaseDetail;
 }
 
-function renderReference(slug = "lattice-belt") {
+// Where a sheetless coordinate's redirect lands: the detail landing route,
+// probed so a test can assert both the arrival and that the query string (the
+// anchored coordinate) survived the hop.
+function LandingProbe() {
+  const { search } = useLocation();
+  return <p>landing{search}</p>;
+}
+
+function renderReference(search = "", slug = "lattice-belt") {
   return render(
-    <MemoryRouter initialEntries={[routes.testCaseReference(slug)]}>
+    <MemoryRouter initialEntries={[routes.testCaseReference(slug) + search]}>
       <Routes>
         <Route
           path={routePatterns.testCaseReference}
           element={<TestCaseReferencePage />}
         />
+        <Route path={routePatterns.testCaseDetail} element={<LandingProbe />} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
 describe("TestCaseReferencePage", () => {
-  it("renders the published frames and their action logs for an asset case", () => {
-    catalog.mockReturnValue({
-      testCases: [
-        testCase({
-          variants: [variant({ referenceSheet: { frames: [0, 1] } })],
-        }),
-      ],
-      status: "ready",
-    });
-    galleryData.mockReturnValue({
-      canExecute: false,
-      arena: undefined,
+  it("renders the published frames and their action logs for an asset case", async () => {
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    seedGalleryData(variant({ referenceSheet: { frames: [0, 1] } }), {
       referenceMediaUrl,
     });
     renderReference();
 
     // One image per published frame, at the deterministic key.
-    const frame0 = screen.getByAltText("Reference frame 0") as HTMLImageElement;
+    const frame0 = (await screen.findByAltText(
+      "Reference frame 0",
+    )) as HTMLImageElement;
     expect(frame0.src).toBe(
       "https://snap.example/media/references/lattice-belt/v1.0.0/base/frames/0.png",
     );
@@ -127,81 +154,180 @@ describe("TestCaseReferencePage", () => {
     expect(screen.getByText("Run")).toBeTruthy();
 
     // A published sheet is a reference in its own right, so the layout offers the
-    // tab off that signal alone — no `referenceBuild` involved.
+    // tab off that signal alone — no `referenceBuilds` involved.
     expect(screen.getByRole("link", { name: "Reference" })).toBeTruthy();
   });
 
-  it("degrades to a placeholder when the host serves no reference media", () => {
-    catalog.mockReturnValue({
-      testCases: [
-        testCase({ variants: [variant({ referenceSheet: { frames: [0] } })] }),
-      ],
-      status: "ready",
-    });
-    // A host with no snapshot bucket wired up supplies no resolver at all.
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
-    renderReference();
-
-    expect(screen.getByText(/not available here/)).toBeTruthy();
-    expect(screen.queryByAltText("Reference frame 0")).toBeNull();
-  });
-
-  it("shows the frames without animations when the host omits the sheet spec", () => {
-    // The static snapshot may not carry the case's `[sheet]`; the frames still
-    // stand on their own, they just cannot be played as sequences.
+  it("resolves the frames under the ANCHORED version, not the latest", async () => {
+    // A reference is published per case version, so anchoring an older version
+    // must fetch that version's objects — the latest version's frames belong to
+    // a different deliverable.
     catalog.mockReturnValue({
       testCases: [
         testCase({
-          sheet: null,
-          variants: [variant({ referenceSheet: { frames: [0, 1] } })],
+          versions: ["v1.1.0", "v1.0.0"],
+          latestVersion: "v1.1.0",
+          variantsByVersion: {
+            "v1.1.0": [{ slug: "base", name: "Base" }],
+            "v1.0.0": [{ slug: "base", name: "Base" }],
+          },
+          enginesByVersion: { "v1.1.0": ["none"], "v1.0.0": ["none"] },
         }),
       ],
       status: "ready",
     });
-    galleryData.mockReturnValue({
-      canExecute: false,
-      arena: undefined,
+    seedGalleryData(variant({ referenceSheet: { frames: [0] } }), {
+      referenceMediaUrl,
+    });
+    renderReference("?version=v1.0.0");
+
+    const frame0 = (await screen.findByAltText(
+      "Reference frame 0",
+    )) as HTMLImageElement;
+    expect(frame0.src).toBe(
+      "https://snap.example/media/references/lattice-belt/v1.0.0/base/frames/0.png",
+    );
+  });
+
+  it("degrades to a placeholder when the host serves no reference media", async () => {
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    // A host with no snapshot bucket wired up supplies no resolver at all.
+    seedGalleryData(variant({ referenceSheet: { frames: [0] } }));
+    renderReference();
+
+    expect(await screen.findByText(/not available here/)).toBeTruthy();
+    expect(screen.queryByAltText("Reference frame 0")).toBeNull();
+  });
+
+  it("shows the frames without animations when the host omits the sheet spec", async () => {
+    // The static snapshot may not carry the case's `[sheet]`; the frames still
+    // stand on their own, they just cannot be played as sequences.
+    catalog.mockReturnValue({
+      testCases: [testCase({ sheet: null })],
+      status: "ready",
+    });
+    seedGalleryData(variant({ referenceSheet: { frames: [0, 1] } }), {
       referenceMediaUrl,
     });
     renderReference();
 
-    expect(screen.getByAltText("Reference frame 0")).toBeTruthy();
+    expect(await screen.findByAltText("Reference frame 0")).toBeTruthy();
     expect(screen.queryByText("Animated sequences")).toBeNull();
   });
 
-  it("still embeds a deployed reference build for an end-to-end variant", () => {
+  it("redirects a builds-only variant to the detail landing, keeping the anchor", async () => {
+    // A deployed reference BUILD no longer has a tab of its own — it folds into
+    // the landing tab's Play surface — so a hand-typed /reference URL (or a
+    // variant switch to a builds-only coordinate) lands there, with the query
+    // string (the anchored coordinate) intact.
     catalog.mockReturnValue({
       testCases: [
         testCase({
           testType: "end-to-end",
           sheet: null,
-          variants: [
-            variant({ referenceBuild: "https://ref.example/carom/base/" }),
-          ],
+          enginesByVersion: { "v1.0.0": ["none", "simple-2d"] },
         }),
       ],
       status: "ready",
     });
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
-    renderReference();
+    seedGalleryData(
+      variant({
+        referenceBuilds: {
+          "simple-2d": "https://ref.example/carom/base/simple-2d/",
+        },
+      }),
+    );
+    renderReference("?engine=simple-2d");
 
-    const frame = screen.getByTitle("Reference implementation for Base");
-    expect(frame.getAttribute("src")).toBe("https://ref.example/carom/base/");
+    expect(await screen.findByText("landing?engine=simple-2d")).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeNull();
   });
 
-  it("shows the no-reference placeholder when the variant declares neither", () => {
-    // Only reachable by hand-typed URL (the layout hides the tab), but it must not
-    // render an empty embed.
+  it("plays the scored factories through the reference engine for the performance case", async () => {
+    // A performance case produces an engine, not a page or an image, so its
+    // reference is what the authoritative engine does — and it ships with the
+    // bundle rather than being published, so no variant signal and no host media
+    // resolver is involved.
     catalog.mockReturnValue({
-      testCases: [testCase({ variants: [variant()] })],
+      testCases: [
+        testCase({
+          slug: "lattice",
+          name: "Lattice",
+          testType: "performance",
+          difficulty: "hard",
+          sheet: null,
+        }),
+      ],
       status: "ready",
     });
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    seedGalleryData(variant());
+    renderReference("", "lattice");
+
+    // All three factories, each launchable, each labelled by scale and grid — and
+    // nothing else. The tab is the reference, so the rows carry no prose.
+    const play = await screen.findAllByRole("button", { name: "▶ Play" });
+    expect(play).toHaveLength(3);
+    expect(screen.getByText("Small — 24×12")).toBeTruthy();
+    expect(screen.getByText("Medium — 48×32")).toBeTruthy();
+    expect(screen.getByText("Large — 72×40")).toBeTruthy();
+
+    // The tab is offered off the CASE alone — this variant declares neither of the
+    // published reference signals, so the layout and the page have to agree that a
+    // bundled playback is a reference in its own right.
+    expect(screen.getByRole("link", { name: "Reference" })).toBeTruthy();
+
+    // Nothing plays until asked: stepping a factory builds thousands of frames.
+    expect(
+      screen.queryByRole("dialog", { name: "Factory playback" }),
+    ).toBeNull();
+    fireEvent.click(play[2]!);
+    const player = screen.getByRole("dialog", { name: "Factory playback" });
+    // The player carries the same name that was clicked, so a full-viewport player
+    // is still identifiable.
+    expect(within(player).getByText("Large — 72×40")).toBeTruthy();
+
+    // The player then goes off to fetch the vendored engine and scenario, which
+    // jsdom cannot serve (there is no canvas or wasm here either — that stack is
+    // covered by `renderer.integration.test.ts` against the real engine). Let that
+    // failure land inside the test rather than after it, and assert the player
+    // reports it instead of hanging on a blank canvas.
+    await waitFor(() =>
+      expect(
+        within(player).getByText(/Could not play this scenario/),
+      ).toBeTruthy(),
+    );
+  });
+
+  it("offers no reference playback for a performance case the bundle has no factories for", async () => {
+    // The scenarios are vendored for one case at build time, so a future
+    // performance case must not be handed Lattice's factories. It falls through to
+    // the ordinary per-variant signals, has neither, and so redirects to the
+    // landing exactly like any other coordinate with nothing to show.
+    catalog.mockReturnValue({
+      testCases: [
+        testCase({
+          slug: "some-other-performance-case",
+          testType: "performance",
+          sheet: null,
+        }),
+      ],
+      status: "ready",
+    });
+    seedGalleryData(variant());
+    renderReference("", "some-other-performance-case");
+
+    expect(await screen.findByText("landing")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "▶ Play" })).toBeNull();
+  });
+
+  it("redirects to the detail landing when the variant declares no reference at all", async () => {
+    // Only reachable by hand-typed URL (the layout offers no tab), but it must
+    // not dead-end on an empty page — which is also what a backend old enough to
+    // send no `referenceSheet` field produces.
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    seedGalleryData(variant());
     renderReference();
 
-    expect(screen.getByText(/No reference implementation/)).toBeTruthy();
-    // …and the layout offers no tab to reach it by — which is also what a backend
-    // old enough to send no `referenceSheet` at all produces.
-    expect(screen.queryByRole("link", { name: "Reference" })).toBeNull();
+    expect(await screen.findByText("landing")).toBeTruthy();
   });
 });

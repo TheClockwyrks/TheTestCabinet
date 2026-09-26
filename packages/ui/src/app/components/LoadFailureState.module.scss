@@ -1,0 +1,48 @@
+@use "../styles/tokens" as t;
+@use "../styles/halo" as h;
+
+// Centred in the space the content it stands in for would have filled, the same
+// way `LoadingState` centres its mark, so a failed read reads as a deliberate
+// state rather than a stray line of text at the top of an empty page.
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xl 0;
+  text-align: center;
+}
+
+// A whole page body.
+.page {
+  min-height: 50vh;
+}
+
+// A large block inside a page that already draws its own chrome.
+.section {
+  min-height: 16rem;
+}
+
+// Loose text on the animated backdrop, so every line takes the readability halo.
+.headline {
+  margin: 0;
+  color: t.$color-negative;
+  @include h.halo;
+}
+
+.detail {
+  margin: 0;
+  max-width: 48ch;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  overflow-wrap: anywhere;
+  @include h.halo;
+}
+
+.hint {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  @include h.halo;
+}

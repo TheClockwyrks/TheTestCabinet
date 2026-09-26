@@ -1,21 +1,32 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../data/galleryContext";
 import type { TestCaseSummary } from "../data/testCases";
+import type { InProgressRun } from "../../client/types";
 import { RunLog, sortStateToQuery, useRunTable } from "./RunLog";
 
 // A run summary carrying only the fields the run log reads.
 function summary(
   id: string,
   slug: string,
-  opts: { tokens?: number; model?: string } = {},
+  opts: {
+    tokens?: number;
+    model?: string;
+    harness?: string;
+    ggPreset?: string | null;
+  } = {},
 ): RunSummary {
-  const { tokens = 100, model = "anthropic/claude" } = opts;
+  const {
+    tokens = 100,
+    model = "anthropic/claude",
+    harness = "claude",
+    ggPreset = null,
+  } = opts;
   return {
     id,
     startedAt: "2026-01-01T00:00:00Z",
@@ -25,9 +36,10 @@ function summary(
       testCaseVersion: "1.0.0",
       testType: "end-to-end",
       variant: "base",
-      harnessSlug: "claude",
+      harnessSlug: harness,
       harnessVersion: "1",
       modelId: model,
+      ggPreset,
     },
     metrics: {
       runTimeSeconds: 60,
@@ -332,7 +344,8 @@ describe("RunLog", () => {
       "TEST",
       "HARNESS",
       "VARIANT",
-      "MODEL",
+      "ENGINE",
+      "MODEL / CONFIG",
       "TOKENS",
       "COST",
     ]) {
@@ -344,6 +357,248 @@ describe("RunLog", () => {
     // A hidden column can still be re-shown, which unlocks the survivor again.
     fireEvent.click(screen.getByRole("checkbox", { name: "COST" }));
     expect(screen.getByRole("checkbox", { name: "RATING" })).not.toBeDisabled();
+  });
+});
+
+// The MODEL / CONFIG cell carries whichever identity actually distinguishes a run:
+// a third-party-harness run is its model, a gg run is the configuration it was
+// launched from (its models are per-agent bindings, so no single harness model
+// names it). One listing routinely holds both kinds of row.
+describe("RunLog model/config cell", () => {
+  beforeEach(() => localStorage.clear());
+
+  function renderRuns(runs: RunSummary[]) {
+    function MixedHarness() {
+      const table = useRunTable({
+        runs,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return <RunLog rows={table.rows} controls={table.controls} />;
+    }
+    return render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MixedHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  // The rendered MODEL / CONFIG cells, in DOM order, as `<label>:<value>` — the
+  // label is the caption the phone card shows, and it must name whichever of the
+  // two identities the cell actually carries.
+  function modelCells(container: HTMLElement): string[] {
+    return [
+      ...container.querySelectorAll(
+        '[data-label="Model"],[data-label="Config"]',
+      ),
+    ].map((cell) => `${cell.getAttribute("data-label")}:${cell.textContent}`);
+  }
+
+  it("shows the configuration for a gg row and the model for every other row", () => {
+    const { container } = renderRuns([
+      summary("r-gg", "alpha", {
+        harness: "gg",
+        model: "sonnet-9",
+        ggPreset: "planning-A",
+      }),
+      summary("r-claude", "beta", { model: "opus-5" }),
+    ]);
+    expect(modelCells(container)).toEqual([
+      "Config:planning-A",
+      "Model:opus-5",
+    ]);
+  });
+
+  it("falls back to the model for a gg row with no recorded configuration", () => {
+    // A hand-assembled set (or a run produced before the card carried the name)
+    // has no configuration to show; the cell must not go blank.
+    const { container } = renderRuns([
+      summary("r-gg", "alpha", { harness: "gg", model: "sonnet-9" }),
+    ]);
+    expect(modelCells(container)).toEqual(["Model:sonnet-9"]);
+  });
+
+  it("labels the column for both identities", () => {
+    renderRuns(RUNS);
+    expect(
+      screen.getByRole("button", { name: "Sort by MODEL / CONFIG" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("RunLog code cell", () => {
+  beforeEach(() => localStorage.clear());
+
+  function renderWithCodeColumn(runs: RunSummary[]) {
+    function CodeHarness() {
+      const table = useRunTable({
+        runs,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return <RunLog rows={table.rows} controls={table.controls} />;
+    }
+    const rendered = render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <CodeHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    // The column starts hidden: with an un-backfilled corpus a default-on CODE column
+    // is a column of dashes, so it lives in the picker.
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "CODE" }));
+    return rendered;
+  }
+
+  function codeCell(container: HTMLElement): HTMLElement {
+    const cell = container.querySelector('[data-label="Code"]');
+    if (!(cell instanceof HTMLElement))
+      throw new Error("no CODE cell rendered");
+    return cell;
+  }
+
+  // The card's whole reason for existing: an ordering over the analysed corpus without
+  // fetching a single run record.
+  it("renders the code figure lifted onto the summary card", () => {
+    const run = summary("r-code", "alpha");
+    run.code = {
+      analyzerVersion: 1,
+      authoredBasis: "seedCommit",
+      treeBasis: "preValidation",
+      truncated: false,
+      codeLines: 1250,
+      giniCodeLines: 0.42,
+      meanCognitive: 3.1,
+    };
+    const { container } = renderWithCodeColumn([run]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("1,250");
+    expect(cell.getAttribute("title")).toContain("analyzer v1");
+    expect(cell.getAttribute("title")).not.toContain("truncated");
+  });
+
+  // R5, and the reason this step exists at all. Analysis is deliberately not
+  // backfilled, so most of the corpus has no figure — and a cell that read as a zero
+  // would turn "we never measured this" into "this model wrote no code", which is a
+  // different and false claim about the model.
+  it("says an unanalysed run was not measured rather than showing a zero", () => {
+    const { container } = renderWithCodeColumn([summary("r-none", "alpha")]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("—");
+    expect(cell.getAttribute("title")).toMatch(/not measured/i);
+    expect(cell.getAttribute("title")).toMatch(/not backfilled/i);
+    expect(cell.getAttribute("title")).toMatch(/not a claim/i);
+  });
+
+  // Two analysed runs are not automatically comparable. A figure measured over the
+  // whole tree counts code the run was *given*; one measured after validation counts
+  // build output; a truncated one stopped short. The cell marks each rather than
+  // presenting all of them as the same number.
+  it("marks a figure whose basis makes it incomparable", () => {
+    const run = summary("r-loose", "alpha");
+    run.code = {
+      analyzerVersion: 1,
+      authoredBasis: "allFiles",
+      treeBasis: "postValidation",
+      truncated: true,
+      codeLines: 90000,
+      giniCodeLines: 0.9,
+      meanCognitive: 12,
+    };
+    const { container } = renderWithCodeColumn([run]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("90,000*");
+    const title = cell.getAttribute("title") ?? "";
+    expect(title).toContain("seeded files included");
+    expect(title).toContain("after validation");
+    expect(title).toContain("truncated");
+  });
+});
+
+// The shared clock behind the live DURATION cell. It exists to move one figure, so
+// it must run exactly when that figure is on screen and moving: every tick
+// re-renders the whole log, and DURATION starts hidden, so a log left ticking for a
+// column nobody is showing pays a render a second for identical DOM. Counted as
+// intervals installed, the clock being the only thing in the log that installs one.
+describe("RunLog live clock", () => {
+  let intervals: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    intervals = vi.spyOn(globalThis, "setInterval");
+  });
+  afterEach(() => {
+    intervals.mockRestore();
+    vi.useRealTimers();
+  });
+
+  // One pinned in-flight row, carrying only what the log reads off it.
+  function inFlight(state: InProgressRun["state"], startedAt?: string) {
+    return {
+      runId: "j-live",
+      testCaseSlug: "alpha",
+      testCaseVersion: "1.0.0",
+      variant: "base",
+      harnessSlug: "claude",
+      modelId: "anthropic/claude",
+      state,
+      ...(startedAt ? { startedAt } : {}),
+    } as InProgressRun;
+  }
+
+  // The log with the two hidden-by-default columns turned on or left alone, which is
+  // exactly the override the column picker writes.
+  function renderActive(runs: InProgressRun[], showDuration: boolean) {
+    if (showDuration) {
+      localStorage.setItem(
+        "ttc:runlog:global:visible",
+        JSON.stringify({ timestamp: true, duration: true }),
+      );
+    }
+    function ActiveHarness() {
+      const table = useRunTable({
+        runs: RUNS,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return (
+        <RunLog rows={table.rows} controls={table.controls} active={runs} />
+      );
+    }
+    return render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <ActiveHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("ticks while a started run's duration is on screen", () => {
+    renderActive([inFlight("running", "2026-01-01T00:00:00Z")], true);
+    expect(intervals).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates no interval for a duration column nobody is showing", () => {
+    // The default configuration: a run is executing, and its duration is being read
+    // by nobody because the column is hidden.
+    renderActive([inFlight("running", "2026-01-01T00:00:00Z")], false);
+    expect(intervals).not.toHaveBeenCalled();
+  });
+
+  it("creates no interval for a run that has not started", () => {
+    // A run held behind a parallelism cap can sit here for an hour. Its cell is a
+    // dash for all of it, so a tick would re-render the log to no effect.
+    renderActive([inFlight("queued")], true);
+    expect(intervals).not.toHaveBeenCalled();
   });
 });
 

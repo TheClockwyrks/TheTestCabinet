@@ -7,6 +7,9 @@ fn summary() -> JobSummary {
         variant: "base".to_string(),
         harness_slug: "claude-code".to_string(),
         model_id: "claude-opus-4".to_string(),
+        engine: None,
+        started_at: None,
+        gg_preset: None,
     }
 }
 
@@ -20,6 +23,39 @@ fn a_notification_flattens_the_run_identity() {
     assert_eq!(value["variant"], "base");
     assert_eq!(value["harnessSlug"], "claude-code");
     assert_eq!(value["modelId"], "claude-opus-4");
+}
+
+/// The engine rides in the flattened identity, and only when the run names one: an
+/// absent field is the `none` engine, the same defaulting the launch request and the
+/// run record use, so a client that reads it back gets one answer rather than two
+/// spellings of the engineless run.
+#[test]
+fn a_run_events_identity_carries_the_engine_only_when_one_is_named() {
+    let value = serde_json::to_value(RunEvent::enqueued("j1", summary())).unwrap();
+    assert!(value.get("engine").is_none());
+
+    let on_engine = JobSummary {
+        engine: Some("simple-2d".to_string()),
+        ..summary()
+    };
+    let value = serde_json::to_value(RunEvent::enqueued("j1", on_engine)).unwrap();
+    assert_eq!(value["engine"], "simple-2d");
+}
+
+/// The start time rides in the flattened identity too, and only once the run has one:
+/// a queued run's absent field is what the console renders as a dash, and is what stops
+/// it from ticking a duration for a run that has not begun.
+#[test]
+fn a_run_events_identity_carries_the_start_only_once_the_run_has_started() {
+    let value = serde_json::to_value(RunEvent::enqueued("j1", summary())).unwrap();
+    assert!(value.get("startedAt").is_none());
+
+    let started = JobSummary {
+        started_at: Some("2026-09-06T00:02:00Z".to_string()),
+        ..summary()
+    };
+    let value = serde_json::to_value(RunEvent::enqueued("j1", started)).unwrap();
+    assert_eq!(value["startedAt"], "2026-09-06T00:02:00Z");
 }
 
 /// A completed run points the console at the record it produced; the kind is the
@@ -70,4 +106,54 @@ fn a_publish_failed_notification_keys_on_the_publish_job_and_links_to_the_run() 
     assert_eq!(value["recordId"], "r1");
     assert_eq!(value["message"], "`gh repo create` failed: HTTP 503");
     assert_eq!(value["testCaseSlug"], "carom");
+}
+
+/// The launch shape used by the engine tests below. Every optional dimension is
+/// left unset, which is what a launcher that predates a given dimension sends.
+fn launch_body() -> LaunchBody {
+    LaunchBody {
+        test_case: "carom".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model: "anthropic/claude-opus-4".to_string(),
+        orchestrator: None,
+        engine: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
+    }
+}
+
+/// A launch that names no engine is the `none` default. The key is absent from the
+/// wire body rather than written as null, so a body says only what the launch
+/// actually chose — and the backend, which stores the body verbatim, holds exactly
+/// that.
+#[test]
+fn a_launch_without_an_engine_omits_the_key_entirely() {
+    let value = serde_json::to_value(launch_body()).expect("serialize");
+    assert!(value.get("engine").is_none());
+
+    let parsed: LaunchBody = serde_json::from_value(value).expect("deserialize");
+    assert!(parsed.engine.is_none());
+}
+
+/// A selected engine travels as its bare slug; resolution against the catalogue
+/// and against the case's supported set happens when the run executes.
+#[test]
+fn a_selected_engine_round_trips_as_its_slug() {
+    let mut body = launch_body();
+    body.engine = Some("simple-2d".to_string());
+
+    let value = serde_json::to_value(&body).expect("serialize");
+    assert_eq!(value["engine"], "simple-2d");
+
+    let parsed: LaunchBody = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.engine.as_deref(), Some("simple-2d"));
 }

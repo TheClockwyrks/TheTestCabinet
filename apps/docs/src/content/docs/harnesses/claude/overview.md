@@ -2,17 +2,16 @@
 title: Overview
 ---
 
-**Anthropic Claude Code** (slug `claude`) is Anthropic's command line coding
-agent, run non-interactively against the test case prompt. It talks to the
-Anthropic API directly with a user-supplied key, so its runs are billed and
-served by a single provider rather than routed through an aggregator. See
+Anthropic Claude Code (slug `claude`) is Anthropic's command line coding agent,
+run non-interactively against the test case prompt. It talks to the Anthropic
+API directly, so a single provider serves and bills its runs. See
 [claude.com/claude-code](https://claude.com/claude-code).
 
 ## Model IDs
 
-Claude Code is driven with vendor-native Anthropic model identifiers — the same
-names the Anthropic API accepts — passed straight through to the CLI's `--model`
-flag. The following are illustrative, not an exhaustive list:
+Claude Code takes vendor-native Anthropic model identifiers, the same names the
+Anthropic API accepts, passed straight through to the CLI's `--model` flag. The
+following are illustrative:
 
 - `claude-opus-4-8`
 - `claude-sonnet-4-6`
@@ -20,11 +19,10 @@ flag. The following are illustrative, not an exhaustive list:
 
 ## Invocation
 
-The harness probes and invokes the `claude` binary. Because a harness is
-installed into the run container at run time rather than baked into an image,
-each run picks up the most recently published version. The installer runs as the
-unprivileged run user and drops the binary into `~/.local/bin`, which is already
-on `PATH`:
+The harness probes and invokes the `claude` binary. The CLI is installed into
+the run container immediately before the session, so each run picks up the most
+recently published version. The installer runs as the unprivileged run user and
+drops the binary into `~/.local/bin`, which is already on `PATH`:
 
 ```sh
 curl -fsSL https://claude.ai/install.sh | bash
@@ -41,26 +39,23 @@ claude --print \
   <prompt>
 ```
 
-`--print` runs a single non-interactive turn; `--permission-mode
-bypassPermissions` lets the agent act without approval prompts; and
-`--output-format stream-json --verbose` selects the line-delimited JSON event
-stream the harness layer parses (see [Events](./events/)).
+`--print` runs a single non-interactive turn.
+`--permission-mode bypassPermissions` lets the agent act without approval
+prompts. `--output-format stream-json --verbose` selects the line-delimited JSON
+event stream the harness layer parses into
+[events](/harnesses/claude/events/). The prompt is the final positional
+argument.
 
-Claude Code authenticates with either an Anthropic API key or a Claude account
-subscription; by default a subscription is preferred when you are signed in. See
-[Authentication](./authentication/) for the variables and credential files each
-mode uses and how to lock the mode.
+## Authentication
 
-Because Claude Code drives one provider at one price, the orchestrator records
-the exact charge the CLI reports rather than looking up per-token prices. Its
-pricing model is a passthrough — the native model ID is used unchanged — and the
-cost it reports on its terminal result serves as both the comparable and the
-actual cost (see [Metrics](./metrics/)).
+Claude Code authenticates with an Anthropic API key or a Claude account
+subscription, preferring the subscription when its credentials are present. See
+[Authentication](/harnesses/claude/authentication/) for the variables and
+credential files each mode uses and how to lock the mode.
 
----
+## Pricing
 
-See [Authentication](./authentication/) for the API-key and subscription modes,
-[Events](./events/) for how Claude Code's output maps to normalized harness
-events, [Metrics](./metrics/) for how its usage and cost are recorded, and the
-[agent harness layer](/components/core/harnesses/) for the contracts both
-implement.
+Claude Code drives one provider directly and reports the exact charge for the
+run on its terminal result. That figure is recorded as the run's actual cost.
+The comparable cost is computed from the model's curated list price, as for
+every harness. See [Metrics](/harnesses/claude/metrics/).

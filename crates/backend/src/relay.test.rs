@@ -10,6 +10,9 @@ fn summary() -> JobSummary {
         variant: "base".to_string(),
         harness_slug: "claude".to_string(),
         model_id: "m".to_string(),
+        engine: None,
+        started_at: None,
+        gg_preset: None,
     }
 }
 

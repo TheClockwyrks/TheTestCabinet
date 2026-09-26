@@ -1,0 +1,474 @@
+{
+  "provenance": "gg's responses-as-code turn-1 request for the Python arm, projected by `gg probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing is authored here twice: the system prompt, the opening bootstrap program, the module listing, every documentation view and the file-view headings are the same bytes gg's own machinery produces for a real session; the task prompts and spec files are the probe's own material. The backend replays each case through OpenRouter with the one `submit_program` tool offered and `tool_choice` forced to it, and classifies the program each reply submitted.",
+  "language": "python",
+  "displayName": "Python",
+  "tool": {
+    "name": "submit_program",
+    "description": "Run this turn's program. `program` must be one whole Python program; it is compiled and executed exactly as written.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "program": {
+          "description": "The complete Python program to run.",
+          "type": "string"
+        }
+      },
+      "required": ["program"],
+      "type": "object"
+    }
+  },
+  "cases": [
+    {
+      "scenario": "baseline",
+      "prompt": "write-plan",
+      "expectedCalls": ["files.write_file"],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Python program: pass one whole, legal\nPython program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is executed exactly as you wrote it, as the whole of a `program.py`\nwith `__name__` set to `\"__main__\"`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg.session.finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg.docs`: Find what this session can call, and take a documentation view back out of the window. — brought into scope with `import gg`\n- `gg.files`: Read, write, edit, list and walk the files of the workspace. — brought into scope with `import gg`\n- `gg.shell`: Run shell commands in the workspace. — brought into scope with `import gg`\n- `gg.views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `import gg`\n- `gg.session`: End the session, with the ending that belongs to this session's role. — brought into scope with `import gg`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nCreate the file `notes/plan.md` in the workspace. Its required content is specified in `specs/plan-brief.md`, which is already open in your context. Write the file exactly as the brief specifies."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.docs.search(modules=[\\\"gg.files\\\", \\\"gg.shell\\\"], limit=100)\\n\\nfunctions = [\\n    \\\"gg.docs.search\\\",\\n    \\\"gg.views.open_docs_view\\\",\\n    \\\"gg.views.open_text\\\",\\n    \\\"gg.views.open_file\\\",\\n    \\\"gg.files.write_file\\\",\\n]\\nfor name in functions:\\n    gg.views.open_docs_view(name)\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg.files, gg.shell\n----\n11 matches for modules `gg.files`, `gg.shell`, showing 1-11.\n\nModules:\ngg.files — Read, write, edit, list and walk the files of the workspace.\ngg.shell — Run shell commands in the workspace.\n\nFunctions:\ngg.files.edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg.files.list_dir — List a directory, sorted by name; the default lists the workspace root.\ngg.files.read_file — Read a file, as either a `TextFile` or an `ImageFile`.\ngg.files.tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg.files.write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg.shell.shell — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg.files.DirEntry — One entry `list_dir` found: a bare name, and its kind.\ngg.files.FileRead — What a read returned: a text file's window, or a picture's description.\ngg.shell.ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.search\n----\nsearch(*, query: str | None = None, modules: list[str] | None = None, type: str | None = None, kind: DocKind | None = None, offset: int | None = None, limit: int | None = None) -> DocSearch\n  query?: str | None = None (passed by name) — The words to match, as a case-insensitive substring. The default is no query at all, which is what turns a filter into a directory rather than a search.\n  modules?: list[str] | None = None (passed by name) — The modules to look in, each named by its gg id — `files`, `views`, `docs` — or by the path a program imports it under — `gg.files` — and matched exactly. Several name a union: an entry in any one of them is a hit, so one call lists a whole granted surface. With no `query` it is those modules' whole directory. A name no module has matches nothing rather than failing, so an empty page means the filter found nothing, not that it was rejected. The default is no module filter at all.\n  type?: str | None = None (passed by name) — One type's name, narrowing to that type and to the functions that take or return it. Like `modules`, a name nothing declares matches nothing rather than failing.\n  kind?: DocKind | None = None (passed by name) — Whether to return modules, functions or types. The default returns all three.\n  offset?: int | None = None (passed by name) — How many hits to skip, for reading past the first page. The default starts at the best hit.\n  limit?: int | None = None (passed by name) — The most hits to return. The default is gg's own page size and there is a ceiling above it. Zero is refused.\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nSearch every module, function and type this session can call, by keyword and by filter.\n\nMatching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned. Every argument is optional and they compose: a query alone ranks the whole surface, a filter alone is a directory of what it names, and the two together search inside the filter.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`. The next search replaces that view.\n\nReturns: The page that matched, best first. `total` counts every entry that matched before paging, so a page shorter than `total` is a page there is more of.\n\nRaises `ApiError`: `invalid-argument` for a call with no query and no filter at all, and for a `limit` of zero. A `modules` entry or a `type` that names something gg does not hold matches nothing rather than failing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocKind\n----\nclass DocKind(Enum):\n    MODULE\n    FUNCTION\n    TYPE\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nWhich of the three kinds of thing a documentation entry describes.\n  MODULE — A module a program imports, holding the functions it calls.\n  FUNCTION — A function a program calls.\n  TYPE — A type a function takes or hands back."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocSearch\n----\n@dataclass(frozen=True)\nclass DocSearch:\n    total: int\n    offset: int\n    hits: list[DocHit]\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nA page of search results, with the total behind it.\n  total: int — How many entries matched before paging, which tells a capped page from a complete answer.\n  offset: int — The offset this page starts at, echoed back.\n  hits: list[DocHit] — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.core.ApiError\n----\nclass ApiError(Exception):\n    operation: str\n    code: ApiErrorCode\n\nDefined in `gg.core`, brought into scope with `import gg`.\n\nA gg call that failed.\n\nA failure that is expected is an ordinary `except` on `code`:\n\n```python\nimport gg\n\ntry:\n    gg.docs.search(query=\"memory\")\nexcept gg.core.ApiError as failure:\n    if failure.code is not gg.core.ApiErrorCode.INVALID_ARGUMENT:\n        raise\n```\n  operation: str — The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).\n\nIt is gg's name for the capability rather than this SDK's spelling of it.\n  code: ApiErrorCode — The failure class, so a handler branches on a value rather than on prose."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_docs_view\n----\nopen_docs_view(target: Callable[..., object] | str) -> None\n  target: Callable[..., object] | str — What to document: the function object itself (`views.open_text`), or the fully-qualified name its documentation is keyed by (`\"gg.views.open_text\"`), which for a module is that module's own path (`\"gg.views\"`). The bare name it is called by in its module (`\"open_text\"`) also resolves, and is ambiguous when two modules declare it.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace one module, function, or type's full documentation into the context window.\n\nIts signature, its description, and the declarations of any types it refers to that have not already been shown this session. The documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name rather than as a return value, so it is not available in the turn it is asked for. Opening a key that is already open does nothing.\n\nRaises `ApiError`: `not-found` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_text\n----\nopen_text(label: str, body: str) -> None\n  label: str — What to file the view under; opening the same label again replaces what it showed. It may not be empty.\n  body: str — What to show. An empty body is allowed: it is how a program says that something it was showing is now empty.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace a value the program computed into the context window, under `label`.\n\nOpening the same label again replaces what it showed. Nothing is ever silently truncated.\n\nRaises `ApiError`: `invalid-argument` for an empty label, and `limit-exceeded`, naming the cap, for a body or label over gg's caps."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_file\n----\nopen_file(path: str, *, offset: int | None = None, limit: int | None = None, max_line_chars: int | None = None) -> FileRead\n  path: str — The file to open, relative to the workspace or absolute.\n  offset?: int | None = None (passed by name) — The 1-based line to start at.\n  limit?: int | None = None (passed by name) — How many lines to show from `offset`.\n  max_line_chars?: int | None = None (passed by name) — The most characters of each line to show, 1 to 65,536; a longer line is cut there and annotated with how many characters were dropped. The default shows lines whole.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`offset` and `limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened — never a truncation. `max_line_chars` cuts each line of the view longer than that many characters at that point and annotates it in place as `foo (123 more chars...)`, with the count of characters dropped. The cut is the view's alone — what this call returns and the file itself are untouched — and the byte cap is measured against the body after it. Left out, lines arrive whole. A picture is not a text body and is not subject to the cap.\n\nReturns: The file's contents: a `TextFile` for a text window, an `ImageFile` for a picture.\n\nRaises `ApiError`: `not-found` for a missing path, `invalid-argument` for an offset past the end of the file or a `max_line_chars` of zero or over 65,536, and `limit-exceeded` — naming the size and the bound — for a text window over the cap. The read is what fails; nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.FileRead\n----\nFileRead = TextFile | ImageFile\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\n`isinstance(read, TextFile)`, or a `match` on the two, narrows it."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.write_file\n----\nwrite_file(path: str, contents: str) -> int\n  path: str — Where to write, relative to the workspace or absolute. Parent directories are created.\n  contents: str — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\nReturns: How many bytes were written, which is the UTF-8 length rather than the number of characters.\n\nRaises `ApiError`: `invalid-argument` for an empty path, and `io-error` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.views.open_file(\\\"specs/plan-brief.md\\\")\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/plan-brief.md:1-20 of 20 lines\n----\n# Plan brief\n\nWrite `notes/plan.md` with exactly the following structure.\n\n## Required sections\n\n1. A top-level heading reading `# Delivery plan`.\n2. A section `## Milestones` holding a numbered list of three milestones:\n   1. `Skeleton` — the project builds and serves a blank page.\n   2. `Core loop` — the simulation advances and renders.\n   3. `Polish` — audio, menus, and the win screen.\n3. A section `## Risks` holding a bulleted list with two entries:\n   - `Scope creep in the core loop`\n   - `Untested browser input handling`\n\n## Rules\n\n- The file's content is exactly the sections above, in that order.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "baseline",
+      "prompt": "inventory",
+      "expectedCalls": ["files.list_dir", "files.write_file"],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Python program: pass one whole, legal\nPython program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is executed exactly as you wrote it, as the whole of a `program.py`\nwith `__name__` set to `\"__main__\"`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg.session.finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg.docs`: Find what this session can call, and take a documentation view back out of the window. — brought into scope with `import gg`\n- `gg.files`: Read, write, edit, list and walk the files of the workspace. — brought into scope with `import gg`\n- `gg.shell`: Run shell commands in the workspace. — brought into scope with `import gg`\n- `gg.views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `import gg`\n- `gg.session`: End the session, with the ending that belongs to this session's role. — brought into scope with `import gg`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nProduce an inventory of the workspace root: list the entries of the workspace's top-level directory, then write the inventory file described in `specs/inventory-brief.md`, which is already open in your context."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.docs.search(modules=[\\\"gg.files\\\", \\\"gg.shell\\\"], limit=100)\\n\\nfunctions = [\\n    \\\"gg.docs.search\\\",\\n    \\\"gg.views.open_docs_view\\\",\\n    \\\"gg.views.open_text\\\",\\n    \\\"gg.views.open_file\\\",\\n    \\\"gg.files.list_dir\\\",\\n    \\\"gg.files.write_file\\\",\\n]\\nfor name in functions:\\n    gg.views.open_docs_view(name)\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg.files, gg.shell\n----\n11 matches for modules `gg.files`, `gg.shell`, showing 1-11.\n\nModules:\ngg.files — Read, write, edit, list and walk the files of the workspace.\ngg.shell — Run shell commands in the workspace.\n\nFunctions:\ngg.files.edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg.files.list_dir — List a directory, sorted by name; the default lists the workspace root.\ngg.files.read_file — Read a file, as either a `TextFile` or an `ImageFile`.\ngg.files.tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg.files.write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg.shell.shell — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg.files.DirEntry — One entry `list_dir` found: a bare name, and its kind.\ngg.files.FileRead — What a read returned: a text file's window, or a picture's description.\ngg.shell.ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.search\n----\nsearch(*, query: str | None = None, modules: list[str] | None = None, type: str | None = None, kind: DocKind | None = None, offset: int | None = None, limit: int | None = None) -> DocSearch\n  query?: str | None = None (passed by name) — The words to match, as a case-insensitive substring. The default is no query at all, which is what turns a filter into a directory rather than a search.\n  modules?: list[str] | None = None (passed by name) — The modules to look in, each named by its gg id — `files`, `views`, `docs` — or by the path a program imports it under — `gg.files` — and matched exactly. Several name a union: an entry in any one of them is a hit, so one call lists a whole granted surface. With no `query` it is those modules' whole directory. A name no module has matches nothing rather than failing, so an empty page means the filter found nothing, not that it was rejected. The default is no module filter at all.\n  type?: str | None = None (passed by name) — One type's name, narrowing to that type and to the functions that take or return it. Like `modules`, a name nothing declares matches nothing rather than failing.\n  kind?: DocKind | None = None (passed by name) — Whether to return modules, functions or types. The default returns all three.\n  offset?: int | None = None (passed by name) — How many hits to skip, for reading past the first page. The default starts at the best hit.\n  limit?: int | None = None (passed by name) — The most hits to return. The default is gg's own page size and there is a ceiling above it. Zero is refused.\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nSearch every module, function and type this session can call, by keyword and by filter.\n\nMatching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned. Every argument is optional and they compose: a query alone ranks the whole surface, a filter alone is a directory of what it names, and the two together search inside the filter.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`. The next search replaces that view.\n\nReturns: The page that matched, best first. `total` counts every entry that matched before paging, so a page shorter than `total` is a page there is more of.\n\nRaises `ApiError`: `invalid-argument` for a call with no query and no filter at all, and for a `limit` of zero. A `modules` entry or a `type` that names something gg does not hold matches nothing rather than failing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocKind\n----\nclass DocKind(Enum):\n    MODULE\n    FUNCTION\n    TYPE\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nWhich of the three kinds of thing a documentation entry describes.\n  MODULE — A module a program imports, holding the functions it calls.\n  FUNCTION — A function a program calls.\n  TYPE — A type a function takes or hands back."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocSearch\n----\n@dataclass(frozen=True)\nclass DocSearch:\n    total: int\n    offset: int\n    hits: list[DocHit]\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nA page of search results, with the total behind it.\n  total: int — How many entries matched before paging, which tells a capped page from a complete answer.\n  offset: int — The offset this page starts at, echoed back.\n  hits: list[DocHit] — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.core.ApiError\n----\nclass ApiError(Exception):\n    operation: str\n    code: ApiErrorCode\n\nDefined in `gg.core`, brought into scope with `import gg`.\n\nA gg call that failed.\n\nA failure that is expected is an ordinary `except` on `code`:\n\n```python\nimport gg\n\ntry:\n    gg.docs.search(query=\"memory\")\nexcept gg.core.ApiError as failure:\n    if failure.code is not gg.core.ApiErrorCode.INVALID_ARGUMENT:\n        raise\n```\n  operation: str — The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).\n\nIt is gg's name for the capability rather than this SDK's spelling of it.\n  code: ApiErrorCode — The failure class, so a handler branches on a value rather than on prose."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_docs_view\n----\nopen_docs_view(target: Callable[..., object] | str) -> None\n  target: Callable[..., object] | str — What to document: the function object itself (`views.open_text`), or the fully-qualified name its documentation is keyed by (`\"gg.views.open_text\"`), which for a module is that module's own path (`\"gg.views\"`). The bare name it is called by in its module (`\"open_text\"`) also resolves, and is ambiguous when two modules declare it.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace one module, function, or type's full documentation into the context window.\n\nIts signature, its description, and the declarations of any types it refers to that have not already been shown this session. The documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name rather than as a return value, so it is not available in the turn it is asked for. Opening a key that is already open does nothing.\n\nRaises `ApiError`: `not-found` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_text\n----\nopen_text(label: str, body: str) -> None\n  label: str — What to file the view under; opening the same label again replaces what it showed. It may not be empty.\n  body: str — What to show. An empty body is allowed: it is how a program says that something it was showing is now empty.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace a value the program computed into the context window, under `label`.\n\nOpening the same label again replaces what it showed. Nothing is ever silently truncated.\n\nRaises `ApiError`: `invalid-argument` for an empty label, and `limit-exceeded`, naming the cap, for a body or label over gg's caps."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_file\n----\nopen_file(path: str, *, offset: int | None = None, limit: int | None = None, max_line_chars: int | None = None) -> FileRead\n  path: str — The file to open, relative to the workspace or absolute.\n  offset?: int | None = None (passed by name) — The 1-based line to start at.\n  limit?: int | None = None (passed by name) — How many lines to show from `offset`.\n  max_line_chars?: int | None = None (passed by name) — The most characters of each line to show, 1 to 65,536; a longer line is cut there and annotated with how many characters were dropped. The default shows lines whole.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`offset` and `limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened — never a truncation. `max_line_chars` cuts each line of the view longer than that many characters at that point and annotates it in place as `foo (123 more chars...)`, with the count of characters dropped. The cut is the view's alone — what this call returns and the file itself are untouched — and the byte cap is measured against the body after it. Left out, lines arrive whole. A picture is not a text body and is not subject to the cap.\n\nReturns: The file's contents: a `TextFile` for a text window, an `ImageFile` for a picture.\n\nRaises `ApiError`: `not-found` for a missing path, `invalid-argument` for an offset past the end of the file or a `max_line_chars` of zero or over 65,536, and `limit-exceeded` — naming the size and the bound — for a text window over the cap. The read is what fails; nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.FileRead\n----\nFileRead = TextFile | ImageFile\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\n`isinstance(read, TextFile)`, or a `match` on the two, narrows it."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.list_dir\n----\nlist_dir(path: str | None = None) -> list[DirEntry]\n  path?: str | None = None — The directory to list, relative to the workspace or absolute. The default lists the workspace root.\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nList a directory, sorted by name; the default lists the workspace root.\n\nReturns: One entry per name, sorted by name, and an empty list for an empty directory rather than a failure. Each `name` is bare, so joining it with the directory that was listed is what makes a path.\n\nRaises `ApiError`: `not-found` for a directory that is not there, and `invalid-argument` for a path that is given but empty — the default is what lists the workspace root."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.DirEntry\n----\n@dataclass(frozen=True)\nclass DirEntry:\n    name: str\n    kind: EntryKind\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nOne entry `list_dir` found: a bare name, and its kind.\n  name: str — The entry's bare name, with no directory part. Join it with the directory that was listed.\n  kind: EntryKind — What the entry is."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.write_file\n----\nwrite_file(path: str, contents: str) -> int\n  path: str — Where to write, relative to the workspace or absolute. Parent directories are created.\n  contents: str — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\nReturns: How many bytes were written, which is the UTF-8 length rather than the number of characters.\n\nRaises `ApiError`: `invalid-argument` for an empty path, and `io-error` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.views.open_file(\\\"specs/inventory-brief.md\\\")\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/inventory-brief.md:1-17 of 17 lines\n----\n# Inventory brief\n\nWrite `notes/inventory.md` describing the workspace root.\n\n## Required content\n\n1. A top-level heading reading `# Workspace inventory`.\n2. One Markdown list entry per entry of the workspace's top-level\n   directory, in the order the listing returns them.\n3. Each entry formatted as `- `, the entry's name, then ` (dir)` for a\n   directory or ` (file)` for a file.\n\n## Rules\n\n- List the top-level directory only; do not recurse.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "run-tests",
+      "forbiddenCalls": ["shell.shell"],
+      "docviewCall": "views.open_docs_view",
+      "docviewKey": "gg.shell.shell",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Python program: pass one whole, legal\nPython program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is executed exactly as you wrote it, as the whole of a `program.py`\nwith `__name__` set to `\"__main__\"`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg.session.finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg.docs`: Find what this session can call, and take a documentation view back out of the window. — brought into scope with `import gg`\n- `gg.files`: Read, write, edit, list and walk the files of the workspace. — brought into scope with `import gg`\n- `gg.shell`: Run shell commands in the workspace. — brought into scope with `import gg`\n- `gg.views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `import gg`\n- `gg.session`: End the session, with the ending that belongs to this session's role. — brought into scope with `import gg`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nRun the project's test suite and show yourself the output. `specs/test-brief.md`, already open in your context, says what the suite is and what to check for."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.docs.search(modules=[\\\"gg.files\\\", \\\"gg.shell\\\"], limit=100)\\n\\nfunctions = [\\n    \\\"gg.docs.search\\\",\\n    \\\"gg.views.open_docs_view\\\",\\n    \\\"gg.views.open_text\\\",\\n    \\\"gg.views.open_file\\\",\\n]\\nfor name in functions:\\n    gg.views.open_docs_view(name)\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg.files, gg.shell\n----\n11 matches for modules `gg.files`, `gg.shell`, showing 1-11.\n\nModules:\ngg.files — Read, write, edit, list and walk the files of the workspace.\ngg.shell — Run shell commands in the workspace.\n\nFunctions:\ngg.files.edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg.files.list_dir — List a directory, sorted by name; the default lists the workspace root.\ngg.files.read_file — Read a file, as either a `TextFile` or an `ImageFile`.\ngg.files.tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg.files.write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg.shell.shell — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg.files.DirEntry — One entry `list_dir` found: a bare name, and its kind.\ngg.files.FileRead — What a read returned: a text file's window, or a picture's description.\ngg.shell.ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.search\n----\nsearch(*, query: str | None = None, modules: list[str] | None = None, type: str | None = None, kind: DocKind | None = None, offset: int | None = None, limit: int | None = None) -> DocSearch\n  query?: str | None = None (passed by name) — The words to match, as a case-insensitive substring. The default is no query at all, which is what turns a filter into a directory rather than a search.\n  modules?: list[str] | None = None (passed by name) — The modules to look in, each named by its gg id — `files`, `views`, `docs` — or by the path a program imports it under — `gg.files` — and matched exactly. Several name a union: an entry in any one of them is a hit, so one call lists a whole granted surface. With no `query` it is those modules' whole directory. A name no module has matches nothing rather than failing, so an empty page means the filter found nothing, not that it was rejected. The default is no module filter at all.\n  type?: str | None = None (passed by name) — One type's name, narrowing to that type and to the functions that take or return it. Like `modules`, a name nothing declares matches nothing rather than failing.\n  kind?: DocKind | None = None (passed by name) — Whether to return modules, functions or types. The default returns all three.\n  offset?: int | None = None (passed by name) — How many hits to skip, for reading past the first page. The default starts at the best hit.\n  limit?: int | None = None (passed by name) — The most hits to return. The default is gg's own page size and there is a ceiling above it. Zero is refused.\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nSearch every module, function and type this session can call, by keyword and by filter.\n\nMatching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned. Every argument is optional and they compose: a query alone ranks the whole surface, a filter alone is a directory of what it names, and the two together search inside the filter.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`. The next search replaces that view.\n\nReturns: The page that matched, best first. `total` counts every entry that matched before paging, so a page shorter than `total` is a page there is more of.\n\nRaises `ApiError`: `invalid-argument` for a call with no query and no filter at all, and for a `limit` of zero. A `modules` entry or a `type` that names something gg does not hold matches nothing rather than failing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocKind\n----\nclass DocKind(Enum):\n    MODULE\n    FUNCTION\n    TYPE\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nWhich of the three kinds of thing a documentation entry describes.\n  MODULE — A module a program imports, holding the functions it calls.\n  FUNCTION — A function a program calls.\n  TYPE — A type a function takes or hands back."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocSearch\n----\n@dataclass(frozen=True)\nclass DocSearch:\n    total: int\n    offset: int\n    hits: list[DocHit]\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nA page of search results, with the total behind it.\n  total: int — How many entries matched before paging, which tells a capped page from a complete answer.\n  offset: int — The offset this page starts at, echoed back.\n  hits: list[DocHit] — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.core.ApiError\n----\nclass ApiError(Exception):\n    operation: str\n    code: ApiErrorCode\n\nDefined in `gg.core`, brought into scope with `import gg`.\n\nA gg call that failed.\n\nA failure that is expected is an ordinary `except` on `code`:\n\n```python\nimport gg\n\ntry:\n    gg.docs.search(query=\"memory\")\nexcept gg.core.ApiError as failure:\n    if failure.code is not gg.core.ApiErrorCode.INVALID_ARGUMENT:\n        raise\n```\n  operation: str — The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).\n\nIt is gg's name for the capability rather than this SDK's spelling of it.\n  code: ApiErrorCode — The failure class, so a handler branches on a value rather than on prose."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_docs_view\n----\nopen_docs_view(target: Callable[..., object] | str) -> None\n  target: Callable[..., object] | str — What to document: the function object itself (`views.open_text`), or the fully-qualified name its documentation is keyed by (`\"gg.views.open_text\"`), which for a module is that module's own path (`\"gg.views\"`). The bare name it is called by in its module (`\"open_text\"`) also resolves, and is ambiguous when two modules declare it.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace one module, function, or type's full documentation into the context window.\n\nIts signature, its description, and the declarations of any types it refers to that have not already been shown this session. The documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name rather than as a return value, so it is not available in the turn it is asked for. Opening a key that is already open does nothing.\n\nRaises `ApiError`: `not-found` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_text\n----\nopen_text(label: str, body: str) -> None\n  label: str — What to file the view under; opening the same label again replaces what it showed. It may not be empty.\n  body: str — What to show. An empty body is allowed: it is how a program says that something it was showing is now empty.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace a value the program computed into the context window, under `label`.\n\nOpening the same label again replaces what it showed. Nothing is ever silently truncated.\n\nRaises `ApiError`: `invalid-argument` for an empty label, and `limit-exceeded`, naming the cap, for a body or label over gg's caps."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_file\n----\nopen_file(path: str, *, offset: int | None = None, limit: int | None = None, max_line_chars: int | None = None) -> FileRead\n  path: str — The file to open, relative to the workspace or absolute.\n  offset?: int | None = None (passed by name) — The 1-based line to start at.\n  limit?: int | None = None (passed by name) — How many lines to show from `offset`.\n  max_line_chars?: int | None = None (passed by name) — The most characters of each line to show, 1 to 65,536; a longer line is cut there and annotated with how many characters were dropped. The default shows lines whole.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`offset` and `limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened — never a truncation. `max_line_chars` cuts each line of the view longer than that many characters at that point and annotates it in place as `foo (123 more chars...)`, with the count of characters dropped. The cut is the view's alone — what this call returns and the file itself are untouched — and the byte cap is measured against the body after it. Left out, lines arrive whole. A picture is not a text body and is not subject to the cap.\n\nReturns: The file's contents: a `TextFile` for a text window, an `ImageFile` for a picture.\n\nRaises `ApiError`: `not-found` for a missing path, `invalid-argument` for an offset past the end of the file or a `max_line_chars` of zero or over 65,536, and `limit-exceeded` — naming the size and the bound — for a text window over the cap. The read is what fails; nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.FileRead\n----\nFileRead = TextFile | ImageFile\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\n`isinstance(read, TextFile)`, or a `match` on the two, narrows it."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.views.open_file(\\\"specs/test-brief.md\\\")\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/test-brief.md:1-15 of 15 lines\n----\n# Test brief\n\nThe project's test suite runs with `npm test` from the workspace root.\n\n## What to check\n\n1. The command exits with status 0.\n2. The summary line reports no failing tests.\n3. No test is reported as skipped.\n\n## Rules\n\n- Run the suite from the workspace root, not from a subdirectory.\n- Show yourself the command's output before drawing any conclusion\n  from it."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "fix-typo",
+      "forbiddenCalls": ["files.edit_file"],
+      "docviewCall": "views.open_docs_view",
+      "docviewKey": "gg.files.edit_file",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Python program: pass one whole, legal\nPython program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is executed exactly as you wrote it, as the whole of a `program.py`\nwith `__name__` set to `\"__main__\"`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg.session.finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg.docs`: Find what this session can call, and take a documentation view back out of the window. — brought into scope with `import gg`\n- `gg.files`: Read, write, edit, list and walk the files of the workspace. — brought into scope with `import gg`\n- `gg.shell`: Run shell commands in the workspace. — brought into scope with `import gg`\n- `gg.views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `import gg`\n- `gg.session`: End the session, with the ending that belongs to this session's role. — brought into scope with `import gg`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\n`specs/errata.md`, already open in your context, names one exact string in `README.md` and the replacement for it. Make exactly that replacement in place."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.docs.search(modules=[\\\"gg.files\\\", \\\"gg.shell\\\"], limit=100)\\n\\nfunctions = [\\n    \\\"gg.docs.search\\\",\\n    \\\"gg.views.open_docs_view\\\",\\n    \\\"gg.views.open_text\\\",\\n    \\\"gg.views.open_file\\\",\\n]\\nfor name in functions:\\n    gg.views.open_docs_view(name)\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg.files, gg.shell\n----\n11 matches for modules `gg.files`, `gg.shell`, showing 1-11.\n\nModules:\ngg.files — Read, write, edit, list and walk the files of the workspace.\ngg.shell — Run shell commands in the workspace.\n\nFunctions:\ngg.files.edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg.files.list_dir — List a directory, sorted by name; the default lists the workspace root.\ngg.files.read_file — Read a file, as either a `TextFile` or an `ImageFile`.\ngg.files.tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg.files.write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg.shell.shell — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg.files.DirEntry — One entry `list_dir` found: a bare name, and its kind.\ngg.files.FileRead — What a read returned: a text file's window, or a picture's description.\ngg.shell.ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.search\n----\nsearch(*, query: str | None = None, modules: list[str] | None = None, type: str | None = None, kind: DocKind | None = None, offset: int | None = None, limit: int | None = None) -> DocSearch\n  query?: str | None = None (passed by name) — The words to match, as a case-insensitive substring. The default is no query at all, which is what turns a filter into a directory rather than a search.\n  modules?: list[str] | None = None (passed by name) — The modules to look in, each named by its gg id — `files`, `views`, `docs` — or by the path a program imports it under — `gg.files` — and matched exactly. Several name a union: an entry in any one of them is a hit, so one call lists a whole granted surface. With no `query` it is those modules' whole directory. A name no module has matches nothing rather than failing, so an empty page means the filter found nothing, not that it was rejected. The default is no module filter at all.\n  type?: str | None = None (passed by name) — One type's name, narrowing to that type and to the functions that take or return it. Like `modules`, a name nothing declares matches nothing rather than failing.\n  kind?: DocKind | None = None (passed by name) — Whether to return modules, functions or types. The default returns all three.\n  offset?: int | None = None (passed by name) — How many hits to skip, for reading past the first page. The default starts at the best hit.\n  limit?: int | None = None (passed by name) — The most hits to return. The default is gg's own page size and there is a ceiling above it. Zero is refused.\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nSearch every module, function and type this session can call, by keyword and by filter.\n\nMatching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned. Every argument is optional and they compose: a query alone ranks the whole surface, a filter alone is a directory of what it names, and the two together search inside the filter.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`. The next search replaces that view.\n\nReturns: The page that matched, best first. `total` counts every entry that matched before paging, so a page shorter than `total` is a page there is more of.\n\nRaises `ApiError`: `invalid-argument` for a call with no query and no filter at all, and for a `limit` of zero. A `modules` entry or a `type` that names something gg does not hold matches nothing rather than failing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocKind\n----\nclass DocKind(Enum):\n    MODULE\n    FUNCTION\n    TYPE\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nWhich of the three kinds of thing a documentation entry describes.\n  MODULE — A module a program imports, holding the functions it calls.\n  FUNCTION — A function a program calls.\n  TYPE — A type a function takes or hands back."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.docs.DocSearch\n----\n@dataclass(frozen=True)\nclass DocSearch:\n    total: int\n    offset: int\n    hits: list[DocHit]\n\nDefined in `gg.docs`, brought into scope with `import gg`.\n\nA page of search results, with the total behind it.\n  total: int — How many entries matched before paging, which tells a capped page from a complete answer.\n  offset: int — The offset this page starts at, echoed back.\n  hits: list[DocHit] — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.core.ApiError\n----\nclass ApiError(Exception):\n    operation: str\n    code: ApiErrorCode\n\nDefined in `gg.core`, brought into scope with `import gg`.\n\nA gg call that failed.\n\nA failure that is expected is an ordinary `except` on `code`:\n\n```python\nimport gg\n\ntry:\n    gg.docs.search(query=\"memory\")\nexcept gg.core.ApiError as failure:\n    if failure.code is not gg.core.ApiErrorCode.INVALID_ARGUMENT:\n        raise\n```\n  operation: str — The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).\n\nIt is gg's name for the capability rather than this SDK's spelling of it.\n  code: ApiErrorCode — The failure class, so a handler branches on a value rather than on prose."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_docs_view\n----\nopen_docs_view(target: Callable[..., object] | str) -> None\n  target: Callable[..., object] | str — What to document: the function object itself (`views.open_text`), or the fully-qualified name its documentation is keyed by (`\"gg.views.open_text\"`), which for a module is that module's own path (`\"gg.views\"`). The bare name it is called by in its module (`\"open_text\"`) also resolves, and is ambiguous when two modules declare it.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace one module, function, or type's full documentation into the context window.\n\nIts signature, its description, and the declarations of any types it refers to that have not already been shown this session. The documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name rather than as a return value, so it is not available in the turn it is asked for. Opening a key that is already open does nothing.\n\nRaises `ApiError`: `not-found` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_text\n----\nopen_text(label: str, body: str) -> None\n  label: str — What to file the view under; opening the same label again replaces what it showed. It may not be empty.\n  body: str — What to show. An empty body is allowed: it is how a program says that something it was showing is now empty.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nPlace a value the program computed into the context window, under `label`.\n\nOpening the same label again replaces what it showed. Nothing is ever silently truncated.\n\nRaises `ApiError`: `invalid-argument` for an empty label, and `limit-exceeded`, naming the cap, for a body or label over gg's caps."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.views.open_file\n----\nopen_file(path: str, *, offset: int | None = None, limit: int | None = None, max_line_chars: int | None = None) -> FileRead\n  path: str — The file to open, relative to the workspace or absolute.\n  offset?: int | None = None (passed by name) — The 1-based line to start at.\n  limit?: int | None = None (passed by name) — How many lines to show from `offset`.\n  max_line_chars?: int | None = None (passed by name) — The most characters of each line to show, 1 to 65,536; a longer line is cut there and annotated with how many characters were dropped. The default shows lines whole.\n\nDefined in `gg.views`, brought into scope with `import gg`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`offset` and `limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened — never a truncation. `max_line_chars` cuts each line of the view longer than that many characters at that point and annotates it in place as `foo (123 more chars...)`, with the count of characters dropped. The cut is the view's alone — what this call returns and the file itself are untouched — and the byte cap is measured against the body after it. Left out, lines arrive whole. A picture is not a text body and is not subject to the cap.\n\nReturns: The file's contents: a `TextFile` for a text window, an `ImageFile` for a picture.\n\nRaises `ApiError`: `not-found` for a missing path, `invalid-argument` for an offset past the end of the file or a `max_line_chars` of zero or over 65,536, and `limit-exceeded` — naming the size and the bound — for a text window over the cap. The read is what fails; nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg.files.FileRead\n----\nFileRead = TextFile | ImageFile\n\nDefined in `gg.files`, brought into scope with `import gg`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\n`isinstance(read, TextFile)`, or a `match` on the two, narrows it."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"import gg\\n\\ngg.views.open_file(\\\"specs/errata.md\\\")\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/errata.md:1-14 of 14 lines\n----\n# Errata\n\n`README.md` carries one error to correct.\n\n## The replacement\n\n- Find the exact string: `serves the build on port 8000`\n- Replace it with: `serves the build on port 5173`\n\n## Rules\n\n- Make exactly this one replacement, in `README.md` only.\n- The string occurs once; replace that one occurrence.\n- Change nothing else in the workspace."
+        }
+      ]
+    }
+  ]
+}

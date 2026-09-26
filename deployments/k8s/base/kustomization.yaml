@@ -6,14 +6,17 @@
 # base directly — the base carries the placeholder `tcab-prod` namespace and
 # REPLACE_REGISTRY image refs that an overlay rewrites.
 #
+# Every object here is namespaced. The environment's Namespace and the other
+# cluster-scoped objects live under ../cluster/ (see "Cluster prerequisites" in
+# ../README.md).
+#
 # secrets.example.yaml is deliberately NOT a base resource: it is a placeholder
 # template you create for real from your secret manager (or, in the local overlay,
-# generate empty/dev values for). See the README and deployment/kubernetes.md.
+# generate empty/dev values for). See the README and deployment/kubernetes/overview.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - namespace.yaml
   - rbac.yaml
   - backend.yaml
   - auth.yaml

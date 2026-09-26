@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "GgReferenceEntry": {
+      "description": "One entry of an arm's surface — a function or a type — carrying **the bytes its documentation\nview renders** plus what a page needs to file, link and filter it.\n\n# Why the documentation is one block and not a structure\n\n[`body`](Self::body) is not a rendering of this entry assembled for the console. It is the\nstring gg's own documentation runtime produces for that name, from the same call a program makes\nwith `view.openDocsView(...)` mid-run — so what a reader of this page sees and what a model sees\nare the same bytes by construction rather than by two renderers agreeing. The owner's rule for\nthis page is that it show *exactly* what an agent would; a second renderer over structured\nfields is precisely the second source of truth that rule forbids, however faithful it is on the\nday it is written.\n\nWhat that costs is real and worth stating: the page cannot filter by parameter, cannot fold a\nlong argument list, and cannot linkify a type named *inside* the block without parsing it — which\nwould be the second renderer again. The links come from the FQN lists beside the body\n([`types`](Self::types), [`returns`](Self::returns)), which are names rather than prose.",
+      "properties": {
+        "aliasOf": {
+          "description": "Set when this entry is a **second** way to reach an [operation](Self::operation) the arm\nalready binds elsewhere — the method some arm hangs off the type it operates on, beside the\nfree function every arm has — naming that operation.\n\nIt is a fact about the arm rather than about gg: an arm may ship a convenience its neighbours\ndo not, which is the whole point of eleven idiomatic SDKs rather than eleven transliterations.",
+          "type": ["string", "null"]
+        },
+        "body": {
+          "description": "**The documentation view's whole body**, verbatim: for a function, every shape it may be\ncalled in with a line per argument and then its description; for a type, its declaration, its\nparagraph, a line per member and a line per member function a value of it offers.\n\nRendered with its whitespace preserved. See this type's own note on why it is a block.",
+          "type": "string"
+        },
+        "brief": {
+          "description": "The one line a search result carries — the entry's authored brief. It is the first thing of\nthe [body](Self::body), not a second wording of it.",
+          "type": "string"
+        },
+        "capability": {
+          "description": "The **capability** that buys this function, by gg's own id for it (`memories`,\n`program-library`, `docview-close`), or `None` for a function no capability gates.\n\nThis and [`ending`](Self::ending) are the only two things that can withhold a call — a\ncapability the agent's profile does not switch on, or an ending belonging to another role —\nso a reader that finds both empty may say the function is always available, and one that does\nnot must not.\n\nThere is deliberately no third field naming a *tool*. The API surface is not gated by the\ntool surface: the two are independent vocabularies over one core, an agent holds exactly one\nof them, and a tool name on an API function was an answer to a question nobody could ask.",
+          "type": ["string", "null"]
+        },
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) this entry belongs to, or `None` for one that\nbelongs to no family — a type declared in the types-only module every arm has for the shapes\nno capability owns.",
+          "type": ["string", "null"]
+        },
+        "ending": {
+          "description": "For an ending call, the ending role whose programs bind it (`standard`, `review`);\n`None` for everything else, which every role reaches the same way.",
+          "type": ["string", "null"]
+        },
+        "fqn": {
+          "description": "**The key this entry is opened by** — the fully-qualified name a `view.openDocsView` takes\nand a documentation search files its hit under (`gg.files.readFile`, `gg.files.FileRead`).\n\nUnique within the document, which is what makes it the page's own route parameter. The bare\n[`name`](Self::name) is not: a convenience method on a value and the free function it aliases\nmay share one.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/GgReferenceEntryKind",
+          "description": "Whether this entry documents a function or a type. See [`GgReferenceEntryKind`]."
+        },
+        "module": {
+          "description": "The [module](GgReferenceModule::id) this entry belongs to, by gg's id for it (`files`).",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name a program writes at the call site (`readFile`), or the type's own name.",
+          "type": "string"
+        },
+        "opensUnderErrors": {
+          "description": "The type views gg opens beside this function's own under the `errors` flag **alone** — the\nerror types this function's own documentation comment declares it throws.\n\nIts source is the catalogue's `throws` list rather than the signature: a failure is declared\nin a documentation comment, in each arm's own tag for declaring one, and a signature need not\nmention it at all. So this is the one of the three that is not a narrowing of\n[`types`](Self::types).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "opensUnderParameters": {
+          "description": "The type views gg opens beside this function's own under the `parameters` flag **alone** —\nthe types its arguments declare, still one level deep.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "opensUnderReturn": {
+          "description": "The type views gg opens **beside** this function's own when a model opens it, under the\n`return` documentation-view flag **alone** — the types the signature writes in its return\nposition.\n\nThis is the real answer, computed by the same function the run uses, rather than the\ntransitive [`types`](Self::types) list a reader would otherwise mistake for it: the two\ndiffer, because opening is exactly one level deep and the closure is not.\n\n# One field per flag, each of them that flag *alone*\n\nAn agent's `docViewTypes` is three independent toggles, so what one open places is the union\nof whichever are on. Recording the union of one particular setting would describe one of\neight configurations; recording each flag on its own lets a reader assemble any of them,\nwhich is what the page's per-type rows do — they say, for one referenced type, which flags\nwould place it, and say plainly when none would.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "description": "gg's own [operation](https://docs.testcabinet.ai/gg/languages/static-sdks/) id for what this\ncall does (`files.read_file`) — the identity that is the same in all eleven arms, and the\nstring a run's calls are recorded under. `None` for a type, which is not a call.",
+          "type": ["string", "null"]
+        },
+        "receiver": {
+          "description": "The declared type this entry is a **member of**, for a function called on a value rather than\non a module; `None` for a free function and for a type.",
+          "type": ["string", "null"]
+        },
+        "returns": {
+          "description": "The [fully-qualified names](Self::fqn) of the SDK types in this function's **return**\nposition. Empty for a call that hands nothing back, and for a type.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "types": {
+          "description": "The [fully-qualified names](Self::fqn) of every SDK type this function's signature reaches,\n**transitively closed** — every declaration a program holding this call's arguments and its\nresult can end up looking at.\n\nNames, never declarations. The type's own entry is in this same document, so a page links to\nit; expanding each declaration into every function that mentions it is what made the old\nsingle-arm artifact four times the size of this whole one, with eighty-eight per cent of it\nthe same type declarations written out again.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["kind", "fqn", "name", "module", "brief", "body"],
+      "type": "object"
+    },
+    "GgReferenceEntryKind": {
+      "description": "Which kind of thing one [entry](GgReferenceEntry) documents.\n\nThe two are the two kinds of documentation view gg opens, and they are separate kinds rather\nthan one because a model reads them separately: a function view says how to call something, and\na type view says what a value it hands back is made of. Modelling them as one list with a\ndiscriminant — rather than as two lists — is what lets the page order them the way a model meets\nthem, module by module.",
+      "oneOf": [
+        {
+          "const": "function",
+          "description": "A callable function.",
+          "type": "string"
+        },
+        {
+          "const": "type",
+          "description": "An SDK type declaration.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReferenceModule": {
+      "description": "One **capability module** of the responses-as-code surface — the grouping a program writes in\nfront of a call, and the folder the reference's API tab files that call under.\n\nIt carries gg's own [id](Self::id) for the module and this arm's [spelling](Self::path) of it,\nbecause the two answer to different authorities: the id is what an\n[entry](GgReferenceEntry::module) names and what the same module is called on every other arm,\nand the path is what a model actually writes in *this* one.",
+      "properties": {
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) this module's calls belong to, or `None` for a\nmodule that carries no callable operation at all — the types-only module every arm has for\nthe declarations that belong to no capability.",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.",
+          "type": "string"
+        },
+        "import": {
+          "description": "The literal line a program writes to bring the module into scope, where the arm needs one.\n`None` where the SDK is in scope already, which is every registered arm but PureScript.",
+          "type": ["string", "null"]
+        },
+        "path": {
+          "description": "This arm's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "The line the module's own declaration introduces it by, verbatim from the SDK — the same\nsentence the system prompt names it by. Never a second wording written for this page.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "path", "summary"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/reference-api.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One **program language's** whole responses-as-code surface: the modules it is divided into, and\nevery function and type in it.\n\nFetched when a reader picks an arm. The [index](GgReference)'s tools and families are not\nrepeated here, because they are the same on every arm and a reader who has the index already has\nthem.",
+  "properties": {
+    "entries": {
+      "description": "Every function and every type on this arm, in the order a model meets them: module by\nmodule, each module's callable functions and then the types declared in it.",
+      "items": {
+        "$ref": "#/$defs/GgReferenceEntry"
+      },
+      "type": "array"
+    },
+    "ggVersion": {
+      "description": "The gg version this arm was projected from — [the index's](GgReference::gg_version), stamped\nhere too so a document read on its own says which gg it describes.",
+      "type": "string"
+    },
+    "language": {
+      "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
+      "description": "The [program language](GgProgramLanguage) every entry below is spelled in."
+    },
+    "modules": {
+      "description": "The [capability modules](GgReferenceModule) this arm's surface is divided into, in the order\na model is presented with them.\n\nThe **module** is the unit of that surface: it is what the system prompt names, what a\ndocumentation search filters by, and what a program writes in front of every call it makes.\nSo the page is grouped by module and each [entry](GgReferenceEntry::module) names the one it\nbelongs to.",
+      "items": {
+        "$ref": "#/$defs/GgReferenceModule"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["ggVersion", "language", "modules", "entries"],
+  "title": "GgReferenceApi",
+  "type": "object"
+}

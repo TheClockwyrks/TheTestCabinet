@@ -196,7 +196,7 @@ impl TournamentRegistry {
 
     /// Register a fresh tournament job under a new id and return its handle.
     pub fn create(&self) -> TournamentJob {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = cuid2::create_id();
         let (tx, _rx) = broadcast::channel(PROGRESS_CHANNEL_CAPACITY);
         let job = TournamentJob {
             id: id.clone(),

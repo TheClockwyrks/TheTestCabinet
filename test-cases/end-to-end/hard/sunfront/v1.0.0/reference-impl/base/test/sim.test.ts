@@ -12,7 +12,13 @@
  * on any failed assertion so `npm test` fails loudly.
  */
 
-import { World, counterMult, levelBonus, upgradeCost, other } from "../src/sim/world";
+import {
+  World,
+  counterMult,
+  levelBonus,
+  upgradeCost,
+  other,
+} from "../src/sim/world";
 import {
   START_SOL,
   PASSIVE_INCOME_PER_S,
@@ -33,14 +39,25 @@ let failed = 0;
 const failures: string[] = [];
 
 function check(cond: boolean, msg: string): void {
-  if (cond) { passed++; return; }
+  if (cond) {
+    passed++;
+    return;
+  }
   failed++;
   failures.push(msg);
   console.error(`  ✗ ${msg}`);
 }
 
-function near(actual: number, expected: number, tol: number, msg: string): void {
-  check(Math.abs(actual - expected) <= tol, `${msg} (got ${actual.toFixed(3)}, want ${expected}±${tol})`);
+function near(
+  actual: number,
+  expected: number,
+  tol: number,
+  msg: string,
+): void {
+  check(
+    Math.abs(actual - expected) <= tol,
+    `${msg} (got ${actual.toFixed(3)}, want ${expected}±${tol})`,
+  );
 }
 
 function section(name: string, fn: () => void): void {
@@ -89,31 +106,73 @@ section("income accrues at 10 sol/s, +Extractor bonus, no wave bump", () => {
 section("counter matrix multipliers and the '—' blocks", () => {
   check(counterMult("Normal", "Light") === 1.0, "Normal vs Light = 1.0");
   check(counterMult("Normal", "Heavy") === 0.75, "Normal vs Heavy = 0.75");
-  check(counterMult("Normal", "Air") === null, "Normal vs Air = — (cannot target)");
+  check(
+    counterMult("Normal", "Air") === null,
+    "Normal vs Air = — (cannot target)",
+  );
   check(counterMult("Piercing", "Heavy") === 1.5, "Piercing vs Heavy = 1.5");
   check(counterMult("Piercing", "Air") === null, "Piercing vs Air = —");
   check(counterMult("Splash", "Light") === 1.5, "Splash vs Light = 1.5");
   check(counterMult("Splash", "Heavy") === 0.75, "Splash vs Heavy = 0.75");
   check(counterMult("Flak", "Air") === 2.0, "Flak vs Air = 2.0");
   check(counterMult("Flak", "Light") === 0.5, "Flak vs Light = 0.5");
-  check(counterMult("Support", "Light") === null, "Support deals no damage (—)");
-  check(levelBonus(1) === 1 && levelBonus(2) === 1.3 && levelBonus(3) === 1.6, "level bonus 0/30/60%");
+  check(
+    counterMult("Support", "Light") === null,
+    "Support deals no damage (—)",
+  );
+  check(
+    levelBonus(1) === 1 && levelBonus(2) === 1.3 && levelBonus(3) === 1.6,
+    "level bonus 0/30/60%",
+  );
 
   // Integration: a Normal ground attacker cannot touch an Air Sunhawk (the '—' block),
   // while the Sunhawk shoots the ground unit down. Air is only hit by Flak.
   const w = new World();
-  const scarab = w.spawnUnit("player", "scarab", 1, { x: 600, z: 600 }, yawFor("player"));
-  const hawk = w.spawnUnit("enemy", "sunhawk", 1, { x: 622, z: 618 }, yawFor("enemy"));
+  const scarab = w.spawnUnit(
+    "player",
+    "scarab",
+    1,
+    { x: 600, z: 600 },
+    yawFor("player"),
+  );
+  const hawk = w.spawnUnit(
+    "enemy",
+    "sunhawk",
+    1,
+    { x: 622, z: 618 },
+    yawFor("enemy"),
+  );
   run(w, 3);
-  check(hawk.hp === hawk.maxHp, "Sunhawk (Air) took no damage from a Normal attacker — the '—' block");
-  check(scarab.dead || scarab.hp < scarab.maxHp, "the Sunhawk shot the ground Scarab (Normal vs Light)");
+  check(
+    hawk.hp === hawk.maxHp,
+    "Sunhawk (Air) took no damage from a Normal attacker — the '—' block",
+  );
+  check(
+    scarab.dead || scarab.hp < scarab.maxHp,
+    "the Sunhawk shot the ground Scarab (Normal vs Light)",
+  );
 
   // And a Flakhound melts the same Air unit (Flak vs Air = 2.0).
   const w2 = new World();
-  const flak = w2.spawnUnit("player", "flakhound", 1, { x: 600, z: 600 }, yawFor("player"));
-  const hawk2 = w2.spawnUnit("enemy", "sunhawk", 1, { x: 640, z: 640 }, yawFor("enemy"));
+  const flak = w2.spawnUnit(
+    "player",
+    "flakhound",
+    1,
+    { x: 600, z: 600 },
+    yawFor("player"),
+  );
+  const hawk2 = w2.spawnUnit(
+    "enemy",
+    "sunhawk",
+    1,
+    { x: 640, z: 640 },
+    yawFor("enemy"),
+  );
   run(w2, 2);
-  check(hawk2.hp < hawk2.maxHp, "Flakhound damaged the Air Sunhawk (Flak counters Air)");
+  check(
+    hawk2.hp < hawk2.maxHp,
+    "Flakhound damaged the Air Sunhawk (Flak counters Air)",
+  );
   check(!flak.dead, "Flakhound survived the exchange");
 });
 
@@ -124,36 +183,79 @@ section("splash damages every enemy within the radius", () => {
   w.spawnUnit("player", "bombard", 1, { x: 300, z: 300 }, yawFor("player"));
   // Three slow Heavy Bulwarks clustered within the 55-unit splash radius, in range
   // (~198 units) and beyond the Bombard's 70 minimum range.
-  const a = w.spawnUnit("enemy", "bulwark", 1, { x: 440, z: 420 }, yawFor("enemy"));
-  const b = w.spawnUnit("enemy", "bulwark", 1, { x: 440, z: 440 }, yawFor("enemy"));
-  const c = w.spawnUnit("enemy", "bulwark", 1, { x: 440, z: 460 }, yawFor("enemy"));
+  const a = w.spawnUnit(
+    "enemy",
+    "bulwark",
+    1,
+    { x: 440, z: 420 },
+    yawFor("enemy"),
+  );
+  const b = w.spawnUnit(
+    "enemy",
+    "bulwark",
+    1,
+    { x: 440, z: 440 },
+    yawFor("enemy"),
+  );
+  const c = w.spawnUnit(
+    "enemy",
+    "bulwark",
+    1,
+    { x: 440, z: 460 },
+    yawFor("enemy"),
+  );
   run(w, 2.2); // one Bombard shot lands at ~2.0 s
   const hurt = [a, b, c].filter((u) => u.hp < u.maxHp).length;
-  check(hurt >= 2, `a single Bombard shot damaged ${hurt} clustered enemies via splash`);
+  check(
+    hurt >= 2,
+    `a single Bombard shot damaged ${hurt} clustered enemies via splash`,
+  );
 });
 
 // --- 4. A wave emits one unit per spawner (specs/waves.md) -------------------
 
-section("a wave emits one unit per spawner, at its level; Extractors emit nothing", () => {
-  const w = new World();
-  w.sol.player = 1e6;
-  w.place("player", "scarab", 0, 0);
-  const trooperSpawner = w.place("player", "trooper", 1, 0)!;
-  w.place("player", "sentinel", 2, 0);
-  w.place("player", "solar-extractor", 3, 0); // must NOT emit a unit
-  w.upgrade(trooperSpawner); // level 2 -> its unit carries the +30% HP
-  near(w.sol.player, 1e6 - UNIT_STATS.trooper.cost, 1e6, "trooper spawner build cost deducted");
-  check(upgradeCost("trooper") === Math.round(UNIT_STATS.trooper.cost * 0.75), "spawner upgrade = 75% of cost");
+section(
+  "a wave emits one unit per spawner, at its level; Extractors emit nothing",
+  () => {
+    const w = new World();
+    w.sol.player = 1e6;
+    w.place("player", "scarab", 0, 0);
+    const trooperSpawner = w.place("player", "trooper", 1, 0)!;
+    w.place("player", "sentinel", 2, 0);
+    w.place("player", "solar-extractor", 3, 0); // must NOT emit a unit
+    w.upgrade(trooperSpawner); // level 2 -> its unit carries the +30% HP
+    near(
+      w.sol.player,
+      1e6 - UNIT_STATS.trooper.cost,
+      1e6,
+      "trooper spawner build cost deducted",
+    );
+    check(
+      upgradeCost("trooper") === Math.round(UNIT_STATS.trooper.cost * 0.75),
+      "spawner upgrade = 75% of cost",
+    );
 
-  w.fireWave();
-  const mine = w.units.filter((u) => u.team === "player");
-  check(mine.length === 3, `wave emitted one unit per spawner (3), got ${mine.length}`);
-  const types = new Set(mine.map((u) => u.type));
-  check(types.has("scarab") && types.has("trooper") && types.has("sentinel"), "one of each spawner's type");
-  const trooper = mine.find((u) => u.type === "trooper")!;
-  check(trooper.level === 2, "emitted trooper carries its spawner's level 2");
-  near(trooper.maxHp, UNIT_STATS.trooper.hp * (1 + SPAWNER_LEVEL_BONUS[1]), 0.001, "level-2 trooper has +30% HP");
-});
+    w.fireWave();
+    const mine = w.units.filter((u) => u.team === "player");
+    check(
+      mine.length === 3,
+      `wave emitted one unit per spawner (3), got ${mine.length}`,
+    );
+    const types = new Set(mine.map((u) => u.type));
+    check(
+      types.has("scarab") && types.has("trooper") && types.has("sentinel"),
+      "one of each spawner's type",
+    );
+    const trooper = mine.find((u) => u.type === "trooper")!;
+    check(trooper.level === 2, "emitted trooper carries its spawner's level 2");
+    near(
+      trooper.maxHp,
+      UNIT_STATS.trooper.hp * (1 + SPAWNER_LEVEL_BONUS[1]),
+      0.001,
+      "level-2 trooper has +30% HP",
+    );
+  },
+);
 
 // --- 5. Two equal armies grind to a rough stalemate near centre -------------
 
@@ -161,7 +263,12 @@ section("two mirrored armies stalemate near the centre of the diagonal", () => {
   const w = new World();
   w.sol.player = 1e6;
   w.sol.enemy = 1e6;
-  const mirror: Array<"scarab" | "sentinel" | "bulwark" | "lancer"> = ["scarab", "sentinel", "bulwark", "lancer"];
+  const mirror: Array<"scarab" | "sentinel" | "bulwark" | "lancer"> = [
+    "scarab",
+    "sentinel",
+    "bulwark",
+    "lancer",
+  ];
   for (const team of ["player", "enemy"] as const) {
     mirror.forEach((t, i) => w.place(team, t, i, 0));
   }
@@ -169,50 +276,91 @@ section("two mirrored armies stalemate near the centre of the diagonal", () => {
   for (let k = 0; k < 3; k++) w.fireWave();
   run(w, 25);
 
-  check(w.result === null, "neither base has fallen — it is a grind, not a rout");
-  check(w.bases.player.hp > 0 && w.bases.enemy.hp > 0, "both bases still stand");
+  check(
+    w.result === null,
+    "neither base has fallen — it is a grind, not a rout",
+  );
+  check(
+    w.bases.player.hp > 0 && w.bases.enemy.hp > 0,
+    "both bases still stand",
+  );
   const alive = w.units.filter((u) => !u.dead);
   check(alive.length > 0, "units are still fighting");
   if (alive.length > 0) {
     const meanSum = alive.reduce((s, u) => s + u.x + u.z, 0) / alive.length;
-    near(meanSum, MIDLINE_SUM, 260, "the front line sits near the centre (x+z ≈ 1200)");
+    near(
+      meanSum,
+      MIDLINE_SUM,
+      260,
+      "the front line sits near the centre (x+z ≈ 1200)",
+    );
   }
 });
 
 // --- 6. Reliquary bounty + Aegis, own-half, and the rarity guard ------------
 
-section("razing the enemy Reliquary pays +700 and spawns the loser's own-half Aegis", () => {
-  const w = new World();
-  const solBefore = w.sol.player;
-  // Bring the enemy Reliquary to 0; the destroyer is the player.
-  w.reliquaries.enemy.hp = 0;
-  w.step(1 / 60);
-  near(w.sol.player, solBefore + RELIQUARY_BOUNTY + w.incomeRate("player") / 60, 1, "player paid +700 sol");
-  check(w.aegisCountFor("enemy") === 1, "the losing (enemy) side gained one Aegis");
-  check(other("enemy") === "player", "destroyer/other() sanity");
+section(
+  "razing the enemy Reliquary pays +700 and spawns the loser's own-half Aegis",
+  () => {
+    const w = new World();
+    const solBefore = w.sol.player;
+    // Bring the enemy Reliquary to 0; the destroyer is the player.
+    w.reliquaries.enemy.hp = 0;
+    w.step(1 / 60);
+    near(
+      w.sol.player,
+      solBefore + RELIQUARY_BOUNTY + w.incomeRate("player") / 60,
+      1,
+      "player paid +700 sol",
+    );
+    check(
+      w.aegisCountFor("enemy") === 1,
+      "the losing (enemy) side gained one Aegis",
+    );
+    check(other("enemy") === "player", "destroyer/other() sanity");
 
-  // The guard: a side cannot gain a second Aegis.
-  w.reliquaries.enemy.hp = 0;
-  w.step(1 / 60);
-  check(w.aegisCountFor("enemy") === 1, "no second Aegis for the same side");
+    // The guard: a side cannot gain a second Aegis.
+    w.reliquaries.enemy.hp = 0;
+    w.step(1 / 60);
+    check(w.aegisCountFor("enemy") === 1, "no second Aegis for the same side");
 
-  // Aegis stays on its own half while hunting enemies that crossed onto it.
-  const aegis = w.aegis[0]!;
-  // Drop a few player units deep on the enemy's half for the Aegis to engage.
-  for (let i = 0; i < 5; i++) {
-    w.spawnUnit("player", "scarab", 1, { x: 900 + i * 6, z: 900 }, yawFor("player"));
-  }
-  const targetHpBefore = w.units.filter((u) => u.team === "player").reduce((s, u) => s + u.hp, 0);
-  run(w, 4);
-  check(aegis.x + aegis.z >= MIDLINE_SUM - 2, "Aegis never crossed onto the player's half (stays x+z ≥ 1200)");
-  const targetHpAfter = w.units.filter((u) => u.team === "player" && !u.dead).reduce((s, u) => s + u.hp, 0);
-  check(targetHpAfter < targetHpBefore, "the Aegis turrets damaged enemies on its half");
+    // Aegis stays on its own half while hunting enemies that crossed onto it.
+    const aegis = w.aegis[0]!;
+    // Drop a few player units deep on the enemy's half for the Aegis to engage.
+    for (let i = 0; i < 5; i++) {
+      w.spawnUnit(
+        "player",
+        "scarab",
+        1,
+        { x: 900 + i * 6, z: 900 },
+        yawFor("player"),
+      );
+    }
+    const targetHpBefore = w.units
+      .filter((u) => u.team === "player")
+      .reduce((s, u) => s + u.hp, 0);
+    run(w, 4);
+    check(
+      aegis.x + aegis.z >= MIDLINE_SUM - 2,
+      "Aegis never crossed onto the player's half (stays x+z ≥ 1200)",
+    );
+    const targetHpAfter = w.units
+      .filter((u) => u.team === "player" && !u.dead)
+      .reduce((s, u) => s + u.hp, 0);
+    check(
+      targetHpAfter < targetHpBefore,
+      "the Aegis turrets damaged enemies on its half",
+    );
 
-  // At most two Aegi across the match (one per side).
-  w.reliquaries.player.hp = 0;
-  w.step(1 / 60);
-  check(w.aegis.length === 2, "at most two Aegi exist across a match (one per side)");
-});
+    // At most two Aegi across the match (one per side).
+    w.reliquaries.player.hp = 0;
+    w.step(1 / 60);
+    check(
+      w.aegis.length === 2,
+      "at most two Aegi exist across a match (one per side)",
+    );
+  },
+);
 
 // --- 7. A razed base ends the match (specs/flow.md) -------------------------
 
@@ -220,98 +368,177 @@ section("razing a base ends the match with the right winner", () => {
   const w = new World();
   // A cluster of player Lancers next to the undefended enemy base.
   for (let i = 0; i < 5; i++) {
-    w.spawnUnit("player", "lancer", 1, { x: 1010 + i * 4, z: 1010 }, yawFor("player"));
+    w.spawnUnit(
+      "player",
+      "lancer",
+      1,
+      { x: 1010 + i * 4, z: 1010 },
+      yawFor("player"),
+    );
   }
   run(w, 20);
-  check(w.result === "player", `enemy base razed -> player victory (result=${w.result})`);
+  check(
+    w.result === "player",
+    `enemy base razed -> player victory (result=${w.result})`,
+  );
   check(w.bases.enemy.hp <= 0, "enemy base is at 0 HP");
 });
 
 // --- 8. Fog of war: enemy entities are hidden outside player vision ----------
 
-section("fog hides an enemy unit outside vision, and reveals it when a unit approaches", () => {
-  const w = new World();
-  // An enemy Scarab deep in the enemy backfield, far from the player's base vision.
-  const foe = w.spawnUnit("enemy", "scarab", 1, { x: 800, z: 800 }, yawFor("enemy"));
+section(
+  "fog hides an enemy unit outside vision, and reveals it when a unit approaches",
+  () => {
+    const w = new World();
+    // An enemy Scarab deep in the enemy backfield, far from the player's base vision.
+    const foe = w.spawnUnit(
+      "enemy",
+      "scarab",
+      1,
+      { x: 800, z: 800 },
+      yawFor("enemy"),
+    );
 
-  let vis = collectVision(w, "player");
-  check(!pointVisible(vis, foe.x, foe.z), "enemy unit far from any player disc is under fog (hidden)");
-  // The player's own base still reveals its corner (radius 180 around (130,130)).
-  check(pointVisible(vis, PLAYER_BASE.x + 20, PLAYER_BASE.z + 20), "the player's base reveals its own corner");
-  // The far enemy corner (the fogged staging yard) is never in the player's opening vision.
-  check(!pointVisible(vis, 1160, 1160), "the enemy staging-yard corner is under fog");
+    let vis = collectVision(w, "player");
+    check(
+      !pointVisible(vis, foe.x, foe.z),
+      "enemy unit far from any player disc is under fog (hidden)",
+    );
+    // The player's own base still reveals its corner (radius 180 around (130,130)).
+    check(
+      pointVisible(vis, PLAYER_BASE.x + 20, PLAYER_BASE.z + 20),
+      "the player's base reveals its own corner",
+    );
+    // The far enemy corner (the fogged staging yard) is never in the player's opening vision.
+    check(
+      !pointVisible(vis, 1160, 1160),
+      "the enemy staging-yard corner is under fog",
+    );
 
-  // Bring a player Scarab within its 140 vision of the enemy unit — it is revealed.
-  const scout = w.spawnUnit("player", "scarab", 1, { x: foe.x - 100, z: foe.z }, yawFor("player"));
-  check(!scout.dead, "scout spawned");
-  vis = collectVision(w, "player");
-  check(pointVisible(vis, foe.x, foe.z), "the enemy unit inside a player unit's 140 vision is revealed");
-});
+    // Bring a player Scarab within its 140 vision of the enemy unit — it is revealed.
+    const scout = w.spawnUnit(
+      "player",
+      "scarab",
+      1,
+      { x: foe.x - 100, z: foe.z },
+      yawFor("player"),
+    );
+    check(!scout.dead, "scout spawned");
+    vis = collectVision(w, "player");
+    check(
+      pointVisible(vis, foe.x, foe.z),
+      "the enemy unit inside a player unit's 140 vision is revealed",
+    );
+  },
+);
 
 // --- 9. The AI runs a legal economy and finishes a match (specs/flow.md) -----
 
-section("the AI spends only earned sol, builds an economy, and defeats an idle player", () => {
-  const w = new World();
-  const ai = new EnemyAI(w, "enemy");
-  const dt = 1 / 60;
-  const maxSteps = Math.round(600 / dt); // cap the headless match at 600 sim-seconds
+section(
+  "the AI spends only earned sol, builds an economy, and defeats an idle player",
+  () => {
+    const w = new World();
+    const ai = new EnemyAI(w, "enemy");
+    const dt = 1 / 60;
+    const maxSteps = Math.round(600 / dt); // cap the headless match at 600 sim-seconds
 
-  let minEnemySol = Infinity;
-  let maxEnemyStructures = 0;
-  let steps = 0;
-  // The player is fully idle (no spawners); only the AI acts.
-  while (w.result === null && steps < maxSteps) {
-    ai.step(dt);
-    w.step(dt);
-    minEnemySol = Math.min(minEnemySol, w.sol.enemy);
-    const enemyStructures = w.structures.filter((s) => s.team === "enemy").length;
-    maxEnemyStructures = Math.max(maxEnemyStructures, enemyStructures);
-    steps++;
-  }
+    let minEnemySol = Infinity;
+    let maxEnemyStructures = 0;
+    let steps = 0;
+    // The player is fully idle (no spawners); only the AI acts.
+    while (w.result === null && steps < maxSteps) {
+      ai.step(dt);
+      w.step(dt);
+      minEnemySol = Math.min(minEnemySol, w.sol.enemy);
+      const enemyStructures = w.structures.filter(
+        (s) => s.team === "enemy",
+      ).length;
+      maxEnemyStructures = Math.max(maxEnemyStructures, enemyStructures);
+      steps++;
+    }
 
-  check(minEnemySol >= -1e-6, `AI never overspent (min enemy sol ${minEnemySol.toFixed(2)} ≥ 0)`);
-  check(maxEnemyStructures > 0, `AI built structures on its own grid (peak ${maxEnemyStructures})`);
-  check(w.result === "enemy", `the idle player is eventually defeated (result=${w.result})`);
-  // The idle player never built anything, so its balance is exactly opening sol + passive income.
-  check(w.sol.player >= START_SOL, "the idle player only accrued passive income (never spent)");
-});
+    check(
+      minEnemySol >= -1e-6,
+      `AI never overspent (min enemy sol ${minEnemySol.toFixed(2)} ≥ 0)`,
+    );
+    check(
+      maxEnemyStructures > 0,
+      `AI built structures on its own grid (peak ${maxEnemyStructures})`,
+    );
+    check(
+      w.result === "enemy",
+      `the idle player is eventually defeated (result=${w.result})`,
+    );
+    // The idle player never built anything, so its balance is exactly opening sol + passive income.
+    check(
+      w.sol.player >= START_SOL,
+      "the idle player only accrued passive income (never spent)",
+    );
+  },
+);
 
 // --- 10. The AI adapts its composition to what it sees (specs/flow.md) -------
 
-section("the AI answers visible air with Flak and visible heavies with Piercing", () => {
-  const dt = 1 / 60;
+section(
+  "the AI answers visible air with Flak and visible heavies with Piercing",
+  () => {
+    const dt = 1 / 60;
 
-  // Air: keep a few player Sunhawks in the enemy's backfield vision; the AI builds Flak.
-  const wAir = new World();
-  const aiAir = new EnemyAI(wAir, "enemy");
-  let builtFlak = false;
-  for (let i = 0; i < Math.round(45 / dt) && !builtFlak; i++) {
-    const hawks = wAir.units.filter((u) => u.team === "player" && u.type === "sunhawk" && !u.dead);
-    if (hawks.length < 3) {
-      wAir.spawnUnit("player", "sunhawk", 1, { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 }, yawFor("player"));
+    // Air: keep a few player Sunhawks in the enemy's backfield vision; the AI builds Flak.
+    const wAir = new World();
+    const aiAir = new EnemyAI(wAir, "enemy");
+    let builtFlak = false;
+    for (let i = 0; i < Math.round(45 / dt) && !builtFlak; i++) {
+      const hawks = wAir.units.filter(
+        (u) => u.team === "player" && u.type === "sunhawk" && !u.dead,
+      );
+      if (hawks.length < 3) {
+        wAir.spawnUnit(
+          "player",
+          "sunhawk",
+          1,
+          { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 },
+          yawFor("player"),
+        );
+      }
+      aiAir.step(dt);
+      wAir.step(dt);
+      builtFlak = wAir.structures.some(
+        (s) => s.team === "enemy" && s.kind === "flakhound",
+      );
+      check(
+        wAir.sol.enemy >= -1e-6,
+        "AI never overspent while adapting to air",
+      );
     }
-    aiAir.step(dt);
-    wAir.step(dt);
-    builtFlak = wAir.structures.some((s) => s.team === "enemy" && s.kind === "flakhound");
-    check(wAir.sol.enemy >= -1e-6, "AI never overspent while adapting to air");
-  }
-  check(builtFlak, "AI built a Flakhound in response to seen Air units");
+    check(builtFlak, "AI built a Flakhound in response to seen Air units");
 
-  // Heavies: keep player Bulwarks in the enemy's vision; the AI builds a Lancer.
-  const wHvy = new World();
-  const aiHvy = new EnemyAI(wHvy, "enemy");
-  let builtLancer = false;
-  for (let i = 0; i < Math.round(45 / dt) && !builtLancer; i++) {
-    const heavies = wHvy.units.filter((u) => u.team === "player" && u.type === "bulwark" && !u.dead);
-    if (heavies.length < 3) {
-      wHvy.spawnUnit("player", "bulwark", 1, { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 }, yawFor("player"));
+    // Heavies: keep player Bulwarks in the enemy's vision; the AI builds a Lancer.
+    const wHvy = new World();
+    const aiHvy = new EnemyAI(wHvy, "enemy");
+    let builtLancer = false;
+    for (let i = 0; i < Math.round(45 / dt) && !builtLancer; i++) {
+      const heavies = wHvy.units.filter(
+        (u) => u.team === "player" && u.type === "bulwark" && !u.dead,
+      );
+      if (heavies.length < 3) {
+        wHvy.spawnUnit(
+          "player",
+          "bulwark",
+          1,
+          { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 },
+          yawFor("player"),
+        );
+      }
+      aiHvy.step(dt);
+      wHvy.step(dt);
+      builtLancer = wHvy.structures.some(
+        (s) => s.team === "enemy" && s.kind === "lancer",
+      );
     }
-    aiHvy.step(dt);
-    wHvy.step(dt);
-    builtLancer = wHvy.structures.some((s) => s.team === "enemy" && s.kind === "lancer");
-  }
-  check(builtLancer, "AI built a Lancer in response to seen Heavy units");
-});
+    check(builtLancer, "AI built a Lancer in response to seen Heavy units");
+  },
+);
 
 // --- Report -----------------------------------------------------------------
 

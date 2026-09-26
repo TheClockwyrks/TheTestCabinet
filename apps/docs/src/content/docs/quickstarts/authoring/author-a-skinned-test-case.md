@@ -2,81 +2,100 @@
 title: Author a Skinned Character Test Case
 ---
 
-Scaffold a new [asset-generation](/testing/asset-generation/overview/) test case that
-asks a model to sculpt an **organic character** — one continuous skin bound to a
-model-invented skeleton, deforming smoothly across its joints — with a skinning binary
-(`mc-skin`, `sn-skin`, or `dc-skin`) to match a written brief. The `asset_kind` — one of
-`mc-skinned` (low-poly), `sn-skinned` (smooth mid-fidelity), or `dc-skinned` (sharp-edged,
-armored) — is picked by the character's surface. This is the short version;
-[Authoring a Skinned Character Test Case](/guides/authoring/authoring-a-skinned-test-case/)
-covers it in full, and
-[Manifests](/testing/asset-generation/manifests/#skinned-cases) is the authoritative
-schema.
+## Scope
 
-A **rigid** machine that articulates about pivots (a tank, a mech) is a sibling
+Scaffold an [asset-generation](/testing/asset-generation/overview/) test case for
+an organic character: one continuous skin bound to a model-invented skeleton,
+deforming smoothly across its joints, sculpted with the `mc-skin`, `sn-skin`, or
+`dc-skin` binary. Read
+[Authoring a Skinned Character Test Case](/guides/authoring/authoring-a-skinned-test-case/)
+for the full procedure;
+[Skinned cases](/testing/asset-generation/manifests/skinned-cases/) is the
+authoritative schema.
+
+A rigid machine that articulates about pivots, such as a tank or a mech, belongs
+in a
 [mesh-animation](/quickstarts/authoring/author-a-mesh-animation-test-case/) or
-[voxel-animation](/quickstarts/authoring/author-a-voxel-animation-test-case/) case
-instead. There is no static skinned kind — a character that never deforms is a static
+[voxel-animation](/quickstarts/authoring/author-a-voxel-animation-test-case/)
+case. A character that never deforms belongs in a static
 [mesh-model](/quickstarts/authoring/author-a-mesh-model-test-case/) case.
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version, not by editing a published one.
+A version lives at
+`test-cases/asset-generation/<difficulty>/<slug>/<version>/`. A version with runs
+recorded against it is frozen; revise a case by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, voxel, tool, output, model, the overall domain
-  variants/              # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs             # rendered into the harness instruction (NOT seeded)
-  specs/brief.md         # the character + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml         # manifest: type, asset_kind, voxel, tool, output, model
+  variants/              # one standalone TOML file per variant
+  prompt.hbs             # rendered into the harness instruction; not seeded
+  changelog.md           # required per-version entry; not seeded
+  description.md         # site blurb; not seeded
+  specs/brief.md         # the character and tool behavior; seeded
 ```
 
-A run receives only the seeded brief, the binary on `PATH` (its `--help` is the ops
-contract), a seeded `mc-skin.config.json`, and a `rig.json` pre-populated with the
-required animations alone. There is **no target mesh** and **no operations schema**.
+A run seeds the brief, `<binary>.config.json`, and a `rig.json` pre-populated
+with the required animations alone, with the skinning binary on `PATH`. Its
+`--help` is the operation contract. Core emits the single `mesh.glb` and the
+filled `rig.json` on `render`. The case declares no `[[reference]]` and carries
+no target mesh.
 
 ## Steps
 
-1. Pick a catalog **slug** and the **character** to sculpt — a body whose motion is
-   continuous skin deformation, achievable with the CSG primitives. Worked examples:
-   `siege-husk` (`mc-skinned`), `caldera-slag` (`sn-skinned`), `sunfront-trooper`
-   (`dc-skinned`).
-2. Write `specs/brief.md`: the character, silhouette, orientation (+z forward, y up), the
-   **exact opaque `#rrggbb` palette** (no alpha), the required animations and how each
-   reads as continuous-skin deformation, that the **skeleton is the model's to invent**,
-   and that `render` emits the geometry. Keep it
-   [self-contained](/testing/end-to-end/overview/#self-contained-specifications).
-3. Write `prompt.hbs` using only the documented template variables (`{{variant.*}}`,
-   `{{#each specs}}`) — it renders in strict mode — pointing the model at the binary's
-   `--help` and stating the hard requirements (sculpt/rig only through the tool; author
-   every animation; `render` before returning).
-4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
-   `type = "asset-generation"`, `asset_kind` (`"mc-skinned"` / `"sn-skinned"` /
-   `"dc-skinned"`), a `variants` list, the `[voxel]` field bounds (`width`, `height` up,
-   `depth`, `background` = the preview clear color only), and `[tool]` (`binary`,
-   `preview`) + `[output]` (`actions`) — both **single files with NO `{part}` token** (the
-   one animated kind that does not template by part).
-5. Under `[model]`, declare **only** `[[model.animation]]` entries by **identity alone** —
-   a unique `name`, a `loop` flag (default `true`), and `auto_play` (default `false`;
-   `true` = a continuous breathing idle). Declare **no bones, joints, weights, period, or
-   keyframes**; the model invents the skeleton and authors F-curves at run time. The
-   skinned `mesh.glb` + `rig.json` are **core-emitted automatically** — never named here.
-   There is **no `[[reference]]`**, **no `[build]`**, and **no `[[check]]`**.
+1. Pick a catalog slug and the character to sculpt: a body whose motion is
+   continuous skin deformation, achievable with the CSG primitives.
+2. Pick the `asset_kind` from the character's surface: `mc-skinned` for low-poly,
+   `sn-skinned` for smooth mid-fidelity, `dc-skinned` for sharp-edged and
+   armored. It fixes `[tool].binary` to the matching `-skin` binary.
+3. Write `specs/brief.md`: the character, silhouette, orientation (+z forward, y
+   up), the exact opaque `#rrggbb` palette, the required animations and how each
+   reads as continuous-skin deformation, that the skeleton is the model's to
+   invent, and that `render` emits the geometry. Keep the brief self-contained.
+4. Write `prompt.hbs`. It renders in strict mode against `{{variant.*}}`,
+   `{{#each specs}}`, `{{workspace}}`, `{{time_limit_hours}}`, and `{{voxel.*}}`.
+   Point the model at the binary's `--help` and state the hard requirements:
+   sculpt and rig only through the tool, author every animation, and `render`
+   before returning.
+5. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`), the required
+   `changelog`, `type = "asset-generation"`, `asset_kind` (`"mc-skinned"`,
+   `"sn-skinned"`, or `"dc-skinned"`), and the `variants` list.
+6. Declare `[voxel]` for the field bounds: `width`, `height` (up), `depth`, and a
+   `background` used as the preview clear color.
+7. Declare `[tool]` with the skinning binary and a `preview`, and `[output]` with
+   an `actions` log. Both name single files. A skinned case is the animated kind
+   that emits one whole-body mesh, so the `{part}` token is rejected.
+8. Declare `[model]` carrying `[[model.animation]]` entries by identity alone: a
+   unique `name`, a `loop` flag, and an `auto_play` flag, where `true` means a
+   continuous breathing idle. The skeleton, weights, period, and F-curves are the
+   model's.
+9. Declare the single `overall` `[[domain]]`. The character is judged as a whole
+   against its brief on that one rating, so the case declares no
+   `[[review_item]]` checklist, no `[[reference]]`, no `[build]`, and no
+   `[[check]]`.
+
+Worked examples: `siege-husk` for `mc-skinned`, `caldera-slag` for `sn-skinned`,
+and `sunfront-trooper` for `dc-skinned`.
 
 ## Validate
 
+Run these for every variant.
+
 ```sh
+npm run lint:specs
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-For **every** variant, render the prompt (catching strict-mode template errors, a stray
-`{part}` token, or a missing required table) and inspect the seeded repository (brief +
-`mc-skin.config.json` + the `rig.json`) to confirm it is self-contained.
+`prompt` catches strict-mode template and manifest errors, including a stray
+`{part}` token and a missing required table. `seed` writes the seeded repository
+under `tmp/`, where you confirm the brief, the tool config, and the pre-seeded
+`rig.json` are self-contained.
 
 ## Next steps
 
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
-- [Review a Run](/quickstarts/development/review-a-run/) to score how convincingly the
-  skin deforms across joints.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end
+  to end.
+- [Review a Run](/quickstarts/development/review-a-run/) to score how convincingly
+  the skin deforms across joints.

@@ -2,10 +2,9 @@ slug = "caldera"
 experimental = true
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, which proofs the
-# build must submit, and which validation checks run. The harness reads this file
-# to resolve a `TestCaseVersion`.
+# Declares, for this exact version, which files are seeded into a run and which
+# validation checks run. The harness reads this file to resolve a
+# `TestCaseVersion`.
 
 # Human-readable display name for this test case.
 name = "Caldera"
@@ -68,26 +67,25 @@ workspace = "workspaces/base"
 init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This version offers a single `base` variant — the standard The Hold defense. It
-# supplies the `title` view's mockup; `gameplay` and `game-over` are common. Future
-# versions/variants are expected to add rule twists (a longer siege, a one-breach
+# This version offers a single `base` variant — the standard The Hold defense.
+# Future versions/variants are expected to add rule twists (a longer siege, a one-breach
 # skirmish, an endless survival run, a no-Core-upgrade economy) on top of this base.
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
 
 # Provided library packages: core bakes each into the run image and vendors it into
-# the run repository under `.tcab/packages/` at seed time (see the end-to-end
-# `packages` manifest key). `@test-cabinet/voxel-runtime` is the runtime the build
+# the run repository under `.vendor/packages/` at seed time (see the end-to-end
+# `packages` manifest key). `@clockwyrks/voxel-runtime` is the runtime the build
 # imports to load and pose the provided models — its root `parseGlb` decodes each
 # part's `.glb` into a `PartMesh` (the `{ positions, normals, colors, indices }` typed
 # arrays the recolor in `specs/assets.md` walks), and its `three` binding's `VoxelRig`
 # poses the parts on their joints and plays the authored animations by name. It is the
 # same library the asset cases were authored against. The workspace `package.json` must
-# depend on it via the exact `file:./.tcab/packages/…` spec (already declared in
+# depend on it via the exact `file:./.vendor/packages/…` spec (already declared in
 # `workspaces/base/package.json`) so `npm ci`/`npm install` resolves it to the vendored
 # copy; the build then imports it by bare name. See `specs/assets.md`.
 # This is a root key, so it must precede the first table header.
-packages = ["@test-cabinet/voxel-runtime"]
+packages = ["@clockwyrks/voxel-runtime"]
 
 # Provided models, seeded into the run root. Each listed directory is seeded verbatim
 # (so `assets/runner/` lands at `assets/runner/` in the run), alongside the
@@ -161,67 +159,6 @@ source = "specs/flow.md"
 [[spec]]
 source = "specs/standard.md"
 
-# Proof of implementation: instructs the build to capture evidence at the exact
-# paths the `[[proof]]` entries below declare. The paths in this spec and in the
-# `[[proof]]` entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` view is variant-specific (declared per variant); `gameplay` (HUD-only)
-# and `game-over` look the same in every variant.
-[[reference]]
-view = "gameplay"
-path = "reference/gameplay.html"
-
-[[reference]]
-view = "game-over"
-path = "reference/game-over.html"
-
-# Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot
-# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
-# exactly these paths. Validation records whether each turned up (informational).
-# The media kind is inferred from the extension: `.png` is an image, `.webm` a
-# video (the format Playwright records natively; the public gallery transcodes
-# it to mp4).
-[[proof]]
-id = "title"
-name = "Title screen"
-dest = "proof/title.png"
-
-[[proof]]
-id = "gameplay"
-name = "In-game HUD"
-dest = "proof/gameplay.png"
-
-[[proof]]
-id = "terrain"
-name = "Terrain close-up"
-dest = "proof/terrain.png"
-
-[[proof]]
-id = "overlay"
-name = "Fluid-network overlay"
-dest = "proof/overlay.png"
-
-[[proof]]
-id = "wireframe"
-name = "Wireframe frame"
-dest = "proof/wireframe.png"
-
-[[proof]]
-id = "assault"
-name = "Assault clip"
-dest = "proof/assault.webm"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The
-# reference screenshots are seeded as illustrative examples of the screens, not
-# layouts to reproduce, so menus and screens are left to the model's design and
-# are reviewed by a human rather than scored against a baseline. The automated
-# load check still runs.
-
 # Scoring domains. A reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — polished terrain cannot mask a
 # broken fluid sim or a wave loop that never ends. Every case declares at least one.
@@ -264,7 +201,6 @@ title = "Terraces & cliffs"
 text = "The hex terrain connects elevation correctly: adjacent cells one level apart are joined by visible STEPPED TERRACES (not a smooth ramp), cells two or more levels apart by a vertical CLIFF face (no terrace), and coplanar cells lie flat — with NO holes, gaps, or torn corners anywhere the treads, risers, cliffs, and three-cell corners meet, at any combination of neighbor levels. The mesh is watertight; nothing a unit falls through and no floating cliffs. Verifiable from the tilted camera and in wireframe mode."
 weight = 3
 domain = "worldgen"
-proof = "terrain"
 
 [[review_item]]
 id = "terrain-coherent"
@@ -272,7 +208,6 @@ title = "Coherent generated caldera"
 text = "Each match generates a coherent natural caldera — a bowl with a high cliffed rim, mid slopes, and a low central floor, with real and varied elevation, not a flat plane or random noise. Vertex irregularity makes it read organic (but gameplay stays on the true grid), and the surface color is varied by PROCEDURAL NOISE (grass, rock, ash), not flat single-color fills. 4–6 geothermal vents sit on the high rock, two breaches open on two different sides, and the Core is founded centrally with no floating or buried base."
 weight = 2
 domain = "worldgen"
-proof = "terrain"
 
 [[review_item]]
 id = "water-rivers"
@@ -280,7 +215,6 @@ title = "Rivers, lake & animated water"
 text = "One or two rivers run STRICTLY DOWNHILL from a high source to a low outlet (never climbing), carved visibly into the terrain, plus at least one lake / deep-water body. Both river and deep water have an ANIMATED, flowing surface — visibly moving ripples/waves, with river flow reading as directional — not a flat blue polygon."
 weight = 2
 domain = "worldgen"
-proof = "terrain"
 
 [[review_item]]
 id = "camera-render"
@@ -288,7 +222,6 @@ title = "Tilted 3D camera & renderer"
 text = "The world is viewed through a TILTED RTS camera (never straight top-down) that clearly shows the terrain is 3D — terraces stepping up, cliff faces, channel depth, structure and unit height — and can pan, rotate, and zoom. Wireframe mode reveals the underlying hex mesh and the built geometry. The world renders in real-time 3D and sustains a playable frame rate during a heavy late-wave assault, with the performance overlay showing live FPS."
 weight = 2
 domain = "worldgen"
-proof = "wireframe"
 
 [[review_item]]
 id = "funds-core-upgrade"
@@ -296,8 +229,6 @@ title = "Funds & the Core upgrade lever"
 text = "Funds accrue over time from the Core, are spent on every structure and repair, and cannot go negative. The Core can be UPGRADED for a lump of funds to raise its income, across rising-cost levels — a real opportunity cost against buying defense now, so upgrade timing is a genuine strategic decision. The HUD shows the balance and the live income rate."
 weight = 2
 domain = "economy"
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "build-placement"
@@ -305,7 +236,6 @@ title = "Terrain-driven placement"
 text = "Structures place only where the terrain allows, with live valid/invalid cursor feedback and a reason: a Boiler only on a vent, a Pump only beside deep water, a River Tap only on a river, towers only on buildable land, and pipes never across a cliff edge or onto deep water. Pipes lay by click-dragging a run of cells that snaps to terrace-legal edges and stops at a cliff. Placed structures sit founded on the terrain at their cell's elevation."
 weight = 2
 domain = "economy"
-proof = "gameplay"
 
 [[review_item]]
 id = "tower-upgrade-repair"
@@ -320,7 +250,6 @@ title = "The water-steam-power chain"
 text = "The full supply chain works: sources draw water into water pipes, boilers on vents convert piped-in water to steam, steam pipes carry it to towers, and a tower FIRES ONLY WHILE its steam demand is met. Water and steam are separate networks on separate pipe types. A boiler with no water makes no steam; a tower with no steam is dark. The flow is a continuous, frame-rate-independent simulation that re-solves as the network changes."
 weight = 3
 domain = "fluids"
-proof = "overlay"
 
 [[review_item]]
 id = "elevation-flow"
@@ -328,7 +257,6 @@ title = "Elevation-aware flow"
 text = "Flow depends on elevation: a River Tap is gravity-fed and can only deliver water at or below its own elevation (never uphill), while a Pump lifts water to any height but its deliverable flow drops with the net rise climbed. Steam flows to towers regardless of elevation (with only a mild distance loss). So reaching high vents with enough water is a real terrain puzzle, not just connectivity."
 weight = 2
 domain = "fluids"
-proof = "overlay"
 
 [[review_item]]
 id = "brownout-sever"
@@ -336,7 +264,6 @@ title = "Brownouts & severed lines"
 text = "When steam demand exceeds supply the network browns out, shedding towers in a stable, legible order (dark towers stop firing) rather than thrashing. A destroyed pipe cell BREAKS THE LINE, starving everything downstream — a cut water main stops its boilers and darkens the towers they fed — and the picture re-solves on repair or re-route. The fluid-network overlay shows flow, rates, and each tower's powered/brownout/dark state, with breaks flagged."
 weight = 2
 domain = "fluids"
-proof = "overlay"
 
 [[review_item]]
 id = "slag-pathfinding"
@@ -344,7 +271,6 @@ title = "Slag roster & 3D pathfinding"
 text = "The four Slag archetypes each pursue their intent: Runners and Breakers beeline the Core, Sappers march for the fluid network (pipes/sources/boilers) and cut it, and Colossi wade to the Core with an armor aura buffing nearby Slag. All path through the terrain in 3D — up and down terraces, AROUND cliffs and deep water, wading rivers at half speed — from BOTH breaches toward their targets, without walking through terrain or off the edge, and a crowd flows and spreads rather than clumping into a vibrating pile."
 weight = 3
 domain = "combat"
-proof = "assault"
 
 [[review_item]]
 id = "tower-roster"
@@ -352,7 +278,6 @@ title = "Tower roster & elevation"
 text = "All four towers work and are distinct: Repeater (fast hitscan anti-chaff), Mortar (arcing splash that clears a one-level terrace but not a cliff), Lance (long anti-armor hitscan that ignores armor), and Scald (a steam-jet slow + burn field). Hitscan towers gain range from higher ground and are BLOCKED by cliffs/higher terrain in their line of sight, so where on the relief a tower stands changes what it can hit. There is no friendly fire."
 weight = 2
 domain = "combat"
-proof = "assault"
 
 [[review_item]]
 id = "slag-tiers"
@@ -360,7 +285,6 @@ title = "Slag tiers & armor"
 text = "Each archetype climbs three visually distinct tiers as the wave schedule dictates — tougher, better-armored, hitting harder. The tier is produced by RECOLORING THE PROVIDED MODEL'S ACCENT REGION (plain obsidian → steel plating → violet elite trim), so a Tier III unit shows violet plates while its obsidian body and acid-green glow are UNCHANGED — not a whole-model tint that drags the glow with it, and not a substituted model. Armor reduces incoming tower damage EXCEPT from the anti-armor Lance, which ignores it; the Colossus aura stacks further armor on nearby Slag. Tier is driven by wave number, not the Core's health."
 weight = 2
 domain = "combat"
-proof = "assault"
 
 [[review_item]]
 id = "wave-escalation"
@@ -368,7 +292,6 @@ title = "Curve-driven wave escalation"
 text = "The run is discrete numbered waves that open EASY (all Runners, all Tier I) and escalate via two curves keyed on wave number: a composition curve that phases tougher archetypes in (Breakers, then Sappers, then Colossi) and a tier curve that ramps toward Tier III, through a mixed middle band, to a Tier-III-dominant final surge. There are no phase gates; escalation is by these curves, not by elapsed time or Core health. Waves arrive from both breaches with a bounded live-population cap."
 weight = 2
 domain = "waves"
-proof = "assault"
 
 [[review_item]]
 id = "win-lose"
@@ -376,7 +299,6 @@ title = "Winning and losing"
 text = "The run is WON by clearing the final wave with the Core still standing (a HELD end screen) and LOST if the Core's health reaches zero (an OVERRUN end screen); each end shows the result and stats (wave reached, Slag destroyed, time). The Core's health does not regenerate, so damage is permanent. A well-built, well-supplied defense can hold through the last wave; a sloppy one loses the Core."
 weight = 2
 domain = "waves"
-reference = "game-over"
 
 [[review_item]]
 id = "wave-flow"
@@ -390,20 +312,15 @@ id = "hud-complete"
 title = "HUD"
 text = "The HUD shows the funds balance and live income rate, the Core health bar, the wave counter and build-interval countdown with the next-wave preview, the steam produced-vs-demanded readout, the build palette with costs, and a selection panel for the selected cell or structure — plus the toggleable fluid-network overlay, wireframe mode, and performance overlay."
 weight = 1
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "states-controls"
 title = "States & controls"
 text = "Every state is reachable and behaves: the title (CALDERA with just PLAY and HOW TO PLAY), the starting-wave prompt, the in-game state, a paused overlay that freezes the simulation and the survival clock, and the two end screens. The tilted camera pans, rotates, and zooms; selection, the build palette, and pipe click-drag all work."
 weight = 1
-reference = "title"
-proof = "title"
 
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
 text = "The 3D view fills the window and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on the title screen at load before any input."
 weight = 1
-reference = "gameplay"

@@ -1,14 +1,14 @@
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import type {
   AnimationSpec,
   AssetSheet,
   JointSpec,
   ModelSpec,
-} from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { parseSkinnedGlb } from "@test-cabinet/voxel-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { parseSkinnedGlb } from "@clockwyrks/voxel-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { AssetPreview } from "../../../../client/types";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
@@ -153,11 +153,12 @@ function SlotImage({
   style: React.CSSProperties;
   alt: string;
 }) {
-  if (preview) return <img src={dataUrl(preview.image)} alt={alt} style={style} />;
+  if (preview)
+    return <img src={dataUrl(preview.image)} alt={alt} style={style} />;
   return (
     <div
       style={{ ...style, display: "grid", placeItems: "center" }}
-      aria-label={`${alt} — not started`}
+      aria-label={`${alt}, not started`}
     >
       <span className={styles.secondary} style={{ fontSize: "0.7rem" }}>
         not started
@@ -245,7 +246,10 @@ function LiveVoxelView({
   // The assembled scene: every part whose mount location is known (a declared rig
   // part), keyed by part name for the rig. A model-added part beyond the declared
   // set has no known mount yet, so it is left out of the scene.
-  const sceneRig = useMemo<ModelSpec>(() => model ?? staticRig("model"), [model]);
+  const sceneRig = useMemo<ModelSpec>(
+    () => model ?? staticRig("model"),
+    [model],
+  );
   const sceneMeshes = useMemo(() => {
     const byPart: Record<string, PartMesh> = {};
     if (model) {
@@ -282,13 +286,17 @@ function LiveVoxelView({
       <h2 className={`${styles.section} ${styles.leadHeading}`}>Live model</h2>
       <p className={styles.secondary}>
         The model's in-progress geometry, rebuilt in 3D after each sculpting
-        operation and rotated so you can read it from every side. The recorded action
-        log is the run's authoritative output; this preview is just a live look at
-        it.
+        operation and rotated so you can read it from every side. The recorded
+        action log is the run's authoritative output; this preview is just a
+        live look at it.
       </p>
 
       {animated && (
-        <div className={styles.viewToggle} role="tablist" aria-label="Live 3D view">
+        <div
+          className={styles.viewToggle}
+          role="tablist"
+          aria-label="Live 3D view"
+        >
           <button
             type="button"
             role="tab"
@@ -390,7 +398,11 @@ function LiveVoxelView({
               rig={sceneRig}
               mode="auto-rotate"
               fallbackUrl={fallbackFor(activeFrame ?? 0)}
-              label={animated ? "Assembled scene (in progress)" : "Model (in progress)"}
+              label={
+                animated
+                  ? "Assembled scene (in progress)"
+                  : "Model (in progress)"
+              }
               height={340}
               fullscreenable={false}
             />
@@ -414,7 +426,11 @@ function LiveVoxelView({
  * `bones` (not parts), plus its `joints`/`animations` — both of which already arrive in
  * the run-record `JointSpec`/`AnimationSpec` wire shapes. */
 interface StreamedRig {
-  bones?: Array<{ name: string; parent?: string; head?: [number, number, number] }>;
+  bones?: Array<{
+    name: string;
+    parent?: string;
+    head?: [number, number, number];
+  }>;
   joints?: JointSpec[];
   animations?: AnimationSpec[];
 }
@@ -486,9 +502,9 @@ function LiveSkinnedView({ preview }: { preview: AssetPreview }) {
     <Panel>
       <h2 className={`${styles.section} ${styles.leadHeading}`}>Live model</h2>
       <p className={styles.secondary}>
-        The character's in-progress mesh, bound to its rig and deformed by linear-blend
-        skinning after each render. The recorded action log is the run's authoritative
-        output; this preview is just a live look at it.
+        The character's in-progress mesh, bound to its rig and deformed by
+        linear-blend skinning after each render. The recorded action log is the
+        run's authoritative output; this preview is just a live look at it.
       </p>
       {enabled && decoded && decoded.mesh.positions.length > 0 ? (
         <Suspense fallback={fallback}>
@@ -519,9 +535,9 @@ function LiveAudioView({ preview }: { preview: AssetPreview }) {
     <Panel>
       <h2 className={`${styles.section} ${styles.leadHeading}`}>Live audio</h2>
       <p className={styles.secondary}>
-        The clip as the model builds it — its own waveform preview above, the current mix
-        below to play back. The recorded action log is the run's authoritative output;
-        this preview is just a live look at it.
+        The clip as the model builds it: its own waveform preview above, the
+        current mix below to play back. The recorded action log is the run's
+        authoritative output; this preview is just a live look at it.
       </p>
       {preview.image ? (
         <img
@@ -650,7 +666,11 @@ export function LiveAssetView({
   // in-progress model in 3D rather than as a flat sprite canvas.
   if (isVoxelRun(previews, model)) {
     return (
-      <LiveVoxelView previews={previews} activeFrame={activeFrame} model={model} />
+      <LiveVoxelView
+        previews={previews}
+        activeFrame={activeFrame}
+        model={model}
+      />
     );
   }
 
@@ -668,7 +688,10 @@ export function LiveAssetView({
   }
   if (liveSystem) {
     return (
-      <LiveParticleView system={liveSystem} fallbackImage={systemFallbackImage} />
+      <LiveParticleView
+        system={liveSystem}
+        fallbackImage={systemFallbackImage}
+      />
     );
   }
 
@@ -687,22 +710,20 @@ export function LiveAssetView({
   const showRail = slots.length > 1;
   // The slot shown large: the user's pick, else the frame being drawn, else the
   // first declared slot.
-  const selectedIndex =
-    picked ??
-    activeFrame ??
-    slots[0]?.index ??
-    0;
+  const selectedIndex = picked ?? activeFrame ?? slots[0]?.index ?? 0;
   const selected =
     slots.find((s) => s.index === selectedIndex) ?? slots[0] ?? null;
   const current = previews.get(selectedIndex);
 
   return (
     <Panel>
-      <h2 className={`${styles.section} ${styles.leadHeading}`}>Live drawing</h2>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>
+        Live drawing
+      </h2>
       <p className={styles.secondary}>
-        The model's current canvas, re-rendered after each drawing operation. The
-        recorded action log is the run's authoritative output; this preview is just
-        a live look at it.
+        The model's current canvas, re-rendered after each drawing operation.
+        The recorded action log is the run's authoritative output; this preview
+        is just a live look at it.
       </p>
 
       <div className={showRail ? styles.liveLayout : undefined}>

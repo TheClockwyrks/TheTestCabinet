@@ -1,0 +1,526 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+@use "../../../styles/forms" as f;
+@use "../../../styles/breakpoints" as bp;
+
+// The gg **Reference** section: the tab bar, the API tab's own explorer shell (arm
+// picker over sidebar, detail pane beside both), and the detail pane's typography.
+//
+// The two-pane shell, the tree, and the panel body are NOT here — they are the gg
+// explorer's own, imported wholesale from `pages/runs/gg` (see `GgReferenceToolsPage`
+// for why). What is here is only what the reference adds on top: a tab bar, and the
+// several registers a documentation page has to hold apart from one another —
+// *verbatim model-facing prose*, *machine-readable schema*, and *our own commentary
+// about them*. Keeping those visually distinct is the whole job: a reader must never
+// have to wonder whether a sentence in front of them is one the model was given or one
+// we wrote about it.
+
+// --- The section frame --------------------------------------------------------
+
+// The tab bar's body: whichever tab (or non-document state) is on screen, laid out as a
+// filling column so an explorer inside grows to the bottom of the page.
+//
+// The negative bottom margin is the one place the page tunes the gap under the sidebar
+// and the detail pane: `PageLayout`'s `.main` reserves `$space-2xl` under every page,
+// which is more frame than a full-height explorer needs, so the body reclaims half of it
+// and stops `$space-2xl / 2` above the viewport edge instead.
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -(t.$space-2xl * 0.5);
+}
+
+// The Tools/API tab bar. Deliberately the *same* bar the test-case catalog and the
+// test-case detail use (see TestCasesPage.module.scss) rather than a third design or a
+// new shared component: underlined pills over a baseline border, the active one glowing
+// in the accent. Two tabs never overflow, so this copy has no swipe-strip behaviour of
+// its own — that is the only rule of the original it drops.
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  @include h.halo-glow;
+  border-bottom-color: t.$color-accent;
+}
+
+// Loading, "this host has no backend", and "that name is not in the document" all land
+// here: a muted line where the content would be. Distinct from an `exec.error` notice,
+// which is reserved for a request that actually failed.
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// --- The API tab's explorer ---------------------------------------------------
+
+// The API tab's two panes: a left column holding the arm picker over the sidebar, and
+// the detail pane filling everything beside them. The picker deliberately does NOT take
+// a full-width row of its own — it shares the sidebar's column, so the detail pane
+// starts level with it and both stop at the same bottom edge. Mirrors the shared
+// explorer's `.explorer` geometry (see GgPanels.module.scss), which the Tools tab still
+// uses directly.
+.armExplorer {
+  flex: 1 1 auto;
+  min-height: 18rem;
+  display: flex;
+  gap: t.$space-md;
+  align-items: stretch;
+}
+
+// The left column: the dropdown, then the sidebar filling the rest of the height. Sized
+// exactly as the shared explorer sizes its sidebar, so the two tabs' trees line up.
+.armSide {
+  flex: 0 0 auto;
+  width: 17rem;
+  max-width: 40%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// The SDK arm dropdown. Mirrors the run listing's facet selects so the console's
+// dropdowns read as one family.
+.armSelect {
+  width: 100%;
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+}
+
+// The API sidebar: the filter pinned at the top, the entries scrolling under their own
+// scrollbar below it. Drawn like the shared explorer's sidebar, but laid out as a column
+// with `overflow: hidden` so only `.entries` scrolls — the filter can never leave the
+// viewport, and no row ever slides underneath it.
+.sidebar {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The detail pane beside the sidebar column, filling the rest of the row. The same
+// column the shared explorer's content pane is, so `panelBody` children fill and scroll
+// identically on both tabs.
+.armDetail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// --- The tree filter ----------------------------------------------------------
+
+// The filter box leading the API sidebar. A fixed header of the sidebar's column rather
+// than a sticky row of the scroll container, ruled off from the entries below it.
+.filter {
+  flex: 0 0 auto;
+  padding: t.$space-xs;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.filterInput {
+  width: 100%;
+  padding: t.$space-2xs t.$space-xs;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+}
+
+// The scrolling half of the sidebar: the tree, and nothing else. Carries the inner
+// padding the shared explorer puts on the sidebar itself, so the rows sit off the
+// border the same way the Tools tree's do.
+.entries {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: t.$space-xs;
+}
+
+// --- The sidebar's object captions --------------------------------------------
+
+// An API object's family description, as the first thing inside the object's folder: the
+// line that answers "which of these thirteen do I want" without opening every one of
+// them.
+//
+// A block under the folder rather than a second line inside the folder's row, for two
+// reasons that both come from `FsFolder` being shared. A tree row is a `<button>` whose
+// contents are its accessible name, so a paragraph inside one has to be papered over with
+// an explicit `aria-label`; and a row centres its caret against whatever it holds, so a
+// two-line name leaves the caret floating beside the caption rather than beside the name
+// it discloses. As a child block it is neither. Its left edge is `fsIndent(1)` — the same
+// inline indent the function rows below it take — so the caption sits in their column and
+// under the folder's guideline rather than against the sidebar's edge.
+.objectCaption {
+  padding-right: t.$space-xs;
+  padding-bottom: t.$space-2xs;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: t.$color-text-muted;
+}
+
+// --- The detail pane ----------------------------------------------------------
+
+// One entry, read top to bottom: what it is, then what the model is told about it, then
+// the machine-readable form. The stack owns the rhythm so every section below can be a
+// plain block.
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  min-width: 0;
+}
+
+.detailHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The entry's own name, in the identifier's own typeface: this is a string the model
+// types, not a title we chose for it.
+.detailTitle {
+  margin: 0;
+  font-family: monospace;
+  font-size: t.$font-lg;
+  color: t.$color-accent;
+  @include h.halo-glow;
+  overflow-wrap: anywhere;
+}
+
+// The metadata row under the name: the family, the capability that contributes the
+// entry, the gate a program's call goes through. Chips rather than a label/value list
+// because they are all the same kind of fact — "this is switched on by X" — and there
+// are never more than three.
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  align-items: center;
+}
+
+.chip {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+  white-space: nowrap;
+}
+
+// The chip naming the capability (or the ending role) that decides the entry — the one
+// fact a reader is usually here for, so it takes the accent while the rest stay muted.
+.chipKey {
+  color: t.$color-accent;
+  border-color: color-mix(in srgb, t.$color-accent 45%, transparent);
+}
+
+// The "beyond the capability, this also has to be true" sentence, and the warning that a
+// description enumerates one run's data. Warm-ruled, because both are caveats about the
+// prose immediately below rather than part of it.
+.note {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid t.$color-accent-2;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent-2 6%, transparent);
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  color: t.$color-text-muted;
+}
+
+// A section heading inside the pane ("Description", "Parameters", "Types"). Small and
+// muted, matching the sub-panel labels the gg explorers use, so the reference does not
+// read as a louder page than the run views it sits beside.
+.sectionLabel {
+  display: block;
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.section {
+  min-width: 0;
+}
+
+// **Verbatim model-facing prose** — a tool's description, a function's JSDoc paragraph.
+//
+// `pre-wrap`, monospace, and never rendered as Markdown or reflowed: the single reason
+// this page is fetched from the backend rather than written by hand is that it shows
+// exactly what the model is shown, and a description that renders its `**bold**` or
+// collapses its blank lines is no longer that. Wrapping (rather than a horizontal
+// scroll) is the one liberty taken, because these are paragraphs, not code.
+.verbatim {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  max-height: 32rem;
+  overflow: auto;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+}
+
+// **Machine-readable text** — a JSON Schema, a TypeScript signature, a type
+// declaration. Unlike the prose above it is NOT wrapped: indentation carries the
+// structure, so a long line scrolls rather than folding back under itself.
+.code {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  max-height: 32rem;
+  overflow: auto;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+}
+
+// A **run-data stand-in** inside verbatim text: `<agent>`, `<skill>`, `<state>`.
+//
+// A handful of tool descriptions enumerate a run's own roster, library or machine state
+// rather than a policy, so the reference is projected from a run with obvious stand-ins
+// where that data goes. Marked rather than substituted or stripped: the block still has to
+// be the exact bytes the model was given, and the mark is a highlight over text that is
+// already there. Which substrings are stand-ins comes from the document — see
+// `markTokens` — never from looking for angle brackets, which ordinary prose also has.
+//
+// A `<mark>` defaults to a black-on-yellow the rest of this page has nothing to do with,
+// so both colours are set.
+.standIn {
+  padding: 0 0.15em;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent-2 22%, transparent);
+  color: t.$color-text;
+}
+
+// --- The derived parameter list -----------------------------------------------
+
+// The schema's top-level properties, spelled out. This is *derived* — the raw schema
+// above it stays the source of truth on the page — and it exists because "which of these
+// nine arguments must I pass" is a question a pretty-printed schema answers only by
+// cross-referencing its `required` array against its `properties` object, which is a
+// thing a reader should not have to do by eye.
+.params {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding-left: t.$space-sm;
+  border-left: t.$border-hairline solid t.$color-border;
+  min-width: 0;
+}
+
+.paramHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.paramName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  overflow-wrap: anywhere;
+}
+
+.paramType {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  overflow-wrap: anywhere;
+}
+
+// Only "required" is marked. Optional is the majority and the absence of the mark says
+// it — a second badge on every other row would be noise standing for the default.
+.paramRequired {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-accent-2;
+}
+
+// An argument's own description, from the schema. Prose the model reads, so it keeps its
+// whitespace for the same reason the tool description does.
+.paramDesc {
+  margin: 0;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: t.$color-text-muted;
+}
+
+// --- The declarations a signature reaches -------------------------------------
+
+// One row per declaration the selected function's signature reaches: its name, and
+// whether opening the function opens that declaration too.
+//
+// Names rather than declarations, which is what keeps eleven arms affordable. Each
+// declaration has its own entry in the same document, so the row links to it.
+.typeRefs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.typeRef {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The link to a declaration's own entry. A button, not an anchor: it moves the selection
+// within this page — the same motion clicking the row in the tree makes — and an `<a>`
+// would promise a navigation that is not one.
+.typeRefLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+
+  &:hover {
+    color: t.$color-text;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// A name the document does not carry an entry for. Rendered as plain text rather than as
+// a link to nothing: every arm resolves every one of these today, and a page that
+// fabricated a link would be lying about a document it can see it does not have.
+.typeRefName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
+}
+
+// --- Variants -----------------------------------------------------------------
+
+// A tool that genuinely changes shape with its capability's configuration, folded away
+// by default: the top-level description and schema are the *default* configuration's,
+// and the variants are what a differently-configured run would see. Collapsed because
+// most readers want the default, and open-by-default would bury the parameters of the
+// tool they actually came for under a second copy of them.
+.variants {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.variant {
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+}
+
+.variantSummary {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+// The label naming the configuration ("read mode: default-cap"), in the same monospace
+// the capability editor spells those tokens in.
+.variantLabel {
+  font-family: monospace;
+}
+
+.variantBody {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  padding: 0 t.$space-md t.$space-md;
+  min-width: 0;
+}

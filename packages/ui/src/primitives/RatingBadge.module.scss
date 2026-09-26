@@ -32,4 +32,14 @@
   &[data-rating="broken"] {
     --rating-color: var(--tcab-rating-broken);
   }
+
+  // A tier that is named but not in force (a failure cap on an item that did
+  // not fail) reads as disabled: the muted text color, no tint behind it, and
+  // faded, so it cannot be mistaken for a plainer variant of a live badge.
+  // Declared after the tier rules so it wins over them at equal specificity.
+  &[data-muted="true"] {
+    --rating-color: #{t.$color-text-muted};
+    background: transparent;
+    opacity: 0.45;
+  }
 }

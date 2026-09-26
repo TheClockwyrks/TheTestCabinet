@@ -14,9 +14,8 @@
 //! is posted, so by the time the console sees the run finish its artifacts are
 //! already servable.
 //!
-//! When `TCAB_ARTIFACTS_URL` is unset (the local CLI/desktop path), nothing here
-//! runs and behavior is unchanged — there is no separate artifact service in that
-//! topology.
+//! When `TCAB_ARTIFACTS_URL` is unset (a local setup), nothing here runs — there
+//! is no separate artifact service in that topology.
 
 use std::fs::File;
 use std::io::Seek;
@@ -86,20 +85,21 @@ pub async fn upload_run_tree(
     // Build the tarball on DISK and stream it, rather than assembling it in memory.
     //
     // This is the driver's single largest allocation and the reason its memory
-    // ceiling used to be unsizeable. A run tree is bounded only by the case that
+    // footprint used to be unsizeable. A run tree is bounded only by the case that
     // produced it — source, a static build, and proof/asset media — so buffering the
     // whole archive made peak driver memory a function of the heaviest case rather
     // than of the driver's own work: measured peaks ran ~475MiB against a 512Mi
-    // request, i.e. right at the ceiling. Every other moment in a driver's life costs
-    // under 10MiB.
+    // request, i.e. right at what the node had reserved. Every other moment in a
+    // driver's life costs under 10MiB.
     //
     // The timing is what makes that dangerous rather than merely untidy. This upload
     // happens AFTER the harness session has finished and BEFORE the terminal status
     // is posted, so a driver killed here loses a run that has already paid for every
     // one of its API calls — strictly the most expensive way for a run to die. Reading
-    // the archive off disk a chunk at a time makes the ceiling a property of the
-    // driver instead, which is what lets the deployment give it a real memory limit
-    // (see the dispatcher's `DEFAULT_DRIVER_MEMORY_LIMIT`).
+    // the archive off disk a chunk at a time makes the driver's footprint a property
+    // of the driver instead of the case, which is what lets its memory request be a
+    // real reservation (see the dispatcher's `DEFAULT_DRIVER_MEMORY_REQUEST`; the
+    // driver carries no memory limit, deliberately).
     //
     // Tarring is a blocking filesystem walk, so it runs on the blocking pool: the same
     // task is still streaming harness events and heartbeating status, and stalling the
@@ -141,7 +141,7 @@ pub async fn upload_run_tree(
 }
 
 /// Upload an adversarial run's controller wasm and proof replays to the **backend
-/// store**, keyed by run id — the backend-driven mirror of the CLI/desktop push
+/// store**, keyed by run id — the backend-driven mirror of the CLI push
 /// (`BackendPublisher::upload_adversarial`).
 ///
 /// The backend store is a different place from the artifact service. The arena
@@ -235,6 +235,19 @@ pub async fn upload_performance_to_backend(
             .publish_run_asset(&record.id, scenario_json, bytes)
             .await?;
     }
+
+    // The run's own engine module, so the console's browser playback can load and
+    // step it — the same wasm that graded every case. It is published under its
+    // run-level `module_wasm` filename (`engine.wasm`) and served exactly like a
+    // scenario; without this upload the console's module URL 404s and playback
+    // cannot start. A missing module (the build emitted none) is simply skipped.
+    if let Some(module_wasm) = performance.module_wasm.as_deref()
+        && let Ok(bytes) = std::fs::read(impl_dir.join(module_wasm))
+    {
+        client
+            .publish_run_asset(&record.id, module_wasm, bytes)
+            .await?;
+    }
     Ok(())
 }
 
@@ -299,17 +312,25 @@ pub async fn upload_proofs_to_backend(
 /// the published site degrades the reviewer's side-by-side to presence-only.
 ///
 /// Each present output is read from the produced tree at
-/// `{out_dir}/{id}/implementation/.tcab/validation/<item>__<output>.<ext>` — the flat
+/// `{out_dir}/{id}/implementation/.vendor/validation/<item>__<output>.<ext>` — the flat
 /// [`validation_media_name`](test_cabinet_core::validation_media_name) spelling
 /// `playable::serve_validation_file` serves and the gallery requests — and uploaded
 /// under that same name, so the snapshot key matches the UI lookup. The captured
 /// video is the `.webm` Playwright records; the snapshot transcodes it to `.mp4` at
 /// publish (as it does a video proof), so what is mirrored here stays the raw webm.
 ///
-/// Best-effort and driven purely off the produced record: a no-op for a run that
-/// declares no debug scripts, and skips any output the build did not produce or whose
-/// file is unreadable. The backend upload route is ungated on the private network, so
-/// the client carries no token. A rejected upload is surfaced so the caller can log it.
+/// The recordings' **shared image store** (`img.<id>.png` / `img.<id>.bin` — see
+/// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) is
+/// mirrored too, and is the one thing here that is *not* driven off the record: a
+/// store file backs no verdict and is named by its own bytes, so it appears on no
+/// output declaration and is enumerated off the directory instead. Without it the
+/// published replays resolve nothing and draw holes where their sprites were.
+///
+/// Best-effort and driven off the produced record (plus that one directory listing):
+/// a no-op for a run that declares no debug scripts, and skips any output the build
+/// did not produce or whose file is unreadable. The backend upload route is ungated
+/// on the private network, so the client carries no token. A rejected upload is
+/// surfaced so the caller can log it.
 pub async fn upload_validation_to_backend(
     backend_url: &str,
     record: &RunRecord,
@@ -318,7 +339,7 @@ pub async fn upload_validation_to_backend(
     let validation_dir = out_dir
         .join(&record.id)
         .join("implementation")
-        .join(".tcab")
+        .join(".vendor")
         .join("validation");
     let client = HttpBackendClient::new(backend_url);
 
@@ -343,7 +364,106 @@ pub async fn upload_validation_to_backend(
                 .await?;
         }
     }
+
+    // The recordings' shared image store travels with them, or the published replays
+    // draw holes where their sprites were. It cannot be driven off the record like
+    // everything above: a store file backs no verdict and is named by its own bytes,
+    // so it is on no output declaration and is enumerated off the directory instead
+    // (`is_validation_image_name` is the one place that judgement lives). Same
+    // best-effort stance as the declared outputs — an unreadable entry is skipped
+    // rather than failing the mirror.
+    if let Ok(read) = std::fs::read_dir(&validation_dir) {
+        for entry in read.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if !test_cabinet_core::is_validation_image_name(&name) {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            client
+                .publish_run_validation(&record.id, &name, bytes)
+                .await?;
+        }
+    }
     Ok(())
+}
+
+/// Mirror a gg run's session record into the **backend store**, keyed by run id — the debug-only
+/// counterpart to [`upload_validation_to_backend`], for the same reason.
+///
+/// A gg run streams every model call it makes into a journal that the host folds into
+/// [`{out_dir}/{id}/replay.json.gz`](test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT)
+/// at the [post-run seam](test_cabinet_core::post_run) — at the **run tree's root**, not inside
+/// `implementation/`, which is a verbatim copy of what the model produced. (The `replay` in those
+/// paths is an
+/// [address](test_cabinet_core::gg_session_record), not a name.) Nothing else writes the backend
+/// store's `runs/{id}/replay.json` for a backend-driven run, so without this mirror the record
+/// never reaches `GET /runs/{id}/replay` and a run's session is readable only from whatever host
+/// still has its tree.
+///
+/// The gzipped bytes are uploaded **as they are**: the store keeps run-tree artifacts opaque and the
+/// serving route content-negotiates on the request's `Accept-Encoding`, so decompressing here would
+/// only cost the transfer and be re-done on the way out.
+///
+/// Best-effort: a no-op for a run with no assembled record (a third-party-harness run, or a gg run
+/// whose journal never reached the host), and reads it straight off the produced tree. The backend
+/// upload route is ungated on the private network, so the client carries no token. A rejected upload
+/// is surfaced so the caller can log it.
+pub async fn upload_replay_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let replay_path = out_dir
+        .join(&record.id)
+        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
+    let Ok(bytes) = std::fs::read(&replay_path) else {
+        // No assembled record (a non-gg run, or a gg run whose journal never reached the host)
+        // — nothing to mirror.
+        return Ok(());
+    };
+    HttpBackendClient::new(backend_url)
+        .publish_run_replay(&record.id, bytes)
+        .await
+}
+
+/// Mirror a run's **code-analysis document** into the backend store, keyed by run id — the
+/// analyzer's counterpart to [`upload_replay_to_backend`], for the same reason and by the same
+/// convention.
+///
+/// The post-run stage writes the unbounded document to
+/// [`{out_dir}/{id}/code-analysis.json.gz`](test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT) at the
+/// run tree's **root**, and its bounded summary rides on the record. Nothing else writes the
+/// backend store's `runs/{id}/code-analysis.json` for a backend-driven run, so without this mirror
+/// the document never reaches `GET /runs/{id}/code-analysis` and the per-run Code tab has only the
+/// summary to show — no file explorer, no symbol table, no cycles.
+///
+/// Applies to **every** harness, unlike the replay mirror: the analysis is harness-agnostic.
+///
+/// The gzipped bytes are uploaded as they are, for the same reason the session record's are: the
+/// store keeps run-tree artifacts opaque and the serving route content-negotiates, so decompressing
+/// here would only cost the transfer and be re-done on the way out.
+///
+/// Best-effort: a no-op for a run with no document (a run collected before the analyzer shipped, or
+/// one whose tree never reached the host). A rejected upload is surfaced so the caller can log it.
+pub async fn upload_code_analysis_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let path = out_dir
+        .join(&record.id)
+        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+    let Ok(bytes) = std::fs::read(&path) else {
+        // No analysis for this run — nothing to mirror.
+        return Ok(());
+    };
+    HttpBackendClient::new(backend_url)
+        .publish_run_code_analysis(&record.id, bytes)
+        .await
 }
 
 /// Mirror an asset-generation run's media into the **backend store**, keyed by run
@@ -466,6 +586,80 @@ pub async fn upload_assets_to_backend(
             artifacts.push(("preview.png".to_string(), preview.clone()));
         }
         publish_artifacts(&client, &record.id, &impl_dir, artifacts).await?;
+    }
+    Ok(())
+}
+
+/// Mirror a run's [showcase](test_cabinet_core::RunShowcase) files into the
+/// **backend store**, keyed by run id — the showcase counterpart to
+/// [`upload_proofs_to_backend`], for the same reason: the public snapshot reads a
+/// run's showcase media from the backend store (`snapshot::run_showcase` →
+/// `store::read_run_showcase`), and nothing else writes that store's
+/// `runs/{id}/showcase/` dir for a backend-driven run. Without this mirror a
+/// showcase's carousel media never reach the snapshot and the published Play tab
+/// has only the description text (which rides the record) to show.
+///
+/// Every file in the produced tree's `implementation/showcase/` uploads under its
+/// own name **except `showcase.toml`** — the manifest is capture-side input,
+/// already folded into the record's carousel. The description's `showcase.md` text
+/// also rides the record, but the file uploads anyway: an image the description
+/// references by bare relative path must be served per run even when the carousel
+/// does not list it, which is why the upload takes the whole directory rather than
+/// the carousel — and taking the directory whole keeps the mirror in lockstep with
+/// `playable::serve_showcase_file`, which serves the same namespace from the tree.
+/// A file over the capture's media cap
+/// ([`test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES`]) is skipped: the capture
+/// already refused to record it, so shipping it would bloat every store downstream
+/// for a file nothing references.
+///
+/// A no-op for a run whose record carries no showcase — the files serve no one
+/// without the record's description and carousel. Best-effort: an unreadable file
+/// is skipped (the run is still inspectable); a rejected upload is surfaced so the
+/// caller can log it. The backend upload route is ungated on the private network,
+/// so the client carries no token.
+pub async fn upload_showcase_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    if record.showcase.is_none() {
+        return Ok(());
+    }
+    let dir = out_dir
+        .join(&record.id)
+        .join("implementation")
+        .join("showcase");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        // The record captured a showcase but the tree no longer holds the dir —
+        // nothing to mirror.
+        return Ok(());
+    };
+    let client = HttpBackendClient::new(backend_url);
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let Some(file) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if file == "showcase.toml" {
+            continue;
+        }
+        if entry
+            .metadata()
+            .is_ok_and(|m| m.len() > test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES)
+        {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(entry.path()) else {
+            continue;
+        };
+        client
+            .publish_run_showcase(&record.id, &file, bytes)
+            .await?;
     }
     Ok(())
 }

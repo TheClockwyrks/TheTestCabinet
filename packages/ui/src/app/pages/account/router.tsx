@@ -5,21 +5,30 @@ import { ReviewsPage } from "./ReviewsPage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
 import { CoveragePlansPage } from "./CoveragePlansPage";
+import { CoveragePlanLayout } from "./CoveragePlanLayout";
 import { CoveragePlanPage } from "./CoveragePlanPage";
+import { CoveragePlanReviewsPage } from "./CoveragePlanReviewsPage";
+import { CoveragePlanTestsPage } from "./CoveragePlanTestsPage";
 import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
 import { LaddersPage } from "./LaddersPage";
 import { LadderPage } from "./LadderPage";
 import { LadderEditPage } from "./LadderEditPage";
 import { GroupsPage } from "./GroupsPage";
 import { GroupEditPage } from "./GroupEditPage";
+import { GgConfigsPage } from "./GgConfigsPage";
+import { GgConfigEditPage } from "./GgConfigEditPage";
+import { GgAgentsPage } from "./GgAgentsPage";
+import { GgAgentEditPage } from "./GgAgentEditPage";
 
 // Routes owned by the account section: the signed-in account view (its Profile,
-// Coverage, Ladders, and Groups tabs) plus the sign-in and registration pages, each
-// its own URL so it is linkable (the top-bar account control links to them). The
-// reviewer coverage tooling — coverage plans, ladders, and the reusable groups both
-// reference — lives here too, scoped to the account it belongs to. They drive the
+// Coverage, Ladders, Groups, and gg tabs) plus the sign-in and registration pages,
+// each its own URL so it is linkable (the top-bar account control links to them).
+// The reviewer coverage tooling — coverage plans, ladders, and the reusable groups
+// both reference — lives here too, scoped to the account it belongs to, as do the
+// operator's saved gg configurations (named capability sets the new-run form
+// launches once `gg` is picked as the orchestrator). They drive the
 // auth context the static site does not provide, so they mount only when the host
-// can execute runs (the web + desktop consoles). Static segments like
+// can execute runs (the web console). Static segments like
 // `/account/coverage/new` outrank the dynamic `:planId`, so route order does not
 // matter. Returned as a fragment so the app's single <Routes> stitches every
 // section's routes together.
@@ -47,10 +56,17 @@ export function accountRoutes(canExecute: boolean) {
             path={routePatterns.accountCoveragePlanEdit}
             element={<CoveragePlanEditPage />}
           />
+          {/* A plan's three tabs are child routes of one layout, so pressing a tab
+              moves only the body: the layout keeps its fetch, its controls, and its
+              once-per-visit top-up across the press. */}
           <Route
             path={routePatterns.accountCoveragePlan}
-            element={<CoveragePlanPage />}
-          />
+            element={<CoveragePlanLayout />}
+          >
+            <Route index element={<CoveragePlanPage />} />
+            <Route path="reviews" element={<CoveragePlanReviewsPage />} />
+            <Route path="tests" element={<CoveragePlanTestsPage />} />
+          </Route>
           <Route
             path={routePatterns.accountLadders}
             element={<LaddersPage />}
@@ -72,6 +88,30 @@ export function accountRoutes(canExecute: boolean) {
           <Route
             path={routePatterns.accountGroupEdit}
             element={<GroupEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgConfigs}
+            element={<GgConfigsPage />}
+          />
+          <Route
+            path={routePatterns.accountGgConfigNew}
+            element={<GgConfigEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgents}
+            element={<GgAgentsPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgentNew}
+            element={<GgAgentEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgAgentEdit}
+            element={<GgAgentEditPage />}
+          />
+          <Route
+            path={routePatterns.accountGgConfigEdit}
+            element={<GgConfigEditPage />}
           />
         </>
       )}

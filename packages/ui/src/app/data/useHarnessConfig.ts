@@ -5,10 +5,8 @@ import type { HarnessConfigEntry } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
 // The per-harness configuration capability, bound to the active backend client and
-// (for the mutation) the signed-in token. This is the backend-backed half of the
-// Harnesses settings — the maximum-parallelism knob the backend's claim enforces —
-// so it works the same on the web console and the desktop app (both talk to the
-// same backend over HTTP), unlike the Tauri-only harness *auth* capability.
+// (for the mutation) the signed-in token. This is what the
+// Harnesses settings — the maximum-parallelism knob the backend's claim enforces.
 //
 // `list` is an open read, present wherever a console can execute (`canExecute`) and
 // the transport exposes it (the static site's snapshot transport does not).
@@ -21,7 +19,10 @@ export interface HarnessConfigApi {
   /** Set a harness's maximum parallelism (`null` = no limit), or `null` when the
    * session is logged out and cannot mutate. Resolves to the refreshed list. */
   setMaxParallelism:
-    | ((slug: string, maxParallelism: number | null) => Promise<HarnessConfigEntry[]>)
+    | ((
+        slug: string,
+        maxParallelism: number | null,
+      ) => Promise<HarnessConfigEntry[]>)
     | null;
 }
 

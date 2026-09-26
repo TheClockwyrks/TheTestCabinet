@@ -16,12 +16,23 @@ set -euo pipefail
 # Pin deliberately; bump in step with the host daemon's major where it matters.
 readonly DOCKER_VERSION="27.3.1"
 
-# Map the devcontainer's BUILDARCH to Docker's static-binary arch naming.
-if [ "$BUILDARCH" = "amd64" ]; then
+# Two names for one machine, resolved here rather than passed in: the static client
+# tarballs are published under the uname spelling, and the buildx release assets under
+# the Go/OCI one.
+case "$(uname -m)" in
+x86_64)
 	readonly ARCH="x86_64"
-else
+	readonly BUILDX_ARCH="amd64"
+	;;
+aarch64 | arm64)
 	readonly ARCH="aarch64"
-fi
+	readonly BUILDX_ARCH="arm64"
+	;;
+*)
+	echo "error: no Docker client or buildx build for $(uname -m)." >&2
+	exit 1
+	;;
+esac
 
 readonly BIN_DIR="$HOME/.local/bin"
 readonly TAR_PATH="/tmp/$USERNAME/docker.tgz"
@@ -48,13 +59,13 @@ rm -rf "$TAR_PATH" "/tmp/$USERNAME/docker"
 # Install it into the SYSTEM cli-plugins dir rather than ~/.docker/cli-plugins so it
 # is still discovered when DOCKER_CONFIG is overridden — which deployments/local/Makefile
 # does at build time to sidestep the devcontainer's BuildKit-incompatible credsStore
-# helper. buildx's BUILDARCH naming (amd64/arm64) matches $BUILDARCH directly.
+# helper.
 readonly BUILDX_VERSION="v0.35.0"
 readonly BUILDX_PLUGIN_DIR="/usr/local/lib/docker/cli-plugins"
 readonly BUILDX_PATH="/tmp/$USERNAME/docker-buildx"
 
 wget -O "$BUILDX_PATH" \
-	"https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${BUILDARCH}"
+	"https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${BUILDX_ARCH}"
 sudo mkdir -p "$BUILDX_PLUGIN_DIR"
 sudo install -m 0755 "$BUILDX_PATH" "$BUILDX_PLUGIN_DIR/docker-buildx"
 rm -f "$BUILDX_PATH"

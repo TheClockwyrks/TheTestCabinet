@@ -26,11 +26,11 @@ as the one warm accent** — and every tile has to be recognizable on its own.
 
 Lay the tiles out in exactly these positions:
 
-| | Column 0 (x 0–31) | Column 1 (x 32–63) | Column 2 (x 64–95) |
-| --- | --- | --- | --- |
-| **Row 0** (y 0–31) | Stone floor | Cracked stone floor | Mossy floor |
-| **Row 1** (y 32–63) | Brick wall front-face | Wall-top cap | Closed wooden door |
-| **Row 2** (y 64–95) | Stairs descending | Rubble & bones floor | Lit floor brazier |
+|                     | Column 0 (x 0–31)     | Column 1 (x 32–63)   | Column 2 (x 64–95) |
+| ------------------- | --------------------- | -------------------- | ------------------ |
+| **Row 0** (y 0–31)  | Stone floor           | Cracked stone floor  | Mossy floor        |
+| **Row 1** (y 32–63) | Brick wall front-face | Wall-top cap         | Closed wooden door |
+| **Row 2** (y 64–95) | Stairs descending     | Rubble & bones floor | Lit floor brazier  |
 
 What each tile is:
 
@@ -81,17 +81,17 @@ lone brazier glows warm against all the cold stone.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
+| Role                                  | Hex       |
+| ------------------------------------- | --------- |
 | Stone light (top-lit highlight, bone) | `#9a9aa3` |
-| Stone mid (base stone) | `#6b6b73` |
-| Stone dark (crevice, low light) | `#3f3f47` |
+| Stone mid (base stone)                | `#6b6b73` |
+| Stone dark (crevice, low light)       | `#3f3f47` |
 | Mortar (joints between stones/bricks) | `#26262b` |
-| Moss (overgrowth) | `#5f7a3a` |
-| Wood (door planks) | `#6b4a2b` |
-| Iron (door bands, brazier bowl) | `#4a4a52` |
-| Flame / glow (brazier accent) | `#f2a03d` |
-| Shadow (deep dark, descending stair) | `#1c1c20` |
+| Moss (overgrowth)                     | `#5f7a3a` |
+| Wood (door planks)                    | `#6b4a2b` |
+| Iron (door bands, brazier bowl)       | `#4a4a52` |
+| Flame / glow (brazier accent)         | `#f2a03d` |
+| Shadow (deep dark, descending stair)  | `#1c1c20` |
 
 ## Working the tool
 

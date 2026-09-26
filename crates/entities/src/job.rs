@@ -47,10 +47,61 @@ pub struct Model {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The slug of the engine the queued run's case pin names (see
+    /// `test_cabinet_core::engine`), lifted out of the launch request at enqueue and
+    /// mirroring `run.engine_slug` on the run the job produces.
+    ///
+    /// Part of a job's coverage cell: results are only comparable within one engine, so
+    /// one case at one version and variant on two engines is two cells. It is a column
+    /// for the same reason `harness_slug` and `model_id` are — a plan counts a cell's
+    /// in-flight runs with a grouped query, and deserializing `request_json` per row
+    /// cannot be part of a `GROUP BY`. `NULL` where the launch named no engine, which is
+    /// the `none` engine: every grouped count coalesces it to that slug rather than
+    /// treating it as unknown.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub engine_slug: Option<String>,
+    /// The **gg** run's declarative capability set, serialized to JSON and lifted
+    /// out of the launch request at enqueue so a gg job's exact configuration is a
+    /// first-class, queryable column rather than only buried in `request_json`.
+    /// `NULL` for every third-party-harness job (which carries no capability set).
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_config_json: Option<String>,
+    /// The name of the gg **configuration** this job was launched from, lifted from
+    /// the capability set at enqueue and mirroring `run.gg_preset` on the run the job
+    /// produces.
+    ///
+    /// Display text and a slicing key, not identity: the active-run list names a gg job
+    /// by its configuration, and what the job is *counted* under is
+    /// [`gg_config_id`](Self::gg_config_id). `NULL` for every third-party-harness job and
+    /// for a gg job assembled by hand rather than from a saved configuration.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_preset: Option<String>,
+    /// The **id** of the gg configuration this job was launched from, lifted from the
+    /// capability set at enqueue and mirroring `run.gg_config_id` on the run the job
+    /// produces.
+    ///
+    /// The pair with [`gg_models`](Self::gg_models) is a gg job's coverage cell — the id
+    /// rather than the [name](Self::gg_preset) because a name is renamed freely and is
+    /// unique to nothing. A plan counts a cell's in-flight runs with a grouped query over
+    /// `job`, so both segments have to be columns for the same reason `harness_slug` and
+    /// `model_id` already are: deserializing `gg_config_json` per row cannot be part of a
+    /// `GROUP BY`. `NULL` for every third-party-harness job and for a gg job assembled by
+    /// hand rather than from a saved configuration.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_config_id: Option<String>,
+    /// The models this job's gg capability set binds, sorted, de-duplicated, and
+    /// comma-joined, lifted at enqueue and mirroring `run.gg_models`.
+    ///
+    /// Written from the same helper as the run-side lift, so an in-flight job and the
+    /// run it becomes can never be attributed to two different cells. `NULL` for
+    /// every non-gg job.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_models: Option<String>,
     /// The per-job bearer token the driver presents to stream this job's
     /// events/preview/status. Minted at enqueue, never leaves the cluster.
     pub job_token: String,
-    /// The produced run record's id once the job succeeded, else `NULL`. What the
+    /// The produced run record's id once the job succeeded — or the partial record
+    /// the driver handed back for a job an operator canceled — else `NULL`. What the
     /// console navigates to when the live run finishes.
     #[sea_orm(nullable)]
     pub record_id: Option<String>,
@@ -98,6 +149,23 @@ pub struct Model {
     pub created_at: String,
     /// RFC 3339 of the last state transition.
     pub updated_at: String,
+    /// RFC 3339 of when the run itself began — the moment the driver reported
+    /// `starting`, which is immediately before it takes the `started_at` the produced
+    /// record's `startedAt` and `metrics.runTimeSeconds` are measured from. Anchoring
+    /// here is what lets a console tick a live duration that agrees with the figure the
+    /// finished row will show, rather than one that jumps when the run completes.
+    ///
+    /// Neither existing timestamp can serve. [`created_at`](Self::created_at) is when
+    /// the run joined the queue, so a run held an hour behind a parallelism cap would
+    /// read as an hour old the instant it started; [`updated_at`](Self::updated_at) is
+    /// rewritten by every later transition, so a duration measured from it would reset
+    /// each time the driver reported in.
+    ///
+    /// Written once and never overwritten. `NULL` while the job is `queued`, `pending`,
+    /// or `dispatched` — none of those is running, and the console shows a dash — and
+    /// on every row that was already in flight when the column was added.
+    #[sea_orm(nullable)]
+    pub started_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

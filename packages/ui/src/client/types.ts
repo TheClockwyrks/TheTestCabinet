@@ -1,7 +1,6 @@
 // Shared data shapes for the runner/reporter console, independent of transport.
-// The HTTP transport (apps/web) and the Tauri transport (apps/desktop, a later
-// item) both produce and consume these. Fields are camelCase to match both the
-// backend HTTP API and the run-record contract.
+// The HTTP transport (mounted by apps/web) produces and consumes these. Fields are
+// camelCase to match both the backend HTTP API and the run-record contract.
 import type {
   AssetKind,
   AssetSheet,
@@ -10,16 +9,19 @@ import type {
   ModelSpec,
   RunRecord,
   TestType,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 
 // Re-exported so console code can keep importing the asset-kind type from the
 // client layer alongside the shapes it discriminates.
 export type { AssetKind };
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import type { HarnessEvent } from "@test-cabinet/run-record/event";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import type { HarnessEvent } from "@clockwyrks/run-record/event";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -27,7 +29,10 @@ import type {
 } from "../ratings";
 
 export type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -84,14 +89,45 @@ export interface Model {
   /** The canonical model ids this entry claims, each tagged with the harness
    * family it is usable with. */
   aliases: ModelAlias[];
-  /** The latest observed comparable price, or null. */
+  /** The billed rate: the latest observed per-token price of the model's
+   * official OpenRouter endpoint, refreshed by the backend. Null until the
+   * first observation. */
   price: ModelPrices | null;
+  /** The curated developer list price (per-token USD, all-or-nothing) a run's
+   * comparable cost is computed from, or null while the model has none —
+   * a launch naming such a model is refused at enqueue. */
+  listPrice: ModelPrices | null;
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  listPriceAsOf: string | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */
   contextLength: number | null;
+  /** The developer provider: the OpenRouter provider name of the model
+   * developer's own endpoint — the hand-set one, else the one last observed on
+   * the endpoints listing — or null when none is known. */
+  providerPin: string | null;
+  /** Whether `providerPin` is set by hand on the catalog entry rather than
+   * observed on the listing. */
+  providerPinSetByHand: boolean;
+  /** The native quantization set by hand (`fp8`, `bf16`, …), or null to take the
+   * highest level any endpoint declares. Always null for a derived model. */
+  nativeQuantization: string | null;
+  /** The input half of the price ceiling, USD per million tokens, used when
+   * OpenRouter lists no developer endpoint. Null when no ceiling is set. */
+  maxInputPrice: number | null;
+  /** The output half of the price ceiling, USD per million tokens. */
+  maxOutputPrice: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders: string[];
   /** The latest observed release date (RFC 3339), or null. */
   releasedAt: string | null;
+  /** The input modalities the model accepts (`text`, `image`, `file`, …),
+   * lowercased. **Empty means unobserved**, not "text only" — the catalog has
+   * simply not recorded a modality list for this model yet. */
+  inputModalities: string[];
 }
 
 /** The `POST /models` / `PUT /models/{slug}` request body. Each alias pairs a slug
@@ -103,6 +139,31 @@ export interface ModelInput {
   provider: string;
   aliases: ModelAlias[];
   openrouterSlug: string | null;
+  /** The developer provider set by hand, or null to take the provider the
+   * endpoints listing names for the model id's author segment. */
+  providerPin: string | null;
+  /** The native quantization set by hand, or null for the listing's highest. */
+  nativeQuantization?: string | null;
+  /** The price ceiling's input half, USD per million tokens. Set with
+   * `maxOutputPrice` or not at all. */
+  maxInputPrice?: number | null;
+  /** The price ceiling's output half, USD per million tokens. */
+  maxOutputPrice?: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders?: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders?: string[];
+  /** The developer's published uncached-input price per Mtok, or null. Per
+   * Mtok because that is the unit a developer pricing page publishes; the
+   * backend divides down to per-token. All three list-price fields are present
+   * and non-negative, or all three null. */
+  listPriceInputPerMtok: number | null;
+  /** The developer's published cached-input price per Mtok, or null. */
+  listPriceCachedInputPerMtok: number | null;
+  /** The developer's published output price per Mtok, or null. */
+  listPriceOutputPerMtok: number | null;
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  listPriceAsOf: string | null;
   description: string | null;
   logoSvg: string | null;
   providerLogoUrl: string | null;
@@ -121,6 +182,329 @@ export interface ModelSeed {
 /** The `POST /models/logo` result: the fetched, sanitized SVG. */
 export interface LogoFetchResult {
   logoSvg: string;
+}
+
+/** What OpenRouter publishes about a model (`GET /models/openrouter?slug=`), for
+ * the config form to fill itself in with. The display fields are the curated
+ * ones the form edits; the prices seed its list-price fields for the operator
+ * to confirm. The context window and the modalities are recorded by the backend
+ * itself and are never form state. */
+export interface ModelListing {
+  name: string;
+  provider: string;
+  description: string | null;
+  /** The official endpoint's current uncached-input price per Mtok, for seeding
+   * the form's list-price field; null when OpenRouter does not list it. */
+  inputPerMtok: number | null;
+  /** The official endpoint's current cached-input price per Mtok, or null. */
+  cachedInputPerMtok: number | null;
+  /** The official endpoint's current output price per Mtok, or null. */
+  outputPerMtok: number | null;
+}
+
+// --- Model probes (responses-as-code readiness checks) ---
+
+/** A probe's lifecycle. `running` rows are polled until they go terminal. */
+export type ModelProbeStatus = "running" | "complete" | "failed";
+
+/** A completed probe's overall reading of the model's RaC readiness. */
+export type ModelProbeVerdict = "ready" | "not-ready";
+
+/** One responses-as-code readiness probe of a catalog model: gg's RaC turn-1
+ * request replayed per case — two scenarios over several input prompts, on one
+ * program-language arm or every arm — with the `submit_program` tool offered
+ * and forced, each submitted program checked against its case, and a verdict
+ * stored. Mirrors the backend `ModelProbeOut`
+ * (`crates/backend/src/api/model_probes.rs`). */
+export interface ModelProbe {
+  id: string;
+  /** The catalog slug the probe was triggered from. */
+  modelSlug: string;
+  /** The OpenRouter slug the completions were requested under. */
+  openrouterSlug: string;
+  /** The pinned provider, or null for the default route. */
+  provider: string | null;
+  /** The probed program-language arm's wire id, or null for every language. */
+  language: string | null;
+  /** Completion calls requested per input prompt. */
+  samples: number;
+  /** Completion-token cap per call. */
+  maxTokens: number;
+  status: ModelProbeStatus;
+  /** Why the probe failed, or null. */
+  error: string | null;
+  /** Null until the probe completes. */
+  verdict: ModelProbeVerdict | null;
+  /** The probe's overall case-check pass rate (0..=1), or null. */
+  passRate: number | null;
+  /** Total USD spend across the probe's calls, as OpenRouter reported it. */
+  spend: number;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+/** One completion call inside a probe: which case it sampled, which provider
+ * served it, how it finished, whether the submitted program passed its case's
+ * check, and the raw reply. Mirrors the backend `ModelProbeItemOut`. The known
+ * `label` values are the case outcomes `correct-calls`, `missing-calls`,
+ * `docview-first`, `called-undocumented` and `no-docview`, the shape faults
+ * `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak` and `empty`, and the
+ * dodges `no-submission`, `stray-tool-call` and `no-program`; typed open so a
+ * newly classified outcome still renders. */
+export interface ModelProbeItem {
+  id: string;
+  /** The program-language arm's wire id this call probed. */
+  language: string;
+  /** The case's scenario: `baseline` or `missing-docview`. */
+  scenario: string;
+  /** The case's input prompt id. */
+  prompt: string;
+  /** The sample index within the case, from 0. */
+  sample: number;
+  /** The provider OpenRouter reported serving the call, or null on error. */
+  provider: string | null;
+  finishReason: string | null;
+  nativeFinishReason: string | null;
+  /** The classified outcome, or null when the call errored. */
+  label: string | null;
+  /** Whether the submitted program passed its case's check. */
+  pass: boolean;
+  /** The program string the reply's first `submit_program` call carried, or
+   * null. */
+  programText: string | null;
+  /** The reply's text content beside the call, verbatim. */
+  responseText: string;
+  /** The reply's separate reasoning stream, or null. */
+  reasoningText: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /** The call's USD cost, or null. */
+  cost: number | null;
+  durationMs: number;
+  /** The transport or gateway error that voided the call, or null. */
+  error: string | null;
+  createdAt: string;
+}
+
+/** One tool call on a probe request message, in the chat/completions wire
+ * shape. */
+export interface ModelProbeToolCall {
+  id: string;
+  type: string;
+  function: { name: string; arguments: string };
+}
+
+/** One message of the probe's request, exactly as sent — the chat/completions
+ * wire shape, which is why `tool_calls` and `tool_call_id` stay snake_case. */
+export interface ModelProbeMessage {
+  role: string;
+  content?: string | null;
+  tool_calls?: ModelProbeToolCall[] | null;
+  tool_call_id?: string | null;
+}
+
+/** One case's request exactly as sent: its (language, scenario, prompt)
+ * coordinate and its message array. Mirrors the backend `ProbeRequestOut`. */
+export interface ModelProbeRequest {
+  language: string;
+  scenario: string;
+  prompt: string;
+  messages: ModelProbeMessage[];
+}
+
+/** The `GET /model-probes/{id}` response: the probe with everything the console
+ * shows — every case's request messages exactly as sent, every call's
+ * classification, the submitted programs, and the raw replies. */
+export interface ModelProbeDetail {
+  probe: ModelProbe;
+  items: ModelProbeItem[];
+  /** The per-case requests exactly as sent. */
+  requests: ModelProbeRequest[];
+}
+
+/** The `POST /models/{slug}/probes` request body. Everything is optional: an
+ * empty body probes every language arm over the default route with the default
+ * sampling. */
+export interface ModelProbeTriggerInput {
+  /** Pin every call to this provider. Absent probes the default route. */
+  provider?: string;
+  /** Probe this one program-language arm by its wire id. Absent probes every
+   * arm. */
+  language?: string;
+  /** Completion calls per input prompt (default 8, 1..=128). */
+  samples?: number;
+  /** Completion-token cap per call (default 3500, 256..=16000). */
+  maxTokens?: number;
+}
+
+/** One provider route OpenRouter lists for a model, so a probe can pin to it. */
+export interface ModelProbeProvider {
+  /** The provider's display name — the value a probe pins with. */
+  name: string;
+  /** The route's context window in tokens, or null when unreported. */
+  contextLength: number | null;
+}
+
+/** One provider of a model's candidate list. Mirrors the backend `CandidateOut`. */
+export interface ModelCandidate {
+  /** The provider, spelled as OpenRouter's endpoints listing spells it. */
+  provider: string;
+  /** The quantization its endpoint declares. */
+  quantization: string;
+  /** Whether this is the model developer's own endpoint. */
+  developer: boolean;
+  /** The input price, USD per million tokens. */
+  inputPrice: number;
+  /** The output price, USD per million tokens. */
+  outputPrice: number;
+  /** The cache-read price, USD per million tokens. */
+  cacheReadPrice: number;
+  /** The recorded fault rate for the model, or null when no recorded run used
+   * the provider (which orders as zero). */
+  faultRate: number | null;
+}
+
+/** The `GET /models/{slug}/candidates` response: the candidate list the next gg
+ * enqueue of the model would build, for an agent that sets no reasoning.
+ * Mirrors the backend `ModelCandidatesOut`. */
+export interface ModelCandidates {
+  /** The OpenRouter id the endpoints listing was read under. */
+  modelId: string;
+  /** The native quantization the filter used, or null when none is known. */
+  nativeQuantization: string | null;
+  /** The candidates, in the order a run tries them. */
+  candidates: ModelCandidate[];
+  /** Why the list is empty, or null when it is not. */
+  refusal: string | null;
+}
+
+/** The `GET /models/{slug}/probe-providers` response. */
+export interface ModelProbeProviders {
+  /** The OpenRouter slug the providers were enumerated for. */
+  openrouterSlug: string;
+  providers: ModelProbeProvider[];
+}
+
+// --- Provider & accuracy statistics (folded from stored gg runs + probes) ---
+
+/** One (provider, model) cell's call statistics folded from recorded gg runs.
+ * Mirrors the backend `ProviderCallStatsOut` (`crates/backend/src/api/stats.rs`). */
+export interface ProviderCallStats {
+  /** Distinct gg runs contributing to this cell. */
+  runs: number;
+  /** Model calls that reported usage. */
+  calls: number;
+  /** Tokens across those calls (uncached + cached + output + reasoning). */
+  totalTokens: number;
+  /** Summed comparable USD cost, or null when every slice left it unreported. */
+  cost: number | null;
+  /** Length-capped replies gg rejected whole. */
+  rejected: number;
+  /** Turn outcomes attributed to this cell. */
+  turns: number;
+  /** Turns that worked (progressed or finished). */
+  working: number;
+  /** Errored turns by `GgTurnErrorType` wire id. */
+  errors: Record<string, number>;
+}
+
+/** One model's row under a provider. `modelId` is null when the slice could not
+ * name a model (no usage delta had named the agent's model). */
+export interface ProviderModelStats {
+  modelId: string | null;
+  stats: ProviderCallStats;
+}
+
+/** One upstream provider's run evidence: the models it served and the rolled-up
+ * totals. `provider` is null for calls the gateway never attributed. Mirrors the
+ * backend `ProviderStatsOut`. */
+export interface ProviderStatsEntry {
+  provider: string | null;
+  models: ProviderModelStats[];
+  totals: ProviderCallStats;
+}
+
+/** One probed model's items under a provider, from the model-probe corpus —
+ * evidence gathered by probes, deliberately separate from run evidence. */
+export interface ProbeProviderModel {
+  modelSlug: string;
+  items: number;
+  /** Items whose submitted program passed its case's check. */
+  passes: number;
+  /** Items whose call errored (no classified label). */
+  errored: number;
+}
+
+/** One provider's probe evidence. Mirrors the backend `ProbeProviderStatsOut`. */
+export interface ProbeProviderStats {
+  provider: string | null;
+  models: ProbeProviderModel[];
+}
+
+/** Per-provider health folded from stored gg runs plus probe items
+ * (`GET /stats/providers`). Provider fields only exist on runs recorded after
+ * provider attribution landed — `runsWithProviderData` says how many of the
+ * scanned runs carry any. Mirrors the backend `ProviderStatsResponse`
+ * (`crates/backend/src/api/stats.rs`). */
+export interface ProviderStats {
+  runsScanned: number;
+  runsWithProviderData: number;
+  providers: ProviderStatsEntry[];
+  probes: ProbeProviderStats[];
+}
+
+/** A model's responses-as-code turn accuracy: how its RaC turns split into
+ * valid vs the error classes. Mirrors the backend `RacAccuracyOut`. */
+export interface RacAccuracy {
+  runs: number;
+  turns: number;
+  /** Turns that worked (progressed or finished). */
+  valid: number;
+  /** Compile-class errors (the reply never ran). */
+  compile: number;
+  /** Runtime-class errors (program faults + sandbox limits). */
+  runtime: number;
+  /** Model-API-class errors (timeouts, rejections, parse failures…). */
+  modelErrors: number;
+  /** Missing-completion errors (no program / no call at all). */
+  missing: number;
+  /** The full per-type breakdown by `GgTurnErrorType` wire id. */
+  byType: Record<string, number>;
+  /** Runs folded without exact per-model turn accounting (recorded before
+   * provider slices existed); their valid count is turns − errors. */
+  approximateRuns: number;
+}
+
+/** A model's tool-calling accuracy: dispatched tool calls vs the failed ones by
+ * class. Mirrors the backend `ToolCallingAccuracyOut`. */
+export interface ToolCallingAccuracy {
+  runs: number;
+  /** Dispatched tool calls across the contributing runs. */
+  calls: number;
+  /** Calls that succeeded (calls − failures). */
+  ok: number;
+  /** Failed dispatches by failure class (`invalid-argument`, `not-found`, …). */
+  failures: Record<string, number>;
+  /** Tool-calling runs with dispatch evidence but no recorded call total
+   * (recorded before totals existed) — excluded from the figures above. */
+  runsWithoutCallTotals: number;
+}
+
+/** One model's accuracy halves; either is null when no gg run recorded the
+ * needed figures for that execution mode. */
+export interface ModelAccuracyEntry {
+  modelId: string;
+  rac: RacAccuracy | null;
+  toolCalling: ToolCallingAccuracy | null;
+}
+
+/** Per-model accuracy folded from stored gg runs (`GET /stats/model-accuracy`).
+ * Mirrors the backend `ModelAccuracyResponse` (`crates/backend/src/api/stats.rs`). */
+export interface ModelAccuracy {
+  models: ModelAccuracyEntry[];
+  /** Runs that could not be attributed to any model (multi-model runs recorded
+   * before per-model slices existed). */
+  unattributableRuns: number;
 }
 
 /**
@@ -145,6 +529,12 @@ export interface TestCase {
   tags: string[];
   /** The short plain-text abstract a card shows, or null. */
   summary: string | null;
+  /** The case's catalog showcase preview — the latest visible version's first
+   * variant (manifest order) that declares a showcase, with the media list a
+   * card's preview stage loops. Null when no variant of the latest version
+   * declares one, and absent on a backend that predates the field; either way
+   * the card renders its placeholder stage. */
+  showcase?: CatalogShowcase | null;
 }
 
 // A reference for a view, resolved to an absolute media URL. A rendered mockup or
@@ -184,12 +574,12 @@ export interface VariantInfo {
   // case's common domains plus this variant's own additive ones — so a run is
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
-  // The absolute URL of this variant's reference implementation — the correct,
-  // authored static build the backend records in `case_reference_build` and serves
-  // on the resolved version (camelCase `referenceBuild`). Null when the variant
-  // declares no `reference_implementation`, and absent on a backend that predates
-  // the field.
-  referenceBuild?: string | null;
+  // The absolute URLs of this variant's reference implementations — the correct,
+  // authored static builds the backend records in `case_reference_build` and serves
+  // on the resolved version (camelCase `referenceBuilds`), keyed by the engine each
+  // was built for. Empty when the variant declares no `reference_implementation`,
+  // and absent on a backend that predates the field.
+  referenceBuilds?: Record<string, string>;
   // The published reference frames for this variant of an ASSET-GENERATION case:
   // the frame indices whose rendered image and action log were uploaded to the
   // public snapshot bucket by `tcab publish-reference`. An asset reference is data,
@@ -197,8 +587,75 @@ export interface VariantInfo {
   // themselves are addressed by the deterministic keys in
   // `crates/core/src/asset_reference.rs`. Null when no reference is published for
   // the variant, and absent on a backend that predates the field. Mutually
-  // exclusive with `referenceBuild` in practice: a case is one test type.
+  // exclusive with `referenceBuilds` in practice: a case is one test type.
   referenceSheet?: ReferenceSheet | null;
+  // The variant's authored SHOWCASE, when it declares one: a description plus a
+  // media carousel captured from the reference implementation, committed with the
+  // version and served by the backend's case-scoped showcase route (resolved
+  // through the gallery's `caseShowcaseMediaUrl`). Null when the variant declares
+  // none, and absent on a backend that predates the field — either way the Play
+  // surfaces simply show no showcase.
+  showcase?: CaseShowcase | null;
+  // The variant's EFFECTIVE starter-workspace files (its own override when it
+  // declares one, else the case's common workspace) for the engine the version
+  // was resolved for — a starter project is written against a runtime, so the
+  // set genuinely differs per engine. Each file carries the run-root-relative
+  // path it is seeded at and the absolute artifact URL its bytes are fetched
+  // from lazily. Empty when the case seeds no starter file for the engine, and
+  // absent on a backend that predates the field.
+  workspace?: WorkspaceFileRef[];
+}
+
+/** One entry of a case variant's showcase carousel: the file name the showcase
+ * route addresses the bytes by, its caption, and the kind of media it holds.
+ * Carried as the contract's own {@link MediaKind} (a `.json.gz` replay is
+ * re-drawn onto a canvas rather than loaded as a media file). */
+export interface ShowcaseMediaRef {
+  /** The media file's name in the showcase directory (a plain file name). */
+  file: string;
+  /** The short caption for the entry. */
+  name: string;
+  /** Whether the file is a still image, a video clip, or a replay recording. */
+  kind: MediaKind;
+}
+
+/** A case variant's authored showcase: the description plus the media carousel
+ * captured from the reference implementation — the case-side counterpart of a
+ * run's showcase, authored and committed with the version rather than produced
+ * by a run. The media bytes are fetched through the host's
+ * `caseShowcaseMediaUrl` resolver. */
+export interface CaseShowcase {
+  /** The showcase description — the authored `showcase.md`, verbatim Markdown. */
+  description: string;
+  /** The media carousel, in declared order (2–10 entries as authored). */
+  media: ShowcaseMediaRef[];
+}
+
+/** A case's catalog showcase preview: which version and variant the media
+ * belongs to, plus the carousel entries themselves — everything a listing
+ * card's preview stage needs to address the media (through
+ * `caseShowcaseMediaUrl`) without resolving the full version. Derived from the
+ * case's latest version: its first variant (manifest order) that declares a
+ * showcase. */
+export interface CatalogShowcase {
+  /** The version the showcase was read from (the case's latest visible one). */
+  version: string;
+  /** The variant that declares it. */
+  variant: string;
+  /** The media carousel, in declared order. */
+  media: ShowcaseMediaRef[];
+}
+
+/** One starter-workspace file a run of a variant is seeded with: the
+ * run-root-relative path it lands at and the absolute URL its bytes are served
+ * from, or null when the host cannot serve them (the Inputs tree then shows
+ * presence only). Only the addressing is carried — a starter project can be
+ * large and most readers never open it, so the bytes are fetched lazily. */
+export interface WorkspaceFileRef {
+  /** The run-root-relative destination path the file is seeded at. */
+  path: string;
+  /** The absolute URL serving the file's bytes, or null when unavailable. */
+  url: string | null;
 }
 
 /** The published reference frames of one asset-generation case variant. */
@@ -291,6 +748,17 @@ export interface VersionInfo {
   // The case's test type. Drives type-specific UI affordances — notably the
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
+  // Whether the version is on the ENGINE manifest format, which (with the test
+  // type — a game jam is never) makes it VALIDATOR-RATED: a run's functional
+  // rating and score are decided by its validators (every review item declares a
+  // `failureCap` and `domains`), and a reviewer rates only the aesthetic channel.
+  // False on every legacy version, whose runs are reviewed exactly as before.
+  engineFormat: boolean;
+  // The engine slugs a run of this version may select, in the order the case
+  // declares them. Never empty: a version that declares no engine supports the
+  // engineless run. This is the compatibility gate a run is held to, so the
+  // new-run form offers exactly this set and nothing else.
+  engines: string[];
   // For an asset-generation case, which asset shape it produces — the finer
   // discriminator the catalog partitions its 2D / 3D / Particle / Audio tabs on.
   // Carried by every host, including the static snapshot; null only for a
@@ -427,11 +895,24 @@ export interface ReviewItem {
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // On a validator-rated version, the FAILURE CAP of a whole-item point: the highest
+  // functional rating its `domains` may reach while its validator fails. Absent on
+  // a legacy version and on a category (whose points carry their own).
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // whole-item point lowers. Empty on a legacy version and on a category.
+  domains?: string[];
   // Whether this item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links this item's verdict id
   // (the item is still checked and shown). Absent/true otherwise. See
   // `applyScoreExclusions` in ratings.ts.
   scored?: boolean;
+  // The engine scoping of this point's validator, when it declares one: the engine
+  // slugs the validator decides the point on. A run built on any other engine does
+  // not carry the point at all, so a run-scoped surface filters the checklist
+  // through `reviewItemsForEngine`. Absent for a human-judged point, and for a
+  // validator the case leaves active on every engine it supports.
+  validation?: ReviewItemValidation | null;
   // Optional name-only sub-items breaking this item into independently graded
   // pass/fail points (an academic question's "2a", "2b"). When present, the
   // reviewer records a verdict per sub-item instead of one for the item; each
@@ -458,10 +939,27 @@ export interface ReviewSubItem {
   // puts the pairing on the item rather than the category). Null when unpaired.
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version, this point's FAILURE CAP: the highest functional
+  // rating its `domains` may reach while its validator fails. Absent on a legacy
+  // version.
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // point lowers. Empty on a legacy version.
+  domains?: string[];
   // Whether this sub-item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links its composite verdict
   // id (or excludes the whole category). Absent/true otherwise.
   scored?: boolean;
+  // The engine scoping of this point's validator (see `ReviewItem.validation`).
+  validation?: ReviewItemValidation | null;
+}
+
+// The part of a point's automated-validation driver a client reads: which engines
+// the validator decides the point on. The script itself and its media outputs are
+// the driver's business, so they are not modelled here. Empty/absent `engines`
+// leaves the point on every engine the case supports.
+export interface ReviewItemValidation {
+  engines?: string[];
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and
@@ -473,10 +971,25 @@ export interface Domain {
 }
 
 export interface ReviewDocument {
-  // The reviewer's rating for each of the case's scoring domains. The run's
-  // overall rating is the worst across them.
+  // The reviewer's FUNCTIONAL rating for each of the case's scoring domains, on a
+  // legacy run's review. The run's overall rating is the worst across them. Empty
+  // on a validator-rated run's review, whose functional rating is not the
+  // reviewer's to give.
   ratings: DomainRating[];
+  // The reviewer's RUN-WIDE aesthetic tier, on a validator-rated run's review
+  // (the run's aesthetic rating is the worst across its reviews' tiers).
+  // Null/absent on a legacy run's review, which has no aesthetic channel.
+  aesthetic?: AestheticRating | null;
+  // LEGACY: the per-domain aesthetic ratings, from when the channel was rated per
+  // scoring domain. Carried only by old stored rows/snapshots — resolve a
+  // review's run-wide tier as `aesthetic ?? worst(aesthetics)` (the
+  // `reviewAesthetic` helper). Never written by new reviews.
+  aesthetics?: DomainAesthetic[];
   writeup: string;
+  // The reviewer's per-point verdicts. On a legacy run, the full checklist; on a
+  // validator-rated run, the reviewer's OVERRIDES only — the points whose verdict
+  // differs from the validators' (plus any the validators left undecided), each
+  // binary pass/fail. Empty when the reviewer overrode nothing.
   checklist: ReviewVerdict[];
 }
 
@@ -510,8 +1023,44 @@ export interface StoredReview extends ReviewDocument {
   reviewerPictureUrl?: string | null;
 }
 
-// A finished run held by a runner (a worker, or the local core in Tauri),
-// awaiting review and/or publishing. Also the shape the backend serves for a
+// One stored run the backend cannot decode: its lifted identity plus the error its
+// stored record produces against the running build's run-record contract. Carries no
+// `RunRecord` — there is no readable one, which is the whole reason the row is here.
+// Read from `GET /runs/unreadable`, the one surface such a run is reachable from,
+// since every other listing filters it out.
+export interface UnreadableRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  // The engine the run was launched under, or null for a row whose slug was never
+  // lifted out of its record.
+  engineSlug: string | null;
+  harnessSlug: string;
+  modelId: string;
+  // The gg configuration the run was launched from, for a gg run launched from a
+  // named one; null everywhere else.
+  ggPreset: string | null;
+  testType: string;
+  // The run's terminal state as its wire token.
+  state: string;
+  published: boolean;
+  reviewCount: number;
+  // Why the stored record no longer decodes. This is what an operator reads before
+  // deciding to delete the run.
+  error: string;
+}
+
+// A page of unreadable runs with the total the cabinet holds. `total` counts every
+// unreadable run across the pages, which is what sizes the pager.
+export interface UnreadableRunPage {
+  runs: UnreadableRun[];
+  total: number;
+}
+
+// A finished run held by a runner, awaiting review and/or publishing. Also the shape the backend serves for a
 // *published* run (`GET /runs/{id}`): its record (links populated), every review
 // submitted against it, and whether it has been published.
 export interface StoredRun {
@@ -523,6 +1072,26 @@ export interface StoredRun {
   // Whether the run has cleared the publish gate (a published run is publicly
   // visible). Worker-produced runs default to false until published.
   published: boolean;
+  // The run's FUNCTIONAL rating as the store decides it: on a validator-rated run
+  // the validator-decided rating (present from completion, never changed by a
+  // review); on a legacy run the review aggregate (null while unreviewed). Composed
+  // with the toolchain gate either way.
+  rating: Rating | null;
+  // The run's aggregate AESTHETIC rating — the worst run-wide tier any reviewer
+  // gave — or null when no review has rated the aesthetic channel (every legacy
+  // run, and an unreviewed validator-rated one).
+  aesthetic: AestheticRating | null;
+  // Whether the run is VALIDATOR-RATED (its case version is on the engine manifest
+  // format and is not a game jam): its points and functional rating come from the
+  // record immediately, it publishes with zero reviews, and a reviewer rates the
+  // run-wide aesthetic channel and may override individual validator verdicts.
+  validatorRated: boolean;
+  // The run's score against its case version's checklist weights, as the backend
+  // computes it (the same figure the summary cards carry): the validator-decided
+  // score on a validator-rated run (present from completion, `reviews` 0), the
+  // mean across reviews on a legacy run (null while unreviewed). Null when the
+  // host holds no catalog for the run's case version (the static site).
+  score: RunScoreOut | null;
 }
 
 // --- Accounts & auth ---
@@ -620,6 +1189,10 @@ export interface LaunchConfig {
   // to "one-shot" (a single session); a non-default orchestrator is accepted
   // only for the end-to-end test type.
   orchestrator: string;
+  // The engine the produced build is written against. Omit (undefined) to accept
+  // the `none` default, which supplies no runtime. A named slug must be one the
+  // targeted case version supports, or the run is refused when it executes.
+  engine?: string;
   maxRuntimeOverride: number | null;
   // How many times the backend automatically retries this run after a terminal
   // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
@@ -678,8 +1251,8 @@ export interface PublishProgress {
 
 // A live asset-generation preview frame, streamed as the model draws (mirrors the
 // Rust `AssetPreview`, crates/core/src/preview.rs). It travels out of band from
-// the recorded event feed — as the worker's `asset_preview` line on the event
-// stream, or the desktop's `run://<id>/preview` channel — and is never persisted;
+// the recorded event feed — as the `asset_preview` line on the live event
+// stream — and is never persisted;
 // a viewer renders `image` to watch the sprite take shape. Not part of the
 // run-record contract.
 export interface AssetPreview {
@@ -748,7 +1321,7 @@ export interface LoadProgress {
 
 // A sink for {@link LoadProgress} ticks, passed into a streamed read so the
 // caller can drive a progress bar. A transport that can't observe the transfer
-// (e.g. Tauri IPC, which buffers the whole payload) simply never calls it.
+// (e.g. one that buffers the whole payload) simply never calls it.
 export type ProgressCallback = (progress: LoadProgress) => void;
 
 export type RunOutcome =
@@ -757,7 +1330,13 @@ export type RunOutcome =
   // The run was killed by an operator before it finished (`POST /jobs/{id}/cancel`
   // moved it to the terminal `canceled` state). Distinct from `failed` so the
   // monitor reports an intentional stop rather than a fault.
-  | { kind: "canceled"; message: string };
+  //
+  // `record` is the partial record the driver hands back for the killed run — what
+  // it got through, with everything it had streamed persisted alongside it — so a
+  // killed run stays inspectable. It is `null` only when the driver could not be
+  // reached to produce one, or when it has not landed yet (it is posted a moment
+  // after the cancel, once the harness is actually stopped).
+  | { kind: "canceled"; message: string; record: RunRecord | null };
 
 // The live state of a submitted run job.
 export interface RunJob {
@@ -767,8 +1346,8 @@ export interface RunJob {
   message: string | null;
 }
 
-// A run a worker is currently executing, as `listActiveRuns` returns it (the web
-// worker's `GET /runs/active`, the desktop `list_active_runs` command). A run only
+// A run a worker is currently executing, as `listActiveRuns` returns it (the
+// backend's `GET /jobs/active`). A run only
 // gains a RunRecord at completion, so an in-progress run is described by its launch
 // identity instead. `state` is "running" off the wire; the console widens it to
 // "failed" for a run it has locally observed fail before it dropped out of the
@@ -780,6 +1359,31 @@ export interface InProgressRun {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, off the job's own lifted column. Absent (or
+  // `none`) is the engineless run, exactly as an absent `engine` on the launch
+  // request is — resolve it through `resolveEngineSlug` before comparing, never by
+  // equality on the raw field.
+  //
+  // It is here because a run's coverage cell includes the engine: a listing of one
+  // cell's runs — a ladder rung, a plan's cell — has to keep another engine's live
+  // rows out, and an in-flight run has no record to read the engine from.
+  engine?: string | null;
+  // RFC 3339 of when the run itself began: the moment the job reached `starting`,
+  // which is when the driver takes the `startedAt` the produced record is measured
+  // from. Absent while the run is queued, pending, or dispatched, because it has not
+  // started; that is a dash, not a zero.
+  //
+  // It is here because it is the only anchor a live duration may count from. The
+  // enqueue time is not it: a run held behind a parallelism cap has not been running
+  // for the hour it waited, and counting from there would bill it for that wait on
+  // top of the time it has actually spent running.
+  startedAt?: string | null;
+  // The gg configuration the run was launched from, off the job's stored capability
+  // set. A gg run has no single harness model — `modelId` is only its representative
+  // primary-slot binding — so the run log names a live gg row by its configuration
+  // instead. Absent for every third-party-harness run, and for a gg run assembled by
+  // hand rather than from a named configuration.
+  ggPreset?: string | null;
   // The run's live phase, mapped from the backend's fine-grained job state: still
   // waiting for a dispatcher slot ("queued"), deliberately held back because its
   // harness is at its parallelism cap ("pending"), spinning up the driver +
@@ -855,6 +1459,20 @@ export interface RunLifecycleEvent {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, as `InProgressRun.engine` carries it — the event
+  // seeds a row for a run this console has never seen, so it names the whole identity
+  // that row is filtered by.
+  engine?: string | null;
+  // The gg configuration the run was launched from, as `InProgressRun.ggPreset`
+  // carries it. The backend event has flattened it all along — a row seeded from an
+  // event that drops it names a gg run by its representative primary-slot model
+  // instead of the configuration it was actually launched from.
+  ggPreset?: string | null;
+  // When the run started, as `InProgressRun.startedAt` carries it. Absent on every
+  // event up to and including `dispatched`: the transition into `starting` is
+  // precisely the one that first has a start to report, which is why a row already
+  // in the list learns its start from a patch rather than from being re-seeded.
+  startedAt?: string | null;
   state:
     | "queued"
     | "pending"

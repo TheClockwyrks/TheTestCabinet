@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    // The published package ships `dist` and `docs` and NOT `src` (see `files` in
+    // package.json), so a map that merely POINTED at `../src/*.ts` would name a
+    // file that does not exist wherever the package is installed — which is every
+    // seeded run, where it surfaces as a "Sourcemap ... points to missing source
+    // files" warning on each vitest run. Inlining the sources makes each map
+    // self-contained, so a stack trace still resolves to the engine's TypeScript
+    // without the package having to ship a second copy of its own source.
+    "inlineSources": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "noEmit": false,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

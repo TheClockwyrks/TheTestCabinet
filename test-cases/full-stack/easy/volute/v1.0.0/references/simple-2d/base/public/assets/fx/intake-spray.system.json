@@ -1,0 +1,113 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 800,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "spray",
+      "shape": "disc",
+      "position": [64.0, 72.0, 0.0],
+      "extent": {
+        "radius": 30.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 46,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 520.0,
+      "lifetimeSpread": 140.0,
+      "speed": 45.0,
+      "speedSpread": 20.0,
+      "direction": [0.0, -1.0, 0.0],
+      "coneAngle": 60.0,
+      "seed": 31,
+      "forces": {
+        "gravity": 140.0,
+        "drag": 1.1,
+        "radial": -170.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 1.8,
+          "to": 0.4
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.95,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#9aa7ae",
+            "at": 0.0
+          },
+          {
+            "color": "#6b5a4e",
+            "at": 0.5
+          },
+          {
+            "color": "#2b2723",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "grit",
+      "shape": "point",
+      "position": [64.0, 60.0, 0.0],
+      "extent": {
+        "radius": 1.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 26,
+        "atMs": 60.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 160.0,
+      "speed": 70.0,
+      "speedSpread": 30.0,
+      "direction": [0.0, -1.0, 0.0],
+      "coneAngle": 35.0,
+      "seed": 32,
+      "forces": {
+        "gravity": 220.0,
+        "drag": 0.8
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 1.4,
+          "to": 0.3
+        },
+        "opacityCurve": {
+          "interp": "linear",
+          "from": 0.85,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#7d6a5a",
+            "at": 0.0
+          },
+          {
+            "color": "#31281f",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

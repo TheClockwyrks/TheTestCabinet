@@ -20,10 +20,14 @@ use anyhow::{Context, Result};
 
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
-use test_cabinet_backend::{api as bapi, coverage::gate, error as berr, relay, snapshot as snap};
+use test_cabinet_backend::{
+    api as bapi, coverage::gate, coverage::schedule, error as berr, relay, snapshot as snap,
+};
 use test_cabinet_core::{
-    accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
-    test_case as tc, validation as val,
+    accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
+    event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_session_record as ggr,
+    match_play as mp, metrics as m, review as rv, run_record as rr, test_case as tc,
+    toolchain as tch, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -67,6 +71,7 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "CheckResult",
     "ProofResult",
     "DebugScriptResult",
+    "Inconclusive",
     "AutoVerdict",
     "Assertion",
     "DebugScriptOutput",
@@ -101,6 +106,46 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "PerformanceCaseResult",
     "PerformanceCaseKind",
     "PerformanceSnapshotCheck",
+    "ToolchainSummary",
+    "ToolchainCommandResult",
+    "ToolchainTestRun",
+    "ToolchainTests",
+    "ToolchainTest",
+    "ToolchainTestStatus",
+    "ToolchainTestFile",
+    "ToolchainTestFailure",
+    "ToolchainCoverage",
+    "CoverageFile",
+    "CoverageMetrics",
+    "CoverageMetric",
+    "ToolchainSmokeResult",
+];
+
+/// The code-analysis schema's `$defs`: every type in the `CodeAnalysisDocument` tree
+/// except the root. `CodeAnalysisSummary` is listed here rather than with the run record's
+/// defs even though the record carries it — the document embeds the same block, and one
+/// owner per type is what turns the record's reference into a cross-document `$ref`
+/// instead of a second copy that can drift.
+const CODE_ANALYSIS_DEFS: &[&str] = &[
+    "CodeAnalysisSummary",
+    "CodeAuthoredBasis",
+    "CodeTreeBasis",
+    "CodeLanguage",
+    "CodeTruncationCap",
+    "CodeSizeSummary",
+    "CodeComplexitySummary",
+    "CodeGraphSummary",
+    "CodeApiSummary",
+    "CodeTypeScriptSummary",
+    "CodeRustSummary",
+    "CodeTestSummary",
+    "CodeDuplicationSummary",
+    "CodeAnalysisNotes",
+    "CodeFileEntry",
+    "CodeSymbolEntry",
+    "CodeImportEdge",
+    "CodeCloneGroup",
+    "CodeCloneInstance",
 ];
 
 /// The tournament schema's `$defs`. `AdversarialOutcome` is *not* listed: it is
@@ -118,15 +163,186 @@ const TOURNAMENT_DEFS: &[&str] = &[
 /// reference them here rather than each carrying a copy.
 const REVIEW_DEFS: &[&str] = &[
     "Rating",
+    "AestheticRating",
+    "FailureCap",
     "VerdictStatus",
     "ReviewVerdict",
     "DomainRating",
+    "DomainAesthetic",
     "RatingChange",
+    "AestheticChange",
     "VerdictChange",
     "WriteupChange",
     "ReviewDiff",
     "ReviewRevision",
 ];
+
+/// The package holding the evaluation contract: run records, reviews, ladders,
+/// snapshots, the job and backend APIs. Consumed by the console and the gallery,
+/// which are ours; **never** vendored into a run, because every one of those shapes
+/// would tell a model that its output is scored, ranked and reviewed.
+const RUN_RECORD_PKG: &str = "@clockwyrks/run-record";
+
+/// The package holding the asset shapes a produced rig is described by — the
+/// `rig.json` a run *writes* and the runtimes then pose and render.
+///
+/// Split out of [`RUN_RECORD_PKG`] because its audience is different in kind: the
+/// voxel and particle runtimes are vendored into a model's own workspace, so
+/// whatever they depend on travels with them. These types describe the artifact
+/// the model is building and say nothing about evaluation, so they are safe to
+/// seed; the rest of the contract is not, and no longer rides along.
+const ASSET_CONTRACT_PKG: &str = "@clockwyrks/asset-contract";
+
+/// The asset shapes [`ASSET_CONTRACT_PKG`] owns. `index.ts` still uses them (a
+/// voxel result carries the rig it resolved), and the console imports them from
+/// the aggregate package, so the run-record module both imports and re-exports
+/// them — named once here so the two lists cannot drift apart.
+const ASSET_SPEC_TYPES: &[&str] = &[
+    "ModelSpec",
+    "PartSpec",
+    "JointSpec",
+    "JointKindSpec",
+    "AxisSpec",
+    "DriveKindSpec",
+    "InterpSpec",
+    "KeyframeSpec",
+    "AnimationSpec",
+    "AnimationTrackSpec",
+];
+
+/// The generated module that carries the `code.*` display catalog.
+///
+/// Named once because it is referenced twice — as the module's file name and as the
+/// target of the appended [`CODE_METRICS`](test_cabinet_core::CODE_METRICS) table — and a
+/// mismatch between the two would silently emit the types without the data.
+const CODE_METRICS_MODULE: &str = "code-metrics.ts";
+
+/// The generated module that carries the gg contract, and with it the **error-label tables**.
+///
+/// Named once for the reason [`CODE_METRICS_MODULE`] is: it is both the module's file name and the
+/// target of the appended tables, and a mismatch would silently emit the types without the labels a
+/// console needs to render them.
+const GG_MODULE: &str = "gg.ts";
+
+/// Render the `code.*` display catalog as a TypeScript value.
+///
+/// The table is Rust's, verbatim: it is serialized with the same `serde` derive the
+/// contract types use, so the emitted rows carry exactly the paths, labels, units,
+/// families, polarities and `approximate` flags the analyzer and the CLI read. Prettier
+/// (in the generator wrapper) reformats the JSON into idiomatic TypeScript, so the shape
+/// written here only has to be valid.
+fn code_metrics_catalog() -> Result<String> {
+    /// The JSDoc stamped above the emitted table. A constant rather than part of the
+    /// format string because the prose contains `{@link …}`, which a Rust format string
+    /// would read as an interpolation.
+    const DOC: &str = "/**\n\
+         * Display metadata for every leaf of the code-analysis summary, in the order a\n\
+         * reader wants the figures: by family, and within a family by how much the figure\n\
+         * says.\n\
+         *\n\
+         * This is **not** a query vocabulary — the query language derives its field catalog\n\
+         * from the documents it has indexed, so a metric is queryable with or without an\n\
+         * entry here. What an entry buys is what a number cannot carry on its own: a label,\n\
+         * a unit, a polarity, and the {@link CodeMetricDef.approximate} flag that the Code\n\
+         * tab's headers, the field sidebar and the docs page all read, so the four cannot\n\
+         * drift apart.\n\
+         */\n";
+    let rows = serde_json::to_string(&test_cabinet_core::CODE_METRICS)
+        .context("serializing the code-metric catalog")?;
+    Ok(format!(
+        "{DOC}export const CODE_METRICS: readonly CodeMetricDef[] = {rows};\n"
+    ))
+}
+
+/// The error-taxonomy label tables, appended to the gg module.
+///
+/// Every specific error type, every base kind and every call-failure class has a stable id **and** a
+/// human-readable label, and both live in Rust beside the variant they name. Emitting them here is
+/// what keeps a console from carrying a second hand-written table: a type added to the taxonomy
+/// arrives with its label, its base and its ordering already in the contract, so the row it should
+/// occupy in a *"top error types"* ranking cannot be missing, mislabelled, or filed under the wrong
+/// base.
+///
+/// The maps are keyed by the *wire id* rather than by the enum, so they can be indexed with whatever
+/// a record actually carried — including, for the ranking's fallback path, a key from a newer gg
+/// than the console was built against. They are declared `Record<GgTurnErrorType, string>` all the
+/// same, which makes an omission a TypeScript error at generation time rather than a blank row at
+/// run time.
+fn gg_error_labels() -> Result<String> {
+    /// The JSDoc above each table, kept out of the format strings because the prose contains
+    /// `{@link …}`, which a Rust format string would read as an interpolation.
+    const KIND_DOC: &str = "/**\n\
+         * How each **base** error kind reads on screen — the coarse bucket, which is what the\n\
+         * error ceilings act on and what a cross-run comparison groups by.\n\
+         *\n\
+         * Generated from the Rust taxonomy, so it is total by construction and cannot drift from\n\
+         * the values a record carries.\n\
+         */\n";
+    const TYPE_DOC: &str = "/**\n\
+         * How each **specific** error type reads on screen — one row per type in a ranking, so\n\
+         * every label stands alone and names the layer it came from without a heading.\n\
+         */\n";
+    const BASE_DOC: &str = "/**\n\
+         * Each specific type's base kind, so a ranked row can be badged with the bucket it belongs\n\
+         * to, and a per-type breakdown can be regrouped into the per-kind counters beside it.\n\
+         */\n";
+    const ORDER_DOC: &str = "/**\n\
+         * Every specific type, grouped by base in the contract's own declaration order — the\n\
+         * reading order for a full split, as opposed to the frequency order a *top N* ranking\n\
+         * sorts into.\n\
+         */\n";
+    const FAILURE_DOC: &str = "/**\n\
+         * How each call-failure class reads on screen — the class a failed tool call or a failed\n\
+         * model-facing API call is recorded with.\n\
+         */\n";
+
+    let map = |rows: Vec<(&str, String)>| -> String {
+        let body: String = rows
+            .into_iter()
+            .map(|(key, value)| {
+                format!(
+                    "  {}: {},\n",
+                    serde_json::to_string(key).unwrap_or_default(),
+                    value
+                )
+            })
+            .collect();
+        format!("{{\n{body}}}")
+    };
+    let quoted = |value: &str| serde_json::to_string(value).unwrap_or_default();
+
+    let kinds = map(gg::GgTurnErrorKind::ALL
+        .iter()
+        .map(|kind| (kind.wire_id(), quoted(kind.label())))
+        .collect());
+    let types = map(gg::GgTurnErrorType::ALL
+        .iter()
+        .map(|error| (error.wire_id(), quoted(error.label())))
+        .collect());
+    let bases = map(gg::GgTurnErrorType::ALL
+        .iter()
+        .map(|error| (error.wire_id(), quoted(error.kind().wire_id())))
+        .collect());
+    let failures = map(gg::GgCallFailure::ALL
+        .iter()
+        .map(|failure| (failure.wire_id(), quoted(failure.label())))
+        .collect());
+    let order = serde_json::to_string(
+        &gg::GgTurnErrorType::ALL
+            .iter()
+            .map(|error| error.wire_id())
+            .collect::<Vec<_>>(),
+    )
+    .context("serializing the error-type order")?;
+
+    Ok(format!(
+        "\n{KIND_DOC}export const GG_TURN_ERROR_KIND_LABELS: Readonly<Record<GgTurnErrorKind, string>> = {kinds};\n\n\
+         {TYPE_DOC}export const GG_TURN_ERROR_TYPE_LABELS: Readonly<Record<GgTurnErrorType, string>> = {types};\n\n\
+         {BASE_DOC}export const GG_TURN_ERROR_TYPE_BASE: Readonly<Record<GgTurnErrorType, GgTurnErrorKind>> = {bases};\n\n\
+         {ORDER_DOC}export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = {order};\n\n\
+         {FAILURE_DOC}export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgCallFailure, string>> = {failures};\n"
+    ))
+}
 
 fn main() -> Result<()> {
     let root = workspace_root()?;
@@ -134,37 +350,61 @@ fn main() -> Result<()> {
 
     // --- TypeScript modules ------------------------------------------------
     let modules = vec![
+        // The asset contract: the resolved rig a produced model is described by and
+        // the F-curve animations that drive it. Its own package because it is the
+        // only slice of the contract that may be seeded — see [`ASSET_CONTRACT_PKG`].
+        // Ordered structure-first: the rig, then the joints, then the animation.
+        TsModule {
+            package: ASSET_CONTRACT_PKG,
+            reexports: &[],
+            file: "index.ts",
+            decls: ts_decls![&cfg;
+                tc::ModelSpec, tc::PartSpec,
+                tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
+                tc::InterpSpec, tc::KeyframeSpec, tc::AnimationSpec, tc::AnimationTrackSpec,
+            ],
+        },
         // The run-record + arena contract. Ordered to mirror the run-record
         // document: identity, metrics, validation results, arena, the record.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: ASSET_SPEC_TYPES,
             file: "index.ts",
             decls: ts_decls![&cfg;
                 rr::HarnessSlug, rr::HarnessFamily, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
-                tc::TestType, tc::AssetKind, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
+                tc::TestType, tc::AssetKind, tc::AssetDimension, rr::RunSubject, m::TokenCounts, m::TokenPrices, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
-                val::DebugScriptResult, val::AutoVerdict, val::Assertion, val::DebugScriptOutput,
+                val::DebugScriptResult, val::Inconclusive, val::AutoVerdict, val::Assertion, val::DebugScriptOutput,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
-                val::VoxelGenResult, val::VoxelPartResult, tc::ModelSpec, tc::PartSpec,
-                tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
-                tc::InterpSpec, tc::KeyframeSpec, tc::AnimationSpec, tc::AnimationTrackSpec,
+                val::VoxelGenResult, val::VoxelPartResult,
                 tc::NineSlice, val::UiGenResult, val::UiElementResult, val::MaterialGenResult,
                 val::MaterialMapResult, val::ParticleGenResult, val::AudioGenResult,
                 val::AdversarialTeam, val::AdversarialOutcome, val::AdversarialReplay,
                 val::AdversarialResult, val::PerformanceCaseKind, val::PerformanceCaseResult,
                 val::PerformanceResult, val::PerformanceSnapshotCheck,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
-                mp::TournamentRecord, val::ValidationSummary, rr::RunLinks, rr::RunStatus,
-                rr::PriorGameJamEntry, rr::RunRecord,
+                mp::TournamentRecord, val::ValidationSummary,
+                tch::ToolchainCommandResult, tch::CoverageMetric, tch::CoverageMetrics,
+                tch::CoverageFile, tch::ToolchainCoverage, tch::ToolchainTestFile,
+                tch::ToolchainTestFailure, tch::ToolchainTestStatus, tch::ToolchainTest,
+                tch::ToolchainTests, tch::ToolchainTestRun,
+                tch::ToolchainSmokeResult, tch::ToolchainSummary,
+                rr::RunLinks, rr::RunStatus,
+                rr::PriorGameJamEntry, rr::ShowcaseMedia, rr::RunShowcase, rr::RunRecord,
             ],
         },
         // The review value types (shared by the backend and snapshot
         // contracts) plus the published `Review` wire shape. The scoring and
         // aggregation logic stays hand-written in the UI.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
-                rv::RatingChange, rv::VerdictChange, rv::WriteupChange, rv::ReviewDiff,
+                rv::Rating, rv::AestheticRating, rv::FailureCap, rv::VerdictStatus,
+                rv::ReviewVerdict, rv::DomainRating, rv::DomainAesthetic,
+                rv::RatingChange, rv::AestheticChange, rv::VerdictChange, rv::WriteupChange,
+                rv::ReviewDiff,
                 rv::ReviewRevision, snap::Review,
             ],
         },
@@ -172,15 +412,203 @@ fn main() -> Result<()> {
         // published Events tab both render these. `HarnessEvent` carries the
         // common fields with the `EventKind` discriminator flattened inline.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "event.ts",
             decls: ts_decls![&cfg;
                 ev::OrchestrationAction, ev::SystemStage, ev::SystemStatus, ev::EventKind,
                 ev::HarnessEvent,
             ],
         },
+        // The gg harness contract: the capability set that configures a gg run
+        // (the "independent variable") and the first-party telemetry v1 stream the
+        // console renders live. The telemetry `Usage` variant reuses the shared
+        // token/cost types (`TokenMetrics`, `CostMetrics`) owned by the run-record
+        // document, so they are imported from `index.ts`. The saved-configuration
+        // shapes (`/gg/configs`) live here too: a registered configuration is just a
+        // named capability set, so it belongs beside the set it wraps — as do the
+        // saved-agent shapes (`/gg/agents`), which wrap one agent profile out of it.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: GG_MODULE,
+            decls: ts_decls![&cfg;
+                gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgOpeningTree, gg::GgSubagentRef,
+                gg::GgSubagentScope,
+                gg::GgPromptCacheTtl, gg::GgReasoning, gg::GgReasoningEffort,
+                gg::GgLoopDetection, gg::GgModelSlot,
+                gg::GgConfigSlot, gg::GgSlotTarget,
+                gg::GgCapabilityConfig, gg::GgCapabilitySet,
+                gg::GgModuleKind, gg::GgModuleOrigin,
+                gg::GgAgentModule, gg::GgModuleDisposition, gg::GgTransitionModule,
+                gg::GgAgentApi, gg::GgAgentApiFunction,
+                gg::GgArchiveEntry,
+                gg::GgFsmState, gg::GgFsmTransition,
+                gg::GgContextSource, gg::GgContextSourceUsage,
+                gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
+                gg::GgSkillState,
+                gg::GgMemoryCaps, gg::GgMemoryEntry, gg::GgMemoryChange,
+                gg::GgMemoryPeak, gg::GgMemoryScope,
+                gg::GgTaskStatus, gg::GgTaskEntry,
+                gg::GgIssueStatus, gg::GgBoardEpic, gg::GgBoardIssue,
+                gg::GgRetainedState, gg::GgContextAction,
+                gg::GgAgentStatus, gg::GgAgentTransitionKind,
+                gg::GgIssueReviewPhase, gg::GgReviewer,
+                gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
+                gg::GgHook, gg::GgHookEvent, gg::GgHookAction, gg::GgHookAgentKind,
+                gg::GgHookOutcomeKind,
+                gg::GgTurnOutcome, gg::GgTurnErrorKind, gg::GgTurnErrorType,
+                gg::GgCallFailure,
+                gg::GgProgramLanguage,
+                gg::GgErrorSummary, gg::GgUndocumentedCalls,
+                gg::GgRejectedResponses,
+                gg::GgSlotCost, gg::GgProviderStat, gg::GgProviderFault, gg::GgProviderCandidate,
+                gg::GgSessionSummary,
+                gg::GgTelemetryKind, gg::GgTelemetryEvent, gg::GgUsageFigure,
+                bapi::GgConfig, bapi::GgConfigInput, bapi::GgAgentSource,
+                bapi::GgSavedAgent, bapi::GgSavedAgentInput,
+            ],
+        },
+        // The gg session record: the content-addressed input log a run's session is
+        // captured into. Its own module rather than more of `gg.ts` because it is a
+        // self-contained document with its own pools, provenance table and entry
+        // vocabulary.
+        // `GgCapabilitySet`, `GgAgentStatus`, `GgLimitBreach` and `GgContextSource` are
+        // owned by `gg.ts`, so those imports resolve cross-module.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "gg-session-record.ts",
+            decls: ts_decls![&cfg;
+                ggr::GgSessionRecorder,
+                ggr::GgSessionModalities, ggr::GgSessionSeed,
+                ggr::GgSessionMessage, ggr::GgSessionToolset,
+                ggr::GgSessionTextClip,
+                ggr::GgSessionAgentOrigin, ggr::GgSessionAgent,
+                ggr::GgClientRole, ggr::GgSessionRequestShape, ggr::GgSessionRequest,
+                ggr::GgSessionModelErrorKind, ggr::GgSessionModelError,
+                ggr::GgShellCwd, ggr::GgShellOrigin, ggr::GgSessionCommand,
+                ggr::GgSessionImage, ggr::GgSessionToolCall, ggr::GgSessionToolOutcome,
+                ggr::GgSessionPromptSlot, ggr::GgSessionRetention, ggr::GgSessionFileRegion,
+                ggr::GgSessionPromptItem,
+                ggr::GgSessionEntryKind, ggr::GgSessionEntry,
+                ggr::GgSessionTruncationReason, ggr::GgSessionTruncation,
+                ggr::GgSessionRecord,
+            ],
+        },
+        // The gg analysis query language (TCQ): the flat run document every query runs
+        // over, the compiled query the client sends, the results it produces, and the
+        // field catalog the editor's completer and sidebar read. The parser/compiler
+        // are TypeScript-only by design, so this module is what they compile *to*; the
+        // evaluator is mirrored against these same shapes. The batch envelope is the
+        // backend's own (a dashboard answers all its panels from one index read); the
+        // public static site evaluates locally and has no use for it.
+        //
+        // The saved **views** (`/gg/saved-queries`, `/gg/dashboards`) live here too:
+        // they are per-account objects over a corpus that is not, and each one stores
+        // query *source text* rather than a compiled query — so they belong beside the
+        // language they are written in, not beside the run they describe.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "gg-query.ts",
+            decls: ts_decls![&cfg;
+                ggq::GgValue, ggq::GgRunDoc,
+                ggq::GgCompareOp, ggq::GgFilter,
+                ggq::GgAggFunc, ggq::GgAgg,
+                ggq::GgIntervalUnit, ggq::GgInterval, ggq::GgGroupKey,
+                ggq::GgStatsStage, ggq::GgSortKey, ggq::GgQuery,
+                ggq::GgDistribution, ggq::GgAggValue, ggq::GgBucketKeyPart, ggq::GgBucket,
+                ggq::GgAggColumn, ggq::GgQueryResponse,
+                ggq::GgFieldKind, ggq::GgFieldValueCount, ggq::GgFieldInfo, ggq::GgFieldCatalog,
+                bapi::GgQueryBatch, bapi::GgQueryBatchResponse,
+                bapi::GgSavedQuery, bapi::GgSavedQueryInput,
+                bapi::GgDashboardPanel, bapi::GgDashboard, bapi::GgDashboardInput,
+            ],
+        },
+        // The gg **reference**: gg's whole model-facing surface — every tool as it is
+        // sent on the wire (description and parameter schema, verbatim) and every
+        // responses-as-code function as the guest SDK declares it — grouped into the
+        // families gg itself groups them by.
+        //
+        // Its own module because it is a self-contained document fetched on one console
+        // section (`GET /gg/reference`), and because it describes what gg *offers* rather
+        // than what a run *did*: nothing that renders a run record, a replay or a query
+        // result touches these types. There are two documents rather than one — the
+        // language-independent index, and one per program language — for the reason the
+        // module's rustdoc gives, and both are declared here because a console that fetches
+        // the second by picking an arm off the first needs both shapes.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "gg-reference.ts",
+            decls: ts_decls![&cfg;
+                ggref::GgReferenceCategory, ggref::GgReferenceModule, ggref::GgToolVariant,
+                ggref::GgToolCondition, ggref::GgRunDataStandIn, ggref::GgToolReference,
+                ggref::GgReferenceLanguage, ggref::GgReference,
+                ggref::GgReferenceEntryKind, ggref::GgReferenceEntry, ggref::GgReferenceApi,
+            ],
+        },
+        // The code-analysis contract: the deterministic, execute-nothing static read of
+        // the code a run's model wrote. Two tiers in one module, because they are one
+        // pass and the document embeds the summary: `CodeAnalysisSummary` is the bounded
+        // block that rides on the run record (so `index.ts` imports it from here), and
+        // `CodeAnalysisDocument` is the unbounded per-run artifact the Code tab loads.
+        //
+        // Its own module rather than more of `index.ts` for the reason the replay record
+        // has one: the document is a self-contained artifact fetched on one tab, and
+        // nothing that merely lists runs should pay for its types.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "code-analysis.ts",
+            decls: ts_decls![&cfg;
+                code::CodeAuthoredBasis, code::CodeTreeBasis, code::CodeLanguage,
+                code::CodeTruncationCap,
+                code::CodeSizeSummary, code::CodeComplexitySummary, code::CodeGraphSummary,
+                code::CodeApiSummary, code::CodeTypeScriptSummary, code::CodeRustSummary,
+                code::CodeTestSummary, code::CodeDuplicationSummary, code::CodeAnalysisNotes,
+                code::CodeAnalysisSummary,
+                code::CodeFileEntry, code::CodeSymbolEntry, code::CodeImportEdge,
+                code::CodeCloneInstance, code::CodeCloneGroup, code::CodeAnalysisDocument,
+            ],
+        },
+        // The `code.*` display catalog: the label, unit, family, polarity and — the
+        // reason it crosses the contract boundary at all — the `approximate` flag for
+        // every leaf of the code-analysis summary.
+        //
+        // Its own module because it is the one contract artifact that ships *data* and
+        // not only types: the table itself is appended below, generated from the Rust
+        // `CODE_METRICS` static, so the Code tab's headers, the CLI's report and the
+        // docs page cannot disagree about whether a figure rests on approximation. A
+        // hand-kept TypeScript copy is exactly the drift the flag exists to prevent.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: CODE_METRICS_MODULE,
+            decls: ts_decls![&cfg; code::CodeMetricUnit, code::CodeMetricDef],
+        },
+        // The harness-comparison (A/B) contract: the stored config (controls and the
+        // per-arm configurations) and the computed read model (per-arm distributions,
+        // automated-only score, diagnostics, confounds). The descriptive statistics
+        // (`MetricSummary`, `PassRate`) are shared leaves the arm results embed.
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "comparison.ts",
+            decls: ts_decls![&cfg;
+                cstats::MetricSummary, cstats::PassRate,
+                cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics,
+                cmp::Confound, cmp::ComparisonControls, cmp::ComparisonArm, cmp::ComparisonConfig,
+                cmp::ComparisonArmResult, cmp::Comparison,
+                bapi::ComparisonInput,
+            ],
+        },
         // The auth surface: accounts and the register/login request + token
         // response.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "account.ts",
             decls: ts_decls![&cfg;
                 acct::Account, acct::RegisterRequest, acct::LoginRequest, acct::AuthnResponse,
@@ -189,30 +617,57 @@ fn main() -> Result<()> {
         // The published snapshot documents (the static gallery's data): the index,
         // the runs index + summary cards, the per-run document, and case metadata.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "snapshot.ts",
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
-                snap::RunScoreOut, snap::PerformanceSummaryOut, snap::RunsIndex, snap::RunProofOut,
-                snap::RunAssetOut, snap::RunValidationMediaOut, snap::PerRun,
+                snap::RunScoreOut, snap::PerformanceSummaryOut, snap::CodeSummaryOut,
+                snap::RunsIndex, snap::RunProofOut,
+                snap::RunAssetOut, snap::RunValidationMediaOut, snap::RunShowcaseOut, snap::PerRun,
                 tc::ReferenceKind, tc::SpecKind, tc::ErratumSeverity,
                 snap::CaseCheckOut, snap::CaseDomainOut,
-                snap::CaseErratumOut, snap::CaseReviewItemOut, snap::CaseSubReviewItemOut,
+                snap::CaseErratumOut, snap::CaseReviewValidationOut,
+                snap::CaseReviewItemOut, snap::CaseSubReviewItemOut,
                 snap::CaseReferenceOut,
                 snap::CaseValidationBaselineOut, snap::CaseSeededInputOut,
-                snap::CasePackageOut, snap::CaseReferenceSheetOut, snap::CaseVariantOut,
+                snap::CasePackageOut, snap::CaseReferenceSheetOut,
+                snap::CaseShowcaseMediaOut, snap::CaseShowcaseOut, snap::CaseWorkspaceFileOut,
+                snap::CaseVariantRenderingOut, snap::CaseVariantOut,
                 snap::CaseMetadata,
                 snap::ModelCatalogFile,
+                snap::TestCaseGroupsFile,
+                snap::ComparisonsIndex, snap::ComparisonFile,
+                snap::GgRunsFile,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "backend-api.ts",
             decls: ts_decls![&cfg;
-                berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
+                berr::ErrorBody, berr::ErrorEnvelope,
+                bapi::ShowcaseMediaOut, bapi::CatalogShowcaseOut,
+                bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
+                bapi::TestCaseGroupOut, bapi::TestCaseGroupsResponse,
                 bapi::ModelCatalogResponse, bapi::AliasOut, bapi::ModelOut, bapi::ModelPricesOut,
                 bapi::PriceObservationOut, bapi::AliasInput, bapi::ModelConfigInput,
-                bapi::ModelSeedOut, bapi::LogoFetchInput, bapi::LogoFetchOut,
+                bapi::ModelSeedOut, bapi::ModelListingOut, bapi::LogoFetchInput,
+                bapi::LogoFetchOut,
+                bapi::ProbeTriggerInput, bapi::ProbeTriggerResponse, bapi::ModelProbeOut,
+                bapi::ModelProbeItemOut, bapi::ModelProbesResponse, bapi::ModelProbeDetailResponse,
+                bapi::ProbeMessage, bapi::ProbeToolCall, bapi::ProbeToolFunction,
+                bapi::ProbeRequestOut,
+                bapi::ProbeProvidersResponse, bapi::ProbeProviderOut,
+                bapi::ModelCandidatesOut, bapi::CandidateOut,
+                bapi::ProviderStatsResponse, bapi::ProviderStatsOut, bapi::ProviderModelStatsOut,
+                bapi::ProviderCallStatsOut, bapi::ProbeProviderStatsOut, bapi::ProbeProviderModelOut,
+                bapi::ModelAccuracyResponse, bapi::ModelAccuracyOut, bapi::RacAccuracyOut,
+                bapi::ToolCallingAccuracyOut,
+                bapi::CabinetStatsResponse, bapi::CabinetTokensOut, bapi::CabinetCostOut,
+                bapi::CabinetWeekOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what
@@ -223,9 +678,12 @@ fn main() -> Result<()> {
         // shapes live in `backend`. `ClientConfig` is the console's `GET /config`
         // body (today just the artifact-service base URL).
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "jobs-api.ts",
             decls: ts_decls![&cfg;
-                bapi::DriverState, bapi::LaunchBody, bapi::ClaimedJob, bapi::StatusUpdate,
+                bapi::DriverState, bapi::LaunchBody, bapi::GgRunRequest, bapi::ClaimedJob,
+                bapi::StatusUpdate,
                 bapi::JobState, relay::JobSummary, bapi::ActiveJobOut, bapi::JobStatusOut,
                 bapi::LaunchAck, bapi::LaunchBatchBody, bapi::LaunchBatchItem, bapi::LaunchBatchAck,
                 bapi::BulkCancelOut,
@@ -248,16 +706,19 @@ fn main() -> Result<()> {
         // controls around the buffer: the account-wide target, one top-up's decision,
         // the plan-scoped review queue, and what a halt cancelled.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "coverage.ts",
             decls: ts_decls![&cfg;
                 bapi::ReviewPlanCase, bapi::ReviewPlanCombo,
                 bapi::CoverageGroupKind, bapi::CoverageGroup, bapi::CoverageGroupInput,
+                schedule::BufferTarget,
                 bapi::CoverageAxis, bapi::CoverageSchedule,
                 bapi::CoveragePlan, bapi::CoveragePlanOut, bapi::CoveragePlanInput,
                 bapi::CoveragePlanSummary,
                 bapi::CoverageCell, bapi::CoverageMatrix,
                 bapi::CoverageSettings, bapi::CoverageSettingsInput,
-                bapi::TopUpSkipped, bapi::TopUpLaunch, bapi::TopUpResult,
+                bapi::TopUpSkipped, bapi::TopUpLaunch, bapi::TopUpBlocked, bapi::TopUpResult,
                 bapi::CoverageQueueEntry, bapi::CoverageQueue,
                 bapi::PauseInput, bapi::HaltResult,
             ],
@@ -274,6 +735,8 @@ fn main() -> Result<()> {
         // either the ladder's declaration, its per-combination progress board, or one
         // of the manual controls (hold, promote, reorder) over it.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "ladders.ts",
             decls: ts_decls![&cfg;
                 gate::GateThreshold, gate::Gate, gate::GateOutcome,
@@ -288,8 +751,26 @@ fn main() -> Result<()> {
             ],
         },
     ];
-    for (file, content) in finalize_ts(modules, TS_HEADER) {
-        write_ts(&root, file, &content)?;
+    for (package, file, mut content) in finalize_ts(modules, TS_HEADER) {
+        // The two appended tables below belong to run-record modules. Both are matched
+        // on file name alone, and `index.ts` is now a file name two packages have, so
+        // the package is part of the test — otherwise a rename could silently append a
+        // console's lookup table to the package that gets vendored into runs.
+        let run_record = package == RUN_RECORD_PKG;
+        // The one module that carries a value as well as its types. `ts_rs` renders
+        // types, not data, so the catalog is serialized here and appended to the module
+        // that declares its element type — which is why the file name is a constant
+        // rather than a literal in two places.
+        if run_record && file == CODE_METRICS_MODULE {
+            content.push_str(&code_metrics_catalog()?);
+        }
+        // The gg module carries the error taxonomy's labels for the same reason: a label is data,
+        // and a hand-kept copy of it in the console is exactly the drift the tables exist to
+        // prevent.
+        if run_record && file == GG_MODULE {
+            content.push_str(&gg_error_labels()?);
+        }
+        write_ts(&root, package, file, &content)?;
     }
 
     // --- JSON Schema documents ---------------------------------------------
@@ -308,6 +789,268 @@ fn main() -> Result<()> {
             owns: TOURNAMENT_DEFS,
             schema: root_schema::<mp::TournamentRecord>(),
         },
+        // The gg harness contract. The capability set is self-contained (its
+        // subtypes are its own). The telemetry event's `Usage` variant references the
+        // shared `TokenMetrics`/`CostMetrics` owned by the run-record document, so
+        // those refs are rewritten to cross-document URLs.
+        // The run's execution ceilings (`GgRunLimits`) are owned here rather than by the
+        // session summary, because the capability set is where they are *configured*; the
+        // summary's record of the ceilings actually in force references them across
+        // documents.
+        SchemaDoc {
+            rel_path: "gg/capability-set.schema.json",
+            root: Some("GgCapabilitySet"),
+            owns: &[
+                "GgAgentConfig",
+                "GgOpeningTurn",
+                "GgOpeningTree",
+                "GgSubagentRef",
+                "GgSubagentScope",
+                "GgPromptCacheTtl",
+                "GgReasoning",
+                "GgReasoningEffort",
+                "GgCapabilityConfig",
+                "GgModelSlot",
+                "GgConfigSlot",
+                "GgSlotTarget",
+                "GgRunLimits",
+                // The run's hooks are configured on the capability set, so they are owned
+                // by the same document its ceilings are — for the same reason: this is
+                // where an operator declares them.
+                "GgHook",
+                "GgHookEvent",
+                "GgHookAction",
+            ],
+            schema: root_schema::<gg::GgCapabilitySet>(),
+        },
+        // The gg session summary: the aggregatable per-run outcome. Referenced by both the
+        // telemetry event (its `SessionSummary` variant) and the run-record document (via
+        // `RunSubject.gg_summary`), so — like the capability set — it gets its own document
+        // and both references become cross-document `$ref`s. Its per-slot cost rollup
+        // (`GgSlotCost`) reuses the shared `TokenMetrics`/`CostMetrics` owned by the
+        // run-record document, which are rewritten to cross-document URLs. The breach it
+        // records (`GgLimitBreach`/`GgLimitKind`) is owned here — the summary is where a
+        // breach is durably recorded, and the telemetry event that announces one references
+        // it cross-document.
+        SchemaDoc {
+            rel_path: "gg/session-summary.schema.json",
+            root: Some("GgSessionSummary"),
+            owns: &["GgSlotCost", "GgLimitBreach", "GgLimitKind"],
+            schema: root_schema::<gg::GgSessionSummary>(),
+        },
+        SchemaDoc {
+            rel_path: "gg/telemetry-event.schema.json",
+            root: Some("GgTelemetryEvent"),
+            owns: &[
+                "GgTelemetryKind",
+                "GgContextSource",
+                "GgContextSourceUsage",
+                "GgPromptRef",
+                "GgLoggedToolCall",
+                "GgLoggedImage",
+                "GgSkillState",
+                "GgMemoryCaps",
+                "GgMemoryEntry",
+                "GgMemoryChange",
+                "GgMemoryPeak",
+                "GgTaskStatus",
+                "GgTaskEntry",
+                "GgIssueStatus",
+                "GgBoardEpic",
+                "GgBoardIssue",
+                "GgRetainedState",
+                "GgContextAction",
+                "GgAgentTransitionKind",
+                // The module model's vocabulary. These are *also* the documented shape of a
+                // capability's `scope` param and of an FSM transition's transfer
+                // list — but a params key is free-form JSON in the schema, so the telemetry
+                // event is the one schema root that genuinely references them (through
+                // `AgentModules` and the reshaped `AgentTransition`), which makes this
+                // document their canonical home.
+                "GgModuleKind",
+                "GgModuleOrigin",
+                "GgMemoryScope",
+                "GgAgentModule",
+                "GgModuleDisposition",
+                "GgTransitionModule",
+                // The per-agent offered surface's vocabulary, which rides on `AgentSurface` and
+                // appears nowhere else in the contract.
+                "GgAgentApi",
+                "GgAgentApiFunction",
+                "GgArchiveEntry",
+                "GgIssueReviewPhase",
+                "GgReviewer",
+                // The program language an instance's surface reports. It is also the
+                // session summary's, but a telemetry reader must be able to resolve the
+                // reference without loading a second document.
+                "GgProgramLanguage",
+                // Which of the session's two cost figures a `Usage` delta fed — the
+                // event's own vocabulary, appearing nowhere else in the contract.
+                "GgUsageFigure",
+            ],
+            schema: root_schema::<gg::GgTelemetryEvent>(),
+        },
+        // The gg session record: the seed, the three content-addressed pools, the agent
+        // provenance table and the ordered input log. Its `capabilitySet`
+        // references `GgCapabilitySet`, and its agent rows reference `GgAgentStatus` /
+        // `GgLimitBreach`, all owned by the gg documents above, so those refs are
+        // rewritten to cross-document URLs; the pooled message/toolset/response bodies
+        // are free-form JSON (the gg binary owns their concrete shapes).
+        SchemaDoc {
+            rel_path: "gg/session-record.schema.json",
+            root: Some("GgSessionRecord"),
+            owns: &[
+                "GgSessionRecorder",
+                "GgSessionSeed",
+                "GgSessionModalities",
+                "GgSessionMessage",
+                "GgSessionToolset",
+                "GgSessionTextClip",
+                "GgSessionAgent",
+                "GgSessionAgentOrigin",
+                "GgSessionRequest",
+                "GgClientRole",
+                "GgSessionRequestShape",
+                "GgSessionEntry",
+                "GgSessionEntryKind",
+                "GgSessionModelError",
+                "GgSessionModelErrorKind",
+                "GgSessionToolCall",
+                "GgSessionToolOutcome",
+                "GgSessionImage",
+                "GgShellCwd",
+                "GgShellOrigin",
+                "GgSessionCommand",
+                "GgSessionPromptItem",
+                "GgSessionPromptSlot",
+                "GgSessionRetention",
+                "GgSessionFileRegion",
+                "GgSessionTruncation",
+                "GgSessionTruncationReason",
+            ],
+            schema: root_schema::<ggr::GgSessionRecord>(),
+        },
+        // The code-analysis document: the unbounded per-run artifact
+        // (`{run}/code-analysis.json.gz`, served at `GET /runs/{id}/code-analysis`).
+        // Rooted at the document rather than at the summary because the document embeds
+        // the summary, so one schema owns the whole vocabulary and the run-record
+        // document's reference to `CodeAnalysisSummary` becomes a cross-document `$ref`.
+        SchemaDoc {
+            rel_path: "core/code-analysis.schema.json",
+            root: Some("CodeAnalysisDocument"),
+            owns: CODE_ANALYSIS_DEFS,
+            schema: root_schema::<code::CodeAnalysisDocument>(),
+        },
+        // The compiled TCQ query — the single wire form of a gg analysis query. It owns
+        // the whole language vocabulary (the filter tree, the aggregation functions,
+        // the histogram intervals), which the response and document below
+        // cross-reference.
+        SchemaDoc {
+            rel_path: "gg/query.schema.json",
+            root: Some("GgQuery"),
+            owns: &[
+                "GgValue",
+                "GgCompareOp",
+                "GgFilter",
+                "GgAggFunc",
+                "GgAgg",
+                "GgIntervalUnit",
+                "GgInterval",
+                "GgGroupKey",
+                "GgStatsStage",
+                "GgSortKey",
+            ],
+            schema: root_schema::<ggq::GgQuery>(),
+        },
+        // A gg run as the query language sees it: one flat map of dotted field names to
+        // scalars. Its own document because it is what the public static site ships as
+        // a snapshot artifact and evaluates in the browser, independent of any query.
+        SchemaDoc {
+            rel_path: "gg/run-document.schema.json",
+            root: Some("GgRunDoc"),
+            owns: &[],
+            schema: root_schema::<ggq::GgRunDoc>(),
+        },
+        // The result of a TCQ query: the matching documents or the aggregated buckets.
+        // `GgValue`, `GgAggFunc` and `GgRunDoc` are owned by the two documents above,
+        // so those refs become cross-document URLs.
+        SchemaDoc {
+            rel_path: "gg/query-response.schema.json",
+            root: Some("GgQueryResponse"),
+            owns: &[
+                "GgDistribution",
+                "GgAggValue",
+                "GgBucketKeyPart",
+                "GgBucket",
+                "GgAggColumn",
+            ],
+            schema: root_schema::<ggq::GgQueryResponse>(),
+        },
+        // The field catalog: every field observed across the corpus, with its kind,
+        // document count and top values — the completer's and the field sidebar's
+        // source, and the second mirrored function.
+        SchemaDoc {
+            rel_path: "gg/field-catalog.schema.json",
+            root: Some("GgFieldCatalog"),
+            owns: &["GgFieldInfo", "GgFieldKind", "GgFieldValueCount"],
+            schema: root_schema::<ggq::GgFieldCatalog>(),
+        },
+        // `POST /gg/query/batch` — a dashboard's panels answered from one index read.
+        // Both envelopes are pure wrappers around the query and response documents
+        // above, so every ref in them is cross-document.
+        anon(
+            "gg/query-batch-request.schema.json",
+            root_schema::<bapi::GgQueryBatch>(),
+        ),
+        anon(
+            "gg/query-batch-response.schema.json",
+            root_schema::<bapi::GgQueryBatchResponse>(),
+        ),
+        // The operator's saved **views** over the corpus (`/gg/saved-queries`,
+        // `/gg/dashboards`) — per-account objects over a population that is not, which is
+        // the whole saved-object model. Documented beside the language they are written
+        // in rather than beside the run they describe, because what they store is query
+        // *source text*: neither schema references a run-record type at all. The
+        // dashboard owns its panel type, so that ref stays inline.
+        anon(
+            "gg/saved-query.schema.json",
+            root_schema::<bapi::GgSavedQuery>(),
+        ),
+        SchemaDoc {
+            rel_path: "gg/dashboard.schema.json",
+            root: Some("GgDashboard"),
+            owns: &["GgDashboardPanel"],
+            schema: root_schema::<bapi::GgDashboard>(),
+        },
+        // gg's model-facing reference, in the two documents it is served as: the index
+        // (`GET /gg/reference`) carrying the families, the tools and the arm list, and one
+        // arm's whole surface (`GET /gg/reference/{language}`). Wholly self-contained — they
+        // share no type with any other document, because they describe gg's *surface* rather
+        // than any run — so every one of their subtypes is owned by one of the two and
+        // nothing is cross-referenced outward.
+        SchemaDoc {
+            rel_path: "gg/reference.schema.json",
+            root: Some("GgReference"),
+            owns: &[
+                "GgReferenceCategory",
+                "GgReferenceLanguage",
+                "GgToolReference",
+                "GgToolVariant",
+                "GgToolCondition",
+                "GgRunDataStandIn",
+            ],
+            schema: root_schema::<ggref::GgReference>(),
+        },
+        SchemaDoc {
+            rel_path: "gg/reference-api.schema.json",
+            root: Some("GgReferenceApi"),
+            owns: &[
+                "GgReferenceModule",
+                "GgReferenceEntry",
+                "GgReferenceEntryKind",
+            ],
+            schema: root_schema::<ggref::GgReferenceApi>(),
+        },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to
@@ -315,6 +1058,13 @@ fn main() -> Result<()> {
         anon(
             "jobs-api/launch-run-request.schema.json",
             root_schema::<bapi::LaunchBody>(),
+        ),
+        // The gg run mode's enqueue request. Its `capabilitySet` is the core-owned
+        // `GgCapabilitySet` (owned by `gg/capability-set.schema.json`), so that ref is
+        // rewritten to a cross-document URL.
+        anon(
+            "jobs-api/gg-run-request.schema.json",
+            root_schema::<bapi::GgRunRequest>(),
         ),
         anon(
             "jobs-api/launch-run-ack.schema.json",
@@ -448,6 +1198,13 @@ fn main() -> Result<()> {
             root_schema::<snap::RunsIndex>(),
         ),
         anon("snapshot/run.schema.json", root_schema::<snap::PerRun>()),
+        // The gg document corpus the public site's Discover surface evaluates in the
+        // browser. `GgRunDoc` is owned by `gg/run-document.schema.json`, so its ref here
+        // becomes a cross-document URL.
+        anon(
+            "snapshot/gg-runs.schema.json",
+            root_schema::<snap::GgRunsFile>(),
+        ),
         anon(
             "snapshot/case.schema.json",
             root_schema::<snap::CaseMetadata>(),
@@ -473,8 +1230,15 @@ fn anon(rel_path: &'static str, schema: serde_json::Value) -> SchemaDoc {
 }
 
 /// Write a generated TypeScript module under `packages/run-record/src/`.
-fn write_ts(root: &Path, file: &str, content: &str) -> Result<()> {
-    let path = root.join("packages/run-record/src").join(file);
+fn write_ts(root: &Path, package: &str, file: &str, content: &str) -> Result<()> {
+    // Every generated package is an npm workspace member under `packages/`, named
+    // after the package's unscoped half, so the scope is all that separates the
+    // specifier from the directory.
+    let dir = package
+        .rsplit_once('/')
+        .map(|(_scope, name)| name)
+        .unwrap_or(package);
+    let path = root.join("packages").join(dir).join("src").join(file);
     fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }

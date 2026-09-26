@@ -39,7 +39,11 @@ export function placeMatrix(
   out.makeTranslation(x, altitude, z);
   scratchRot.makeRotationY(yaw);
   out.multiply(scratchRot);
-  scratchRecentre.makeTranslation(-bounds.centerX, -bounds.minY, -bounds.centerZ);
+  scratchRecentre.makeTranslation(
+    -bounds.centerX,
+    -bounds.minY,
+    -bounds.centerZ,
+  );
   out.multiply(scratchRecentre);
   return out;
 }
@@ -59,6 +63,12 @@ export function applyPlacement(
 ): void {
   scratchQuat.setFromAxisAngle(Y_AXIS, yaw);
   obj.quaternion.copy(scratchQuat);
-  scratchCentre.set(bounds.centerX, bounds.minY, bounds.centerZ).applyQuaternion(scratchQuat);
-  obj.position.set(x - scratchCentre.x, altitude - scratchCentre.y, z - scratchCentre.z);
+  scratchCentre
+    .set(bounds.centerX, bounds.minY, bounds.centerZ)
+    .applyQuaternion(scratchQuat);
+  obj.position.set(
+    x - scratchCentre.x,
+    altitude - scratchCentre.y,
+    z - scratchCentre.z,
+  );
 }

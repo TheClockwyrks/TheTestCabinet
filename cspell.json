@@ -20,7 +20,9 @@
     "game-jams/**/*.html",
     "game-jams/**/*.css",
     "game-jams/**/*.toml",
-    "game-jams/**/*.hbs"
+    "game-jams/**/*.hbs",
+    "test-case-groups/**/*.md",
+    "test-case-groups/**/*.toml"
   ],
   "ignorePaths": [
     "**/node_modules/**",

@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "GgReferenceCategory": {
+      "description": "One family of gg's surface: a group of tools and the [module](GgReferenceModule) their\nresponses-as-code counterparts live in.\n\nA category is not a capability. Several capabilities land in one family (the four\nfilesystem tools are four capabilities and one family), and the three code-only families\n(`views`, `programs`, and the ending call) have no tools at all — they exist only under\nresponses as code, which is exactly why the grouping is by *family* rather than by the\ncapability that switches something on.",
+      "properties": {
+        "description": {
+          "description": "The family's one-line description, **verbatim as a model sees it** — the line the\nbuilt-in skills index carries. Not editorialized here: a second, friendlier wording\nwould be a copy that drifts, and the point of the page is to show what is really said.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The family id — also the name of the built-in skill gg ships for it, so\n`gg-filesystem` here is the skill a model reads by that name.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The display title for the family (`Filesystem`). Written for a human reading the\nconsole; it is *not* shown to a model, which is why it is separate from\n[`description`](Self::description).",
+          "type": "string"
+        }
+      },
+      "required": ["id", "title", "description"],
+      "type": "object"
+    },
+    "GgReferenceLanguage": {
+      "description": "One registered [program language](GgProgramLanguage), as the arm picker lists it.\n\nIt carries no prose of its own — the description of what an arm *is* belongs to the language\nenum and to the docs site — only the id a reader picks by and the size of what picking it fetches.",
+      "properties": {
+        "functionCount": {
+          "description": "How many callable functions this arm's document carries.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
+          "description": "The language's id — the path segment its [document](GgReferenceApi) is fetched under, and\nthe same string a run's `language` capability param is configured with."
+        },
+        "moduleCount": {
+          "description": "How many [capability modules](GgReferenceModule) this arm's surface is divided into.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "typeCount": {
+          "description": "How many SDK type declarations this arm's document carries.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["id", "moduleCount", "functionCount", "typeCount"],
+      "type": "object"
+    },
+    "GgRunDataStandIn": {
+      "description": "One placeholder token standing where a **run's own data** would appear in a\n[tool](GgToolReference)'s prose or parameter schema.",
+      "properties": {
+        "standsFor": {
+          "description": "What a real run would have there instead, as a phrase that completes \"this stands for …\" —\n\"the agents on this run's own roster\".",
+          "type": "string"
+        },
+        "token": {
+          "description": "The literal token as it appears in the description and schema — `<agent>`, `<skill>`,\n`<state>`. A page marks these in place; it does not go looking for angle brackets, because\nthe tool descriptions contain those in ordinary prose too.",
+          "type": "string"
+        }
+      },
+      "required": ["token", "standsFor"],
+      "type": "object"
+    },
+    "GgToolCondition": {
+      "description": "One condition a run must satisfy for a [tool](GgToolReference) to be offered, beyond holding the\ncapabilities.\n\nIt may be a **disjunction**: `wait_for_subagents` is offered to an agent that can have children\nat all, which is a non-empty roster *or* the `fork` capability, and either satisfies it. That is\nwhy [`axes`](Self::axes) is a list — one entry per alternative — and why the\n[sentence](Self::sentence) is composed by gg rather than assembled from the parts by a page that\nwould have to know how to join them.",
+      "properties": {
+        "axes": {
+          "description": "The configuration axes this condition constrains — one id per alternative, so a page can\ngroup or filter by them: `capability`, `module`, `memory-access`, `memory-strategy`,\n`compaction-strategy`, `roster`, `machine`.\n\nOne entry for an ordinary condition and several for a disjunction, in the order the\n[sentence](Self::sentence) names them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sentence": {
+          "description": "The condition as a sentence, written in the second person about the *run* rather than about\nthe model's options — \"Only when the agent holds a task-list module.\"\n\nComposed by gg from one authored template per kind of alternative, which is what keeps the\nauthorship at \"one sentence per kind of condition\" instead of one per tool. A template\ncannot be wrong about *which* condition applies to a tool, and the sentences it replaced\ncould be, because nothing checked them against the code they described.",
+          "type": "string"
+        }
+      },
+      "required": ["sentence", "axes"],
+      "type": "object"
+    },
+    "GgToolReference": {
+      "description": "One tool, exactly as it is sent to the provider.\n\nThe [`description`](Self::description) and [`parameters`](Self::parameters) are the live\n[tool definition](https://docs.testcabinet.ai/gg/reference/) a maximal registry\nproduced — not a re-description of it — so a renamed argument or a reworded sentence shows\nup here the moment the tool changes, with no second copy to update. What buys the tool\n([`capabilities`](Self::capabilities), [`requires`](Self::requires)) is projected the same way:\ngg withholds one thing at a time from that maximal registry and records what disappears.",
+      "properties": {
+        "capabilities": {
+          "description": "Every capability id a run must hold **on its own** for this tool to be offered, in gg's\norder.\n\nOne for almost every tool. Two for `fork`, which needs the capability of its own name *and*\nthe `subagents` capability that buys the calls collecting the copy — and that is exactly why\nthis is a list rather than a single optional id: a field that can only name one capability\nanswers for one of them and silently acquits the other.\n\n**Empty means no capability decides**, which is a real state rather than a gap:\n`transition_state` is offered from where an agent *stands* — a state of a machine another\nprofile declares — and naming a capability for it would be naming something that does not\ndecide it. Its condition is in [`requires`](Self::requires) instead.\n\nA capability that is required only *in the alternative* — as one of the ways a condition can\nbe met — is not here; it is a clause of that [condition](Self::requires), because it is not\nsomething a run must hold.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) this tool belongs to.",
+          "type": "string"
+        },
+        "description": {
+          "description": "The tool's description, verbatim — the prose the model is given. Rendered with its\nwhitespace preserved and never as markdown: what matters is what the model sees.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool name the model calls (`read_file`).",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "The tool's JSON-Schema parameters, verbatim."
+        },
+        "requires": {
+          "description": "Every condition **beyond** the capabilities that decides whether this tool is offered — a\nbound store, a writable handle, a memory strategy, a non-empty roster, a position in a\nmachine. Empty when the capabilities alone decide.\n\nEach entry is one thing that must be true, and each carries the sentence gg composed for it,\nso the console renders a string it never wrote. See [`GgToolCondition`].",
+          "items": {
+            "$ref": "#/$defs/GgToolCondition"
+          },
+          "type": "array"
+        },
+        "runData": {
+          "description": "The placeholder tokens standing in this entry's prose and schema where a **run's own data**\nwould be, each with what it stands for.\n\nSome descriptions enumerate run data rather than a policy: `spawn_subagent` lists the roster,\n`read_skill` lists the library, `transition_state` names the state the agent is in. There is\nno configuration-independent rendering of those, so the reference is projected from a run\nwith obvious placeholders in it — and this is where the page learns which strings are\nplaceholders instead of inferring it from angle brackets, which ordinary prose also contains.\n\nEmpty for every tool whose description is the same in every run, which is most of them.",
+          "items": {
+            "$ref": "#/$defs/GgRunDataStandIn"
+          },
+          "type": "array"
+        },
+        "variants": {
+          "description": "Alternate renderings of the **same tool** under a different configuration — a policy\nthat rewrites the description or the parameter schema.\n\nEmpty for most tools. A handful genuinely change shape with their capability's\nimplementation (`read_file` offers no paging arguments at all under the unlimited read\nmode), and showing only one of those would misrepresent every run configured the other\nway. The top-level description and parameters are the **default** configuration's.",
+          "items": {
+            "$ref": "#/$defs/GgToolVariant"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["name", "category", "description", "parameters"],
+      "type": "object"
+    },
+    "GgToolVariant": {
+      "description": "One alternate rendering of a [tool](GgToolReference) under a non-default policy.",
+      "properties": {
+        "description": {
+          "description": "The description this configuration sends, verbatim.",
+          "type": "string"
+        },
+        "label": {
+          "description": "What configuration produced this rendering, as a label a reader can match against the\ncapability editor (`read mode: default-cap`).",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "The JSON-Schema parameters this configuration sends, verbatim."
+        }
+      },
+      "required": ["label", "description", "parameters"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/reference.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The reference's **index**: the families the surface is grouped by, every tool, and a line per\nregistered [program language](GgReferenceLanguage).\n\nEverything here is language-independent, and that is the whole reason it is its own document. A\ntool's name and JSON schema are the *wire's*, not any language's, so carrying them beside one\narm's signatures would either privilege that arm or repeat the tools eleven times. The\nsignatures live in [`GgReferenceApi`], one document per arm, fetched when a reader picks one.",
+  "properties": {
+    "categories": {
+      "description": "The families the surface is grouped by, in gg's own order — the order the system\nprompt's API table and the built-in skills index list them in, which is roughly \"the\nworkspace, then the work, then yourself\".",
+      "items": {
+        "$ref": "#/$defs/GgReferenceCategory"
+      },
+      "type": "array"
+    },
+    "ggVersion": {
+      "description": "The version of the `test-cabinet-gg` crate this reference was projected from — its\n`CARGO_PKG_VERSION`, which is `core`'s own, since the two crates are versioned in\nlockstep.\n\nStamped on the page so a reader can tell *which* gg the prose in front of them belongs\nto. It is the version of the binary that wrote the documents, which for a deployment is the\ngg its image was built from.",
+      "type": "string"
+    },
+    "languages": {
+      "description": "Every [program language](GgProgramLanguage) the **server** can serve an arm document for,\neach with the size of that document — what a picker needs to render an arm before it has\nfetched it.\n\nRead that first clause exactly: this is not \"every arm gg registers\". gg writes a line per\nregistered arm, but the arms are eleven separate files a deployment reads at run time, so\nwhat the file says and what the reader can actually serve are two facts and only one of them\nis worth advertising. The server therefore rebuilds this list from the documents it loaded —\ndropping an arm whose document is not beside the index, and taking each arm's counts from the\ndocument it read rather than from the line that describes it. An index served with a count in\nit is a count the reader has seen.",
+      "items": {
+        "$ref": "#/$defs/GgReferenceLanguage"
+      },
+      "type": "array"
+    },
+    "tools": {
+      "description": "Every tool gg can offer, in the canonical tool-vocabulary order.",
+      "items": {
+        "$ref": "#/$defs/GgToolReference"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["ggVersion", "categories", "tools", "languages"],
+  "title": "GgReference",
+  "type": "object"
+}

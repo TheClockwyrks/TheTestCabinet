@@ -5,11 +5,7 @@
     "height": 6
   },
   "ticks": 100,
-  "snapshots": [
-    33,
-    67,
-    100
-  ],
+  "snapshots": [33, 67, 100],
   "entities": [
     {
       "type": "source",

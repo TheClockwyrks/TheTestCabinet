@@ -74,6 +74,84 @@
   min-height: 9rem;
 }
 
+// A one-name-per-line list: a few rows, not a prose field.
+.textareaShort {
+  min-height: 5rem;
+}
+
+// A hint that qualifies a whole row of fields rather than one field, set under
+// the row with the same rhythm a field's own bottom margin gives.
+.fieldBlockHint {
+  display: block;
+  margin: calc(-1 * #{t.$space-md}) 0 t.$space-lg;
+}
+
+// --- OpenRouter fill-in --------------------------------------------------------
+
+// The slug input and its fill action on one line, wrapping when cramped — the
+// same shape as the logo picker's URL + fetch row.
+.fillRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+
+  .input {
+    flex: 1 1 20rem;
+    min-width: 0;
+  }
+}
+
+// An outlined secondary action matching the logo picker's fetch button, so the
+// form's two "go get this for me" controls read as the same affordance.
+.fill {
+  flex: 0 0 auto;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.fillError {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
+// --- List price ---------------------------------------------------------------
+
+// The three per-Mtok figures plus the taken-on date on one row, wrapping when
+// cramped — one price triple reads as a unit, not four scattered fields.
+.priceRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: t.$space-md;
+}
+
+.priceField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
 // --- Aliases: a repeatable id list --------------------------------------------
 
 .aliasBlock {
@@ -236,9 +314,4 @@
 
 .warn {
   border-color: t.$color-accent-2;
-}
-
-.error {
-  border-color: t.$color-negative;
-  color: t.$color-negative;
 }

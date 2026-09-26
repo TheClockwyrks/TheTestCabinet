@@ -1,9 +1,9 @@
 # Production overlay.
 #
 # Production is the base manifests as-is (the base already carries the `tcab-prod`
-# namespace and prod TCAB_ENV), with only the image registry pinned. Point each
-# image at the registry the cluster pulls from and pin an immutable :<git-sha> tag
-# rather than :latest in a real deployment (replace `latest` below).
+# namespace and prod TCAB_ENV), with every image pinned to the Test Cabinet ACR.
+# Replace REPLACE_SHA with the commit whose images the cluster runs; the Azure
+# pipeline pushes every image as testcabinet.azurecr.io/<image>:<git-sha>.
 #
 # Apply with:  kubectl apply -k deployments/k8s/overlays/prod
 # (after creating the real Secrets from your secret manager — see
@@ -15,39 +15,42 @@ namespace: tcab-prod
 
 resources:
   - ../../base
+  # The Namespace and the observability stack's node-metrics grant are cluster-scoped,
+  # so they live under ../../cluster rather than in the base and its components.
+  - ../../cluster/namespace
+  - ../../cluster/observability
 
 # Run the observability stack (Grafana LGTM) in-cluster; patch-otel.yaml below points
 # every workload's OTEL_EXPORTER_OTLP_ENDPOINT at the `tcab-lgtm` Service it adds.
 components:
   - ../../components/observability
 
-# Rewrite the placeholder REPLACE_REGISTRY image names to the registry the cluster
-# pulls from. Pin an immutable digest/tag in production rather than `latest`.
+# Rewrite the placeholder REPLACE_REGISTRY image names to the ACR at one commit.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
-    newName: ghcr.io/REPLACE_OWNER/tcab-backend
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-backend
+    newTag: REPLACE_SHA
   - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-auth-service
+    newTag: REPLACE_SHA
   - name: REPLACE_REGISTRY/tcab-dispatcher
-    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-dispatcher
+    newTag: REPLACE_SHA
   - name: REPLACE_REGISTRY/tcab-driver
-    newName: ghcr.io/REPLACE_OWNER/tcab-driver
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-driver
+    newTag: REPLACE_SHA
   - name: REPLACE_REGISTRY/tcab-artifacts
-    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-artifacts
+    newTag: REPLACE_SHA
   - name: REPLACE_REGISTRY/tcab-arena
-    newName: ghcr.io/REPLACE_OWNER/tcab-arena
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-arena
+    newTag: REPLACE_SHA
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
-    newName: ghcr.io/REPLACE_OWNER/tcab-publisher
-    newTag: latest
+    newName: testcabinet.azurecr.io/tcab-publisher
+    newTag: REPLACE_SHA
 
 # TCAB_DRIVER_IMAGE is an env value (not a container image: field), so the images
 # transformer above cannot reach it — patch it to match the driver image.

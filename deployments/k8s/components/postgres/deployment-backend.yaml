@@ -6,9 +6,10 @@
 #
 # With the record store on managed PostgreSQL the database leaves local disk, so the
 # single-writer pin goes away. Two base constraints still hold (see
-# deployment/kubernetes.md#backend), and shape this manifest:
+# deployment/kubernetes/control-plane.md#backend), and shape this manifest:
 #   - The image must still ship a headless Chromium for reference rendering — same
-#     `tcab-backend` image as the base (deployments/images/backend.Dockerfile).
+#     `tcab-backend` image as the base (deployments/images/services.Dockerfile,
+#     `--target backend`).
 #   - The definition store and ingest checkout still live on local disk, so /state
 #     stays mounted — and on a PersistentVolumeClaim, not an emptyDir.
 #
@@ -72,7 +73,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest # CI publishes ghcr.io/<owner>/tcab-backend; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-backend:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-backend:<git-sha>
           ports:
             - containerPort: 8787
           env:
@@ -101,6 +102,14 @@ spec:
               value: "http://tcab-artifacts:8790"
             - name: TCAB_ARENA_PUBLIC_URL
               value: "http://tcab-arena:8791"
+            # The artifact service as THIS POD reaches it, for pruning a deleted run's
+            # tree and sweeping the trees no run row references. Distinct from the
+            # advertised URL above, which the azure overlays repoint at a VPN hostname;
+            # this one stays on in-cluster Service DNS. This Deployment replaces the
+            # base StatefulSet wholesale, so the base's copy of this variable does not
+            # reach the postgres overlays and it is repeated here.
+            - name: TCAB_ARTIFACTS_URL
+              value: "http://tcab-artifacts:8790"
             # The shared service token the dispatcher claims queued jobs with; MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN or the queue never
             # drains. From the backend secret below.
@@ -158,8 +167,11 @@ spec:
               cpu: "1500m"
               memory: 2Gi
           # Readiness and liveness MUST stay on different endpoints — and this shape
-          # is exactly why. /state is an emptyDir here, so the definition store starts
-          # EMPTY on every reschedule and the ingest sidecar refills it over minutes.
+          # is exactly why. The definition store on /state can start EMPTY — on a
+          # freshly provisioned PVC, or after the catalog moved on — and the ingest
+          # refills it over minutes. (The PVC is what stops that being EVERY
+          # reschedule, which is the whole reason it replaced an emptyDir; it does
+          # not make a cold store impossible.)
           # /readyz stays 503 for that whole window, holding the pod out of the
           # tcab-backend Service until it can actually resolve a test case. Both
           # probes previously pointed at /healthz, which is always 200 while the

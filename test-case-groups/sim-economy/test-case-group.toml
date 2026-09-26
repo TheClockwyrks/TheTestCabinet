@@ -1,0 +1,27 @@
+# The "Sim & Economy" test-case group.
+#
+# A test-case group is a global, ordered set of related test-case (or game-jam)
+# slugs; the home page renders one cross-case leaderboard per group. Groups are
+# read from this directory at run time and ingested into the backend's
+# definition store on a catalog scan. See `test-case-groups/README.md` and the
+# design doc at `apps/docs/src/content/docs/components/core/test-case-groups.md`.
+
+# Stable slug. Must match the folder name.
+slug = "sim-economy"
+
+# Human-readable name, heading this group's home-page leaderboard.
+name = "Sim & Economy"
+
+# Optional one-line description, shown beside the name.
+summary = "Simulation and economy games: resource loops the model must keep in balance."
+
+# Optional ordering key: groups sort by rank ascending, then by name, and
+# ranked groups precede unranked ones.
+rank = 3
+
+# The ordered member cases, by each case's manifest-declared slug (a test-case
+# or game-jam identity, not a folder name). Non-empty, no duplicates, and every
+# slug must resolve in the catalog — checked by the repo's manifest test and
+# again at ingest. Junction (the wasm-cored rail sim) joins once it leaves
+# `experimental`.
+cases = ["deepcore", "coil"]

@@ -12,9 +12,9 @@
 //! It is deliberately **out_dir-agnostic**: a caller resolves controller wasm bytes
 //! however it likes (a baseline from the case's `references/`, a prior run's module
 //! from the host's run output dir) and hands them in as [`ResolvedController`]s.
-//! The two persistence-owning callers — the worker and the desktop shell — own the
-//! disk writes, progress reporting, and backend publish; this module only plays
-//! matches and tallies results.
+//! The persistence-owning caller — the arena service — owns the disk writes,
+//! progress reporting, and backend publish; this module only plays matches and
+//! tallies results.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -81,7 +81,7 @@ pub const AUTO_REPLAY_OPPONENTS: &[(&str, bool)] = &[
 /// The run-root-relative filename of the replay at `index` in an adversarial run's
 /// `replays` list. Index 0 is the canonical [`REPLAY_JSON`] (`replay.json`); the
 /// rest are `replay-<index>.json`, a single path segment so they route through the
-/// one-segment `/asset/{file}` endpoint (and `tcab-asset://`) unchanged.
+/// one-segment `/asset/{file}` endpoint unchanged.
 pub fn replay_filename(index: usize) -> String {
     if index == 0 {
         REPLAY_JSON.to_string()
@@ -137,7 +137,7 @@ pub struct ResolvedController {
 
 /// One match's result, summarized so a tournament list can show the outcome
 /// without loading (and replaying) the match. Serializes `camelCase` to mirror the
-/// `@test-cabinet/run-record` TypeScript contract.
+/// `@clockwyrks/run-record` TypeScript contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -268,15 +268,31 @@ pub fn canonical_match_setup(
         test_case.sandbox.as_ref(),
         test_case.simulation.as_ref(),
     ) else {
-        return Err(Error::Validation(
-            "an adversarial match requires [contract], [sandbox], and [simulation]".to_string(),
-        ));
+        // Name the sections that are actually absent rather than the three an adversarial
+        // match needs: which ones are missing is the whole of what this failure knows.
+        let missing: Vec<&str> = [
+            ("[contract]", test_case.contract.is_none()),
+            ("[sandbox]", test_case.sandbox.is_none()),
+            ("[simulation]", test_case.simulation.is_none()),
+        ]
+        .into_iter()
+        .filter_map(|(section, absent)| absent.then_some(section))
+        .collect();
+        return Err(Error::Validation(format!(
+            "test case `{}@{}` declares no {} for its adversarial match",
+            test_case.slug,
+            test_case.version,
+            missing.join(", ")
+        )));
     };
     // An adversarial case's resolved `[sandbox]` always carries `fuel_per_tick`
     // (resolution requires it for this type and forbids the performance
     // `fuel_limit`); guard the invariant rather than unwrapping blind.
     let fuel_per_tick = sandbox.fuel_per_tick.ok_or_else(|| {
-        Error::Validation("an adversarial match requires sandbox.fuel_per_tick".to_string())
+        Error::Validation(format!(
+            "test case `{}@{}` declares no sandbox.fuel_per_tick for its adversarial match",
+            test_case.slug, test_case.version
+        ))
     })?;
     Ok(MatchSetup {
         entry: contract.entry.clone(),

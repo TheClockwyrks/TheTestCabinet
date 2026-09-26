@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TestType } from "@test-cabinet/run-record";
+import type { TestType } from "@clockwyrks/run-record";
 import type { TestCaseSummary } from "../../data/testCases";
 import type { CatalogTab } from "../../routes";
 import { routes } from "../../routes";
@@ -14,7 +14,32 @@ vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../components/PromptHeader", () => ({
-  PromptHeader: () => null,
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
+}));
+
+// The preview stage mounts the full replay player for a replay lead — a canvas
+// pipeline these DOM tests neither need nor can drive. Stub it to a named
+// marker so a test can still assert which recording was staged.
+vi.mock("../runs/replay/ReplayPlayer", () => ({
+  ReplayPlayer: ({ url, label }: { url: string; label: string }) => (
+    <div data-testid="replay-player" data-url={url}>
+      {label}
+    </div>
+  ),
 }));
 
 // The catalog is injected through `useTestCases`; mock it so each test seeds an
@@ -24,8 +49,9 @@ vi.mock("../../data/useTestCases", () => ({
   useTestCases: () => useTestCases(),
 }));
 
-// The page reads `canExecute` (console vs. static site) from the gallery context;
-// mock it so each test picks the host without a provider.
+// The page reads `canExecute` (console vs. static site) and the case showcase
+// media resolver from the gallery context; mock it so each test picks the host
+// without a provider.
 const useGalleryData = vi.fn();
 vi.mock("../../data/galleryContext", () => ({
   useGalleryData: () => useGalleryData(),
@@ -45,19 +71,57 @@ function testCase(
     difficulty: "hard",
     tags: ["arcade"],
     summary: `${name} summary`,
+    versions: ["v1.2.0", "v1.0.0"],
+    latestVersion: "v1.2.0",
     ...extra,
   } as TestCaseSummary;
 }
 
+/** A one-image catalog showcase for a fixture case, keyed to its latest version. */
+function showcaseOf(variant = "base") {
+  return {
+    version: "v1.2.0",
+    variant,
+    media: [
+      { file: "title.png", name: "Title screen", kind: "image" as const },
+    ],
+  };
+}
+
 // Seed the catalog and the host. `canExecute` defaults to a console (true), where
 // the tab bar is always the full set; pass `false` for the static gallery site,
-// which shows only tabs the catalog has a case for.
+// which shows only tabs the catalog has a case for. The default host resolves
+// case showcase media to a predictable URL; pass `resolveMedia: false` for a
+// host that serves none.
 function ready(
   testCases: TestCaseSummary[],
-  { canExecute = true }: { canExecute?: boolean } = {},
+  {
+    canExecute = true,
+    resolveMedia = true,
+  }: { canExecute?: boolean; resolveMedia?: boolean } = {},
 ) {
   useTestCases.mockReturnValue({ testCases, status: "ready" });
-  useGalleryData.mockReturnValue({ canExecute });
+  useGalleryData.mockReturnValue({
+    canExecute,
+    caseShowcaseMediaUrl: resolveMedia
+      ? (slug: string, version: string, variant: string, file: string) =>
+          `https://cdn.example/cases/${slug}/${version}/${variant}/${file}`
+      : undefined,
+  });
+}
+
+// The same host, with a catalog read that has NOT settled: `loading` or `error`,
+// optionally over a catalog the page is already holding (which is what a failed
+// re-read leaves behind).
+function unsettled(
+  status: "loading" | "error",
+  testCases: TestCaseSummary[] = [],
+) {
+  useTestCases.mockReturnValue({ testCases, status });
+  useGalleryData.mockReturnValue({
+    canExecute: true,
+    caseShowcaseMediaUrl: undefined,
+  });
 }
 
 // Render the page at a given tab, with the router's location set to that tab's
@@ -70,10 +134,17 @@ function renderPage(tab: CatalogTab = "end-to-end") {
   );
 }
 
-function cardTitles(): string[] {
+/** The index's case names, in listed order (the preview's title is an h3, so
+ * the level-2 query sees only the index rows). */
+function indexTitles(): string[] {
   return screen
     .queryAllByRole("heading", { level: 2 })
     .map((heading) => heading.textContent ?? "");
+}
+
+/** The sticky preview pane for the selected case. */
+function preview(): HTMLElement {
+  return screen.getByRole("region", { name: "Case preview" });
 }
 
 describe("TestCasesPage", () => {
@@ -86,8 +157,8 @@ describe("TestCasesPage", () => {
 
     renderPage("end-to-end");
 
-    // The end-to-end tab lists only that type's case.
-    expect(cardTitles()).toEqual(["Sunfront"]);
+    // The end-to-end tab indexes only that type's case.
+    expect(indexTitles()).toEqual(["Sunfront"]);
     expect(screen.queryByText("Skyshard")).not.toBeInTheDocument();
     expect(screen.queryByText("Foray")).not.toBeInTheDocument();
 
@@ -117,13 +188,10 @@ describe("TestCasesPage", () => {
 
   it("on the static site, advertises only tabs the published catalog has cases for", () => {
     // The static catalog holds only cases with a published run, so a type with no
-    // such case is dropped from the bar (mirroring, for the tabs, the grid's
+    // such case is dropped from the bar (mirroring, for the tabs, the index's
     // published-only listing).
     ready(
-      [
-        testCase("Sunfront", "end-to-end"),
-        testCase("Foray", "adversarial"),
-      ],
+      [testCase("Sunfront", "end-to-end"), testCase("Foray", "adversarial")],
       { canExecute: false },
     );
 
@@ -149,7 +217,7 @@ describe("TestCasesPage", () => {
     }
   });
 
-  it("scopes the grid to the rendered tab's type", () => {
+  it("scopes the index to the rendered tab's type", () => {
     ready([
       testCase("Sunfront", "end-to-end"),
       testCase("Foray", "adversarial"),
@@ -157,7 +225,7 @@ describe("TestCasesPage", () => {
 
     renderPage("adversarial");
 
-    expect(cardTitles()).toEqual(["Foray"]);
+    expect(indexTitles()).toEqual(["Foray"]);
     expect(screen.queryByText("Sunfront")).not.toBeInTheDocument();
   });
 
@@ -173,7 +241,9 @@ describe("TestCasesPage", () => {
       testCase("Lanternjaw", "asset-generation", { assetKind: "mc-model" }),
       testCase("Trooper", "asset-generation", { assetKind: "sn-skinned" }),
       // Blender family: the glTF-character kind (its own tab, not 2D or 3D).
-      testCase("Rifleman", "asset-generation", { assetKind: "blender-character" }),
+      testCase("Rifleman", "asset-generation", {
+        assetKind: "blender-character",
+      }),
       // Particle and audio families.
       testCase("Spectra", "asset-generation", { assetKind: "particle-3d" }),
       testCase("Broadside", "asset-generation", { assetKind: "sfx-sample" }),
@@ -183,7 +253,7 @@ describe("TestCasesPage", () => {
     // The 2D tab keeps the sprite and paint kinds (not the Blender character).
     ready(cases);
     const twoD = renderPage("2d");
-    expect(cardTitles()).toEqual([
+    expect(indexTitles()).toEqual([
       "Basalt",
       "Flarefish",
       "Skyshard",
@@ -194,24 +264,24 @@ describe("TestCasesPage", () => {
     // The 3D tab keeps the voxel/mesh and skinned kinds (not the Blender character).
     ready(cases);
     const threeD = renderPage("3d");
-    expect(cardTitles()).toEqual(["Aegis", "Lanternjaw", "Trooper"]);
+    expect(indexTitles()).toEqual(["Aegis", "Lanternjaw", "Trooper"]);
     threeD.unmount();
 
     // The Blender tab keeps only the glTF-character kind.
     ready(cases);
     const blender = renderPage("blender");
-    expect(cardTitles()).toEqual(["Rifleman"]);
+    expect(indexTitles()).toEqual(["Rifleman"]);
     blender.unmount();
 
     // Particle and audio each get their own tab.
     ready(cases);
     const particle = renderPage("particle");
-    expect(cardTitles()).toEqual(["Spectra"]);
+    expect(indexTitles()).toEqual(["Spectra"]);
     particle.unmount();
 
     ready(cases);
     renderPage("audio");
-    expect(cardTitles()).toEqual(["Broadside", "Theme"]);
+    expect(indexTitles()).toEqual(["Broadside", "Theme"]);
   });
 
   it("treats an asset case with no asset kind as a 2D sprite", () => {
@@ -219,10 +289,10 @@ describe("TestCasesPage", () => {
 
     renderPage("2d");
 
-    expect(cardTitles()).toEqual(["Skyshard"]);
+    expect(indexTitles()).toEqual(["Skyshard"]);
   });
 
-  it("lists cases of a type alphabetically", () => {
+  it("lists cases in the index alphabetically", () => {
     ready([
       testCase("Zephyr", "end-to-end"),
       testCase("Aurora", "end-to-end"),
@@ -231,23 +301,305 @@ describe("TestCasesPage", () => {
 
     renderPage("end-to-end");
 
-    expect(cardTitles()).toEqual(["Aurora", "Meltdown", "Zephyr"]);
+    expect(indexTitles()).toEqual(["Aurora", "Meltdown", "Zephyr"]);
   });
 
-  it("renders the difficulty and tag badges on the cards", () => {
+  it("shows each case's latest version on its index row", () => {
     ready([
-      testCase("Sunfront", "end-to-end", {
-        difficulty: "hard",
-        tags: ["rts", "arcade"],
+      testCase("Sunfront", "end-to-end"),
+      testCase("Wireworm", "end-to-end", {
+        versions: ["v2.1.0", "v1.0.0"],
+        latestVersion: "v2.1.0",
       }),
     ]);
 
     renderPage("end-to-end");
 
-    // The difficulty level renders as a badge and each tag as its own pill.
-    expect(screen.getByText("hard")).toBeInTheDocument();
-    expect(screen.getByText("rts")).toBeInTheDocument();
-    expect(screen.getByText("arcade")).toBeInTheDocument();
+    // Each row carries its own case's newest version (the selected case's chip
+    // appears in the preview too, so match within the rows).
+    within(screen.getByRole("option", { name: /Sunfront/ })).getByText(
+      "v1.2.0",
+    );
+    within(screen.getByRole("option", { name: /Wireworm/ })).getByText(
+      "v2.1.0",
+    );
+  });
+
+  it("selects the first shown case by default and stages it in the preview", () => {
+    ready([testCase("Zephyr", "end-to-end"), testCase("Aurora", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    expect(screen.getByRole("option", { name: /Aurora/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /Zephyr/ })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    within(preview()).getByRole("heading", { level: 3, name: "Aurora" });
+    within(preview()).getByText("Aurora summary");
+  });
+
+  it("clicking an index row moves the preview to that case", () => {
+    ready([
+      testCase("Aurora", "end-to-end"),
+      testCase("Zephyr", "end-to-end", {
+        difficulty: "easy",
+        tags: ["puzzle"],
+      }),
+    ]);
+
+    renderPage("end-to-end");
+    fireEvent.click(screen.getByRole("option", { name: /Zephyr/ }));
+
+    expect(screen.getByRole("option", { name: /Zephyr/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const pane = preview();
+    within(pane).getByRole("heading", { level: 3, name: "Zephyr" });
+    within(pane).getByText("Zephyr summary");
+    // The preview carries the case's difficulty badge and tag pills.
+    within(pane).getByText("easy");
+    within(pane).getByText("puzzle");
+  });
+
+  it("falls back to the first shown case when the search filters the selection out", () => {
+    ready([testCase("Aurora", "end-to-end"), testCase("Zephyr", "end-to-end")]);
+
+    renderPage("end-to-end");
+    fireEvent.click(screen.getByRole("option", { name: /Zephyr/ }));
+    within(preview()).getByRole("heading", { level: 3, name: "Zephyr" });
+
+    // Narrowing to Aurora drops the clicked case from the index; the preview
+    // follows the first (only) shown case rather than going blank.
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search test cases" }),
+      { target: { value: "aurora" } },
+    );
+    expect(indexTitles()).toEqual(["Aurora"]);
+    within(preview()).getByRole("heading", { level: 3, name: "Aurora" });
+  });
+
+  it("marks only cases with a showcase in the index", () => {
+    ready([
+      testCase("Carom", "end-to-end", { showcase: showcaseOf() }),
+      testCase("Sunfront", "end-to-end"),
+    ]);
+
+    renderPage("end-to-end");
+
+    const markers = screen.getAllByRole("img", { name: "Has a showcase" });
+    expect(markers).toHaveLength(1);
+    within(screen.getByRole("option", { name: /Carom/ })).getByRole("img", {
+      name: "Has a showcase",
+    });
+  });
+
+  it("stages the selected case's first showcase media through the host's resolver", () => {
+    ready([testCase("Carom", "end-to-end", { showcase: showcaseOf() })]);
+
+    renderPage("end-to-end");
+
+    const image = within(preview()).getByRole("img", {
+      name: "Title screen",
+    });
+    expect(image).toHaveAttribute(
+      "src",
+      "https://cdn.example/cases/carom/v1.2.0/base/title.png",
+    );
+  });
+
+  it("stages a replay lead in the player's showcase presentation", () => {
+    ready([
+      testCase("Carom", "end-to-end", {
+        showcase: {
+          version: "v1.2.0",
+          variant: "base",
+          media: [
+            { file: "rally.json.gz", name: "A rally", kind: "replay" as const },
+          ],
+        },
+      }),
+    ]);
+
+    renderPage("end-to-end");
+
+    const player = within(preview()).getByTestId("replay-player");
+    expect(player).toHaveTextContent("A rally");
+    expect(player).toHaveAttribute(
+      "data-url",
+      "https://cdn.example/cases/carom/v1.2.0/base/rally.json.gz",
+    );
+  });
+
+  it("filmstrips the whole carousel and stages the clicked entry", () => {
+    // Six entries: every one gets a thumb (no cap), in the carousel's order,
+    // with the staged entry marked selected.
+    ready([
+      testCase("Carom", "end-to-end", {
+        showcase: {
+          version: "v1.2.0",
+          variant: "base",
+          media: [
+            { file: "title.png", name: "Title screen", kind: "image" as const },
+            { file: "play-1.png", name: "Play 1", kind: "image" as const },
+            { file: "play-2.png", name: "Play 2", kind: "image" as const },
+            { file: "play-3.png", name: "Play 3", kind: "image" as const },
+            { file: "play-4.png", name: "Play 4", kind: "image" as const },
+            { file: "play-5.png", name: "Play 5", kind: "image" as const },
+          ],
+        },
+      }),
+    ]);
+
+    renderPage("end-to-end");
+
+    const strip = within(preview()).getByRole("tablist", {
+      name: "Showcase media",
+    });
+    const thumbs = within(strip).getAllByRole("tab");
+    expect(thumbs.map((thumb) => thumb.getAttribute("aria-label"))).toEqual([
+      "Show Title screen",
+      "Show Play 1",
+      "Show Play 2",
+      "Show Play 3",
+      "Show Play 4",
+      "Show Play 5",
+    ]);
+    expect(thumbs[0]).toHaveAttribute("aria-selected", "true");
+
+    // Clicking a thumb stages that entry and moves the selection to it.
+    fireEvent.click(within(strip).getByRole("tab", { name: "Show Play 2" }));
+    expect(
+      within(strip).getByRole("tab", { name: "Show Play 2" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(preview()).getByRole("img", { name: "Play 2" }),
+    ).toHaveAttribute(
+      "src",
+      "https://cdn.example/cases/carom/v1.2.0/base/play-2.png",
+    );
+  });
+
+  it("resets the filmstrip selection when the selected case changes", () => {
+    const carousel = (slug: string) => ({
+      version: "v1.2.0",
+      variant: "base",
+      media: [
+        { file: "one.png", name: `${slug} one`, kind: "image" as const },
+        { file: "two.png", name: `${slug} two`, kind: "image" as const },
+      ],
+    });
+    ready([
+      testCase("Aurora", "end-to-end", { showcase: carousel("Aurora") }),
+      testCase("Zephyr", "end-to-end", { showcase: carousel("Zephyr") }),
+    ]);
+
+    renderPage("end-to-end");
+
+    // Stage Aurora's second entry, then move to Zephyr: its stage starts back
+    // at the first entry rather than inheriting Aurora's selection.
+    fireEvent.click(screen.getByRole("tab", { name: "Show Aurora two" }));
+    within(preview()).getByRole("img", { name: "Aurora two" });
+    fireEvent.click(screen.getByRole("option", { name: /Zephyr/ }));
+    within(preview()).getByRole("img", { name: "Zephyr one" });
+    expect(
+      screen.getByRole("tab", { name: "Show Zephyr one" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows an icon-only play glyph for a thumb with no still", () => {
+    ready([
+      testCase("Carom", "end-to-end", {
+        showcase: {
+          version: "v1.2.0",
+          variant: "base",
+          media: [
+            { file: "title.png", name: "Title screen", kind: "image" as const },
+            { file: "rally.json.gz", name: "A rally", kind: "replay" as const },
+          ],
+        },
+      }),
+    ]);
+
+    renderPage("end-to-end");
+
+    // A replay has no cheap still, so its thumb is the bare play glyph — the
+    // kind never rides along as text.
+    const thumb = screen.getByRole("tab", { name: "Show A rally" });
+    expect(thumb).toHaveTextContent("▶");
+    expect(thumb).not.toHaveTextContent("replay");
+  });
+
+  it("splits the panes with a keyboard-adjustable divider", () => {
+    ready([testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    // The divider between the index and the preview, at the 40/60 default…
+    const divider = screen.getByRole("separator", {
+      name: "Resize the index and preview panes",
+    });
+    expect(divider).toHaveAttribute("aria-orientation", "vertical");
+    expect(divider).toHaveAttribute("aria-valuenow", "40");
+
+    // …nudged by the arrow keys…
+    fireEvent.keyDown(divider, { key: "ArrowLeft" });
+    expect(divider).toHaveAttribute("aria-valuenow", "38");
+    fireEvent.keyDown(divider, { key: "ArrowRight" });
+    fireEvent.keyDown(divider, { key: "ArrowRight" });
+    expect(divider).toHaveAttribute("aria-valuenow", "42");
+
+    // …and clamped so neither pane can be crushed.
+    for (let i = 0; i < 30; i++) {
+      fireEvent.keyDown(divider, { key: "ArrowLeft" });
+    }
+    expect(divider).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("shows the placeholder stage for a case without a showcase", () => {
+    ready([testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    // No media is staged — the cabinet mark holds the stage instead — and the
+    // pane still shows the case's identity around the placeholder.
+    const pane = preview();
+    within(pane).getByRole("img", { name: "Arcade cabinet" });
+    expect(
+      within(pane).queryByRole("img", { name: "Title screen" }),
+    ).not.toBeInTheDocument();
+    expect(within(pane).queryByTestId("replay-player")).not.toBeInTheDocument();
+    within(pane).getByRole("heading", { level: 3, name: "Sunfront" });
+  });
+
+  it("shows the placeholder stage when the host cannot serve showcase media", () => {
+    ready([testCase("Carom", "end-to-end", { showcase: showcaseOf() })], {
+      resolveMedia: false,
+    });
+
+    renderPage("end-to-end");
+
+    // The marker still advertises the showcase, but with no resolver the stage
+    // degrades to the placeholder rather than a broken viewer.
+    screen.getByRole("img", { name: "Has a showcase" });
+    within(preview()).getByRole("img", { name: "Arcade cabinet" });
+    expect(
+      within(preview()).queryByRole("img", { name: "Title screen" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("links the preview into the selected case's detail page", () => {
+    ready([testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    expect(
+      within(preview()).getByRole("link", { name: "Open case" }),
+    ).toHaveAttribute("href", routes.testCaseDetail("sunfront"));
   });
 
   it("searches over tags and difficulty as well as the title", () => {
@@ -264,20 +616,56 @@ describe("TestCasesPage", () => {
 
     // A tag term keeps only the case that carries it.
     fireEvent.change(search, { target: { value: "arcade" } });
-    expect(cardTitles()).toEqual(["Carom"]);
+    expect(indexTitles()).toEqual(["Carom"]);
 
     // A difficulty term filters the same way.
     fireEvent.change(search, { target: { value: "hard" } });
-    expect(cardTitles()).toEqual(["Sunfront"]);
+    expect(indexTitles()).toEqual(["Sunfront"]);
   });
 
-  it("shows an empty notice when the tab has no cases", () => {
+  it("shows an empty notice (and no preview) when the tab has no cases", () => {
     ready([testCase("Skyshard", "asset-generation", { assetKind: "sprite" })]);
 
     renderPage("end-to-end");
 
     // The end-to-end tab has none of this asset-only catalog.
     expect(screen.getByText("No test cases match.")).toBeInTheDocument();
-    expect(cardTitles()).toEqual([]);
+    expect(indexTitles()).toEqual([]);
+    expect(
+      screen.queryByRole("region", { name: "Case preview" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // Render order: the catalog the page HOLDS decides, and the read state only
+  // speaks when it holds none. A failed re-read over a loaded catalog is stale
+  // data — the rows stay and the failure is said above them — and a read still
+  // in flight is never reported as a catalog with nothing in it.
+  it("keeps the catalog on screen when a re-read fails", () => {
+    unsettled("error", [testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    expect(indexTitles()).toEqual(["Sunfront"]);
+    expect(screen.getByRole("alert").textContent).toMatch(/out of date/i);
+    expect(screen.queryByText(/catalog is unavailable/i)).toBeNull();
+  });
+
+  it("waits rather than reporting an unavailable catalog while it loads", () => {
+    unsettled("loading");
+
+    renderPage("end-to-end");
+
+    expect(screen.queryByText(/catalog is unavailable/i)).toBeNull();
+    expect(screen.queryByText("No test cases match.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading catalog/i)).toBeTruthy();
+  });
+
+  it("reports an unreadable catalog as a failure, never as an empty one", () => {
+    unsettled("error");
+
+    renderPage("end-to-end");
+
+    expect(screen.getByText(/catalog is unavailable/i)).toBeTruthy();
+    expect(screen.queryByText("No test cases match.")).not.toBeInTheDocument();
   });
 });

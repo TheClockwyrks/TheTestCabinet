@@ -58,6 +58,6 @@
 
 .tabActive {
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }

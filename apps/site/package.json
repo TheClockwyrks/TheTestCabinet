@@ -1,10 +1,11 @@
 {
-  "name": "@test-cabinet/site",
+  "name": "@clockwyrks/site",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "predev": "tsc -b ../../packages/run-record",
     "dev": "vite --host",
     "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
     "preview": "vite preview",
@@ -15,24 +16,24 @@
   "dependencies": {
     "@observablehq/plot": "^0.6.16",
     "@react-three/fiber": "^9.6.1",
-    "@test-cabinet/run-record": "*",
-    "@test-cabinet/ui": "*",
+    "@clockwyrks/run-record": "*",
+    "@clockwyrks/ui": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "react-router": "^7.6.0",
     "remark-gfm": "^4.0.1",
-    "three": "~0.182.0",
+    "three": "~0.185.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
-    "@types/three": "~0.182.0",
+    "@types/three": "~0.185.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
     "sass": "^1.89.0",
-    "typescript": "^5.6.0",
+    "typescript": "^6",
     "vite": "^6.3.0"
   }
 }

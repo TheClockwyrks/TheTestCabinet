@@ -58,6 +58,7 @@
   margin: 0;
   font-size: t.$font-sm;
   color: t.$color-negative;
+  @include h.halo;
 }
 
 .controls {
@@ -70,8 +71,18 @@
 // The failure-tier chip — a compact, muted badge tinted negative since the
 // model-output failure tiers (catastrophic, timed-out) are failures. A harness
 // error is a different kind of outcome (the harness exited early, and a
-// masquerading auth-token refresh can land here too), so it is tinted with the
-// caution/warning color to set it apart at a glance before publishing.
+// masquerading auth-token refresh can land here too), and a spent execution
+// ceiling is the harness stopping itself on a bound the configuration armed, so
+// both are tinted with the caution/warning color to set them apart at a glance
+// before publishing.
+// The tier chip and its help tip, kept together as one control-row item so the
+// tip rides beside the chip rather than claiming a gap of its own.
+.tier {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
 .chip {
   font-size: t.$font-sm;
   text-transform: uppercase;
@@ -82,6 +93,7 @@
   color: t.$color-negative;
 
   &[data-state="harness_error"],
+  &[data-state="limit_exceeded"],
   &[data-state="hung"] {
     color: t.$color-warning;
   }

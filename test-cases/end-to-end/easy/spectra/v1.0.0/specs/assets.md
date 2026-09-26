@@ -177,7 +177,7 @@ to one arrangement.
 ### Play it with the provided runtime
 
 You do not write a particle simulator, and you do not fetch anything: the runtime
-that plays this system, `@test-cabinet/particle-runtime`, is already installed as a
+that plays this system, `@clockwyrks/particle-runtime`, is already installed as a
 dependency of your project (it is in your `package.json`; run your install as usual
 and import it like any other dependency). It is the same library the effect was
 authored against, so the burst plays in your game as intended.

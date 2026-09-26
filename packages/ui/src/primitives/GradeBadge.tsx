@@ -20,7 +20,7 @@ export function GradeBadge({ status, className }: GradeBadgeProps) {
     <span
       className={`${styles.badge}${className ? ` ${className}` : ""}`}
       data-grade={status}
-      title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
+      title={`${meta.label}, ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
     >
       {meta.label}
     </span>

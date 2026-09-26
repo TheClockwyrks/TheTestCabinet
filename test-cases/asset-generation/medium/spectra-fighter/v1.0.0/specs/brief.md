@@ -1,8 +1,8 @@
 # Spectra Fighter — drawing brief
 
 You are drawing the **resonator-fighter**, the **player's ship** for
-*Spectra*, a two-band formation shooter. It sits at the bottom of the screen
-and fires upward at a swarm of drones. You are drawing the *player's ship* — a
+_Spectra_, a two-band formation shooter. It sits at the bottom of the screen
+and fires upward at a swarm of drones. You are drawing the _player's ship_ — a
 single 64×64 sprite.
 
 ## The canvas
@@ -21,12 +21,12 @@ single 64×64 sprite.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Hull | `#eaf0fb` |
+| Role                          | Hex       |
+| ----------------------------- | --------- |
+| Hull                          | `#eaf0fb` |
 | Cyan band (core + ring glyph) | `#34e2ff` |
-| Engine accent (warm) | `#ffd86b` |
-| Highlight | `#ffffff` |
+| Engine accent (warm)          | `#ffd86b` |
+| Highlight                     | `#ffffff` |
 
 ## The form
 

@@ -2,11 +2,10 @@
 title: One-shot
 ---
 
-**One-shot** (slug `one-shot`) is the default orchestrator: a single harness
-session driven to completion. The harness is handed the test case's prompt and
-its own agent loop runs to completion — that is the whole strategy. It reproduces
-the original single-session behaviour exactly, so a `one-shot` run's metrics are
-identical to a run with no orchestration layer at all.
+One-shot (slug `one-shot`) is the default orchestrator. It runs a single harness
+session and drives it to completion: the harness is handed the test case's prompt
+and its own agent loop runs to the end. A one-shot run produces exactly one
+session segment, so its metrics are those of the single session.
 
 ## Runner
 
@@ -19,10 +18,10 @@ exec tcab-session "$TCAB_PROMPT"
 ```
 
 `tcab-session` runs the selected harness's CLI with that harness's exact session
-arguments, substituting the prompt — so the runner needs to know nothing
-harness-specific.
+arguments, substituting the prompt, so the runner needs no harness-specific
+knowledge.
 
 ## Parameters
 
-None. A multi-session strategy such as [Ralph Loop](/orchestrators/ralph/)
-declares a `[params]` table; one-shot does not.
+One-shot declares no `[params]` table, so the runner is handed only the shared
+runner environment.

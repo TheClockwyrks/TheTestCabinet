@@ -5,8 +5,8 @@ game. The glitch is a support foe: a corrupted, unstable sprite that skitters
 around the player's band, eating the capacitor nodes off the board. It has to read
 as **corruption made visible** — an angular mass that flickers and tears,
 split by
-chromatic-aberration fringes and scattered static — so a glance says *hostile
-error*, not a solid creature.
+chromatic-aberration fringes and scattered static — so a glance says _hostile
+error_, not a solid creature.
 
 You are drawing the glitch as a short **flicker animation**: four frames of the
 same corrupt mass jittering, so it never sits still.
@@ -57,13 +57,13 @@ Make it read as an **unstable flicker**, not a walk cycle:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Glitch core (error red) | `#d92b4a` |
-| Chromatic fringe — cyan | `#2be0d9` |
+| Role                       | Hex       |
+| -------------------------- | --------- |
+| Glitch core (error red)    | `#d92b4a` |
+| Chromatic fringe — cyan    | `#2be0d9` |
 | Chromatic fringe — magenta | `#ff4fd8` |
-| Deep shadow | `#1a0f1c` |
-| Static (hot noise) | `#ffffff` |
+| Deep shadow                | `#1a0f1c` |
+| Static (hot noise)         | `#ffffff` |
 
 ## Working the tool
 

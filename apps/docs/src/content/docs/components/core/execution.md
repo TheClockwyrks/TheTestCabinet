@@ -10,203 +10,252 @@ should not be looking.
 ## Containerization
 
 Runs must occur in a container so that a model cannot access the host system.
-Without this, a model could discover other runs' outputs or damage the host, for
-example by deleting files.
 
-- The testing harness must drive the run container through a **runtime
-  abstraction** rather than hard-coding a single runtime. Two runtimes implement
-  it: a Docker/Podman runtime that shells out to a host container engine, and the
-  [Kubernetes runtime](/deployment/kubernetes/) that creates a pod per run through
-  the Kubernetes API. Every test-case run is now driven by the
-  [driver](/components/driver/overview/) under the **Kubernetes runtime** — the
-  CLI and desktop app enqueue runs at the backend rather than executing them on
-  the host (see [Server-side Run Topology](/components/architecture/#server-side-run-topology)),
-  so the host Docker/Podman path is no longer how a test case runs. The behavior
-  below is identical across both runtimes — only the mechanism that starts the
-  container, copies the working tree in and out, and runs commands in it differs.
-- A container must not have access to the host filesystem beyond the seeded
+- The testing harness must drive the run container through a runtime
+  abstraction. Two runtimes implement it: a Docker/Podman runtime that shells
+  out to a host container engine, and the [Kubernetes
+  runtime](/deployment/kubernetes/run-plane/) that creates a pod per run through
+  the Kubernetes API. The [driver](/components/driver/overview/) selects one
+  from its own configuration, and a cluster deployment selects Kubernetes. Run
+  behavior is identical across both.
+- A container must have access to the host filesystem only through the seeded
   repository and the inputs the run explicitly provides.
-- A container does require outbound network access so the agent harness can
-  reach model APIs and install packages. Isolation is about protecting the host
-  filesystem and other runs' outputs, not about disabling the network.
-- When an asset-generation run is being watched (the driver supplies a preview
-  sink), the container is additionally given a route back to the run host as
-  `host.docker.internal` — `--add-host …:host-gateway` under the Docker/Podman
-  runtime, a pod `hostAlias` to the driver pod's own IP under the Kubernetes
-  runtime — so the in-container drawing or
-  [voxel](/testing/asset-generation/voxel-binaries/#live-preview) binary can stream
-  its [live preview](/testing/asset-generation/sprite-binaries/#live-preview) back to a
-  listener on the run host. No host mapping is added for an unwatched run.
-- A run executes in one of **five run-container images**, selected by the test
-  case's [test type](/testing/overview/) and — for asset-generation — its
-  [`asset_kind`](/testing/asset-generation/manifests/): an
-  [end-to-end](/testing/end-to-end/overview/) run uses the **base-wasm image** (the
-  base plus the shared Rust → WebAssembly toolchain); a single-sprite
-  [asset-generation](/testing/asset-generation/overview/) run
-  (`asset_kind = "sprite"`) uses the **sprite image** (the base image plus the
-  baked-in `draw` tool); a sprite-sheet run (`asset_kind = "sprite-sheet"`) uses
-  the **sprite-sheet image** (the base image plus the baked-in `draw-sheet` tool);
-  a static-voxel run (`asset_kind = "voxel-model"`) uses the **voxel image** (the
-  base image plus the baked-in `voxel` tool); and an animated-voxel run
-  (`asset_kind = "voxel-animation"`) uses the **voxel-animation image** (the base
-  image plus the baked-in `voxel-anim` tool). None is a per-harness image: the
-  selected harness's CLI is installed into the container at run time (see
-  [Harness install](#harness-install) below), not baked into the image. All five
-  are registry images, and a runner resolves the one for the run from its **own
-  registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
-  `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
-  image named for the run (`test-cabinet-base-wasm`, `test-cabinet-sprite`,
-  `test-cabinet-sprite-sheet`, `test-cabinet-voxel`, or
-  `test-cabinet-voxel-animation`), and a **per-image** override pins a verbatim
-  reference for one image without touching the others — one
-  `TCAB_CONTAINER_IMAGE_*` per run image (`_BASE_WASM` for end-to-end, `_SPRITE` for
-  single-sprite, `_SPRITE_SHEET` for sprite-sheet, and so on through every
-  asset-generation kind — including `_BLENDER` for blender-character — plus
-  `_ADVERSARIAL` and `_PERFORMANCE`; there is no override that spans every image,
-  since they differ) — and pulls it at run start
-  (`--pull missing`). No backend is consulted, so a runner
-  resolves the image the same way against any backend or none. Whatever image
-  actually runs is resolved to its registry digest where it has one and recorded
-  in the [run record](/components/core/run-records/#environment), so a run still
-  pins the exact image bytes it used even when launched by a mutable tag.
+- A container requires outbound network access so the agent harness can reach
+  model APIs and install packages.
+- A run that needs to reach the run host is given a route back to it as
+  `host.docker.internal`. Two things ask for it: an asset-generation run whose
+  runner supplied a preview sink, so the in-container tool binary can stream its
+  [live preview](/components/live-streaming/) back over that route, and a
+  harness exporting telemetry to a collector on the run host. Only those runs
+  are given the mapping.
+
+### Run images
+
+A run executes in exactly one run-container image, selected by the test case's
+[test type](/testing/overview/), by its
+[`asset_kind`](/testing/asset-generation/manifests/overview/) for asset
+generation, and by its
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) for full
+stack. Each image is the shared base plus what that kind needs: an
+[end-to-end](/testing/end-to-end/overview/) run gets the base plus the shared
+Rust to WebAssembly toolchain, each
+[asset-generation](/testing/asset-generation/overview/) kind gets the base plus
+that kind's baked-in tool binary, and a
+[full-stack](/testing/full-stack/overview/) run gets that toolchain plus the
+asset-generation binaries of its dimension. The Blender kinds are the exception,
+running in a self-contained image built from Ubuntu that carries headless
+Blender.
+
+The audio packs an audio binary reads are [staged](#staged-audio) into the
+container per run rather than carried by any image, so a run's palette is fixed
+by its test case rather than by the image it resolves.
+
+The selected harness's CLI is installed into the container at run time (see
+[Harness install](#harness-install)), so no image is per-harness.
+[`gg`](/gg/overview/) is the exception: a gg run resolves the `-gg` variant of
+the image it would otherwise get, which is the same image plus the language
+toolchains a [responses-as-code](/gg/responses-as-code/overview/) program is
+compiled with. Those toolchains must be baked in because a compiler is on the
+turn path and a program's language is resolved per agent, so every toolchain is
+present together. Every run image publishes a variant, and a variant's name is
+derived from its parent's rather than looked up, so a gg run of any kind
+resolves an image that has the compilers in it. The toolchain tree is one layer
+with the same digest in every variant, so a host that has pulled one variant
+already has those bytes for all the others.
+
+A runner resolves the image for a run from its own registry configuration,
+consulting no backend, so it resolves the same image against any backend or
+none.
+
+1. The image's own override, one `TCAB_CONTAINER_IMAGE_*` variable per run image
+   plus the `_GG` suffixed counterpart that pins that image's gg variant, is a
+   full verbatim reference. Set it to a `@sha256:…` digest to pin exact bytes or
+   to point at a private build. Each image is pinned on its own.
+2. Otherwise the image is composed as `{registry}/{name}:{tag}`, where `name` is
+   the run's image name, `registry` is `TCAB_CONTAINER_REGISTRY` (default
+   `testcabinet.azurecr.io`, the Test Cabinet ACR the pipeline pushes every run
+   image to), and `tag` is `TCAB_CONTAINER_TAG` (default `latest`). An
+   explicitly empty registry drops the prefix and names a local image for
+   offline development.
+
+The image is pulled at run start when it is absent locally. Whatever image
+actually runs is resolved to its registry digest where it has one and recorded
+in the [run record](/components/core/run-records/#environment), so a run pins
+the exact image bytes it used even when launched by a mutable tag.
 
 ## Seeding
 
-Each run must be seeded into its own newly created git repository that contains
-the data a model needs to build the game: the selected variant's
+Each run must be seeded into its own newly created git repository containing the
+data a model needs to build the game: the selected variant's
 [workspace](/testing/end-to-end/overview/#workspace) starter files, the specs of
 the selected variant, the test case's assets, and the rendered reference
 screenshots that serve as visual targets. A run selects exactly one
 [variant](/testing/end-to-end/overview/#variants), and the variant's specs are
-seeded at their declared `dest` paths — the common specs plus that variant's own
-— rather than as a single specification at the repository root.
+seeded at their declared `dest` paths, the common specs plus that variant's own.
 
-- A new repository must be created per run so that no prior history exists.
-  Models have been observed solving tasks by reading git history to recover a
-  deleted reference implementation; starting from an empty history removes that
-  possibility.
-- The seeded repository must begin from a clean initial commit with no upstream
-  remote and no history beyond that commit.
+- A new repository must be created per run so that no prior history exists for a
+  model to recover a reference implementation from. It must begin from a clean
+  initial commit with no upstream remote and no history beyond that commit.
 - The selected variant's [workspace](/testing/end-to-end/overview/#workspace)
-  starter files are seeded into the repository **root** first, before the specs,
-  so the specification and reference screenshots land on top of a baseline
-  project. They are copied verbatim. Resolution rejects any collision between a
-  workspace file and a spec, asset, or reference destination, so seeding never
-  silently clobbers one with another.
-- A spec whose source is a Handlebars template (a `.hbs` extension) is
-  **rendered** with the selected variant and version while seeding, and the
-  result lands at the spec's `dest`; every other spec is copied verbatim. This
-  lets a spec state per-variant facts directly instead of hedging about what a run
-  might contain. See [Spec templates](/testing/end-to-end/overview/#spec-templates).
-- A test case's **reference screenshots are seeded** as visual targets so the
-  model can see what each screen should look like. The reference **source**
-  mockups are **not** seeded: handing over the mockup HTML/CSS would let a model
-  copy the intended UI instead of building it from the specification, the same
-  kind of shortcut the fresh repository is meant to prevent. A screenshot
-  conveys the target without giving away the implementation.
-- The seeded specs must be **self-contained**, with no links or references to
-  these harness docs or to any file outside the seeded repository, because none
-  of them exist inside the container. They may, however, point at the seeded
-  reference screenshots. See
-  [Test Cases](/testing/end-to-end/overview/#self-contained-specifications).
-- The prompt is **not seeded** to disk. It is rendered from the version's
-  `prompt.hbs` template — with the run's in-container workspace path and the
-  selected variant's seeded spec paths — and handed directly to the harness as
-  its instruction. See [Prompt template](/testing/end-to-end/overview/#prompt-template).
+  starter files are seeded into the repository root first, before the specs, so
+  the specification and reference screenshots land on top of a baseline project.
+  They are copied verbatim. Resolution rejects any collision between a workspace
+  file and a spec, asset, or reference destination.
+- A spec whose source is a Handlebars template (a `.hbs` extension) is rendered
+  with the selected variant and version while seeding, and the result lands at
+  the spec's `dest`. Every other spec is copied verbatim. See [Spec
+  templates](/testing/end-to-end/overview/#spec-templates).
+- A test case's reference screenshots are seeded as visual targets so the model
+  can see what each screen should look like. The reference source mockups stay
+  out of the repository, since handing over the mockup HTML and CSS would let a
+  model copy the intended UI instead of building it from the specification.
+- The seeded specs must be self-contained, referring only to files inside the
+  seeded repository, which the reference screenshots are among. See [Test
+  Cases](/testing/end-to-end/overview/#self-contained-specifications).
+- The prompt is rendered from the version's `prompt.hbs` template, with the
+  run's in-container workspace path and the selected variant's seeded spec
+  paths, and handed directly to the harness as its instruction rather than
+  written to disk. See [Prompt
+  template](/testing/end-to-end/overview/#prompt-template).
 
-The seeded repository is normally created on the host, copied into the run
-container, and torn down as part of a run, so its contents are never visible on
-their own. The `tcab seed` command runs
-this same seeding step for a chosen variant (`--variant`) and leaves the result
-on disk (under `tmp/` by default) so the exact inputs a harness receives — the
-variant's seeded specs, the seeded assets, and the fresh git history — can be
-inspected without launching a container. Because the prompt is not seeded,
+The seeded repository is created on the host, copied into the run container, and
+torn down as part of a run. The `tcab seed` command runs this same seeding step
+for a chosen variant (`--variant`) and leaves the result on disk so the exact
+inputs a harness receives can be inspected without launching a container.
 `tcab prompt` renders and prints the instruction a run would hand the harness
-for a given variant, without seeding or launching anything.
+for a given variant.
+
+## Staged audio
+
+A test case declares the audio packs its run may use, and the run container is
+staged with those packs and nothing else. The
+[audio binaries](/testing/asset-generation/audio-binaries/) read their palette
+from `/opt/audio`, which staging writes once the container has started.
+
+- Each declared `name@version` ref is resolved against the host audio store,
+  located by `TCAB_AUDIO_STORE` and defaulting to `/opt/tcab-audio`. The driver
+  image carries the store; a local checkout fetches it with
+  `scripts/fetch-audio-store.sh`. A ref the store does not hold, or one whose
+  stored pack disagrees with the pinned name, version, or kind, fails the run
+  before the container starts.
+- The store's `objects.lock.json` records every published object with its sha256
+  and byte length. Every clip a declared pack names is checked against it before
+  the clip is carried in, so a run is rendered only against audio that was
+  published. A clip the lock does not record, one whose bytes disagree with it,
+  and a store carrying no lock at all each fail the run.
+- Staging materializes one `packs/<name>@<version>/pack.toml` per declared pack,
+  the union of those packs' clip files under `clips/`, and a `packs.json`
+  recording what the run was given and the default pack for each kind. The
+  default is the first pack of that kind in declaration order, resolved on the
+  host.
+- The staged tree lands outside the seeded repository, so nothing staging writes
+  is collected as the run's result and the raw clips stay out of the model's
+  workspace and its git history.
+- A run image declares that it accepts staged audio, and a run that stages audio
+  reads that declaration back out of the started container. A mismatch fails the
+  run at container start, before a harness session is spent, and names the image
+  and the pin that selected it. A run that stages nothing is never asked.
+- Because staging needs a running container, it is excluded from `tcab seed`,
+  which materializes the seeded workspace alone. A case that declares no packs
+  stages no audio.
 
 ## Harness install
 
-The base image ships **no agent harness**. Once the container starts, the run
-installs the selected harness's CLI into it by running that harness's
-[install command](/components/core/harnesses/#installation) — typically a
-single-line `npm install -g …` or a curl-piped installer. Installing at run time,
-rather than baking the CLI into an image, is what lets a run always pick up the
-harness's most recently published version.
+The base image ships no agent harness. Once the container starts, the run
+installs the selected harness's CLI into it by running that harness's [install
+command](/components/core/harnesses/#installation). Installing at run time is
+what lets a run pick up the harness's most recently published version.
 
-- The install step runs **after** the container starts and **before** the test
-  case's init command and the harness session, so the CLI is in place for both.
-- It runs through a non-login `sh -c` as the container's unprivileged run user,
-  with the container's own environment, so it installs into the user-writable
-  locations the base image puts on `PATH` without needing root.
+- The install step runs after the container starts and before the test case's
+  init command and the harness session, so the CLI is in place for both.
+- It runs as the container's unprivileged run user with the container's own
+  environment, installing into the user-writable locations the base image puts
+  on `PATH`.
 - It is bounded by the run's maximum runtime, the same cap that bounds the
-  harness session, so a hung install can never run unbounded.
-- A non-zero exit, a timeout, or a missing binary afterward (the run probes
-  `<binary> --version` to confirm the install worked and to record the version)
-  aborts the run before a harness session is spent and tears the container down,
-  with the captured output surfaced for diagnosis.
+  harness session.
+- The run then probes the installed CLI to confirm it works and to record its
+  version. A non-zero exit, a timeout, or a failed probe aborts the run before a
+  harness session is spent and tears the container down, with the captured
+  output surfaced for diagnosis.
 
 ## Init
 
-A test case may declare an [init command](/testing/end-to-end/overview/#init) that
-runs **inside the run container** once the seeded repository is mounted and the
-harness CLI is installed, and before the harness session begins. It is where a
-case prepares the workspace it shipped — typically installing its dependencies —
-so the harness starts against a ready project. It runs as the container's
+A test case may declare an [init command](/testing/end-to-end/overview/#init)
+that runs inside the run container after the seeded repository is mounted and
+the harness CLI is installed, and before the harness session begins, so anything
+it installs is in place for the model. It is where a case prepares the workspace
+it shipped, typically installing its dependencies. It runs as the container's
 unprivileged run user with the seeded repository as its working directory.
 
-- The init step runs **after** the container starts, the workspace is mounted,
-  and the harness is installed, and **before** the harness is invoked, so anything
-  it installs is in place for the model.
 - It is bounded by the run's maximum runtime, the same cap that bounds the
-  harness session, so a hung setup can never run unbounded.
-- A non-zero exit or a timeout aborts the run before the harness starts and tears
-  the container down — a broken setup would only waste a harness session — with
-  the captured output surfaced for diagnosis.
-- Because init needs a running container, it is **not** performed by `tcab seed`,
-  which only materializes the seeded files on disk.
+  harness session.
+- It is verified against the workspace's lockfile and retried, up to three
+  attempts, as [Init](/testing/end-to-end/overview/#init) describes. After the
+  last attempt, a non-zero exit or a declared package still missing aborts the
+  run before the harness starts and tears the container down, with the captured
+  output surfaced for diagnosis. A timeout aborts it the same way without a
+  retry.
+- Because init needs a running container, it is excluded from `tcab seed`, which
+  only materializes the seeded files on disk.
 
 ## Runtime limits
 
-Two independent bounds end a run that will not end itself, and between them they
-guarantee that **a run's fate is always decided by the Test Cabinet, never by the
-platform underneath it**.
+Two independent bounds end a run that will not end itself. Between them they
+guarantee that a run's fate is always decided by the Test Cabinet rather than by
+the platform underneath it.
 
-- **The maximum runtime** is the wall-clock cap on the run as a whole: the test
-  case's `max_runtime_hours`, overridable per invocation (`tcab run
-  --max-runtime`). A run stopped by it is
-  [`timed_out`](/components/core/run-records/) — the model was working and simply
-  never converged, so its source and build are kept.
-- **The idle watchdog** bounds *silence* rather than duration. A harness that
-  produces no output at all for 30 minutes is killed and the run is recorded as
-  [`hung`](/components/core/run-records/). This catches the failure the runtime cap
-  cannot: a harness that has stopped doing anything — a stalled provider request,
-  a subagent that never returns — is not "still working", and waiting out the
-  remainder of an eight-hour cap to discover that wastes the slot for hours.
+- The maximum runtime is the wall-clock cap on the harness session: the test
+  case's `max_runtime_hours`, overridable per invocation with
+  `tcab run --max-runtime`. It bounds each in-container setup step on its own
+  as well. Tree collection, analysis, and validation run after the session and
+  outside the cap. A session stopped by it is recorded as
+  [`timed_out`](/components/core/run-records/).
+- The idle watchdog bounds silence rather than duration. A harness that produces
+  no output at all for 30 minutes is killed and the run is recorded as
+  [`hung`](/components/core/run-records/). This catches a harness that has
+  stopped doing anything, such as a stalled provider request or a subagent that
+  never returns.
 
-The watchdog's window is deliberately far below the platform's own limits. A
-Kubernetes kubelet closes an exec stream that has been idle for
-`streamingConnectionIdleTimeout` — 4 hours by default, and 4 hours on our
-clusters. Before the watchdog existed, that limit is what actually ended a hung
-run: the stream closed without a terminating status frame, the exec reported exit
-code `-1`, and the run was misrecorded as a harness error four hours after it had
-in fact stopped. It also silently capped every case, because a run could never
-survive long enough to reach a `max_runtime_hours` above 4.
+The watchdog's window must stay far below the platform's own limits. A
+Kubernetes kubelet closes an exec stream idle for
+`streamingConnectionIdleTimeout`, 4 hours on our clusters, without a terminating
+status frame, so the exec reports exit code `-1` and the run is misattributed.
+Because the watchdog always fires first, a hang is attributed accurately and
+promptly, and a case's maximum runtime is reachable however long it is set.
 
-Because the watchdog always fires first, both problems go away together: a hang is
-attributed accurately and promptly, and a case's maximum runtime is reachable
-however long it is set — a run that keeps producing output is never interrupted by
-anything but its own cap.
+These two are the only terminations the Test Cabinet decides on a timer. An
+operator can also kill a run, and what the
+[driver](/components/driver/overview/#cancellation) does with it then depends on
+the harness.
 
-## Model Authored Tests
+A kill winds a [gg](/gg/overview/) run down cooperatively. The driver raises a
+cancellation latch and keeps awaiting the run. The session sees the latch at its
+next turn boundary, finishes the turn in flight, runs its epilogue, and hands
+back everything it accumulated, so the run completes tree collection, metrics,
+and the record, and skips only validation. The wait is bounded at every layer: a
+grace on the session's wind-down and a longer one on the driver's. A run that
+overruns those graces falls back to a bare record. Either way the run is
+recorded as [`canceled`](/components/core/run-records/#status): it crossed no
+bound and carries no fault to attribute, so it is retained for inspection only
+and stays unpublishable.
+
+A kill that lands before the gg session has been launched destroys the run
+instead, as does a kill on a run of any other harness. The driver records
+nothing and tears the sandbox down, and the run is absent from the run list.
+
+`timed_out` and `hung` unwind the run instead of asking it to stop, so both are
+recorded without a collected tree or folded metrics.
+
+## Model authored tests
 
 The goal of a test case is to measure how well a model writes code in a large
-project, so the testing harness must not get in the way of the model testing its
-own work.
+project, so the testing harness must stay out of the way of the model testing
+its own work.
 
 - Any tests a test case provides must be visible to the model.
-- The model must not be blocked from writing its own tests.
+- The model must be free to write its own tests.
 
-## Artifact Collection
+## Artifact collection
 
 When a run finishes, the testing harness must collect the run's working tree as
 the run's primary artifact. This produced repository is what gets validated and,

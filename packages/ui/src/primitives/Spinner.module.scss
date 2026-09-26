@@ -126,6 +126,52 @@
   animation: phosphor 1.8s ease-in-out infinite;
 }
 
+// ---- Fitting the mark to a box ---------------------------------------------
+// `fit` is for a spinner dropped into an area that has a height of its own — a
+// fixed-aspect media stage, a tile — rather than into open page flow. Without
+// it the squadron draws at its natural size (a cabinet roughly 25rem tall) and
+// a stage shorter than that simply clips it: the bezel's sides cut off, the
+// caption sliced in half along the bottom edge.
+//
+// Two things scale, and they scale by different means because CSS gives the
+// element no way to read its own box:
+//
+//   - The art shrinks itself. Sizing it by *height* (rather than the width the
+//     unfitted mark uses) makes height the flex column's main axis measure, so
+//     the mark shrinks with the column when the box is shorter than its natural
+//     18rem, and the width follows the SVG's square ratio. `min-height: 0`
+//     is what lets a flex item shrink below its content size at all.
+//   - The frame shrinks against the container. Bezel, padding and caption are
+//     fixed lengths that would otherwise eat a short box whole, so each is
+//     clamped against `cqi` — the width of the nearest ancestor declaring
+//     `container-type` (see LoadingState's `fill`). Where nothing declares one
+//     the units resolve against the small viewport, which on any real screen
+//     lands past the clamp's top end and leaves the mark at its natural size.
+.fit {
+  box-sizing: border-box;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.squadron.fit {
+  --bezel: clamp(0.3rem, 3cqi, #{t.$space-md});
+
+  padding: calc(var(--bezel) + clamp(0.3rem, 3cqi, #{t.$space-lg}))
+    calc(var(--bezel) + clamp(0.5rem, 5cqi, #{t.$space-xl}));
+}
+
+.squadron.fit .art {
+  width: auto;
+  max-width: 100%;
+  height: min(18rem, 55vw);
+  min-height: 0;
+}
+
+.squadron.fit .label {
+  margin-top: clamp(0.25rem, 2cqi, #{t.$space-md});
+  font-size: clamp(0.6rem, 4.5cqi, 0.9rem);
+}
+
 @keyframes phosphor {
   50% {
     opacity: 0.45;

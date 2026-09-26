@@ -7,7 +7,9 @@ import { parseSkinnedGlb } from "../glb";
 import { SkinnedVoxelRig } from "./SkinnedVoxelRig";
 
 function readGlb(name: string): ArrayBuffer {
-  const buf = readFileSync(fileURLToPath(new URL(`../__fixtures__/${name}`, import.meta.url)));
+  const buf = readFileSync(
+    fileURLToPath(new URL(`../__fixtures__/${name}`, import.meta.url)),
+  );
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
@@ -28,7 +30,10 @@ const bend: JointSpec = {
   drive: "caller",
 };
 const barRig: ModelSpec = {
-  parts: [part("pelvis"), part("spine", { parent: "pelvis", pivot: [0, 1, 0] })],
+  parts: [
+    part("pelvis"),
+    part("spine", { parent: "pelvis", pivot: [0, 1, 0] }),
+  ],
   joints: [bend],
 };
 
@@ -39,7 +44,10 @@ describe("SkinnedVoxelRig", () => {
 
     expect(rig.mesh).toBeInstanceOf(THREE.SkinnedMesh);
     expect(rig.mesh.skeleton.bones.length).toBe(2);
-    expect(rig.mesh.skeleton.bones.map((b) => b.name)).toEqual(["pelvis", "spine"]);
+    expect(rig.mesh.skeleton.bones.map((b) => b.name)).toEqual([
+      "pelvis",
+      "spine",
+    ]);
     // GPU skin attributes are present with 4 components per vertex.
     const geo = rig.mesh.geometry;
     expect(geo.getAttribute("skinIndex").itemSize).toBe(4);

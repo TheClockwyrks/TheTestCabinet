@@ -14,10 +14,17 @@
   font-size: t.$font-xl;
   line-height: 1;
   color: t.$color-accent;
+  // The control is a link when back is a route and a button when back is a view
+  // of the same page; the button's user-agent chrome is stripped here so the two
+  // are the same glyph either way.
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
   @include h.halo;
 
   &:hover {
     text-decoration: none;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }

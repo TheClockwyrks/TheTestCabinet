@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type {
-  LadderOut,
-  LadderProgress,
-} from "@test-cabinet/run-record/ladders";
+import type { LadderOut, LadderProgress } from "@clockwyrks/run-record/ladders";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -12,6 +9,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -130,7 +128,7 @@ export function LaddersPage() {
           message:
             `Delete the ladder “${name}”? This removes its rungs, every climber's ` +
             `recorded verdicts, and their steering, and cannot be undone. Runs it ` +
-            `already launched are left alone — halt it first if you want those stopped.`,
+            `already launched are left alone; halt it first if you want those stopped.`,
           confirmLabel: "Delete ladder",
         }))
       ) {
@@ -156,7 +154,7 @@ export function LaddersPage() {
         <PromptHeader command="--ladders" comment={<>// your ladders</>} />
         <AccountTabs active="ladders" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use ladders — they are saved to your account, and a rung is
+          Sign in to use ladders. They are saved to your account, and a rung is
           gated on <em>your</em> reviews. Use the account control in the top bar
           to register or log in.
         </p>
@@ -166,15 +164,18 @@ export function LaddersPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader command="--ladders" comment={<>// your ladders</>} />
-        <Link className={exec.primary} to={routes.accountLadderNew()}>
-          New ladder
-        </Link>
-      </div>
+      <PromptHeader
+        command="--ladders"
+        comment={<>// your ladders</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountLadderNew()}>
+            + New ladder
+          </Link>
+        }
+      />
       <AccountTabs active="ladders" />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState size="section" label="Loading ladders…" />
@@ -184,7 +185,7 @@ export function LaddersPage() {
             You have no ladders yet. A ladder is an ordered climb: pin the cases
             you want attempted easiest-first, point a set of models at it, and
             each model climbs on its own until its runs stop clearing the bar
-            you set — so you find out where each one&rsquo;s wall is instead of
+            you set, so you find out where each one&rsquo;s wall is instead of
             paying for a full matrix.
           </p>
           <Link className={exec.primary} to={routes.accountLadderNew()}>

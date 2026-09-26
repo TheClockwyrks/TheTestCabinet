@@ -1,0 +1,143 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/forms" as f;
+
+// The engine replay player: a canvas the recording is re-drawn into, the transport
+// that drives it, and the notes it puts under a frame it could not draw whole.
+// Sized to whatever it is given — it sits inline in a review pane beside another
+// copy of itself, not in an overlay of its own.
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The canvas takes its BACKING STORE from the surface the frame was recorded into
+// (device pixels), so the recorded operations — which are in that surface's
+// coordinates — land exactly where the build put them. Its laid-out size is the
+// pane's width, with the height following the backing store's aspect ratio, so the
+// same picture reads at whatever width the review pane happens to be.
+.canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface;
+}
+
+// The showcase stage: the canvas with the scrubber laid over it. The overlay is
+// positioned, so the stage is exactly as tall as the picture and a carousel
+// stepping between a screenshot and a replay holds its height.
+.stage {
+  position: relative;
+  min-width: 0;
+}
+
+// Revealed on hover, or whenever the control itself has focus so it stays
+// reachable from the keyboard.
+.overlayScrub {
+  position: absolute;
+  left: t.$space-sm;
+  right: t.$space-sm;
+  bottom: t.$space-sm;
+  width: auto;
+  accent-color: t.$color-accent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  .stage:hover &,
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+// A frame the player could not draw whole. Per frame, not per recording: the
+// operation that could not be reproduced is missing from THIS picture, and the
+// frame beside it may be complete.
+.note {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A recording that could not be fetched, read, or trusted. It replaces the canvas
+// rather than sitting under it: showing nothing is the point.
+.error {
+  margin: 0;
+  padding: t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline dashed t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
+// The transport: play/pause, the frame scrubber, the position readout, and the
+// speed. One row, driving every canvas the clock feeds — for a review pair that is
+// both panes at once.
+.controls {
+  display: flex;
+  gap: t.$space-sm;
+  align-items: center;
+  flex-wrap: wrap;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-xs t.$space-sm;
+}
+
+.control {
+  flex: none;
+  font-family: var(--ttc-font);
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: t.$color-surface;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.controlLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The scrubber takes the row's spare width, so a long recording gets a usable
+// travel even in a half-width review pane.
+.scrub {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  accent-color: t.$color-accent;
+}
+
+// Tabular figures so the frame counter does not jitter the row as it counts up.
+.position {
+  flex: none;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.speed {
+  flex: none;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  background-color: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+}

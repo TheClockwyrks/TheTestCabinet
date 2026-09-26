@@ -1,0 +1,21 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the engine is vendored into this
+# repository at `.vendor/engine/@clockwyrks/simple-2d/`, prebuilt, and its own
+# `dist/` is committed with the seed. An unanchored `dist/` would match that
+# directory too and leave the build unable to resolve the engine.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

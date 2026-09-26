@@ -1,0 +1,112 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 700,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "shards",
+      "shape": "point",
+      "position": [64.0, 64.0, 0.0],
+      "extent": {
+        "radius": 1.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 56,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 280.0,
+      "lifetimeSpread": 80.0,
+      "speed": 240.0,
+      "speedSpread": 70.0,
+      "direction": [1.0, 0.0, 0.0],
+      "coneAngle": 360.0,
+      "seed": 11,
+      "forces": {
+        "drag": 2.2,
+        "radial": 40.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 2.4,
+          "to": 0.35
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#eaf3f8",
+            "at": 0.35
+          },
+          {
+            "color": "#9fb2bf",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.5
+      }
+    },
+    {
+      "name": "dust",
+      "shape": "disc",
+      "position": [64.0, 64.0, 0.0],
+      "extent": {
+        "radius": 10.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 20,
+        "atMs": 20.0
+      },
+      "lifetimeMs": 520.0,
+      "lifetimeSpread": 140.0,
+      "speed": 60.0,
+      "speedSpread": 25.0,
+      "direction": [1.0, 0.0, 0.0],
+      "coneAngle": 360.0,
+      "seed": 12,
+      "forces": {
+        "drag": 1.8
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 1.8,
+          "to": 0.6
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.7,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#dfe9ef",
+            "at": 0.0
+          },
+          {
+            "color": "#8b9ba7",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

@@ -22,9 +22,9 @@ The build is a small state machine. Each state has a clear screen and controls.
      (below), then drops the player into the game.
    - **HOW TO PLAY** — opens a controls/how-to screen (below), from which the
      player returns to the title.
-   No class or phase is chosen here — those come later. This screen is **static on
-   load** (it does not animate a live world behind it in a way that changes what a
-   screenshot shows), so it is the deterministic view the harness checks.
+     No class or phase is chosen here — those come later. This screen is **static on
+     load** (it does not animate a live world behind it in a way that changes what a
+     screenshot shows), so it is the deterministic view the harness checks.
 2. **Starting-phase prompt.** Reached from **PLAY**. Offers **A**, **B**, or **C**
    (`specs/phases.md`), with A the default and a short note that B and C drop
    straight into the tougher later assault. Confirming a phase enters the siege at
@@ -53,7 +53,7 @@ The build is a small state machine. Each state has a clear screen and controls.
 6. **Defeat.** Shown when redoubt C falls. Displays `THE LINE HAS FALLEN` (or
    similar), the **survival time** reached and the **total kills**, with
    **REDEPLOY** (back to the title) and **DEPLOY AGAIN** (restart a fresh siege at
-   the same starting phase). See `reference/game-over.png`.
+   the same starting phase).
 
 Every state must be reachable and behave as described.
 

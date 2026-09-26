@@ -62,6 +62,9 @@ fn run_parses_required_arguments() {
             // Omitting --orchestrator defaults to the single-session one-shot
             // orchestrator.
             assert_eq!(args.orchestrator, "one-shot");
+            // Omitting --engine defaults to `none`: no runtime, which is what
+            // every run looked like before engines existed.
+            assert_eq!(args.engine, "none");
             // Omitting --auth-mode keeps the backend's default auth behavior.
             assert!(args.auth_mode.is_none());
         }
@@ -84,8 +87,11 @@ fn run_accepts_an_orchestrator_and_auth_mode_selection() {
         "claude",
         "--model",
         "some-model-id",
+        // Any slug parses here — the flag is free-form and resolution (built-in or
+        // external) happens later, so an unknown one is rejected by the catalog,
+        // not by the parser.
         "--orchestrator",
-        "ralph",
+        "looper",
         "--auth-mode",
         "subscription",
     ])
@@ -93,9 +99,38 @@ fn run_accepts_an_orchestrator_and_auth_mode_selection() {
 
     match cli.command {
         Command::Run(args) => {
-            assert_eq!(args.orchestrator, "ralph");
+            assert_eq!(args.orchestrator, "looper");
             assert_eq!(args.auth_mode.as_deref(), Some("subscription"));
         }
+        other => panic!("expected a run command, got {other:?}"),
+    }
+}
+
+#[test]
+fn run_accepts_an_engine_selection() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "run",
+        "--test-case",
+        "carom",
+        "--version",
+        "3.0.0",
+        "--variant",
+        "base",
+        "--harness",
+        "claude",
+        "--model",
+        "some-model-id",
+        // Any slug parses here, exactly as `--orchestrator` does: the catalogue is
+        // consulted later (and the case's supported set later still), so an unknown
+        // engine is rejected by resolution rather than by the parser.
+        "--engine",
+        "simple-2d",
+    ])
+    .expect("a run invocation with an engine selection should parse");
+
+    match cli.command {
+        Command::Run(args) => assert_eq!(args.engine, "simple-2d"),
         other => panic!("expected a run command, got {other:?}"),
     }
 }
@@ -300,6 +335,9 @@ fn validate_parses_required_arguments() {
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
             assert_eq!(args.variant, "base");
+            // As on `tcab run`, omitting --engine validates the build as an
+            // engineless one.
+            assert_eq!(args.engine, "none");
         }
         other => panic!("expected a validate command, got {other:?}"),
     }
@@ -326,6 +364,8 @@ fn seed_parses_required_arguments_and_defaults_out_dir() {
             assert_eq!(args.variant, "base");
             // With no override, the seeded repository lands under `tmp/`.
             assert_eq!(args.out_dir, std::path::PathBuf::from("tmp"));
+            // And with no engine named, nothing is vendored into it.
+            assert_eq!(args.engine, "none");
         }
         other => panic!("expected a seed command, got {other:?}"),
     }
@@ -379,6 +419,9 @@ fn prompt_parses_required_arguments() {
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
             assert_eq!(args.variant, "frenzy");
+            // The prompt renders for `none` unless an engine is named, which is
+            // the text a run without `--engine` would hand the harness.
+            assert_eq!(args.engine, "none");
         }
         other => panic!("expected a prompt command, got {other:?}"),
     }
@@ -413,6 +456,80 @@ fn orchestrators_parses_with_json_flag() {
     match cli.command {
         Command::Orchestrators(args) => assert!(args.json),
         other => panic!("expected an orchestrators command, got {other:?}"),
+    }
+}
+
+#[test]
+fn engines_parses_with_json_flag() {
+    let cli = Cli::try_parse_from(["tcab", "engines", "--json"])
+        .expect("the engines subcommand should parse");
+
+    match cli.command {
+        Command::Engines(args) => assert!(args.json),
+        other => panic!("expected an engines command, got {other:?}"),
+    }
+}
+
+#[test]
+fn local_commands_accept_an_engine_selection() {
+    // The three commands that reproduce a run's inputs locally take the same
+    // `--engine` as `tcab run`, because each of them renders or materializes
+    // something the engine changes: the seeded tree, the prompt, and what the
+    // build is validated against.
+    let seed = Cli::try_parse_from([
+        "tcab",
+        "seed",
+        "--test-case",
+        "carom",
+        "--version",
+        "3.0.0",
+        "--variant",
+        "base",
+        "--engine",
+        "simple-2d",
+    ])
+    .expect("a seed invocation with an engine selection should parse");
+    match seed.command {
+        Command::Seed(args) => assert_eq!(args.engine, "simple-2d"),
+        other => panic!("expected a seed command, got {other:?}"),
+    }
+
+    let validate = Cli::try_parse_from([
+        "tcab",
+        "validate",
+        "--implementation",
+        "/tmp/impl",
+        "--test-case",
+        "carom",
+        "--version",
+        "3.0.0",
+        "--variant",
+        "base",
+        "--engine",
+        "simple-2d",
+    ])
+    .expect("a validate invocation with an engine selection should parse");
+    match validate.command {
+        Command::Validate(args) => assert_eq!(args.engine, "simple-2d"),
+        other => panic!("expected a validate command, got {other:?}"),
+    }
+
+    let prompt = Cli::try_parse_from([
+        "tcab",
+        "prompt",
+        "--test-case",
+        "carom",
+        "--version",
+        "3.0.0",
+        "--variant",
+        "base",
+        "--engine",
+        "simple-2d",
+    ])
+    .expect("a prompt invocation with an engine selection should parse");
+    match prompt.command {
+        Command::Prompt(args) => assert_eq!(args.engine, "simple-2d"),
+        other => panic!("expected a prompt command, got {other:?}"),
     }
 }
 
@@ -638,5 +755,59 @@ fn capture_baselines_requires_a_slug() {
     assert!(
         Cli::try_parse_from(["tcab", "capture-baselines"]).is_err(),
         "the case slug is required"
+    );
+}
+
+#[test]
+fn analyze_parses_a_bare_directory() {
+    let cli = Cli::try_parse_from(["tcab", "analyze", "crates/gg"])
+        .expect("a directory is the only required argument");
+
+    match cli.command {
+        Command::Analyze(args) => {
+            assert_eq!(args.path, "crates/gg");
+            assert!(args.seed_commit.is_none());
+            assert!(!args.json);
+            assert_eq!(args.top, 10);
+            // An arbitrary directory cannot honestly claim nothing has built in it, so the
+            // recorded basis defaults to the conservative one.
+            assert_eq!(args.tree_basis, TreeBasisArg::PostValidation);
+        }
+        other => panic!("expected an analyze command, got {other:?}"),
+    }
+}
+
+#[test]
+fn analyze_parses_its_options() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "analyze",
+        "/runs/abc/implementation",
+        "--seed-commit",
+        "6f03bfee",
+        "--tree-basis",
+        "pre-validation",
+        "--top",
+        "3",
+        "--json",
+    ])
+    .expect("a fully specified analyze invocation should parse");
+
+    match cli.command {
+        Command::Analyze(args) => {
+            assert_eq!(args.seed_commit.as_deref(), Some("6f03bfee"));
+            assert_eq!(args.tree_basis, TreeBasisArg::PreValidation);
+            assert_eq!(args.top, 3);
+            assert!(args.json);
+        }
+        other => panic!("expected an analyze command, got {other:?}"),
+    }
+}
+
+#[test]
+fn analyze_requires_a_directory() {
+    assert!(
+        Cli::try_parse_from(["tcab", "analyze"]).is_err(),
+        "the directory is required — there is no useful default tree to analyse"
     );
 }

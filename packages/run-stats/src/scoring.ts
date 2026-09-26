@@ -3,7 +3,7 @@
 // run's several reviews into one figure.
 //
 // This module is the framework-free half of what used to live in
-// `@test-cabinet/ui`'s `ratings` module. The rules are shared by everything that
+// `@clockwyrks/ui`'s `ratings` module. The rules are shared by everything that
 // has to agree on a number — the consoles, the static gallery, the public read
 // edge, and anything that freezes a figure and later recomputes it — so they
 // cannot live in a React package. The *display* metadata that went with them
@@ -14,12 +14,16 @@
 // (`crates/core/src/review.rs`); the mirrors are named per function and must be
 // kept in lockstep, since the backend and these clients score the same runs.
 
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewVerdict,
   VerdictStatus,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 
 /** Every rating, ordered best to worst. */
 export const RATINGS: readonly Rating[] = [
@@ -52,6 +56,112 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
   }
   return worst;
 }
+
+/**
+ * Every **aesthetic** rating, ordered best to worst — the second rating channel,
+ * separate from the functional {@link Rating}. A reviewer supplies one tier
+ * **run-wide** — for the whole build, not per scoring domain — on a
+ * validator-rated run only; a legacy run never carries one. `amazing` is the
+ * normal maximum and `legendary` is exceptional and reserved. Mirrors
+ * `AestheticRating::ALL` in the Rust core.
+ */
+export const AESTHETIC_RATINGS: readonly AestheticRating[] = [
+  "legendary",
+  "amazing",
+  "good",
+  "okay",
+  "slop",
+];
+
+/** Narrowing type guard for {@link AestheticRating}. */
+export function isAestheticRating(value: string): value is AestheticRating {
+  return (AESTHETIC_RATINGS as readonly string[]).includes(value);
+}
+
+/**
+ * The worst (lowest) aesthetic rating among `ratings`, or null when empty. Like
+ * {@link worstRating}, a run's overall aesthetic rating is the worst across its
+ * reviews' run-wide tiers. Mirrors `AestheticRating::worst` in the Rust core.
+ */
+export function worstAestheticRating(
+  ratings: readonly AestheticRating[],
+): AestheticRating | null {
+  let worst: AestheticRating | null = null;
+  let worstRank = -1;
+  for (const rating of ratings) {
+    const rank = AESTHETIC_RATINGS.indexOf(rating);
+    if (rank > worstRank) {
+      worstRank = rank;
+      worst = rating;
+    }
+  }
+  return worst;
+}
+
+/**
+ * The aggregate **aesthetic** rating across a run's reviews: the worst (lowest)
+ * run-wide tier any reviewer gave, or null when none carry one (a legacy run, or
+ * a validator-rated run nobody has reviewed yet). Each entry is one review's
+ * run-wide tier — a legacy stored row's per-domain entries collapse to their
+ * worst tier before reaching here (see {@link reviewAesthetic}). The same rule
+ * as {@link aggregateRating}, on the aesthetic channel. Mirrors
+ * `aggregate_aesthetic` in the Rust core.
+ */
+export function aggregateAestheticRating(
+  reviews: readonly (AestheticRating | null | undefined)[],
+): AestheticRating | null {
+  return worstAestheticRating(
+    reviews.filter((tier): tier is AestheticRating => tier != null),
+  );
+}
+
+/**
+ * A review's run-wide aesthetic tier, read compatibly across contract vintages:
+ * the `aesthetic` field when the review carries one, else the **worst** tier
+ * across a legacy row's per-domain `aesthetics` entries (which equals the old
+ * per-domain aggregation, so a legacy review's displayed value does not change),
+ * else null (a legacy run's review, which has no aesthetic channel). The read
+ * helper behind {@link aggregateAestheticRating}'s inputs; mirrors how the Rust
+ * backend resolves a stored row's tier (`aesthetic ?? worst(aesthetics)`).
+ */
+export function reviewAesthetic(review: {
+  aesthetic?: AestheticRating | null;
+  aesthetics?: readonly DomainAesthetic[];
+}): AestheticRating | null {
+  return (
+    review.aesthetic ??
+    worstAestheticRating((review.aesthetics ?? []).map((a) => a.rating))
+  );
+}
+
+/**
+ * Every failure cap, from the most to the least severe. A review item on a
+ * validator-rated case version declares one: the highest functional rating its
+ * domains may reach while the item's validator fails. `flawless` is never a cap —
+ * a failure always costs something. Mirrors `FailureCap::ALL` in the Rust core.
+ */
+export const FAILURE_CAPS: readonly FailureCap[] = [
+  "broken",
+  "scuffed",
+  "passable",
+  "great",
+];
+
+/** Narrowing type guard for {@link FailureCap}. */
+export function isFailureCap(value: string): value is FailureCap {
+  return (FAILURE_CAPS as readonly string[]).includes(value);
+}
+
+/**
+ * The functional {@link Rating} each {@link FailureCap} bounds a domain to while
+ * its item fails. Mirrors `FailureCap::rating` in the Rust core.
+ */
+export const FAILURE_CAP_RATING: Record<FailureCap, Rating> = {
+  broken: "broken",
+  scuffed: "scuffed",
+  passable: "passable",
+  great: "great",
+};
 
 /**
  * One of the five **graded** tiers a game jam scores on (as opposed to the binary
@@ -160,6 +270,13 @@ export interface Score {
 /** A sub-item of a {@link WeightedItem} (a review item under a category). */
 export interface WeightedSubItem {
   id: string;
+  /** On a validator-rated version, the highest functional rating this point's
+   * `domains` may reach while its validator fails; absent on a legacy version.
+   * Mirrors `SubReviewItem::failure_cap` in the Rust core. */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this point
+   * lowers; absent/empty on a legacy version. Mirrors `SubReviewItem::domains`. */
+  domains?: readonly string[];
   /** How many points this sub-item is worth. Defaults to 1 when omitted (a
    * legacy name-only sub-item, or a categories item that left `weight` implicit);
    * the parent category's weight is the sum of its sub-items' weights. */
@@ -176,6 +293,12 @@ export interface WeightedSubItem {
 export interface WeightedItem {
   id: string;
   weight: number;
+  /** The failure cap of a whole-item point on a validator-rated version (a
+   * category carries none — its points do). Mirrors `ReviewItem::failure_cap`. */
+  failureCap?: FailureCap | null;
+  /** The domains a failure of a whole-item point lowers on a validator-rated
+   * version. Mirrors `ReviewItem::domains`. */
+  domains?: readonly string[];
   /** Whether the item is graded on the five-level scale (a game-jam category)
    * rather than pass/fail. When true it is worth `weight × 10` points and earns the
    * graded tier's points times its weight; the two scales never mix within a case. */
@@ -248,6 +371,49 @@ export function mergeReviewItems<
     }
   }
   return result;
+}
+
+/**
+ * Restrict an effective checklist (the output of {@link mergeReviewItems}) to the
+ * points a run built on `engine` actually carries. A point whose validator names a
+ * set of engines is only decided on those: a whole item its validator does not
+ * cover is dropped, a sub-item its validator does not cover is dropped from its
+ * parent, and an item that declared sub-items and has none left is dropped with
+ * them. A point with no validator, or one whose validator names no engines, is
+ * carried on every engine. Non-mutating. Mirrors
+ * `TestCaseVersion::review_items_for_engine` in the Rust core
+ * (crates/core/src/test_case.rs).
+ */
+export function reviewItemsForEngine<
+  T extends {
+    validation?: EngineScopedValidation | null;
+    subItems?: readonly { validation?: EngineScopedValidation | null }[];
+  },
+>(items: readonly T[], engine: string): T[] {
+  const covers = (validation: EngineScopedValidation | null | undefined) =>
+    !validation ||
+    !validation.engines ||
+    validation.engines.length === 0 ||
+    validation.engines.includes(engine);
+  const kept: T[] = [];
+  for (const item of items) {
+    if (!covers(item.validation)) continue;
+    if (!item.subItems || item.subItems.length === 0) {
+      kept.push({ ...item });
+      continue;
+    }
+    const subItems = item.subItems.filter((sub) => covers(sub.validation));
+    if (subItems.length === 0) continue;
+    kept.push({ ...item, subItems });
+  }
+  return kept;
+}
+
+/** The engine scoping of a point's validator, as {@link reviewItemsForEngine}
+ * reads it: the engine slugs the validator decides its point on, empty or absent
+ * for a validator active on every engine the case supports. */
+export interface EngineScopedValidation {
+  engines?: readonly string[];
 }
 
 /**
@@ -365,11 +531,14 @@ export function scoreChecklist(
  * therefore fractional. Mirrors `AggregateScore` in the Rust core.
  */
 export interface AggregateScore {
-  /** The mean weight earned across the run's reviews. */
+  /** The mean weight earned across the run's reviews, or the validator-decided
+   * weight earned on a validator-rated run. */
   earned: number;
   /** The total weight available — identical across the run's reviews. */
   total: number;
-  /** How many reviews the average is taken over. */
+  /** How many reviews the average is taken over. `0` for a validator-scored run
+   * ({@link validatorScore}), whose score comes from the validators rather than
+   * from any review. */
   reviews: number;
 }
 
@@ -428,4 +597,432 @@ export function aggregateOverallGrade(
     if (grade) grades.push(grade);
   }
   return worstGrade(grades);
+}
+
+/**
+ * **The automated toolchain gate, applied to a run's aggregate rating.**
+ *
+ * A run whose case declares a gating `typecheck` and whose typecheck ran and
+ * exited non-zero is `broken`, whatever its reviewers said, because code that does
+ * not compile is not reviewable. `gated` is the run record's `toolchain` block
+ * answering {@link isToolchainGated}; `reviewed` is what {@link aggregateRating}
+ * produced.
+ *
+ * The gate is applied *here*, over the aggregate, and never written into a
+ * reviewer's stored verdicts: those are evidence, they are edited by their author,
+ * and a run re-evaluated with the gate lifted must recover the reviewers' real
+ * conclusion unchanged. A gated run is `broken` even with no reviews at all — the
+ * gate is a statement about the build, not an average of opinions.
+ *
+ * Mirrors `gated_rating` in the Rust core.
+ */
+export function gatedRating(
+  gated: boolean,
+  reviewed: Rating | null,
+): Rating | null {
+  return gated ? "broken" : reviewed;
+}
+
+/**
+ * **The automated toolchain gate, applied to a run's aggregate score.**
+ *
+ * A gated run scores zero and keeps its denominator, so it reads as `0 / total`
+ * rather than as unscored. A gated run with no reviews stays null: the score is
+ * defined over reviews, so there is no denominator to report a zero against, and
+ * its `broken` rating is the signal instead. Mirrors `gated_score` in the Rust
+ * core.
+ */
+export function gatedScore(
+  gated: boolean,
+  reviewed: AggregateScore | null,
+): AggregateScore | null {
+  if (!gated || reviewed === null) return reviewed;
+  return { ...reviewed, earned: 0 };
+}
+
+/**
+ * **The automated toolchain gate, applied to a game jam's overall grade.**
+ *
+ * A jam has no scoring domains — its badge is the reviewers' whole-game grade — so
+ * the gate forces the worst tier there instead. Mirrors `gated_overall_grade` in
+ * the Rust core.
+ */
+export function gatedOverallGrade(
+  gated: boolean,
+  reviewed: GradeStatus | null,
+): GradeStatus | null {
+  return gated ? "broken" : reviewed;
+}
+
+/**
+ * The gate predicate itself: whether a run record's toolchain block disqualifies
+ * the run. Exactly `typecheck.ran && !typecheck.succeeded` — a typecheck that never
+ * ran has learned nothing about whether the code compiles and must not gate.
+ * Mirrors `ToolchainSummary::gates` in the Rust core.
+ */
+export function isToolchainGated(
+  toolchain:
+    | { typecheck: { ran: boolean; succeeded: boolean } }
+    | null
+    | undefined,
+): boolean {
+  return toolchain
+    ? toolchain.typecheck.ran && !toolchain.typecheck.succeeded
+    : false;
+}
+
+/**
+ * The verdicts a run's validators decided, synthesized as {@link ReviewVerdict}s
+ * — the **failure semantics** shared by {@link automatedOnlyScore} and
+ * {@link validatorDomainRatings}:
+ * - A script with decided verdicts contributes each (`pass` → `pass`, else `fail`).
+ * - A script that suffered a contract failure (`ran === false`) with no decided
+ *   verdict **fails** the point it backs.
+ * - A script recorded inconclusive (`preconditionUnmet`) is skipped entirely, as
+ *   is a clean run that emitted no verdict.
+ *
+ * The ids of the returned verdicts are exactly the auto-covered points. Mirrors
+ * `automated_verdicts` in the Rust core (crates/core/src/comparison.rs).
+ */
+export function automatedVerdicts(
+  debugScripts: readonly DebugScriptResult[],
+): ReviewVerdict[] {
+  const verdicts: ReviewVerdict[] = [];
+  for (const script of debugScripts) {
+    if (script.preconditionUnmet) continue;
+    if (script.verdicts.length === 0) {
+      if (!script.ran) {
+        const id =
+          script.subItemId != null
+            ? subItemVerdictId(script.itemId, script.subItemId)
+            : script.itemId;
+        verdicts.push({ id, status: "fail" });
+      }
+      continue;
+    }
+    for (const v of script.verdicts) {
+      verdicts.push({ id: v.id, status: v.pass ? "pass" : "fail" });
+    }
+  }
+  return verdicts;
+}
+
+/**
+ * A run's **automated-only** score: {@link scoreChecklist} restricted to the
+ * checklist points a machine actually checked, so both numerator and denominator
+ * drop the human-only points (a Carom run whose 68 automated points all pass reads
+ * 68/68, not 68/70). `items` must already be the run's **effective** checklist. A
+ * thin wrapper over {@link coveredScore} on the {@link automatedVerdicts}. Mirrors
+ * `automated_only_score` in the Rust core (crates/core/src/comparison.rs).
+ */
+export function automatedOnlyScore(
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): Score {
+  return coveredScore(items, automatedVerdicts(debugScripts));
+}
+
+/**
+ * Score a slice of `verdicts` over `items`, restricting **both** numerator and
+ * denominator to the points the verdicts actually decide: the covered set is
+ * exactly the verdict ids, an undecided point is excluded rather than failed, and
+ * an erratum-excluded point (`scored === false`) counts toward neither side.
+ *
+ * The verdict-slice core of {@link automatedOnlyScore}, generalized so a review's
+ * {@link effectiveVerdicts | effective checklist} — the validators' verdicts
+ * overlaid with the reviewer's overrides — scores through the identical rule (see
+ * {@link validatorReviewScore}). Mirrors `covered_score` in the Rust core
+ * (crates/core/src/comparison.rs).
+ */
+export function coveredScore(
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): Score {
+  const covered = new Set(verdicts.map((v) => v.id));
+  return scoreChecklist(restrictItemsToCovered(items, covered), verdicts);
+}
+
+/**
+ * Restrict `items` to only the checklist points in `covered`, so the score's
+ * denominator is exactly the covered weight. A binary or graded item is kept iff
+ * its own id is covered; a category keeps only its covered sub-items and is
+ * dropped entirely when none are covered. Mirrors `restrict_items_to_covered` in
+ * the Rust core (crates/core/src/comparison.rs).
+ */
+function restrictItemsToCovered(
+  items: readonly WeightedItem[],
+  covered: ReadonlySet<string>,
+): WeightedItem[] {
+  const restricted: WeightedItem[] = [];
+  for (const item of items) {
+    if (item.graded || !item.subItems || item.subItems.length === 0) {
+      if (covered.has(item.id)) restricted.push(item);
+    } else {
+      const subItems = item.subItems.filter((sub) =>
+        covered.has(subItemVerdictId(item.id, sub.id)),
+      );
+      if (subItems.length > 0) restricted.push({ ...item, subItems });
+    }
+  }
+  return restricted;
+}
+
+/**
+ * **The validator-decided functional rating, per domain.**
+ *
+ * On a validator-rated run every domain starts `flawless`. For each **scored**
+ * validated point that **failed** (the {@link automatedVerdicts} semantics) each of
+ * the point's declared `domains` is lowered to `min(current, FAILURE_CAP_RATING[cap])`,
+ * so a domain ends at the lowest cap among its failures. An inconclusive point, a
+ * point with no script result, and a point excluded from scoring (`scored === false`)
+ * never lower anything; a verdict naming no declared point is ignored. `items` must
+ * be the run's effective checklist and `domains` its effective domain ids, in order.
+ * A thin wrapper over {@link verdictDomainRatings}, which applies the same
+ * failure-cap rule to a verdict slice the caller already holds. Mirrors
+ * `validator_domain_ratings` in the Rust core.
+ */
+export function validatorDomainRatings(
+  domains: readonly { id: string }[],
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): DomainRating[] {
+  return verdictDomainRatings(domains, items, automatedVerdicts(debugScripts));
+}
+
+/**
+ * The per-domain functional ratings a slice of `verdicts` decides — the
+ * failure-cap core of {@link validatorDomainRatings}, generalized so a review's
+ * {@link effectiveVerdicts | effective checklist} (validator verdicts overlaid
+ * with the reviewer's overrides) rates through the identical rule.
+ *
+ * Every domain starts `flawless`; each **failing** verdict on a **scored** point
+ * lowers each of the point's declared `domains` to
+ * `min(current, FAILURE_CAP_RATING[cap])`. A point with no verdict, a point
+ * excluded from scoring (`scored === false`, an erratum), and a verdict naming no
+ * declared point never lower anything. Mirrors `verdict_domain_ratings` in the
+ * Rust core.
+ */
+export function verdictDomainRatings(
+  domains: readonly { id: string }[],
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): DomainRating[] {
+  const ratings: DomainRating[] = domains.map((domain) => ({
+    domain: domain.id,
+    rating: "flawless",
+  }));
+  const lower = (domain: string, cap: FailureCap) => {
+    const entry = ratings.find((r) => r.domain === domain);
+    if (!entry) return;
+    entry.rating =
+      worstRating([entry.rating, FAILURE_CAP_RATING[cap]]) ?? entry.rating;
+  };
+  for (const verdict of verdicts) {
+    if (verdict.status !== "fail") continue;
+    const point = failingPoint(items, verdict.id);
+    if (!point) continue;
+    for (const domain of point.domains) lower(domain, point.cap);
+  }
+  return ratings;
+}
+
+/**
+ * The failure cap and domains of the **scored** point `verdictId` names in `items`,
+ * or null when it names no scored point or the point declares no cap (a legacy
+ * point, which cannot lower a domain). Mirrors `failing_point` in the Rust core.
+ */
+function failingPoint(
+  items: readonly WeightedItem[],
+  verdictId: string,
+): { cap: FailureCap; domains: readonly string[] } | null {
+  for (const item of items) {
+    if (item.scored === false) continue;
+    if (!item.subItems || item.subItems.length === 0) {
+      if (item.id === verdictId) {
+        return item.failureCap
+          ? { cap: item.failureCap, domains: item.domains ?? [] }
+          : null;
+      }
+      continue;
+    }
+    for (const sub of item.subItems) {
+      if (
+        sub.scored !== false &&
+        subItemVerdictId(item.id, sub.id) === verdictId
+      ) {
+        return sub.failureCap
+          ? { cap: sub.failureCap, domains: sub.domains ?? [] }
+          : null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * **The validator-decided functional rating of a run**: the worst across its
+ * {@link validatorDomainRatings}, composed with the toolchain gate
+ * ({@link gatedRating}). Always non-null for a validator-rated run — with zero
+ * failures it is `flawless` — since the domain set is never empty. Mirrors
+ * `validator_rating` in the Rust core.
+ */
+export function validatorRating(
+  gated: boolean,
+  domainRatings: readonly DomainRating[],
+): Rating | null {
+  return gatedRating(gated, worstRating(domainRatings.map((r) => r.rating)));
+}
+
+/**
+ * **The validator-decided score of a run**: the {@link automatedOnlyScore} over the
+ * run's effective `items` and its record's `debugScripts`, composed with the
+ * toolchain gate ({@link gatedScore}). This is the run's score while it has no
+ * reviews — available the moment the run completes (`reviews` is `0`); once
+ * reviews exist, {@link validatorAggregateScore} folds their overrides in. A thin
+ * wrapper over {@link coveredScore} on the {@link automatedVerdicts}. Mirrors
+ * `validator_score` in the Rust core.
+ */
+export function validatorScore(
+  gated: boolean,
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): AggregateScore {
+  return verdictsOwnScore(gated, items, automatedVerdicts(debugScripts));
+}
+
+/**
+ * The verdict-slice core of {@link validatorScore}, and the zero-review fixed
+ * point of {@link validatorAggregateScore}: the {@link coveredScore} of
+ * `verdicts` over `items`, gated, with `reviews` `0`. Mirrors
+ * `verdicts_own_score` in the Rust core.
+ */
+function verdictsOwnScore(
+  gated: boolean,
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): AggregateScore {
+  const { earned, total } = coveredScore(items, verdicts);
+  return { earned: gated ? 0 : earned, total, reviews: 0 };
+}
+
+/**
+ * A review's **effective checklist** on a validator-rated run: the validators'
+ * verdicts (`auto`, from {@link automatedVerdicts}) overlaid with that review's
+ * `overrides` — the reviewer wins per verdict id, and an override naming a point
+ * the validators left undecided (an unmet precondition, say) decides it, appended
+ * after the validators' points. A point the reviewer left untouched keeps the
+ * validators' verdict, so a review with no overrides is exactly the validators'
+ * checklist. Mirrors `effective_verdicts` in the Rust core.
+ */
+export function effectiveVerdicts(
+  auto: readonly ReviewVerdict[],
+  overrides: readonly ReviewVerdict[],
+): ReviewVerdict[] {
+  const effective = auto.map(
+    (verdict) => overrides.find((o) => o.id === verdict.id) ?? verdict,
+  );
+  for (const verdict of overrides) {
+    if (!auto.some((a) => a.id === verdict.id)) effective.push(verdict);
+  }
+  return effective;
+}
+
+/**
+ * One review's functional rating on a validator-rated run: the worst across the
+ * per-domain ratings its {@link effectiveVerdicts | effective checklist} decides
+ * (validators' `auto` verdicts overlaid with the review's `overrides`), with the
+ * toolchain gate ({@link gatedRating}) on top. A review with no overrides
+ * reproduces {@link validatorRating} over the validators' own domain ratings
+ * exactly. Mirrors `validator_review_rating` in the Rust core.
+ */
+export function validatorReviewRating(
+  gated: boolean,
+  domains: readonly { id: string }[],
+  items: readonly WeightedItem[],
+  auto: readonly ReviewVerdict[],
+  overrides: readonly ReviewVerdict[],
+): Rating | null {
+  const effective = effectiveVerdicts(auto, overrides);
+  return validatorRating(
+    gated,
+    verdictDomainRatings(domains, items, effective),
+  );
+}
+
+/**
+ * One review's score on a validator-rated run: the {@link coveredScore} of its
+ * {@link effectiveVerdicts | effective checklist} — numerator **and** denominator
+ * restricted to the points holding an effective verdict, mirroring
+ * {@link automatedOnlyScore}'s exclusion rule, with erratum-excluded points
+ * counting toward neither side — zeroed by the toolchain gate. A review with no
+ * overrides reproduces the automated-only score exactly; one that decides a point
+ * the validators left undecided grows the denominator by that point's weight.
+ * Mirrors `validator_review_score` in the Rust core.
+ */
+export function validatorReviewScore(
+  gated: boolean,
+  items: readonly WeightedItem[],
+  auto: readonly ReviewVerdict[],
+  overrides: readonly ReviewVerdict[],
+): Score {
+  const score = coveredScore(items, effectiveVerdicts(auto, overrides));
+  return { earned: gated ? 0 : score.earned, total: score.total };
+}
+
+/**
+ * A validator-rated run's aggregate functional rating across its `reviews` (each
+ * one review's overrides): with zero reviews, the validators' own rating
+ * ({@link validatorRating}, unchanged); with one or more, the **worst** across
+ * the reviews' {@link validatorReviewRating | effective ratings}. A review with
+ * no overrides reproduces the validators' figures exactly, so today's behavior is
+ * the fixed point. The toolchain gate applies at this aggregation seam
+ * ({@link gatedRating}). Mirrors `validator_aggregate_rating` in the Rust core.
+ */
+export function validatorAggregateRating(
+  gated: boolean,
+  domains: readonly { id: string }[],
+  items: readonly WeightedItem[],
+  auto: readonly ReviewVerdict[],
+  reviews: readonly (readonly ReviewVerdict[])[],
+): Rating | null {
+  let worst: Rating | null = null;
+  if (reviews.length === 0) {
+    const ratings = verdictDomainRatings(domains, items, auto);
+    worst = worstRating(ratings.map((r) => r.rating));
+  } else {
+    for (const overrides of reviews) {
+      const effective = effectiveVerdicts(auto, overrides);
+      const ratings = verdictDomainRatings(domains, items, effective);
+      const reviewWorst = worstRating(ratings.map((r) => r.rating));
+      worst = worstRating(
+        [worst, reviewWorst].filter((r): r is Rating => r !== null),
+      );
+    }
+  }
+  return gatedRating(gated, worst);
+}
+
+/**
+ * A validator-rated run's aggregate score across its `reviews` (each one review's
+ * overrides): with zero reviews, the validators' own score
+ * ({@link validatorScore}, `reviews` `0`); with one or more, the **average** of
+ * the reviews' {@link validatorReviewScore | effective scores} over the shared
+ * total (via {@link aggregateScore}). A review with no overrides reproduces the
+ * validators' figures exactly, so today's behavior is the fixed point. The
+ * toolchain gate applies at this aggregation seam ({@link gatedScore}). Mirrors
+ * `validator_aggregate_score` in the Rust core.
+ */
+export function validatorAggregateScore(
+  gated: boolean,
+  items: readonly WeightedItem[],
+  auto: readonly ReviewVerdict[],
+  reviews: readonly (readonly ReviewVerdict[])[],
+): AggregateScore {
+  const scores = reviews.map((overrides) =>
+    coveredScore(items, effectiveVerdicts(auto, overrides)),
+  );
+  const aggregate = aggregateScore(scores);
+  if (aggregate === null) return verdictsOwnScore(gated, items, auto);
+  // A scored aggregate stays scored: `gatedScore` only returns null for null.
+  return gatedScore(gated, aggregate) as AggregateScore;
 }

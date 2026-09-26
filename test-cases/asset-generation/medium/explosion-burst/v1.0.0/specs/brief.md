@@ -4,11 +4,11 @@ You are authoring a **generic action-game explosion** — the burst an action ga
 plays whenever something detonates: a shell impact, a fuel barrel, a grenade, a
 destroyed vehicle. It is a **one-shot** effect: **one burst per detonation**. The
 game plays a fresh instance each time something blows up, so the effect fires hard
-and then decays away. You are authoring the *effect* as a **system**, not a single
+and then decays away. You are authoring the _effect_ as a **system**, not a single
 frozen frame.
 
 This is a reusable, general-purpose explosion — a blinding flash, a ball of fire, a
-spray of sparks, and a puff of smoke. It should read as *the* explosion, not tied to
+spray of sparks, and a puff of smoke. It should read as _the_ explosion, not tied to
 any particular weapon or object.
 
 ## The field
@@ -123,15 +123,15 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed in the effect (no blues, greens, or purples; this is a warm
 fire explosion):
 
-| Role | Hex |
-| --- | --- |
+| Role                      | Hex       |
+| ------------------------- | --------- |
 | Flash (overexposed white) | `#fff6e6` |
-| Hot yellow | `#ffd24a` |
-| Fireball orange | `#ff6a14` |
-| Hot spark | `#ffa338` |
-| Ember (deep) | `#a2320b` |
-| Smoke (mid grey) | `#4c4740` |
-| Smoke (dark) | `#211e1a` |
+| Hot yellow                | `#ffd24a` |
+| Fireball orange           | `#ff6a14` |
+| Hot spark                 | `#ffa338` |
+| Ember (deep)              | `#a2320b` |
+| Smoke (mid grey)          | `#4c4740` |
+| Smoke (dark)              | `#211e1a` |
 
 A natural read: the **flash** runs `#fff6e6` → `#ffd24a`; the **fireball** runs
 `#ffd24a` → `#ff6a14` → `#211e1a` as it cools to smoke; the **sparks** run `#ffa338`
@@ -139,21 +139,22 @@ A natural read: the **flash** runs `#fff6e6` → `#ffd24a`; the **fireball** run
 
 ## Working the tool
 
-The `particle-3d` binary on your `PATH` is the only way to shape the effect, and you
-**author a system**, not individual particles — emitters, forces, and per-particle
-size/opacity/color curves that the review UI and the game **simulate live**. Build it
-up in sensible layers: add the flash-core, fireball, spark, and smoke emitters (as
-timed bursts at the detonation instant); set the forces (the radial outward burst via
-emission, drag, a light gravity, and the smoke's buoyancy); then set each emitter's
-color gradient, opacity curve, and size curve, and stretch the sparks along their
-velocity. Keep the timeline a **one-shot** so the effect fires once and decays to
-empty (the game replays it per hit).
+The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
+you **author a system**, not individual particles — emitters, forces, and
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the flash-core,
+fireball, spark, and smoke emitters (as timed bursts at the detonation instant);
+set the forces (the radial outward burst via emission, drag, a light gravity,
+and the smoke's buoyancy); then set each emitter's color gradient, opacity
+curve, and size curve, and stretch the sparks along their velocity. Keep the
+timeline a **one-shot** so the effect fires once and decays to empty (the game
+replays it per hit).
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json` your
 result is built from** — you **must** render before you finish or the system is
 empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the single blinding
+slightly from play to play**; judge its _character_ — the read, the single blinding
 flash, the expanding fireball, the radial spark spray, the rising smoke — across
 replays and from multiple orbit angles, not any single frame. The field size,
 duration, and fps are already seeded in a config beside your workspace, so no

@@ -1,0 +1,153 @@
+// Refract — presentation/readouts-clear-of-the-board: the readouts sit clear
+// of the board.
+//
+// specs/ui.md "playing": inside the board's extent the screen draws only the
+// board — its cells, the nodes with whatever readout a node itself carries, and
+// the beams — and every other element of the screen sits clear of that extent,
+// the mode's own readouts and the two controls included. specs/board.md gives
+// the extent: the largest board's cell centers span x 352..928 and y 152..632,
+// and every node's form reaches NODE_R (30) beyond its center. So the keep-out
+// region is that extent widened by NODE_R on every side, and the check is that
+// on a posed 7x6 board, in each mode, every run of text the frame draws sits
+// outside it — nothing overlaps a node or a beam on the board that leaves the
+// least room. GEO_7X6 carries no crystal, so nothing on it draws the one
+// readout the extent is left open for.
+//
+// The two controls are held against the same region by the RECTANGLES the
+// build reports for them, which is how specs/controls.md states their half of
+// it: a control whose label is drawn clear but whose target reaches over a node
+// takes the press a player meant for that node.
+//
+// The text is read off the frame's own draw calls, each run's horizontal
+// extent recovered from the transform, measured width, and alignment it was
+// drawn with (the harness's drawnTextSpans). A run's VERTICAL extent is read
+// at its anchor: the canvas does not record the glyphs' ascent, so a run
+// violates the region when its glyph span crosses the widened x range while
+// its anchor sits inside the widened y range. That is the one fixed
+// reading available, and it is conservative toward the build — a run whose
+// anchor sits just outside the band never fails, whatever its glyph height.
+//
+// Each mode is arranged by starting it and then posing the board over it
+// (specs/instrumentation.md: loadBoard poses an arbitrary board and moves to
+// playing; the mode is whatever was started, and each mode's own readouts are
+// the ones that must sit clear).
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, fail } from "../assert";
+import { GEO_7X6 } from "../fixtures";
+import {
+  captureStill,
+  createHarness,
+  drawnTextSpans,
+  loadBoard,
+  poseMode,
+  resetTo,
+  targetById,
+  type Harness,
+  type TextSpan,
+} from "../harness";
+import { NODE_R } from "../notation";
+import type { Mode } from "../surface";
+
+/** The board's extent — center span widened by NODE_R (specs/board.md). */
+const KEEP_OUT = {
+  left: 352 - NODE_R,
+  right: 928 + NODE_R,
+  top: 152 - NODE_R,
+  bottom: 632 + NODE_R,
+};
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/** The spans of one freshly rendered frame, with nothing older mixed in. */
+async function spansOfNextFrame(): Promise<TextSpan[]> {
+  h.calls.length = 0;
+  await h.advance(1);
+  return drawnTextSpans(h);
+}
+
+/** Every span sits outside the keep-out region. */
+function assertSpansClear(spans: TextSpan[], mode: string): void {
+  for (const span of spans) {
+    const crossesX = span.right > KEEP_OUT.left && span.left < KEEP_OUT.right;
+    const insideY = span.y >= KEEP_OUT.top && span.y <= KEEP_OUT.bottom;
+    if (crossesX && insideY) {
+      fail(
+        `every ${mode} text draw outside the board's widened extent, x ` +
+          `${KEEP_OUT.left}..${KEEP_OUT.right} by y ${KEEP_OUT.top}..` +
+          `${KEEP_OUT.bottom} (specs/ui.md: the readouts sit clear of the ` +
+          `board)`,
+        `${JSON.stringify(span.text)} drawn at x ${span.left.toFixed(0)}..` +
+          `${span.right.toFixed(0)}, y ${span.y.toFixed(0)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Both controls' target rectangles sit outside the same region.
+ *
+ * specs/controls.md states their half of the requirement over the target
+ * rather than over the drawing: "On `playing` the `clear` and `back` targets
+ * sit clear of the board, whose extent is in `specs/board.md`, so a target
+ * never covers a node." A target outside the region covers no node of any
+ * board this screen can carry, since a node's form and the region a press
+ * lands on it from are both inside NODE_R of a cell center the region holds.
+ * The rectangles are what the build reports, so a control reaching over the
+ * board fails here whatever its label's glyphs measure.
+ */
+function assertControlsClear(mode: string): void {
+  const snapshot = h.snapshot();
+  for (const id of ["clear", "back"]) {
+    const target = targetById(snapshot, id);
+    const overlaps =
+      target.x < KEEP_OUT.right &&
+      target.x + target.w > KEEP_OUT.left &&
+      target.y < KEEP_OUT.bottom &&
+      target.y + target.h > KEEP_OUT.top;
+    if (overlaps) {
+      fail(
+        `the ${mode} playing screen's "${id}" target outside the board's ` +
+          `widened extent, x ${KEEP_OUT.left}..${KEEP_OUT.right} by y ` +
+          `${KEEP_OUT.top}..${KEEP_OUT.bottom} (specs/controls.md: a target ` +
+          `never covers a node)`,
+        `${JSON.stringify(id)} covers x ${target.x.toFixed(0)}..` +
+          `${(target.x + target.w).toFixed(0)}, y ${target.y.toFixed(0)}..` +
+          `${(target.y + target.h).toFixed(0)}`,
+      );
+    }
+  }
+}
+
+async function poseLargestBoard(mode: Mode): Promise<void> {
+  await resetTo(h);
+  await poseMode(h, mode);
+  await loadBoard(h, GEO_7X6);
+  const snapshot = h.snapshot();
+  assertEqual(snapshot.screen, "playing", `${mode}: the posed board is up`);
+  assertEqual(snapshot.mode, mode, `${mode}: the mode whose readouts show`);
+}
+
+it("keeps every campaign text draw and both controls clear of the board", async () => {
+  await poseLargestBoard("campaign");
+  const spans = await spansOfNextFrame();
+  // The largest board with its readouts clear.
+  captureStill(h, "playing");
+  assertControlsClear("campaign");
+  assertSpansClear(spans, "campaign");
+});
+
+it("keeps every cascade text draw and both controls clear of the board", async () => {
+  await poseLargestBoard("cascade");
+  assertControlsClear("cascade");
+  const spans = await spansOfNextFrame();
+  assertSpansClear(spans, "cascade");
+});

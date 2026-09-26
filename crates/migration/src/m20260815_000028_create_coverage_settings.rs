@@ -8,7 +8,8 @@
 //! reviewing they can absorb in a sitting), not of any one plan, so it belongs to
 //! the account and is inherited by every plan and ladder they own. Each of those
 //! may override it with its own nullable `buffer_target` when one particular sweep
-//! warrants a deeper or shallower queue.
+//! warrants a deeper or shallower queue. A negative value in any of the three
+//! columns is "no bound"; the entity docs carry the encoding.
 //!
 //! One row per account, keyed by the auth-service `user_id`, so the table is a
 //! sibling of the legacy per-account `review_plan` rather than of the many-per-

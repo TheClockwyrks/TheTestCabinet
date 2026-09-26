@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "GgAggColumn": {
+      "description": "A column header of an aggregated result — what was asked for, so a view can label\nand format a column without re-reading the query.",
+      "properties": {
+        "field": {
+          "description": "The field it was applied to, absent for [`Count`](GgAggFunc::Count).",
+          "type": ["string", "null"]
+        },
+        "func": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json#/$defs/GgAggFunc",
+          "description": "The function that produced it."
+        },
+        "name": {
+          "description": "The column's [name](GgAgg::name), matching the\n[values](GgAggValue::name) in every bucket.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "func"],
+      "type": "object"
+    },
+    "GgAggValue": {
+      "description": "One aggregated column in one bucket.",
+      "properties": {
+        "contributing": {
+          "description": "How many of the bucket's documents contributed a value (`<= n`). **The\ndenominator**: a view renders it whenever it is less than the bucket's `n`,\nwhich is how an average over a sparse field stays honest without a `has.*`\nscope in the query.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "distribution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The distribution, for a [`dist()`](GgAggFunc::Dist) column only."
+        },
+        "name": {
+          "description": "The column's [name](GgAgg::name).",
+          "type": "string"
+        },
+        "value": {
+          "description": "The figure, or `None` when nothing in the bucket contributed one (so a whole\ncolumn can be absent even though the bucket has documents) and always for\n[`dist()`](GgAggFunc::Dist), which reports through\n[`distribution`](Self::distribution) instead.",
+          "format": "double",
+          "type": ["number", "null"]
+        }
+      },
+      "required": ["name", "contributing"],
+      "type": "object"
+    },
+    "GgBucket": {
+      "description": "One bucket of an aggregated result.",
+      "properties": {
+        "key": {
+          "description": "The composite key, one part per group-by key in stage order. Empty for the\ngrand-total bucket of an ungrouped `stats`.",
+          "items": {
+            "$ref": "#/$defs/GgBucketKeyPart"
+          },
+          "type": "array"
+        },
+        "n": {
+          "description": "How many documents fell into this bucket.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "values": {
+          "description": "The aggregated columns, in stage order.",
+          "items": {
+            "$ref": "#/$defs/GgAggValue"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["key", "n", "values"],
+      "type": "object"
+    },
+    "GgBucketKeyPart": {
+      "description": "One component of a bucket's composite key.",
+      "properties": {
+        "field": {
+          "description": "The field this component groups on.",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json#/$defs/GgValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The shared value — the floored bucket start for a\n[date histogram](GgGroupKey::Bucket) — or `None` when the bucket's documents\nall *lack* the field."
+        }
+      },
+      "required": ["field"],
+      "type": "object"
+    },
+    "GgDistribution": {
+      "description": "The five-number summary plus the mean of a [`dist()`](GgAggFunc::Dist) column.\n\nDeliberately carries **no confidence interval**. Reproducing a seeded bootstrap\nresample bit-for-bit in the browser would need 64-bit integer arithmetic across\nthousands of iterations per bucket — by far the most drift-prone construct that\ncould enter a mirrored evaluator, for a decoration on an exploratory chart. The\n[comparisons](https://docs.testcabinet.ai/comparisons/statistics/) surface, which\nis where inferential claims are actually made, keeps its interval untouched.",
+      "properties": {
+        "max": {
+          "description": "The largest value.",
+          "format": "double",
+          "type": "number"
+        },
+        "mean": {
+          "description": "The arithmetic mean (its gap from the median reveals skew).",
+          "format": "double",
+          "type": "number"
+        },
+        "median": {
+          "description": "The median.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The smallest value.",
+          "format": "double",
+          "type": "number"
+        },
+        "n": {
+          "description": "How many values contributed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "q1": {
+          "description": "The first quartile.",
+          "format": "double",
+          "type": "number"
+        },
+        "q3": {
+          "description": "The third quartile.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": ["n", "min", "q1", "median", "q3", "max", "mean"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/query-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result of [`evaluate`]: either the matching documents or the aggregated\nbuckets, never both.",
+  "properties": {
+    "buckets": {
+      "description": "The aggregated buckets. Empty for a document query.",
+      "items": {
+        "$ref": "#/$defs/GgBucket"
+      },
+      "type": "array"
+    },
+    "columns": {
+      "description": "The aggregated columns, in stage order. Empty for a document query.",
+      "items": {
+        "$ref": "#/$defs/GgAggColumn"
+      },
+      "type": "array"
+    },
+    "documents": {
+      "description": "The matching documents, in [document order](crate::gg_query#the-seven-determinism-rules)\nunless an explicit `sort` overrode it. Empty for an aggregated query.",
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/gg/run-document.schema.json"
+      },
+      "type": "array"
+    },
+    "totalRuns": {
+      "description": "How many documents the filter matched — **before** any `limit`, and equal to\nthe sum of every bucket's `n` for an aggregated query. The denominator every\nfigure on the page is read against.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "truncated": {
+      "description": "Whether a `limit` stage cut rows off the result, so a view can say \"showing the\nfirst N\" rather than implying it showed everything.",
+      "type": "boolean"
+    }
+  },
+  "required": ["totalRuns", "truncated"],
+  "title": "GgQueryResponse",
+  "type": "object"
+}

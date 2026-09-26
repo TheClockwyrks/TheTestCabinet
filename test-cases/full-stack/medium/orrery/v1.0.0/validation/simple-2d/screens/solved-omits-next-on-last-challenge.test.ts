@@ -1,0 +1,132 @@
+// screens/solved-omits-next-on-last-challenge — the mode's last challenge gets a
+// panel with no NEXT CHALLENGE on it.
+//
+// THE RULE is the sentence after the menu's own in `specs/ui.md`, The solved
+// panel: the menu is "built from `SOLVED_ITEMS` (`NEXT CHALLENGE`,
+// `KEEP TINKERING`, `BACK TO SELECT`, in that order). `NEXT CHALLENGE` is offered
+// ONLY WHEN THE MODE HAS A CHALLENGE AFTER THIS ONE; THE MENU IS OTHERWISE THE
+// REMAINING TWO ITEMS IN THE SAME ORDER." This point decides the side where there
+// is no challenge after: two items, `KEEP TINKERING` then `BACK TO SELECT`. The
+// other side is `solved-offers-next-challenge`.
+//
+// THE CONFIGURATION is the LAST Extra. "The Extras hold exactly `EXTRA_COUNT`
+// (`10`) challenges, numbered `1` through `10`" (`specs/modes/extras.md`), so the
+// shelf's last index is `EXTRA_COUNT - 1` whatever else the build ships, and
+// `specs/challenges.md` is authoritative for it. The campaign is not used, because
+// its length is the build's own choice within `CAMPAIGN_MIN` and `CAMPAIGN_MAX`
+// while the shelf's is fixed.
+//
+// The machine is the set for the challenge's one product and nothing else, and
+// the tally is posed straight to the `target`, because what completes the run is
+// the boundary's own test: "After the rises, if every set's tally has reached the
+// challenge's `target`, the run completes" (`specs/simulation.md`). The last
+// Extra's product repeats, so its set's footprint is "the pattern plus, when the
+// product repeats, the pattern translated once by the repeat vector"
+// (`specs/parts.md`) — two hexes from the origin, comfortably on the field.
+//
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more — "Which typeface carries them is
+// yours" — and letter spacing is not portable, so a build is free to draw one
+// entry as one call, as a call per word, or as a call per glyph. What all of
+// those share is the baseline: one entry is drawn at one `y`, and stacked
+// entries at different ones. So each entry is read with the shared harness's
+// `drewText`, and the two that remain are placed by the line each lies on —
+// `drawing.ts`'s `textLines`, the same logical runs gathered onto the baselines
+// they share, and `lineWith`, which finds a line by the rule `drewText` matched
+// it by.
+//
+// THE VERDICT. The frame that carries the panel draws `KEEP TINKERING` and, below
+// it, `BACK TO SELECT`, and draws `NEXT CHALLENGE` nowhere at all.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import { drewText } from "../case-harness/text";
+import { EXTRA_COUNT, SOLVED_ITEMS } from "../constants";
+import { extra } from "../challenges";
+import { setPart, solution } from "../formats";
+import { ORIGIN } from "../fixtures";
+import {
+  advanceCycles,
+  captureStill,
+  createHarness,
+  lineWith,
+  loadMachine,
+  openChallenge,
+  textLines,
+  type Harness,
+} from "../harness";
+
+/** The Extra this check completes: the shelf's last, which holds nothing after. */
+const INDEX = EXTRA_COUNT - 1;
+
+/** The whole machine: the set for the challenge's one product. */
+const ONE_SET = solution([setPart(0, ORIGIN.q, ORIGIN.r)]);
+
+/** The entry withheld here, and the two that remain, in SOLVED_ITEMS order. */
+const [NEXT, KEEP, BACK] = SOLVED_ITEMS;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves KEEP TINKERING then BACK TO SELECT, and no NEXT CHALLENGE, on the shelf's last challenge", async () => {
+  await openChallenge(h, "extras", INDEX);
+  await loadMachine(h, ONE_SET);
+  await h.debug.startRun();
+  await h.debug.setTally(0, extra(INDEX).target);
+  await advanceCycles(h, 1);
+  await h.advance(1);
+
+  const calls = await h.lastCalls();
+  const lines = textLines(calls);
+  await captureStill(h, "two-items");
+
+  const shown = await h.snapshot();
+  assertNotNull(shown.sim, "the run is still reported once it has completed");
+  assertEqual(
+    shown.sim?.status,
+    "complete",
+    "the boundary that reached the target completed the run, which is when the panel is up",
+  );
+  assertEqual(
+    shown.challenge?.source,
+    "extras",
+    "the completed challenge belongs to the Extras, so the mode's shelf decides its menu",
+  );
+  assertEqual(
+    shown.challenge?.index,
+    INDEX,
+    "and it is the shelf's last challenge, the one the mode holds nothing after",
+  );
+
+  assertTrue(
+    !drewText(calls, NEXT as string),
+    `the mode has no challenge after this one, so the panel never offers ${String(NEXT)}`,
+  );
+
+  assertTrue(
+    drewText(calls, KEEP as string),
+    `the menu is the remaining two items, so it draws ${String(KEEP)}`,
+  );
+  assertTrue(drewText(calls, BACK as string), `and it draws ${String(BACK)}`);
+  const keep = lineWith(lines, KEEP as string);
+  const back = lineWith(lines, BACK as string);
+  assertNotNull(keep, `${String(KEEP)} lies on a line of its own`);
+  assertNotNull(back, `${String(BACK)} lies on a line of its own`);
+  assertGreaterThan(
+    back?.y ?? Number.NEGATIVE_INFINITY,
+    keep?.y ?? Number.POSITIVE_INFINITY,
+    `the remaining two are in the same order, so ${String(BACK)} is drawn under ${String(KEEP)}`,
+  );
+});

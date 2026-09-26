@@ -78,6 +78,16 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+// Which factory is playing. Muted and truncating: it is orientation, not a heading,
+// and must never push the exit button off a narrow viewport.
+.overlayLabel {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .exit,
 .control,
 .speed,
@@ -106,21 +116,64 @@
 .stage {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 1rem;
+  // Without this a flex child's min-height:auto floors the stage at the board's
+  // height, so a zoomed-in factory grows the overlay instead of scrolling inside it.
+  min-height: 0;
+  // Anchors the drift banner, which floats over the factory rather than reflowing
+  // (and so resizing) the canvas mid-playback — and stays put while the viewer pans.
+  position: relative;
 }
 
-// Pixel art: never smooth it, and scale it up so a 32px tile is legible.
+// The scrolling stage the board sits in. Positioned so the canvas measures its
+// offsets against this box (the zoom anchoring reads them), and the offset parent of
+// nothing else.
+.viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  padding: 1rem;
+  position: relative;
+}
+
+// The playback-drift warning: the frames disagree with the run's graded checksums,
+// so the factory on screen is not the state that was scored. Pinned to the top of
+// the stage and coloured as a warning — it must be impossible to watch the rest of
+// the playback without knowing.
+.drift {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(46rem, calc(100% - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 176, 46, 0.55);
+  border-radius: 0.35rem;
+  background: rgba(60, 38, 0, 0.92);
+  color: #ffcf7a;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+// The board. Its displayed size is set inline from the current zoom; `margin: auto`
+// centres it while it is smaller than the stage and collapses to the padding once it
+// is larger — unlike flex centring, which would push the overflowing half of a
+// zoomed-in factory out of reach above and to the left of the scroll origin.
 .canvas {
+  margin: auto;
+  flex: none;
+}
+
+// Pixel art magnified: show the pixels rather than a blur. Only applied at 1x and
+// above — see the component, which drops it when the board is scaled down.
+.canvasPixelated {
   image-rendering: pixelated;
-  max-width: 100%;
-  transform-origin: center;
-  zoom: 2;
 }
 
 .error {
+  margin: auto;
   font-size: 0.9rem;
   opacity: 0.8;
 }
@@ -140,10 +193,31 @@
   opacity: 0.75;
 }
 
+// The zoom group and the speed group both sit at the right end of the control bar,
+// the zoom first: it is about the board on screen, where speed is about the
+// simulation, and they read as two clusters rather than one long row of buttons.
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.zoomLevel {
+  min-width: 3.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
 .speeds {
   display: flex;
   gap: 0.35rem;
-  margin-left: auto;
+  // Wider than the bar's own gap: the two groups answer different questions — how big
+  // the factory is drawn, and how fast it runs — and butted together they read as one
+  // undifferentiated row of buttons.
+  margin-left: 1rem;
 }
 
 // --- Verification badge ----------------------------------------------------

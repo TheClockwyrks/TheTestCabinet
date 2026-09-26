@@ -271,9 +271,65 @@ test-cases/**/reference/.rendered/
 # automatically.
 
 # Cargo build output. Cargo.lock is intentionally committed because this
-# workspace builds applications (the CLI and desktop app), not just libraries.
+# workspace builds applications (the CLI and the services), not just libraries.
 /target/
 **/*.rs.bk
+
+# gg's eleven program-language signature catalogues, which are BUILD ARTIFACTS.
+# `crates/gg/build.rs` reflects each one out of that arm's own SDK, with that
+# arm's own documentation tool, into the build's `OUT_DIR` — so a catalogue never
+# lands in the source tree on the path that matters, and `/target/` above already
+# covers it.
+#
+# Both rules below are therefore about the paths a PERSON produces, and they are
+# deliberately unlike each other:
+#
+#   * `scripts/gg-signatures.sh` writes into `target/gg-signatures/` by default,
+#     because reading a catalogue is how a reflector bug is found (a dropped
+#     `@return` paragraph, a truncated parameter description, only the first
+#     overload's prose) and a person has to be able to open one. Covered by
+#     `/target/` already; named here so the directory is not mistaken for
+#     something that escaped the rule.
+#   * `scripts/gg-artifacts.sh` is the same shape one level up and needs no rule
+#     here: it defaults to `target/gg-artifacts/` and REFUSES to run without a
+#     destination when called per-arm, so no arrangement of `git add` can commit
+#     what it writes.
+/target/gg-signatures/
+/target/gg-artifacts/
+
+# THE TWO DIRECTORIES THE ARTIFACTS USED TO BE COMMITTED IN, as an ALLOWLIST.
+#
+# `crates/gg/src/sandbox/guests/` held the baked `.wasm` guest components and,
+# before them, the signature catalogues; `checkers/` beside it held the compiled
+# library sets, the archives, the adapters and the compilers. Thirty-three files,
+# ~117 MB. Every one of them is cut into a cargo `OUT_DIR` now, by a crate under
+# `crates/gg-sandbox-artifacts/`, on the same build that compiles the host that
+# embeds it. `guests/` does not exist at all any more.
+#
+# WHAT THIS REPLACES, AND WHY IT IS A GITIGNORE RATHER THAN A TEST. Two rules used
+# to enforce the completeness of that decision, and both were deleted with the
+# artifacts they were written for: a test that walked both directories and failed
+# on any file not argued for by name, and a loop in `scripts/ci/contract-drift.sh`
+# that did the same over `checkers/*`. They were the right shape — "every file gg
+# embeds from must be ARGUED" — and losing them left `check-added-large-files` at
+# its 500 kB default as the only thing standing over these paths, which would have
+# admitted `cpp.adapter.wasm` (52 kB), `typescript.checker.json`, every
+# `*.toolchain.json` and both `*.compiler.json` back into git without a word.
+#
+# An allowlist is the same rule with nothing to run: what is left under `checkers/`
+# is gg's OWN HAND-WRITTEN SOURCE — three Java files that are the compiler drivers
+# gg feeds to `javac`, and the two JVM pin declarations — so those five are named
+# and everything else in the directory is ignored. Adding a sixth file there is
+# then a deliberate line in THIS file, which is a place a reviewer will ask what
+# the file is; adding one without the line is a file `git add` silently declines.
+# `guests/` is ignored whole, because there is nothing left that belongs in it.
+crates/gg/src/sandbox/checkers/*
+!crates/gg/src/sandbox/checkers/java.compiler.java
+!crates/gg/src/sandbox/checkers/java.toolchain.json
+!crates/gg/src/sandbox/checkers/jvm.backend.java
+!crates/gg/src/sandbox/checkers/kotlin.compiler.java
+!crates/gg/src/sandbox/checkers/kotlin.toolchain.json
+crates/gg/src/sandbox/guests/
 
 # Ignore the output of test runs. Anchored to the repository root: `tcab` writes
 # runs to ./runs (see `--out-dir`), but an unanchored `runs/` also matches source
@@ -301,10 +357,10 @@ tcab-backend.sqlite*
 /tcab-artifacts/
 
 # `tcab validate --implementation <dir>` writes synthesized validation media into a
-# `.tcab/` folder inside the target build directory (e.g. a case's reference-impl).
+# `.vendor/` folder inside the target build directory (e.g. a case's reference-impl).
 # It is transient output, regenerated on demand — never source. Not anchored, so it
 # matches the folder at any depth.
-.tcab/
+.vendor/
 
 # scripts/reingest.sh change-detection baseline (its mtime = last successful
 # re-ingest). Per-checkout local state, not source. Anchored to the repo root.
@@ -317,3 +373,39 @@ tcab-backend.sqlite*
 # imported during local development — see containers/blender/). Never source.
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Compiled class files, for the same reason — the JVM arms build their SDK into a
+# jar the build cuts into an `OUT_DIR` (it used to be tracked at
+# `crates/gg/src/sandbox/checkers/*.sdk.jar`, and is not any more), and a loose
+# `.class` beside its source is always a local build leaving litter.
+*.class
+
+# Note for anyone tempted to widen this into "ignore binary files": do not. This
+# repository still commits binaries on purpose — the Foray reference guests'
+# `.wasm` and the reference implementations' `.mid` music. What belongs here is COMPILED SOURCE, which is derived from something
+# else in the tree and regenerated by building it; a committed artifact that
+# nothing in the tree can rebuild is not that. (gg's eleven arms used to be the
+# largest counterexample on the other side — 33 blobs, ~117 MB of guest
+# components, SDK jars and library archives. They are all generated now, which is
+# why this note names fewer things than it once did.)
+
+# Local reference-sprite preview renders: the asset cases' reference draw scripts
+# (reference-impl/base/draw.sh) rendered to per-frame PNGs/GIFs by
+# scripts/preview-asset-reference.mjs, for eyeballing sprites while iterating.
+# Regenerable output, not source — kept on disk to review, never committed.
+/reference-previews/
+
+# The shared harness's test fixture tree carries a `dist/` of its own that is
+# source rather than build output: the root-order tests read one file from each
+# of the three roots a case may serve a produced file from. Stated after the Node
+# template's `dist` rule above, because the later rule wins.
+!packages/case-harness/test/host/root/dist/
+
+# gg's per-workspace state. A gg session writes its replay journal and the hook
+# scripts it materializes under `.gg/` in the workspace it runs in, and reads
+# skills from there. A run container's workspace is never committed, but a
+# session driven directly against a checkout leaves the folder behind.
+.gg/

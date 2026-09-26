@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { AssetKind, HarnessFamily, TestType } from "./index";
+import type { AssetKind, HarnessFamily, MediaKind, TestType } from "./index";
 
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
@@ -19,6 +19,45 @@ export type ErrorBody = { code: string; message: string };
  * The JSON body of an error response: `{ "error": { "code", "message" } }`.
  */
 export type ErrorEnvelope = { error: ErrorBody };
+
+/**
+ * One entry of a served showcase carousel: the file name the showcase route
+ * addresses the bytes by, its caption, and the kind of media it holds.
+ */
+export type ShowcaseMediaOut = {
+  /**
+   * The media file's name in the showcase directory (a plain file name).
+   */
+  file: string;
+  /**
+   * The short caption for the entry.
+   */
+  name: string;
+  /**
+   * Whether the file is a still image, a video clip, or a replay recording.
+   */
+  kind: MediaKind;
+};
+
+/**
+ * A case's catalog showcase preview: which version and variant the media
+ * belongs to, plus the carousel entries themselves — everything a listing card
+ * needs to address the media without resolving the full version.
+ */
+export type CatalogShowcaseOut = {
+  /**
+   * The version the showcase was read from (the case's latest visible one).
+   */
+  version: string;
+  /**
+   * The variant that declares it.
+   */
+  variant: string;
+  /**
+   * The media carousel, in declared order.
+   */
+  media: Array<ShowcaseMediaOut>;
+};
 
 /**
  * One entry of the catalog listing: a case, its visible versions, and the
@@ -55,11 +94,57 @@ export type CatalogCase = {
    * The short plain-text abstract a card shows, when the case declares one.
    */
   summary: string | null;
+  /**
+   * The case's catalog **showcase preview**, when its latest visible version
+   * has one: the first variant (manifest order) of that version that declares
+   * a showcase, with the media list a card's preview stage loops. `null` when
+   * no variant of the latest version declares one. Only the addressing rides
+   * here (the description lives on the resolved version's variant); each
+   * media file is fetched from
+   * `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+   */
+  showcase: CatalogShowcaseOut | null;
 };
 
 export type CatalogResponse = { testCases: Array<CatalogCase> };
 
 export type VersionsResponse = { slug: string; versions: Array<string> };
+
+/**
+ * One test-case group as served — the manifest minus `rank`, which orders the
+ * listing server-side and deliberately does not ride the wire.
+ */
+export type TestCaseGroupOut = {
+  /**
+   * The group's stable slug.
+   */
+  slug: string;
+  /**
+   * Display name, heading the group's home-page leaderboard.
+   */
+  name: string;
+  /**
+   * Optional one-line description, or null.
+   */
+  summary: string | null;
+  /**
+   * The ordered member test-case/game-jam slugs, by manifest-declared
+   * identity (the slug run records carry).
+   */
+  cases: Array<string>;
+};
+
+/**
+ * The `GET /test-case-groups` envelope: the groups under a wrapping key so the
+ * response can grow new fields without breaking readers, like the catalog's.
+ */
+export type TestCaseGroupsResponse = {
+  /**
+   * Every ingested group, in display order (rank ascending then name, with
+   * ranked groups before unranked ones — resolved at ingest).
+   */
+  groups: Array<TestCaseGroupOut>;
+};
 
 /**
  * `GET /models` — the merged model catalog.
@@ -129,9 +214,23 @@ export type ModelOut = {
    */
   aliases: Array<AliasOut>;
   /**
-   * The latest observed comparable price, or null when none is recorded.
+   * The latest observed **billed rate** — what the official provider's
+   * endpoint charges right now — or null when none is recorded. A run's
+   * comparable cost is computed from [`list_price`](Self::list_price), not
+   * this.
    */
   price: ModelPricesOut | null;
+  /**
+   * The curated developer list price (per-token USD) a run's comparable cost
+   * is computed from — all-or-nothing: `Some` only when all three prices are
+   * set. Null for a derived or unpriced model.
+   */
+  listPrice: ModelPricesOut | null;
+  /**
+   * The date the list-price figures were taken, as the operator recorded it,
+   * or null.
+   */
+  listPriceAsOf: string | null;
   /**
    * The observed price history, ascending, consecutive-equal deduped.
    */
@@ -141,9 +240,53 @@ export type ModelOut = {
    */
   contextLength: number | null;
   /**
+   * The developer provider: the OpenRouter provider name of the model developer's own
+   * endpoint. The hand-set one when the catalog entry sets it, otherwise the one last observed
+   * on the endpoints listing. Null means none is known; a gg run's
+   * [candidate list](https://docs.testcabinet.ai/gg/overview/#the-candidate-list) then takes
+   * the catalog entry's price ceiling in place of the developer's rates.
+   */
+  providerPin: string | null;
+  /**
+   * Whether [`provider_pin`](Self::provider_pin) is set by hand on the catalog entry rather
+   * than observed on the listing.
+   */
+  providerPinSetByHand: boolean;
+  /**
+   * The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
+   * level any endpoint declares. Always null for a derived model.
+   */
+  nativeQuantization: string | null;
+  /**
+   * The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+   * developer endpoint. Null when no ceiling is set, and always for a derived model.
+   */
+  maxInputPrice: number | null;
+  /**
+   * The output half of the price ceiling, USD per million tokens.
+   */
+  maxOutputPrice: number | null;
+  /**
+   * The providers a gg run of the model never uses. Empty for a derived model.
+   */
+  bannedProviders: Array<string>;
+  /**
+   * The providers accepted despite declaring `unknown` quantization. Empty for a derived
+   * model.
+   */
+  unknownQuantizationProviders: Array<string>;
+  /**
    * The latest observed release date (RFC 3339), or null.
    */
   releasedAt: string | null;
+  /**
+   * The input modalities OpenRouter reports the model accepts (`text`,
+   * `image`, `file`, …), lowercased. **Empty means unobserved**, not "text
+   * only" — the catalog has simply not recorded a modality list for this model
+   * yet, and a consumer deciding whether it may send an image treats that as
+   * unknown rather than as a refusal.
+   */
+  inputModalities: Array<string>;
 };
 
 /**
@@ -196,6 +339,57 @@ export type ModelConfigInput = {
    */
   aliases: Array<AliasInput>;
   openrouterSlug: string | null;
+  /**
+   * The developer provider: the OpenRouter provider name of the model developer's own
+   * endpoint, set by hand where the endpoints listing's name does not match the model id's
+   * author segment. Absent or blank takes the provider the listing names for that segment.
+   */
+  providerPin?: string;
+  /**
+   * The native quantization every provider of a gg run's candidate list must serve the model
+   * at (`fp8`, `bf16`, …). Absent or blank takes the highest level any endpoint declares; any
+   * other value must be a level OpenRouter declares.
+   */
+  nativeQuantization?: string;
+  /**
+   * The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+   * developer endpoint. Set together with [`max_output_price`](Self::max_output_price) or not
+   * at all, and positive.
+   */
+  maxInputPrice?: number;
+  /**
+   * The output half of the price ceiling, USD per million tokens.
+   */
+  maxOutputPrice?: number;
+  /**
+   * The providers a gg run of the model never uses. Names are trimmed and blanks dropped.
+   */
+  bannedProviders?: Array<string>;
+  /**
+   * The providers accepted despite declaring `unknown` quantization. Names are trimmed and
+   * blanks dropped.
+   */
+  unknownQuantizationProviders?: Array<string>;
+  /**
+   * The developer's published list price per **Mtok** of input, in USD — the
+   * unit every developer pricing page publishes; the store carries per token.
+   * The list-price write is all-or-nothing: all three prices (plus
+   * `list_price_as_of`) or none; absent on update preserves the stored set.
+   */
+  listPriceInputPerMtok?: number;
+  /**
+   * The developer's published list price per **Mtok** of cached input, in USD.
+   */
+  listPriceCachedInputPerMtok?: number;
+  /**
+   * The developer's published list price per **Mtok** of output, in USD.
+   */
+  listPriceOutputPerMtok?: number;
+  /**
+   * The date the operator took the list-price figures (trimmed; empty means
+   * none).
+   */
+  listPriceAsOf?: string;
   description: string | null;
   /**
    * The stored provider-logo SVG (already fetched via `POST /models/logo`).
@@ -235,8 +429,676 @@ export type ModelSeedOut = {
 };
 
 /**
+ * The `GET /models/openrouter` response: the descriptive facts OpenRouter
+ * publishes about a model, for the config form to fill itself in with, plus the
+ * official endpoint's current prices scaled to per Mtok — the seed figures for
+ * the form's curated list-price fields (the whole point of the fill). An absent
+ * price is not an error: the field is null and the form leaves it for the
+ * operator. The context window and the modalities remain deliberately absent:
+ * the backend records those itself from the same catalog (on save, on launch,
+ * and on the 24-hour refresh), so they are never form state to begin with.
+ */
+export type ModelListingOut = {
+  /**
+   * The display name, with OpenRouter's `Provider: ` prefix stripped.
+   */
+  name: string;
+  /**
+   * The provider's presentational name (`Anthropic`), from that same prefix.
+   */
+  provider: string;
+  /**
+   * OpenRouter's prose description, or null when it publishes none.
+   */
+  description: string | null;
+  /**
+   * The official endpoint's current input price per Mtok in USD, or null.
+   */
+  inputPerMtok: number | null;
+  /**
+   * The official endpoint's current cached-input price per Mtok in USD, or null.
+   */
+  cachedInputPerMtok: number | null;
+  /**
+   * The official endpoint's current output price per Mtok in USD, or null.
+   */
+  outputPerMtok: number | null;
+};
+
+/**
  * The `POST /models/logo` request/response.
  */
 export type LogoFetchInput = { url: string };
 
 export type LogoFetchOut = { logoSvg: string };
+
+/**
+ * The `POST /models/{slug}/probes` request body. Everything is optional: an
+ * empty body probes every language arm over the default route with the
+ * default sampling.
+ */
+export type ProbeTriggerInput = {
+  /**
+   * Pin every call to this provider (`provider.order` with fallbacks
+   * disabled). Absent probes the default route.
+   */
+  provider: string | null;
+  /**
+   * Probe this one program-language arm, by its wire id (`typescript`,
+   * `rust`, …). Absent probes every arm.
+   */
+  language: string | null;
+  /**
+   * Completion calls per input prompt (default 8, at most 128).
+   */
+  samples: number | null;
+  /**
+   * Completion-token cap per call (default 3500).
+   */
+  maxTokens: number | null;
+};
+
+/**
+ * The `POST /models/{slug}/probes` response: the probe row, already running.
+ */
+export type ProbeTriggerResponse = { probe: ModelProbeOut };
+
+/**
+ * One probe, as every probe read returns it (the detail read adds the items
+ * and the per-case requests).
+ */
+export type ModelProbeOut = {
+  id: string;
+  /**
+   * The catalog slug the probe was triggered from.
+   */
+  modelSlug: string;
+  /**
+   * The OpenRouter slug the completions were requested under.
+   */
+  openrouterSlug: string;
+  /**
+   * The pinned provider, or null for the default route.
+   */
+  provider: string | null;
+  /**
+   * The probed program-language arm's wire id, or null for every language.
+   */
+  language: string | null;
+  /**
+   * Completion calls requested per input prompt.
+   */
+  samples: number;
+  maxTokens: number;
+  /**
+   * `running`, `complete`, or `failed`.
+   */
+  status: string;
+  /**
+   * Why the probe failed, or null.
+   */
+  error: string | null;
+  /**
+   * `ready` or `not-ready`; null until the probe completes.
+   */
+  verdict: string | null;
+  /**
+   * The probe's overall case-check pass rate (0..=1), or null.
+   */
+  passRate: number | null;
+  /**
+   * Total USD spend across the probe's calls, as OpenRouter reported it.
+   */
+  spend: number;
+  createdAt: string;
+  finishedAt: string | null;
+};
+
+/**
+ * One completion call inside a probe: which case it sampled, which provider
+ * served it, how it finished, whether the submitted program passed its case's
+ * check, and the raw reply.
+ */
+export type ModelProbeItemOut = {
+  id: string;
+  /**
+   * The program-language arm's wire id this call probed.
+   */
+  language: string;
+  /**
+   * The case's scenario: `baseline` or `missing-docview`.
+   */
+  scenario: string;
+  /**
+   * The case's input prompt id.
+   */
+  prompt: string;
+  /**
+   * The sample index within the case, from 0.
+   */
+  sample: number;
+  /**
+   * The provider OpenRouter reported serving the call, or null on error.
+   */
+  provider: string | null;
+  finishReason: string | null;
+  nativeFinishReason: string | null;
+  /**
+   * The classified outcome (`correct-calls`, `docview-first`,
+   * `called-undocumented`, `fenced`, …), or null when the call errored.
+   */
+  label: string | null;
+  /**
+   * Whether the submitted program passed its case's check.
+   */
+  pass: boolean;
+  /**
+   * The program string the reply's first `submit_program` call carried, or
+   * null.
+   */
+  programText: string | null;
+  /**
+   * The reply's text content beside the call, verbatim.
+   */
+  responseText: string;
+  /**
+   * The reply's separate reasoning stream, or null.
+   */
+  reasoningText: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /**
+   * The call's USD cost, or null.
+   */
+  cost: number | null;
+  durationMs: number;
+  /**
+   * The transport or gateway error that voided the call, or null.
+   */
+  error: string | null;
+  createdAt: string;
+};
+
+/**
+ * The `GET /models/{slug}/probes` response, newest first.
+ */
+export type ModelProbesResponse = { probes: Array<ModelProbeOut> };
+
+/**
+ * The `GET /model-probes/{id}` response: the probe with everything the console
+ * shows — every case's request messages exactly as sent, every call's
+ * classification, the submitted programs, and the raw replies. Each request
+ * also carried the case's `submit_program` tool definition with `tool_choice`
+ * forced to it; that pair is part of the embedded fixture rather than a
+ * response field.
+ */
+export type ModelProbeDetailResponse = {
+  probe: ModelProbeOut;
+  items: Array<ModelProbeItemOut>;
+  /**
+   * The per-case requests exactly as sent, one entry per probed
+   * (language, scenario, prompt).
+   */
+  requests: Array<ProbeRequestOut>;
+};
+
+/**
+ * One chat message as sent to the provider — the OpenAI chat/completions shape, which is why an
+ * assistant message may carry `tool_calls` and a `tool` message answers one by `tool_call_id`,
+ * and why those two keys stay snake_case on the wire.
+ */
+export type ProbeMessage = {
+  role: string;
+  content?: string;
+  tool_calls?: Array<ProbeToolCall>;
+  tool_call_id?: string;
+};
+
+/**
+ * One tool call on an assistant message, in the chat/completions wire shape.
+ */
+export type ProbeToolCall = {
+  id: string;
+  type: string;
+  function: ProbeToolFunction;
+};
+
+/**
+ * The function half of a tool call: the tool's name and its JSON-encoded arguments string.
+ */
+export type ProbeToolFunction = {
+  name: string;
+  /**
+   * The call's arguments as the JSON-encoded string the wire carries.
+   */
+  arguments: string;
+};
+
+/**
+ * One case's request as sent: which (language, scenario, prompt) it probes, and its message
+ * array. What `request_json` stores and the detail read returns, one entry per case.
+ */
+export type ProbeRequestOut = {
+  language: string;
+  scenario: string;
+  prompt: string;
+  messages: Array<ProbeMessage>;
+};
+
+/**
+ * The `GET /models/{slug}/probe-providers` response.
+ */
+export type ProbeProvidersResponse = {
+  /**
+   * The OpenRouter slug the providers were enumerated for.
+   */
+  openrouterSlug: string;
+  providers: Array<ProbeProviderOut>;
+};
+
+/**
+ * One provider route OpenRouter lists for the model.
+ */
+export type ProbeProviderOut = {
+  /**
+   * The provider's display name — the value a probe pins with.
+   */
+  name: string;
+  /**
+   * The route's context window in tokens, or null when unreported.
+   */
+  contextLength: number | null;
+};
+
+/**
+ * The `GET /models/{slug}/candidates` response: the candidate list the next gg enqueue of the
+ * model would build, for an agent that sets no reasoning.
+ */
+export type ModelCandidatesOut = {
+  /**
+   * The OpenRouter id the endpoints listing was read under.
+   */
+  modelId: string;
+  /**
+   * The native quantization the filter kept: the catalog entry's, else the highest level any
+   * endpoint declares. Null when neither names one.
+   */
+  nativeQuantization: string | null;
+  /**
+   * The candidates, in the order a run tries them. Empty exactly when
+   * [`refusal`](Self::refusal) is set.
+   */
+  candidates: Array<CandidateOut>;
+  /**
+   * Why the list is empty, naming the filter that emptied it, or null when it is not.
+   */
+  refusal: string | null;
+};
+
+/**
+ * One candidate of a model's list.
+ */
+export type CandidateOut = {
+  /**
+   * The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`.
+   */
+  provider: string;
+  /**
+   * The quantization its endpoint declares.
+   */
+  quantization: string;
+  /**
+   * Whether this is the model developer's own endpoint.
+   */
+  developer: boolean;
+  /**
+   * The input price, USD per million tokens.
+   */
+  inputPrice: number;
+  /**
+   * The output price, USD per million tokens.
+   */
+  outputPrice: number;
+  /**
+   * The cache-read price, USD per million tokens.
+   */
+  cacheReadPrice: number;
+  /**
+   * The provider's recorded fault rate for the model: stalls, unexpected cache misses and
+   * turns that ended on its failed model calls, over its calls. Null when no recorded run of
+   * the model used the provider, which the order reads as zero.
+   */
+  faultRate: number | null;
+};
+
+/**
+ * The `GET /stats/providers` response.
+ */
+export type ProviderStatsResponse = {
+  /**
+   * Every stored gg run with a recorded session summary, whether or not it
+   * recorded providers. A launch that died before a single turn records no
+   * summary and is not scanned.
+   */
+  runsScanned: number;
+  /**
+   * The runs among them whose summary carries provider slices — the
+   * denominator that makes sparse provider coverage read as sparse rather
+   * than as zero.
+   */
+  runsWithProviderData: number;
+  /**
+   * Run evidence: one entry per observed provider, providerless last.
+   */
+  providers: Array<ProviderStatsOut>;
+  /**
+   * Probe evidence, strictly separate from the run evidence: one entry per
+   * provider observed on model-probe items.
+   */
+  probes: Array<ProbeProviderStatsOut>;
+};
+
+/**
+ * One provider's run evidence: its per-model rows and their total.
+ */
+export type ProviderStatsOut = {
+  /**
+   * The provider's OpenRouter name, or null for the slice of calls that
+   * named none — a gateway that stamps no provider, or a turn whose call
+   * produced no reply to name one.
+   */
+  provider: string | null;
+  /**
+   * The per-model rows, largest first by calls, a modelless row last.
+   */
+  models: Array<ProviderModelStatsOut>;
+  /**
+   * The rows summed (`runs` counts distinct runs, not a sum of rows).
+   */
+  totals: ProviderCallStatsOut;
+};
+
+/**
+ * One provider's evidence for one model.
+ */
+export type ProviderModelStatsOut = {
+  /**
+   * The model id, or null for a slice recorded before the agent's first
+   * usage delta named one, on a run more than one model served.
+   */
+  modelId: string | null;
+  /**
+   * The row's figures.
+   */
+  stats: ProviderCallStatsOut;
+};
+
+/**
+ * The call/turn figures one provider row carries.
+ */
+export type ProviderCallStatsOut = {
+  /**
+   * Distinct runs contributing to this row.
+   */
+  runs: number;
+  /**
+   * Model calls that reported usage.
+   */
+  calls: number;
+  /**
+   * Every token class those calls reported, summed.
+   */
+  totalTokens: number;
+  /**
+   * Their comparable USD cost, summed — null only when no contributing
+   * slice reported one, so unreported stays unreported.
+   */
+  cost: number | null;
+  /**
+   * Length-capped replies the provider served.
+   */
+  rejected: number;
+  /**
+   * Turns attributed to the provider.
+   */
+  turns: number;
+  /**
+   * The turns among them that worked (progressed or finished).
+   */
+  working: number;
+  /**
+   * The errored turns, keyed by turn error type wire id.
+   */
+  errors: { [key in string]: number };
+  /**
+   * Streams that stalled on this provider.
+   */
+  stalls: number;
+  /**
+   * Unexpected cache misses this provider's replies produced.
+   */
+  cacheMisses: number;
+};
+
+/**
+ * One provider's probe evidence.
+ */
+export type ProbeProviderStatsOut = {
+  /**
+   * The provider OpenRouter reported serving the items, or null for calls
+   * that errored before any provider served them.
+   */
+  provider: string | null;
+  /**
+   * The per-model rows, largest first by items.
+   */
+  models: Array<ProbeProviderModelOut>;
+};
+
+/**
+ * One provider's probe evidence for one probed model.
+ */
+export type ProbeProviderModelOut = {
+  /**
+   * The catalog slug the probe was triggered from.
+   */
+  modelSlug: string;
+  /**
+   * Completion calls on this (provider, model).
+   */
+  items: number;
+  /**
+   * The calls whose submitted program passed its case's check.
+   */
+  passes: number;
+  /**
+   * The calls that errored before classification.
+   */
+  errored: number;
+};
+
+/**
+ * The `GET /stats/model-accuracy` response.
+ */
+export type ModelAccuracyResponse = {
+  /**
+   * One entry per model with any evidence, largest evidence first.
+   */
+  models: Array<ModelAccuracyOut>;
+  /**
+   * Runs that could not be attributed to any single model: an older
+   * multi-model run with no per-model slices, in either execution mode.
+   */
+  unattributableRuns: number;
+};
+
+/**
+ * One model's accuracy figures, split by execution mode. Either half is null
+ * when no run of that mode contributed.
+ */
+export type ModelAccuracyOut = {
+  /**
+   * The model id, as the runs recorded it.
+   */
+  modelId: string;
+  /**
+   * The responses-as-code figures.
+   */
+  rac: RacAccuracyOut | null;
+  /**
+   * The tool-calling figures.
+   */
+  toolCalling: ToolCallingAccuracyOut | null;
+};
+
+/**
+ * A model's responses-as-code turn accounting.
+ */
+export type RacAccuracyOut = {
+  /**
+   * Distinct contributing runs.
+   */
+  runs: number;
+  /**
+   * Turns attributed to the model, whatever their outcome.
+   */
+  turns: number;
+  /**
+   * The turns that worked. Exact where per-model slices exist; on an older
+   * record it is turns minus errors, which counts a fatal turn as valid —
+   * an overcount of at most one turn per agent, tallied under
+   * [`approximate_runs`](Self::approximate_runs).
+   */
+  valid: number;
+  /**
+   * Turns the compiler rejected (the transpile kind).
+   */
+  compile: number;
+  /**
+   * Turns the program failed at runtime (program faults plus sandbox
+   * limits).
+   */
+  runtime: number;
+  /**
+   * Turns lost to the model API (the model-api kind).
+   */
+  modelErrors: number;
+  /**
+   * Turns that produced no completion at all.
+   */
+  missing: number;
+  /**
+   * The same errors keyed by turn error type wire id — the open breakdown
+   * the named groups above are derived from.
+   */
+  byType: { [key in string]: number };
+  /**
+   * The contributing runs whose figures came from the run-level rollup
+   * rather than per-model slices.
+   */
+  approximateRuns: number;
+};
+
+/**
+ * A model's tool-calling dispatch accounting.
+ */
+export type ToolCallingAccuracyOut = {
+  /**
+   * Distinct runs contributing dispatch totals.
+   */
+  runs: number;
+  /**
+   * Dispatched tool calls across them.
+   */
+  calls: number;
+  /**
+   * The dispatches that succeeded (calls minus the failures below).
+   */
+  ok: number;
+  /**
+   * The failed dispatches, keyed by call failure class wire id.
+   */
+  failures: { [key in string]: number };
+  /**
+   * Tool-calling runs with failure evidence but no recorded dispatch total
+   * — records that predate the total, whose rate cannot be stated.
+   */
+  runsWithoutCallTotals: number;
+};
+
+/**
+ * The `GET /stats/cabinet` response: the cabinet's headline totals plus the
+ * weekly activity series the home page charts.
+ */
+export type CabinetStatsResponse = {
+  /**
+   * Every recorded run, whatever its state or publication.
+   */
+  runs: number;
+  /**
+   * The summed token totals, with the honesty counter beside the sum.
+   */
+  tokens: CabinetTokensOut;
+  /**
+   * The summed comparable USD cost, with the honesty counter beside the sum.
+   */
+  cost: CabinetCostOut;
+  /**
+   * Distinct test-case slugs across the corpus.
+   */
+  testCases: number;
+  /**
+   * Distinct model ids across the corpus.
+   */
+  models: number;
+  /**
+   * Runs per ISO week (UTC Mondays), the last 52 weeks up to
+   * now inclusive, ascending, with explicit zero entries for empty weeks so a
+   * consumer charts the series without filling gaps.
+   */
+  weekly: Array<CabinetWeekOut>;
+};
+
+/**
+ * The cabinet's token total and its unreported-run counter.
+ */
+export type CabinetTokensOut = {
+  /**
+   * Total tokens across the runs that reported any.
+   */
+  total: number;
+  /**
+   * Runs whose metrics reported no tokens; they contribute nothing to the
+   * total.
+   */
+  unreportedRuns: number;
+};
+
+/**
+ * The cabinet's comparable-cost total and its unreported-run counter.
+ */
+export type CabinetCostOut = {
+  /**
+   * Summed comparable cost (USD) across the runs whose cost is known.
+   */
+  total: number;
+  /**
+   * Runs whose comparable cost is unknown (a `NULL` lifted column); they
+   * contribute nothing to the total.
+   */
+  unreportedRuns: number;
+};
+
+/**
+ * One week of the cabinet's activity series.
+ */
+export type CabinetWeekOut = {
+  /**
+   * The week's UTC Monday, as `YYYY-MM-DD`.
+   */
+  weekStart: string;
+  /**
+   * Runs whose `started_at` falls in that ISO week.
+   */
+  runs: number;
+};

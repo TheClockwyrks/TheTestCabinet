@@ -90,6 +90,53 @@ fn catalog_version_skips_a_re_render_when_unchanged_and_forces_when_changed() {
 }
 
 #[test]
+fn a_store_in_another_record_format_is_re_ingested_whole() {
+    // The repair after a build changed the stored shapes. The store looks full and
+    // none of it can be read, so a partial scan is promoted to a forced whole-catalog
+    // one: it prunes the versions the checkout no longer backs and leaves the store
+    // stamped with the format this build writes. Exercised with an empty test-cases
+    // tree, which needs no browser to render references.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    write(&store_dir.path().join(".tcab/store-format"), "999");
+    assert!(store.needs_reingest());
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(!store.has_version("pong", "v1.0.0"));
+    assert!(!store.needs_reingest());
+}
+
+#[test]
+fn a_partial_scan_of_a_current_store_leaves_the_rest_of_it_alone() {
+    // The contrast with the promotion above: a store this build reads is scanned as
+    // asked, so a partial scan neither forces nor prunes.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    store.set_store_format().unwrap();
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(store.has_version("pong", "v1.0.0"));
+}
+
+#[test]
 fn scan_with_progress_emits_a_start_event_with_the_target_count() {
     // The streamed progress feed leans on `Start` always firing before the loop,
     // carrying the total to be scanned. An empty test-cases tree exercises that
@@ -116,13 +163,16 @@ fn scan_with_progress_emits_a_start_event_with_the_target_count() {
 fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
     // Hidden entries are dropped so the checkout's dotfiles and the store's
     // `.tcab` sidecar never enter a copied definition — except the allowlist a
-    // case ships (`.gitignore`, `.cargo`), which must survive so a backend-driven
-    // run seeds the same set a local run does. Lockstep with `core`'s
-    // `collect_workspace_files` is guaranteed by the shared `is_seeded_dotfile`.
+    // case ships (`.gitignore`, `.cargo`, the prettier config), which must
+    // survive so a backend-driven run seeds the same set a local run does.
+    // Lockstep with `core`'s `collect_workspace_files` is guaranteed by the
+    // shared `is_seeded_dotfile`.
     let src = TempDir::new().unwrap();
     write(&src.path().join("Cargo.toml"), "[package]");
     write(&src.path().join(".gitignore"), "/target/\n");
     write(&src.path().join(".cargo/config.toml"), "[build]\n");
+    write(&src.path().join(".prettierrc.json"), "{}\n");
+    write(&src.path().join(".prettierignore"), "dist/\n");
     write(&src.path().join(".env"), "SECRET=1");
     write(&src.path().join(".tcab"), "sidecar");
     let dst = TempDir::new().unwrap();
@@ -140,6 +190,14 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
         ".cargo/ must survive ingest"
     );
     assert!(
+        out.join(".prettierrc.json").exists(),
+        ".prettierrc.json must survive ingest"
+    );
+    assert!(
+        out.join(".prettierignore").exists(),
+        ".prettierignore must survive ingest"
+    );
+    assert!(
         !out.join(".env").exists(),
         "other dotfiles are still skipped"
     );
@@ -153,7 +211,7 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
 #[cfg(unix)]
 fn copy_tree_recreates_symlinks_including_to_directories() {
     // A reference-impl's `node_modules` ships relative symlinks, some pointing at
-    // directories (e.g. `@test-cabinet/voxel-runtime -> ../../vendor/...`). These
+    // directories (e.g. `@clockwyrks/voxel-runtime -> ../../vendor/...`). These
     // must be recreated as symlinks rather than dereferenced: `std::fs::copy`
     // follows the link and errors on a symlink-to-directory ("the source path is
     // neither a regular file nor a symlink to a regular file"), which used to abort
@@ -277,7 +335,7 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
         .iter()
         .map(|spec| spec.source.as_str())
         .chain(manifest.assets.iter().map(|asset| asset.source.as_str()))
-        .chain(manifest.workspace.iter().map(|file| file.source.as_str()))
+        .chain(manifest.workspace.files().map(|file| file.source.as_str()))
         .chain(
             manifest
                 .variants
@@ -334,7 +392,9 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
         .expect("resolve tolerates the key");
     // Resolution recognized and resolved the key onto the variant.
     assert!(
-        resolved.variants[0].reference_impl.is_some(),
+        resolved
+            .reference_impl_for(&resolved.variants[0], test_cabinet_core::NONE_SLUG)
+            .is_some(),
         "resolution resolves the reference implementation onto the variant",
     );
 
@@ -344,6 +404,74 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
     let manifest = build_stored_manifest(&resolved).expect("build tolerates the key");
     assert_eq!(manifest.variants.len(), 1);
     assert_eq!(manifest.variants[0].slug, "base");
+}
+
+#[test]
+fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
+    // A case whose `base` variant declares a showcase: the stored manifest must
+    // carry the description and the carousel (order, kinds, and each entry keyed by
+    // its store-relative path), and after a real scan the store must serve the
+    // media bytes back through the manifest-gated showcase read.
+    let dir = TempDir::new().expect("temp dir");
+    let version = dir.path().join("test-cases/end-to-end/easy/demo/v1.0.0");
+    write(&version.join("prompt.hbs"), "Build it.");
+    write(&version.join("changelog.md"), "Introduced.");
+    write(
+        &version.join("test-case.toml"),
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n",
+    );
+    write(
+        &version.join("variants/base.toml"),
+        "slug = \"base\"\nshowcase = \"showcase/base\"\n",
+    );
+    write(
+        &version.join("showcase/base/showcase.md"),
+        "A demo game. Media captured from the reference implementation.\n",
+    );
+    write(
+        &version.join("showcase/base/showcase.toml"),
+        "[[media]]\nfile = \"title.png\"\nname = \"The title screen\"\n\n\
+         [[media]]\nfile = \"rally.json.gz\"\nname = \"A rally\"\n",
+    );
+    write(&version.join("showcase/base/title.png"), "png:title");
+    write(&version.join("showcase/base/rally.json.gz"), "gz:rally");
+
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
+    let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let manifest = build_stored_manifest(&resolved).expect("build the stored manifest");
+
+    let showcase = manifest.variants[0]
+        .showcase
+        .as_ref()
+        .expect("the declared showcase survives into the stored manifest");
+    assert!(showcase.description.starts_with("A demo game."));
+    // Declared order, inferred kinds, and store-relative keys — the same keying a
+    // spec or a workspace file gets, since the bytes ride the copied version tree.
+    assert_eq!(showcase.media.len(), 2);
+    assert_eq!(showcase.media[0].file, "title.png");
+    assert_eq!(showcase.media[0].name, "The title screen");
+    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    assert_eq!(showcase.media[0].key, "showcase/base/title.png");
+    assert_eq!(showcase.media[1].kind, test_cabinet_core::MediaKind::Replay);
+    assert_eq!(showcase.media[1].key, "showcase/base/rally.json.gz");
+
+    // The full scan copies the tree and writes the manifest; the store then serves
+    // the media through the manifest-gated read the showcase route uses.
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the showcase-bearing case");
+    assert_eq!(
+        store
+            .read_case_showcase("demo", "v1.0.0", "base", "title.png")
+            .expect("the showcase media is served from the store"),
+        b"png:title",
+    );
 }
 
 #[test]
@@ -456,6 +584,43 @@ fn stored_manifest_carries_voxel_specs() {
         model.parts.is_empty(),
         "parts are model-invented, not declared in the manifest"
     );
+}
+
+#[test]
+fn stored_manifest_carries_the_engines_the_case_declares() {
+    // The engines a version supports are the compatibility gate a run's selection is
+    // held against in the driver pod, which resolves the case over HTTP rather than
+    // from a checkout. Dropping them at ingest makes every version look as though it
+    // supports the engineless run alone, so an engine-backed run is refused whatever
+    // the case declares. Carom declares both spellings.
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+
+    let carom = catalog.resolve("carom", "v3.0.0").unwrap();
+    let manifest = build_stored_manifest(&carom).unwrap();
+    let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
+    assert_eq!(slugs, vec!["none", "simple-2d", "structured-2d"]);
+    // A pinned engine keeps its floor through the store, or the gate would admit a
+    // staged runtime the case's specs were never written against. Every engine the
+    // case pins is checked, so adding a column to the case cannot quietly lose one
+    // of the floors on the way through ingest.
+    for slug in ["simple-2d", "structured-2d"] {
+        let pinned = manifest
+            .engines
+            .iter()
+            .find(|e| e.slug == slug)
+            .unwrap_or_else(|| panic!("`{slug}` is declared"));
+        assert_eq!(
+            pinned.min_version,
+            Some("1.0.0".parse().unwrap()),
+            "`{slug}` keeps its declared floor through the store"
+        );
+    }
+
+    // And the whole set survives the JSON round-trip the on-disk sidecar takes.
+    let json = serde_json::to_string(&manifest).unwrap();
+    let read: crate::store::StoredManifest = serde_json::from_str(&json).unwrap();
+    assert_eq!(read.engines, manifest.engines);
 }
 
 #[test]
@@ -756,4 +921,288 @@ fn a_partial_scan_never_prunes() {
         })
         .unwrap();
     assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
+}
+
+// --- test-case groups --------------------------------------------------------
+
+/// Write a group manifest under `<checkout>/test-case-groups/<slug>/`.
+fn write_group(checkout: &std::path::Path, slug: &str, cases: &[&str]) {
+    let members = cases
+        .iter()
+        .map(|case| format!("\"{case}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    write(
+        &checkout
+            .join("test-case-groups")
+            .join(slug)
+            .join("test-case-group.toml"),
+        &format!("slug = \"{slug}\"\nname = \"{slug}\"\ncases = [{members}]\n"),
+    );
+}
+
+/// Slugs of the store's ingested test-case groups, in stored (display) order.
+fn stored_group_slugs(store: &DefinitionStore) -> Vec<String> {
+    store
+        .read_test_case_groups()
+        .unwrap()
+        .into_iter()
+        .map(|group| group.slug)
+        .collect()
+}
+
+#[test]
+fn whole_catalog_ingest_reconciles_the_group_set_and_rejects_unresolved_members() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_e2e_case(checkout.path(), "beta", "beta");
+    // One valid group, and one naming a member no case declares: the invalid one
+    // is rejected with a logged error, the valid one still ingests.
+    write_group(checkout.path(), "valid", &["alpha", "beta"]);
+    write_group(checkout.path(), "dangling", &["alpha", "gamma"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["valid"]);
+
+    // An unchanged catalogue reports the set unchanged, so the periodic ingest
+    // does not fire a gallery rebuild.
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(!report.test_case_groups_changed);
+}
+
+#[test]
+fn whole_catalog_ingest_rewrites_a_corrupt_group_slot() {
+    // The slot sits outside STORE_FORMAT, so a build with a different
+    // `TestCaseGroup` shape can leave bytes this build cannot parse. Re-ingest is
+    // the slot's documented repair: the scan must not abort on the unreadable
+    // slot, it must rewrite it whole and report the set changed.
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_group(checkout.path(), "solo", &["alpha"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Another record format: a map where this build expects a sequence.
+    write(
+        &store_dir
+            .path()
+            .join("test-case-groups")
+            .join("test-case-groups.json"),
+        "{}",
+    );
+    assert!(store.read_test_case_groups().is_err());
+
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+}
+
+#[test]
+fn a_partial_scan_leaves_the_group_set_alone() {
+    // A partial scan has not seen the whole catalog, so it can neither validate
+    // membership nor conclude a group is gone — the same rule as the version prune.
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_group(checkout.path(), "solo", &["alpha"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+
+    std::fs::remove_dir_all(checkout.path().join("test-case-groups")).unwrap();
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec!["alpha".to_string()]),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(!report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+
+    // A whole-catalog scan of the same checkout reconciles the set to empty: the
+    // folder's absence declares no groups, like any other deletion.
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), Vec::<String>::new());
+}
+
+#[test]
+fn a_scoped_validator_carries_its_engines_into_the_stored_manifest() {
+    // The engines a validator decides its point on are resolved from the case
+    // manifest and must reach the store, since the backend resolves a run's effective
+    // checklist from the stored definition rather than from the checkout.
+    let resolved = test_cabinet_core::ReviewValidation {
+        script: None,
+        script_rel: "hud/debug-overlay.test.ts".to_string(),
+        engines: vec!["none".to_string()],
+        outputs: vec![],
+    };
+
+    let stored = stored_validation(&resolved);
+
+    assert_eq!(stored.script, "hud/debug-overlay.test.ts");
+    assert!(stored.per_engine);
+    assert_eq!(stored.engines, ["none"]);
+}
+
+#[test]
+fn an_unscoped_validator_stores_no_engine_restriction() {
+    let resolved = test_cabinet_core::ReviewValidation {
+        script: Some(std::path::PathBuf::from("/host/validation/ball-spin.mjs")),
+        script_rel: "validation/ball-spin.mjs".to_string(),
+        engines: vec![],
+        outputs: vec![],
+    };
+
+    let stored = stored_validation(&resolved);
+
+    assert!(
+        stored.engines.is_empty(),
+        "an unscoped validator stores the empty list, which means every supported engine"
+    );
+}
+
+/// The cold-storage counterpart of `write_e2e_case`'s version folder, under `root`.
+fn cold_baseline_dir(root: &std::path::Path, folder: &str) -> std::path::PathBuf {
+    root.join("test-cases/end-to-end/easy")
+        .join(folder)
+        .join("v1.0.0")
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+}
+
+#[test]
+fn ingest_copies_a_version_s_baselines_from_cold_storage_into_the_store() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let cold_root = checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR);
+    let baselines = cold_baseline_dir(&cold_root, "demo").join("none/base");
+    write(&baselines.join("spin__still.png"), "png:still");
+    write(&baselines.join("img.9f2c1ab4.png"), "png:store");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(checkout.path(), &cold_root))
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .list_validation_baseline("demo", "v1.0.0", "none", "base")
+            .unwrap(),
+        vec![
+            "img.9f2c1ab4.png".to_string(),
+            "spin__still.png".to_string()
+        ],
+    );
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "none", "base", "spin__still.png")
+            .unwrap(),
+        b"png:still",
+    );
+}
+
+#[test]
+fn ingest_without_cold_storage_succeeds_with_empty_baselines() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    // The empty directory git leaves for an uninitialized submodule.
+    std::fs::create_dir_all(checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR)).unwrap();
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    let report = Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(
+            checkout.path(),
+            checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR),
+        ))
+        .scan(&IngestRequest::default())
+        .expect("a checkout without the submodule still ingests");
+
+    assert_eq!(report.test_case_versions.len(), 1);
+    assert!(report.test_case_versions[0].ingested);
+    assert!(
+        store
+            .list_validation_baseline("demo", "v1.0.0", "none", "base")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !store
+            .version_dir("demo", "v1.0.0")
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .exists()
+    );
+}
+
+#[test]
+fn ingest_reads_baselines_from_an_overridden_cold_storage_root() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let elsewhere = TempDir::new().unwrap();
+    write(
+        &cold_baseline_dir(elsewhere.path(), "demo").join("simple-2d/base/spin__clip.webm"),
+        "webm:clip",
+    );
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(checkout.path(), elsewhere.path()))
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "simple-2d", "base", "spin__clip.webm")
+            .unwrap(),
+        b"webm:clip",
+    );
+}
+
+#[test]
+fn ingest_defaults_to_the_checkout_s_cold_storage_submodule() {
+    // nextest runs each test in its own process, so clearing the override here
+    // touches no other test.
+    unsafe { std::env::remove_var(test_cabinet_core::COLD_STORAGE_DIR_ENV) };
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    write(
+        &cold_baseline_dir(&checkout.path().join("cold-storage"), "demo")
+            .join("none/base/spin__still.png"),
+        "png:still",
+    );
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "none", "base", "spin__still.png")
+            .unwrap(),
+        b"png:still",
+    );
 }

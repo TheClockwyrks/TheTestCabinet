@@ -2,191 +2,336 @@
 title: Publishing an Audio Sample Pack
 ---
 
-The [`sfx-sample`](/testing/asset-generation/audio-binaries/) tool mixes over a **sample
-library** and the `music` tool plays an **instrument bank** — the fixed audio palette each
-ships with, exactly as `draw` ships with its drawing logic. Because a run container is
-[isolated and offline](/components/core/execution/), that palette must be **baked into the
-run-container image at build time**; nothing is fetched at run time.
+## Overview
 
-This guide covers turning a committed pack *manifest* into a published, pinned pack the
-image builds against. If you just need the commands, use the
+The `sfx-sample` tool mixes over a sample library and the `music` tool plays an
+instrument bank. A test case declares the packs it draws from in `[audio] packs`,
+and a run container is given those packs, staged into `/opt/audio` when the
+container starts.
+
+This guide covers the whole operator path: ingesting a clip into the Test
+Cabinet object store, authoring a pack around it, publishing the normalized bytes
+the pack needs, and publishing the audio store a run stages out of. For the
+commands alone, use the
 [quickstart](/quickstarts/authoring/publish-an-audio-sample-pack/).
 
-## How it fits together
+## The pieces
 
-The audio files themselves are **not committed to the repo**. What lives in
-`containers/sample-packs/` is a per-pack **manifest** (`<pack>.toml`) listing each entry's
-`name`, `tags`, `description`, permissive `license`, source `url`, and `sha256`. The pack
-is a **content-addressed tarball** assembled from the manifest, published to object
-storage, and pinned by digest in the image build. So there are three moving pieces:
+Four artifacts carry a palette. Three are committed, and the fourth is a private
+[Cloudflare R2](https://developers.cloudflare.com/r2/) bucket holding the audio
+bytes themselves.
 
-1. **The manifest** — committed, human-readable, versioned. A source is fetched **once**,
-   at curation time, by a developer.
-2. **The tarball** — the normalized pack (`pack.toml` + `<name>.wav`), living in a
-   **private [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket**. Fetched only
-   at *image-build* time, never per-run.
-3. **The pin** — [`packs.lock.json`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/sample-packs/packs.lock.json),
-   committed, mapping `<name>@<version>` to the tarball's bucket/key/digest. This is the
-   source of truth the image build reads.
+### The clip registry
 
-### Why a separate, private bucket
+`containers/sample-packs/clips.toml` records one entry per clip. A clip's `id`
+is the lowercase-hex sha256 of its original source bytes, which is also its key
+in the object store. The registry holds intrinsic facts only: `license`,
+`source_url` and `freesound_id` for provenance, and the detected `root_note`
+where a recorded pitch is known. Presentation belongs to a pack, so the same
+clip can be `trombone` in one bank and `low_brass` in another.
 
-The pack bucket is **private** and **distinct from the backend's public
-[snapshot](/components/backend/snapshot/) bucket**. The snapshot bucket is public-read (the
-site fetches it anonymously at build time); the packs must stay private. Since R2's public
-access is a per-bucket switch, they cannot share one bucket. They also have different
-writer identities (the backend writes the snapshot; a developer publishes packs) and
-different blast radius, so keeping them apart is deliberate. R2 has **zero egress fees**,
-so the per-build fetch costs nothing.
+### Pack manifests
+
+A pack at `containers/sample-packs/<pack>.toml` is a `name`, a `version`, a
+`kind` of `sample-pack` or `instrument-bank`, a `[normalize]` profile, and a
+list of `[[entry]]` blocks. Each entry names a `clip` id and supplies that
+pack's presentation: `name`, `tags`, `description`, and, for a bank, `pitched`
+and an optional `root_note` override. A test case pins a palette as
+`name@version`, so any change to a pack's entries or profile is a new version.
+
+### The object store
+
+The bucket holds two kinds of object:
+
+- `sources/<clip-id>` — the original bytes, uploaded once at ingest.
+- `normalized/<clip-id>/<profile-id>.wav` — the output of one `[normalize]`
+  profile applied to one clip.
+
+A `profile-id` is the first 16 hex characters of the sha256 over the canonical
+encoding of the profile,
+`sample_rate|channels|loudness_lufs|true_peak_dbfs|trim_silence|max_duration_ms`.
+Two packs that normalize identically share one normalized object, and a profile
+change is a new `profile-id` rather than an overwrite.
+
+### The object lock
+
+`containers/sample-packs/objects.lock.json` maps each published key to its
+`bucket`, `sha256` and `bytes`. It is the record of what actually exists in the
+store, so staging resolves and verifies against it and fails fast on anything
+missing instead of hitting a 404 part-way through.
+
+Because both object keys are derived from clip identity and the normalize
+profile, publishing is incremental. Adding or swapping one entry in a pack
+publishes exactly the objects that entry needs; every other clip is already in
+the lock and is left alone.
+
+## The bucket and credentials
+
+### The audio bucket
+
+The audio bucket is private and distinct from the backend's public
+[snapshot](/components/backend/snapshot/) bucket. The snapshot bucket is
+public-read, so the site fetches it anonymously at build time; the audio objects
+stay private. R2's public access is a per-bucket switch, so the two need
+separate buckets, and they have different writer identities and different blast
+radius. R2 charges no egress, so the fetch is free.
 
 ### The two token roles
 
-Each half uses its own bucket-scoped credential pair, so a read-only key can live on CI and
-dev machines while the writer stays local:
+Each half uses its own bucket-scoped credential pair, so a read-only key can
+live on CI and dev machines while the writer stays local:
 
-- **PUBLISH** (read + write) — uploads a built tarball. **Local developer only**; CI never
-  writes.
-- **PRESIGN** (read only) — mints the short-lived download URL the image build fetches the
-  pack from. Lives on CI *and* dev machines.
+- PUBLISH (read and write) uploads source and normalized objects. It is used by
+  a local developer only.
+- PRESIGN (read only) mints the short-lived download URLs that stage the audio
+  store. It lives on CI and on dev machines.
 
-A presigned URL moves the credential to *build time* (something has to sign the URL); it
-does not put a credential into the image. The URL itself is anonymous once minted, so
-Docker's `ADD` fetches it with no secret in any layer.
+A presigned URL moves the credential to staging time, since something has to sign
+the URL, and keeps every credential out of the published store.
 
-## One-time setup
+### One-time setup
 
-### The R2 bucket and tokens
+1. Create a private R2 bucket, for example `test-cabinet-audio`, with public
+   access off.
+2. Create two R2 API tokens scoped to that bucket: one Object Read and Write for
+   publishing, one Object Read-only for presigning. Cloudflare shows each token
+   an Access Key ID and a Secret Access Key for the S3 API. The SigV4 flow uses
+   that pair rather than the single opaque token value.
 
-1. Create a **private** R2 bucket (e.g. `test-cabinet-audio`) with public access **off**.
-2. Create two R2 API tokens scoped to that bucket: one **Object Read & Write** (publish),
-   one **Object Read-only** (presign). Cloudflare shows each token an **Access Key ID** and
-   a **Secret Access Key** for the S3 API — the S3/SigV4 flow uses that *pair*, not the
-   single opaque token value.
+Read these from repo-root `.env` locally and from GitHub secrets and variables
+in CI.
 
-### R2 environment
+| Variable                                                           | Role                                        | Where                        |
+| ------------------------------------------------------------------ | ------------------------------------------- | ---------------------------- |
+| `CLOUDFLARE_AUDIO_R2_S3_URL`                                       | the S3 endpoint                             | every step                   |
+| `CLOUDFLARE_ACCOUNT_ID`                                            | derives that endpoint when the URL is unset | every step                   |
+| `CLOUDFLARE_AUDIO_R2_BUCKET`                                       | the private bucket name                     | every step                   |
+| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write                                       | ingest + publish, local only |
+| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read                                        | store staging, local + CI    |
+| `FREESOUND_API_KEY`                                                | Freesound search and fetch                  | ingest only                  |
 
-Read from repo-root `.env` locally, and from GitHub secrets/variables in CI. The image
-build needs only the read-only PRESIGN pair.
+Publishing needs `ffmpeg` on `PATH` to normalize, and curating a bank uses it to
+detect pitch. Staging the store needs neither `ffmpeg` nor a Freesound key.
 
-| Variable | Role | Where |
-| --- | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | derives the S3 endpoint | publish + presign |
-| `CLOUDFLARE_AUDIO_R2_BUCKET` | the private bucket name | publish + presign |
-| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | **write** | local publish only |
-| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | **read** | local + CI image build |
+### Freesound access
+
+Freesound gates access in two tiers. A free API key lets you search, read
+metadata, and download the preview transcodes at
+`cdn.freesound.org/previews/…-hq.ogg`, while OAuth2, an interactive per-user
+grant, is required only for the pristine original files. Ingest stays in the
+token tier: every clip is normalized to PCM-16 WAV anyway, so an hq-ogg preview
+run through that profile is indistinguishable from the original for a short
+layer. CC0 governs reuse rights rather than access, so the token is a free
+account gate orthogonal to the license.
 
 ### GitHub secrets for CI
 
-The `Build containers` workflow presigns a read-only download of the pack. Add, under the
-repository's **Settings → Secrets and variables → Actions**:
+The `Build containers` workflow presigns read-only downloads of the objects the
+audio-store image carries. Add, under the repository's Settings, Secrets and
+variables, Actions:
 
-- **Secrets:** `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`,
+- Secrets: `CLOUDFLARE_ACCOUNT_ID`,
+  `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`,
   `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY`.
-- **Variable:** `CLOUDFLARE_AUDIO_R2_BUCKET`.
+- Variable: `CLOUDFLARE_AUDIO_R2_BUCKET`.
 
-The publish (write) credentials are **never** given to CI.
+The publish credentials stay off CI.
 
-## Authoring or updating a manifest
+## Ingesting a clip
 
-A manifest lives at `containers/sample-packs/<pack>.toml`. Each `[[sample]]` (or
-`[[instrument]]`) entry needs a `name`, `tags`, `description`, a **CC0 or otherwise
-permissive** `license` (NC/ND is rejected), a source `url`, and the source's `sha256`. The
-format and the on-disk layout the loader (`crates/audio-core/src/sample.rs`) expects are
-documented in
-[`containers/sample-packs/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/sample-packs/README.md).
-
-Two rules matter:
-
-- **Any content change is a new `version`.** Packs are immutable and versioned with the
-  image; never edit a published pack in place. The version is part of the pinned ref
-  (`combat-core@0.1.0`) and the object key, so bumping it is what makes a new pack.
-- **`name` / `tags` / `description` must be neutral and informational.** The model browses
-  the library by text alone (it cannot audition audio), so describe *what a clip is*
-  (source, timbre, frequency, decay) — never how to use, layer, pitch, or combine it. That
-  composition reasoning is exactly what an `sfx-sample` case measures. See the
-  [README's rule](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/sample-packs/README.md#name--tags--description-must-be-neutral).
-
-## Publishing
+Ingest is the only step that contacts Freesound, and it runs once per clip.
 
 ```sh
-node scripts/build-sample-pack.mjs combat-core --publish
-git add containers/sample-packs/packs.lock.json
+# One clip named by URL, printing its clip id:
+node scripts/curate-instrument-bank.mjs --ingest <freesound-url> --publish
+# A whole bank of instruments, searched CC0-only and pitch-detected:
+node scripts/curate-instrument-bank.mjs --bank gm-lite
+# Every clip the registry already pins whose source object is missing:
+node scripts/curate-instrument-bank.mjs --seed-sources --publish
 ```
 
-The script:
+Ingest fetches the source, hashes the bytes to derive the clip id, checks the
+license is CC0 or otherwise permissive, uploads the original bytes to
+`sources/<clip-id>`, and records the clip in `clips.toml` and its object in
+`objects.lock.json`. A clip already in the registry is left as it is, so
+re-running ingest for an existing sound is a no-op. `--dry-run` searches,
+detects pitch, and prints a table without writing or uploading.
 
-1. **Fetches** each source, **caching it by `sha256`** under `dist/sample-packs/.cache/`
-   (override with `TCAB_SAMPLE_SRC_CACHE`). A rebuild re-reads a cached clip instead of
-   re-hitting Freesound; because the cache is keyed by content hash, it can never serve
-   stale bytes. Delete the cache dir to force a clean re-fetch.
-2. **Verifies** each source against its declared `sha256` (a mismatch aborts).
-3. **Normalizes** to PCM-16 WAV via `ffmpeg` (sample rate, channels, loudness, trim). With
-   no `ffmpeg` it writes an un-normalized skeleton and says so loudly.
-4. Writes the loader-facing layout, **tars it deterministically**, and prints the digest.
-5. **Uploads** the tarball to R2 at a versioned key
-   (`<name>/<version>/<name>-<version>.tar`) and records the pin in `packs.lock.json`.
+`--seed-sources` seeds a store that does not yet hold the clips `clips.toml`
+pins. It reads the registry as its work list rather than searching, so the clips
+each pack references stay exactly as they are: for every clip the lock does not
+record, it fetches the recorded `source_url`, verifies the bytes hash to that
+clip id, uploads `sources/<clip-id>`, and records the object. A clip the lock
+already records is skipped and fetched bytes are cached by clip id, so an
+interrupted run resumes where it stopped, and `--force` re-fetches and re-uploads
+regardless. Omitting `--publish` fetches and verifies every clip and reports the
+uploads it would make, which needs no credentials.
 
-Then **commit `packs.lock.json`** — that pin is what lets CI and other machines build the
-pack. (Omit `--publish` to build + print the digest without uploading, e.g. to pin by hand.)
+A clip whose source fails to fetch, or whose bytes hash to a different value, is
+an error naming the clip id and its `source_url`. The run continues through the
+remaining clips and exits non-zero with a summary, so one dead source is reported
+alongside every clip that succeeded. Once it has run, the object store holds
+every pinned source, and publishing a pack and staging the audio store read from
+there.
 
-## Building the image
+## Authoring or editing a pack manifest
 
-`./containers/build.sh` (and the `Build containers` CI workflow) build the `sfx-sample` /
-`music` images by resolving the pack's pin, minting a short-lived presigned R2 GET URL for
-it (via `scripts/presign-sample-pack.mjs`), and passing the pack ref, that URL, and the
-digest to the build. The Dockerfile's `ADD --checksum` fetches and verifies the tarball and
-unpacks it to the path the loader reads. There are no build args to pass by hand.
+A pack is a list of clip ids plus the presentation this pack gives them. Add an
+`[[entry]]` for each clip in the palette, bump `version`, and keep two rules in
+mind:
 
-An audio image whose pack is **not pinned** (or whose presign fails) is a **build error**,
-not a silent skip — a missing or broken pack surfaces immediately rather than shipping an
-image with an empty palette.
+- `name`, `tags` and `description` must be neutral and informational for a
+  sample pack. The model browses the library by text alone, so describe what a
+  clip is: its source, timbre, frequency, and decay. Composition reasoning is
+  what an `sfx-sample` case measures, so the metadata leaves it to the model.
+- A bank entry is named by its instrument, such as `grand_piano` or `violin`,
+  because a `music` case measures composition rather than sample
+  identification.
 
-Updating a palette is therefore: **new pack version → `--publish` → commit the pin → image
-rebuild.**
-
-## Instrument banks (`music`)
-
-An **instrument bank** (`kind = "instrument-bank"`, entries under `[[instrument]]`) is
-built and published exactly like a sample pack, with two extra per-entry fields the
-`music` sequencer needs:
-
-- `root_note` — the MIDI note the sample was recorded at. The sequencer pitch-shifts the
-  one recorded note across a track's notes relative to this, so the sample may be at **any
-  pitch** as long as `root_note` records it accurately (it need not be tuned to a fixed
-  reference).
-- `pitched` — `true` for a melodic instrument (transposed per note); `false` for
-  percussion (played at its native pitch, never transposed).
-
-The shipped `gm-lite` bank was assembled by
-[`scripts/curate-instrument-bank.mjs`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/curate-instrument-bank.mjs),
-which searches Freesound (CC0 only) for a representative note per instrument, downloads
-its preview, and **detects the recorded pitch by autocorrelation** to fill `root_note`.
-Re-run it to refresh or extend the bank, then publish as above:
+Validate a manifest, its clip references and its lock coverage without touching
+the network:
 
 ```sh
-node scripts/curate-instrument-bank.mjs --dry-run   # search + detect, print a table
-node scripts/curate-instrument-bank.mjs             # write containers/sample-packs/gm-lite.toml
+node scripts/build-sample-pack.mjs gm-lite --check
+```
+
+## Publishing the objects a pack needs
+
+```sh
 node scripts/build-sample-pack.mjs gm-lite --publish
 ```
 
-Unlike the deliberately elemental *sfx* library, a bank entry is **named by its
-instrument** (`grand_piano`, `violin`): a `music` case measures composition, not sample
-identification, so a real instrument name is correct here.
+The script resolves the pack's `[normalize]` profile to a `profile-id`, then for
+each entry checks whether `normalized/<clip-id>/<profile-id>.wav` is already in
+the lock. For anything missing it downloads `sources/<clip-id>` from the store,
+verifies it against the clip id, normalizes it to PCM-16 WAV with `ffmpeg`,
+uploads the result, and records the key, digest and size in
+`objects.lock.json`. A clip that is not in `clips.toml`, or whose source object
+is not in the lock, is an error naming the clip and the ingest command to run.
+
+Editing one entry therefore publishes one object. Changing the `[normalize]`
+profile publishes the whole pack under a new `profile-id`, leaving the previous
+objects addressable by the packs that still use them.
+
+## Committing
+
+```sh
+git add containers/sample-packs/clips.toml \
+        containers/sample-packs/gm-lite.toml \
+        containers/sample-packs/objects.lock.json
+```
+
+Those three files are what let CI and another machine stage the store. The
+registry says what a clip is, the manifest says how a pack presents it, and the
+lock says which bytes exist and what they hash to.
+
+## Publishing the store a run stages out of
+
+Every published pack lives in the audio store, and a run container is given the
+subset its test case declares. `scripts/stage-audio-store.mjs` materializes that
+store under `dist/audio-store/tree`:
+
+```
+objects.lock.json                     the published objects, copied in as-is
+clips/<clip-id>.<profile-id>.wav      shared across packs, deduped
+packs/<name>@<version>/pack.toml      loader manifest
+```
+
+Each `pack.toml` entry points at its shared clip file, so a clip two packs use is
+downloaded once. Every object is fetched through a presigned GET and verified
+against `objects.lock.json` before it lands. A missing lock entry, a failed
+presign, or a digest mismatch is a hard error, and there is no path from staging
+to Freesound.
+
+The lock is copied into the store beside the tree it describes, so the same check
+runs wherever the store ends up. [Staging a
+run](/components/core/execution/#staged-audio) verifies every clip it copies into
+a container against it.
+
+`./containers/build.sh audio-store` and the Azure pipeline both run the stager
+and build the data-only `audio-store` image over its output. Run the stager on
+its own to materialize the tree without building.
+
+```sh
+node scripts/stage-audio-store.mjs                 # every published pack
+node scripts/stage-audio-store.mjs gm-lite@0.1.0   # only the refs you name
+
+./containers/build.sh audio-store                  # the image, locally
+```
+
+The `audio-store` image is what carries the store to a machine with no audio
+credentials. The pipeline publishes it on every push to `master` and `staging`
+as `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>`. The driver image
+copies it in at `/opt/tcab-audio`, and a local checkout fetches it with
+`scripts/fetch-audio-store.sh`, which pulls the image and extracts the tree.
+Pulling it needs `az acr login --name testcabinet` and `TCAB_CONTAINER_TAG` set
+to the commit whose store you want.
+
+A newly published pack version is reachable by a run as soon as a test case names
+it in `[audio] packs`. Run images are not rebuilt for it.
+
+### Trying it before any image is pushed
+
+The pipeline publishes the image once the change reaches `staging` or `master`,
+so it is not a step between changing audio and hearing it. Both consumers can
+take the bytes straight from the object store:
+
+```sh
+# a local stack: builds the store from this checkout and hands the driver
+# image build that ref, pulling nothing
+make -C deployments/local audio-store
+make -C deployments/local local-rebuild
+
+# a host-side `tcab run` / `tcab validate`
+scripts/fetch-audio-store.sh --stage
+```
+
+Both need only the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` pair the stager
+already uses, and both verify every clip against `objects.lock.json` exactly as
+the published image's build does.
+
+## Instrument banks
+
+An instrument bank (`kind = "instrument-bank"`) carries two extra per-entry
+fields the `music` sequencer needs:
+
+- `root_note`, the MIDI note the clip was recorded at. The sequencer
+  pitch-shifts the one recorded note across a track's notes relative to this, so
+  a clip may be at any pitch as long as `root_note` records it accurately. It
+  defaults to the registry's value and may be overridden per pack.
+- `pitched`, `true` for a melodic instrument that is transposed per note and
+  `false` for percussion, which plays at its native pitch.
+
+`scripts/curate-instrument-bank.mjs --bank <name>` fills both: it searches
+Freesound for a representative note per instrument, ingests the clip, and
+detects the recorded pitch by autocorrelation. Extend the `BANKS` registry in
+that script to add a bank.
 
 ## Troubleshooting
 
-- **`ffmpeg not found`** — the pack builds but is un-normalized (a raw skeleton copy).
-  Install `ffmpeg` and rebuild for a real PCM-16 pack.
-- **`sha256 mismatch`** — the source changed at its URL, or the manifest's hash is wrong.
-  Re-curate the clip and update the manifest.
-- **presign / upload fails** — check the R2 credentials in `.env` (the right *pair* for the
-  role) and that the bucket name and account id are correct. The first `--publish` is the
-  real end-to-end test of the credentials.
+- A clip is not in the registry. The pack names a `clip` id with no entry in
+  `clips.toml`. Ingest the sound with
+  `node scripts/curate-instrument-bank.mjs --ingest <url> --publish`, which writes
+  the registry entry and uploads the source, then re-run the publish.
+- An object is not published. The lock has no entry for a key staging needs,
+  usually because the pack changed after the last publish. Run
+  `node scripts/build-sample-pack.mjs <pack> --publish` and commit the updated
+  `objects.lock.json`.
+- A digest mismatch. Downloaded bytes do not hash to the value in the lock,
+  which means the object in the bucket was replaced out of band. Re-publish the
+  affected object, or re-ingest the clip if its source object is the one that
+  differs. Staging never repairs this by refetching from Freesound.
+- A failed presign or upload. Check the pair in `.env` matches the role for the
+  step, and that the bucket name and account id are correct. The first
+  `--publish` is the real end-to-end test of the write credentials.
 
 ## See also
 
-- [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/) — the terse
-  command refresher.
-- [Audio binaries](/testing/asset-generation/audio-binaries/) — how the tools use the pack.
+- [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/)
+  is the terse command refresher.
+- [The audio binaries](/testing/asset-generation/audio-binaries/) covers how the
+  tools use the pack.
+- [Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/)
+  names a published pack from a case's `[audio] packs`.
 - [`containers/sample-packs/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/sample-packs/README.md)
-  — the manifest format and on-disk layout in full.
+  gives the registry, manifest and lock formats in full.

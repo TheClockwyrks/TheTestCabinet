@@ -1,0 +1,64 @@
+# The one and only Wireworm variant: the twelve-level Descent, on the one board
+# geometry, with all three foes. Listed as the single entry in the case manifest's
+# `variants`, so it is the default and every run is a run of it. Every path here
+# would resolve against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The twelve-level Descent: the charged node field, the winding data-worm, the three support foes, and the band-bound cutter beneath them."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The three foes are not variants, and neither are the twelve levels. A variant is
+# a difference in the game a run is asked to BUILD; the foes and the levels are
+# what a single build already contains, gated by the level the player has reached,
+# so every one of them is specified in a COMMON spec declared in `test-case.toml`
+# and seeded for every run. A build ships all of it.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no spec
+# of any kind to put here. If you came to this file to add one, it almost
+# certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: a
+# sustained stretch of real play — the worm winding and charging a cluster, a bolt
+# into a critical node setting off a wide chain-arc, the cluster clearing and
+# segments frying, then the field thickening again from the segments that were
+# shot — plus stills of a mid-level board and the title screen. All of it is
+# captured from `references/none` driven through its own `window.__wireworm`
+# surface, and every outcome on screen arises from the game's own rules under
+# scripted input: posing an outcome through the debug surface would be
+# fabrication. `showcase/base/showcase.toml` lists the media;
+# `showcase/base/showcase.md` carries the description.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name EXACTLY
+# the engines the case supports (the resolver checks both directions), and the
+# case supports three: `references/none` carries its own runtime layer (frame
+# loop, canvas fit, keyboard input, audio, overlay, and the `window.__wireworm`
+# surface), `references/simple-2d` hands all of that to the engine package
+# resolved from the repository's `packages/simple-2d` and ships the game as
+# `src/game.ts` beside the seeded entry point, and `references/structured-2d`
+# writes the game inside the gameplay framework resolved from
+# `packages/structured-2d`, as the game definition, instance, mode, state, and
+# actors `src/game.ts` exports. The game any of them implements is identical,
+# which is what makes a run on one engine comparable with a run on another.
+#
+# Wireworm has ONE variant, so a reference is named by engine alone —
+# `references/<engine>/`, with `src/` directly inside it — rather than being
+# grouped under a variant folder. No reference directory is ever seeded into a
+# run: each is the authored answer, built with the case's own `[build]` commands
+# and held to the same four toolchain gates a run is, and each is what
+# `tcab capture-baselines` drives to synthesize the baseline half of the
+# validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override either. The case's common per-engine table covers
+# every run and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   LadderClimber,
   LadderProgress,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import { ladderSummary } from "./LaddersPage";
 
 function climber(over: Partial<LadderClimber> = {}): LadderClimber {
@@ -50,7 +50,7 @@ function progress(climbers: LadderClimber[]): LadderProgress {
     runsMissing: 0,
     runsUnreviewed: 2,
     runsOutstanding: 0,
-    bufferTarget: 10,
+    bufferTarget: { kind: "bounded", runs: 10 },
   };
 }
 

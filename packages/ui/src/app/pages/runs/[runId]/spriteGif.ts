@@ -59,7 +59,9 @@ export async function encodeSpriteGif({
     frameUrls.map((url) => (url ? loadBitmap(url).catch(() => null) : null)),
   );
   if (bitmaps.every((bitmap) => bitmap === null)) {
-    throw new Error("No animation frames could be loaded");
+    throw new Error(
+      `no animation frame could be loaded (0 of ${frameUrls.length})`,
+    );
   }
 
   const delay = Math.round(1000 / Math.max(fps, 0.001));
@@ -104,7 +106,7 @@ export async function encodeSpriteGif({
 async function loadBitmap(url: string): Promise<ImageBitmap> {
   const response = await fetch(url, { mode: "cors" });
   if (!response.ok) {
-    throw new Error(`Failed to fetch frame (${response.status})`);
+    throw new Error(`frame fetch failed: HTTP ${response.status} (${url})`);
   }
   return createImageBitmap(await response.blob());
 }

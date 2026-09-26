@@ -2,27 +2,24 @@
 title: Cut a Release
 ---
 
-Ship `vX.Y.Z`: prepare the release branch, rehearse on staging, publish the
-binaries and desktop app from GitHub, then land the catalog and the services in
-production. The full walkthrough and the *why* behind each step are in
-[Cutting a Release](/guides/devops/cutting-a-release/).
+Ship `vX.Y.Z`: prepare the release branch, rehearse on staging, promote to
+`master`, then tag it. The full walkthrough and the reasoning behind each step
+are in [Cutting a Release](/guides/devops/cutting-a-release/).
 
-Four things ship on four separate paths, and the tag governs only the first:
-**artifacts** (the GitHub release), the **catalog** (a branch tip plus a
-re-ingest), the **services** (a sha pinned in the prod overlay), and the **sites**
-(a Pages build). There is **no version to bump** anywhere in the repository, and
-no tag to push — the Release workflow creates it.
+Four things ship on four paths, and the tag governs only the first: the
+**binaries** (`tcab` and `gg`, from the tag's pipeline run), the **catalog** (a
+branch tip the backend re-ingests on every deploy), the **services** (the
+pipeline's deploy of the merge commit), and the **sites** (a Pages build).
 
 ```text
-rel/vX.Y.Z ──▶ nightly ──▶ staging ──▶ master
+rel/vX.Y.Z ──▶ nightly ──▶ staging ──▶ master ──▶ tag vX.Y.Z
    the work    integration  (vX.Y.Z-rcN)  (vX.Y.Z)
 ```
 
 ## Prerequisites
 
-- `gh` authenticated against `TheClockwyrks/TheTestCabinet`, and a `gh` remote for
-  the GitHub mirror (public releases are cut there; Azure DevOps is private).
-- `az` logged in to the cluster subscription, for the roll and the re-ingest.
+- Push access to the Azure Repos repository, where the tag is created.
+- `az` logged in to the cluster subscription, for verifying the rolls.
 - `wrangler` with `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, if any
   reference implementation needs publishing.
 
@@ -39,8 +36,11 @@ $EDITOR apps/docs/astro.config.mjs                        # Changelogs group, ne
 grep -rln "experimental" test-cases/ game-jams/ --include=*.toml
 
 # Publish/republish their reference implementations, then commit the lockfile.
-tcab publish-reference --env prod <slug>
-git add test-cases/reference-builds.lock.json && git commit -m "chore(references): update reference implementations"
+# The publish exits non-zero if any reference build failed, so chain the commit
+# onto it rather than committing a lockfile a failed sweep only half wrote.
+tcab publish-reference --env prod <slug> && \
+  git add test-cases/reference-builds.lock.json && \
+  git commit -m "chore(references): update reference implementations"
 ```
 
 Verify the release gate — every non-experimental variant declaring a
@@ -67,74 +67,66 @@ for m in sorted(pathlib.Path("test-cases").rglob("test-case.toml")):
 PY
 ```
 
-Then: Azure CI green, and dispatch `binary-macos.yml` (Azure has no macOS agents,
-so this is the only macOS check before the artifacts are built).
+Bump `crates/gg` and `crates/core` to `X.Y.Z` in the same branch; the tag's
+version gate compares against them.
+
+```sh
+$EDITOR crates/gg/Cargo.toml crates/core/Cargo.toml   # version = "X.Y.Z"
+cargo check -p test-cabinet-gg -p test-cabinet-core   # refreshes Cargo.lock
+```
 
 ## 2. Rehearse on staging
 
-Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR, then wait for its images:
-
-```sh
-for wf in build-service-images build-containers; do                 # both run on
-  gh run list --workflow=$wf.yml --branch staging --limit 5 \       # every push;
-    --json headSha,conclusion,createdAt                             # wait for both
-done
-```
-
-Re-pin `deployments/k8s/overlays/azure-staging` to that sha (the `images:` block +
-`patch-dispatcher-driver-image.yaml`, including its `TCAB_CONTAINER_TAG`, +
-`patch-dispatcher-publisher.yaml`), apply
-it the way [Roll Production Service
-Images](/quickstarts/devops/roll-prod-service-images/) does but against the staging
-cluster, then:
-
-```sh
-scripts/reingest-cluster.sh --env staging   # makes the merged catalog visible
-```
+Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR. The merge commit's
+pipeline run builds every image at its sha and `deploy_staging` rolls the
+staging cluster to them, the way [Roll Production Service
+Images](/quickstarts/devops/roll-prod-service-images/) describes for prod. The
+roll restarts the backend, which re-ingests the `staging` tip, so the merged
+catalog is visible once `deploy_staging` succeeds.
 
 Enqueue real runs of the cases that changed and review one end to end. Fixes go
-back onto `nightly` and return as the next rc — never straight onto `staging`.
+back onto `nightly` and return as the next rc, never straight onto `staging`.
 
-## 3. Cut the artifacts
+## 3. Land it in production
 
-```sh
-# Promote staging -> master as a `vX.Y.Z` PR (the rehearsed tree), then mirror it:
-# the release workflows live on GitHub.
-git push gh master
+Promote `staging` into `master` as a `vX.Y.Z` PR. The merge commit's pipeline
+run rolls `tcab-prod` to the release sha in `deploy_prod`, and the restarted
+backend re-ingests the `master` tip, publishing the release's cases, errata, and
+reference-build URLs. Confirm the roll as the
+[roll-prod quickstart](/quickstarts/devops/roll-prod-service-images/) does.
 
-# Both image workflows run on EVERY master push, so the merge always publishes a
-# complete `:<sha>` set — just wait for them (the release gates on it either way).
-gh run list --workflow=build-service-images.yml --branch master --limit 5 \
-  --json headSha,conclusion,createdAt
-gh run list --workflow=build-containers.yml --branch master --limit 5 \
-  --json headSha,conclusion,createdAt
+The same run's `docs` job deploys the docs. The gallery rebuilds because a
+re-ingest that changed something queues a snapshot refresh, which fires the
+Pages deploy hook. A no-op re-ingest queues nothing, which is the usual reason
+the gallery does not move.
 
-gh workflow run release.yml --ref master -f version=vX.Y.Z   # builds + PRERELEASE + tag
-# ... download every platform's artifacts and exercise them (this is the only gate
-#     the servers and the desktop app get) ...
-gh workflow run release-promote.yml -f tag=vX.Y.Z            # flips to latest, no rebuild
-```
+## 4. Tag the release
 
-## 4. Land it in production
+Once the `master` run is green, tag the merge commit in Azure Repos:
 
 ```sh
-# Roll the service images AND TCAB_CONTAINER_TAG to the release sha — every master
-# sha now carries both image sets: see the roll-prod quickstart.
-# Then publish the release's catalog work — cases, errata, reference-build URLs:
-scripts/reingest-cluster.sh --env prod
+git switch master && git pull
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z      # origin is the Azure Repos remote
 ```
 
-The docs deploy themselves on the `master` push (the changelog touches
-`apps/docs/**`); the gallery rebuilds because a re-ingest that changed something
-queues a snapshot refresh, which fires the Pages deploy hook. A **no-op** re-ingest
-queues nothing — that, not a broken hook, is the usual reason the gallery does not
-move.
+The tag's pipeline run gates the commit again, fails if `gg --version` is not
+`X.Y.Z`, publishes the smoke-tested `tcab` as the `tcab-linux` and
+`tcab-windows` artifacts, uploads gg to the `gg-releases` blob container, and
+pushes the tag to the GitHub mirror.
 
 ## Verify
 
-- The GitHub release is **Latest**, not a prerelease, with every archive, both
-  installers, and `SHA256SUMS`.
-- `docs.testcabinet.ai` serves the changelog *and* links it in the sidebar.
+```sh
+git ls-remote origin refs/tags/vX.Y.Z
+git ls-remote https://github.com/TheClockwyrks/TheTestCabinet refs/tags/vX.Y.Z
+curl -fsI https://testcabinetartifacts.blob.core.windows.net/gg-releases/vX.Y.Z/gg-x86_64-unknown-linux-musl
+```
+
+- The tag names the same commit on Azure and on the GitHub mirror.
+- The tag's pipeline run carries the `tcab-linux` and `tcab-windows` artifacts.
+- `gg-releases/vX.Y.Z/` holds both gg binaries and `gg-reference.tar.gz`.
+- `docs.testcabinet.ai` serves the changelog and links it in the sidebar.
 - `testcabinet.ai` shows the graduated cases, each with a working **Reference**
   tab.
 - The console can enqueue a run of a graduated case.
@@ -142,9 +134,9 @@ move.
 
 ## Next steps
 
-- [Cutting a Release](/guides/devops/cutting-a-release/) — the full sequence, the
+- [Cutting a Release](/guides/devops/cutting-a-release/): the full sequence, the
   reasoning, and the gotcha table.
-- [Releasing](/development/releasing/) — the Release workflows, the unsigned-macOS
-  workaround, and the Cloudflare Pages topology.
-- [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
-  the commands Phase 4's roll expands into.
+- [Releasing](/development/releasing/): what a tag publishes, the gg release
+  host, and the Cloudflare Pages topology.
+- [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/):
+  verifying the prod roll, and rolling back.

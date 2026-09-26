@@ -58,7 +58,17 @@ export class Input {
     );
     window.addEventListener("keydown", (e) => {
       // Keep the page from scrolling / tab-cycling on the game keys while playing.
-      if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) e.preventDefault();
+      if (
+        [
+          " ",
+          "ArrowUp",
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "Tab",
+        ].includes(e.key)
+      )
+        e.preventDefault();
       const id = keyId(e.key);
       if (!this.held.has(id)) this.keys.push(e.key); // edge only — ignore OS auto-repeat
       this.held.add(id);
@@ -77,7 +87,10 @@ export class Input {
   }
 
   toLogical(clientX: number, clientY: number): { x: number; y: number } {
-    return { x: (clientX - this.offX) / this.scale, y: (clientY - this.offY) / this.scale };
+    return {
+      x: (clientX - this.offX) / this.scale,
+      y: (clientY - this.offY) / this.scale,
+    };
   }
 
   get pointerLogical(): { x: number; y: number } {

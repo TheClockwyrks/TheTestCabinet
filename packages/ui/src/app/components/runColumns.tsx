@@ -1,16 +1,24 @@
 import { useMemo, type ReactNode } from "react";
-import type { TestType } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import type { TestType } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@clockwyrks/ui";
 import type { InProgressRun } from "../../client/types";
+import { resolveEngineSlug } from "../data/engines";
 import {
   asGrade,
+  type AestheticRating,
   type GradeStatus,
   overallGradeOf,
   type Rating,
   RATINGS,
   worstRating,
 } from "../data/ratings";
+import { isGgRun } from "../data/runLinks";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import { useFindModel } from "../data/useModels";
@@ -35,17 +43,20 @@ import styles from "./RunLog.module.scss";
  * - `"global"` offers every column for cross-case listings (the home page).
  * - `"variant"` drops the test and variant columns for pages already scoped to
  *   a single test case and variant, where they would be constant.
+ * - `"case"` drops only the test column: the case-detail Runs tab widened to all
+ *   variants is still one case per row, but its variant (and engine) now differ
+ *   row to row and must stay visible.
  * - `"model"` drops the model column for the model detail page, where every row
  *   is the same model; it keeps the test and variant columns.
  */
-export type RunScope = "global" | "variant" | "model";
+export type RunScope = "global" | "variant" | "case" | "model";
 
 /**
- * A finished run resolved for the table: the summary card plus the two values a
- * cell (and a sort) needs that don't live on the card — the case's display name
- * and the run's reviewer rating. Resolved once per row (see {@link
- * useEnrichedRuns}) so sorting and rendering share the work instead of each cell
- * re-deriving it.
+ * A finished run resolved for the table: the summary card plus the values a cell
+ * (and a sort) needs that aren't ready to render off the card — the case's display
+ * name, the run's reviewer rating, and the resolved model/configuration identity.
+ * Resolved once per row (see {@link useEnrichedRuns}) so sorting and rendering
+ * share the work instead of each cell re-deriving it.
  */
 export interface EnrichedRun {
   summary: RunSummary;
@@ -57,7 +68,15 @@ export interface EnrichedRun {
    * both read it; falls back to the canonical model id when the catalog doesn't
    * know the model. */
   modelName: string;
+  /** The gg configuration this run was launched from, resolved once so the cell
+   * and its sort both read it. Null for every non-gg run — and for a gg run that
+   * records no configuration name (one assembled by hand, or produced before the
+   * name was carried on the card) — which shows its model instead. */
+  configName: string | null;
   rating: Rating | null;
+  /** The run's aggregate aesthetic rating, shown beside the functional one. Null
+   * until a reviewer rates the channel — always, for a legacy run. */
+  aesthetic: AestheticRating | null;
   /** A game-jam run's whole-game overall grade, shown as its badge in place of a
    * domain rating (a jam has none). Null for every non-jam run. */
   grade: GradeStatus | null;
@@ -80,6 +99,12 @@ export interface RunRenderContext {
    * bound to this controller instead of the hover caret. Absent on non-selectable
    * logs, where the gutter keeps its plain caret / spinner. */
   selection?: RunSelectionContext;
+  /** The clock every live cell on this pass measures against, in epoch
+   * milliseconds. One value for the whole log (see {@link useNow}), so two runs
+   * started in the same second show the same elapsed time instead of ticking a
+   * second apart on their own timers. Finished cells ignore it — their figures
+   * come off the record. */
+  now: number;
 }
 
 /**
@@ -131,9 +156,10 @@ const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   failed: "failed",
 };
 
-// A muted em-dash placeholder for a cell an in-progress run can't fill yet (it
-// has no metrics or timestamps until it finishes). `numeric` right-aligns it to
-// match the finished figure it stands in for.
+// A muted em-dash placeholder for a cell an in-progress run can't fill yet —
+// either a figure that only the finished run carries (its metrics, its rating) or
+// a fact the run has not reached yet (its start, before it has started).
+// `numeric` right-aligns it to match the finished figure it stands in for.
 function activeDash(label: string, numeric: boolean): ReactNode {
   return (
     <span
@@ -141,6 +167,76 @@ function activeDash(label: string, numeric: boolean): ReactNode {
       data-label={label}
     >
       &mdash;
+    </span>
+  );
+}
+
+// The MODEL / CONFIG cell, shared by the finished and in-progress renderers so
+// both resolve the fallback identically. `configName` wins when a gg run records
+// one; otherwise the model stands in. The `data-label` follows the value it labels
+// because the phone card renders it as the line's own caption — labelling a
+// configuration "Model" there would be a plain lie.
+function modelCell(configName: string | null, modelName: string): ReactNode {
+  return (
+    <span
+      className={styles.model}
+      data-label={configName == null ? "Model" : "Config"}
+    >
+      {configName ?? modelName}
+    </span>
+  );
+}
+
+// The CODE cell: how many lines of code the model wrote, or an explicit "not
+// measured".
+//
+// The distinction the tooltip carries is the whole point of the cell. A run with no
+// analysis is not a run that wrote no code — the corpus is deliberately not backfilled,
+// so every run that finished before the analyzer shipped has no figure and never will.
+// Rendering a zero there (or leaving a bare dash to be read as one) would turn a gap in
+// the measurement into a claim about the model, which is exactly the silent-absence
+// failure the summary was lifted onto the card to avoid.
+//
+// The figure itself also carries its provenance, because two analysed runs are not
+// automatically comparable: an analysis over the whole tree (no seed commit to
+// subtract) counts code the run was *given*, one measured after validation counts build
+// output, and a truncated one stopped short of the tree. Each is a real figure and each
+// means something different, so the cell says which it is rather than presenting all
+// three as the same number.
+function codeCell(code: RunSummary["code"]): ReactNode {
+  if (!code) {
+    return (
+      <span
+        className={`${styles.num} ${styles.noRating}`}
+        data-label="Code"
+        title="Not measured. Code analysis is not backfilled, so runs from before it shipped carry no figures. This is not a claim that the run wrote no code."
+      >
+        &mdash;
+      </span>
+    );
+  }
+  const caveats = [
+    code.authoredBasis !== "seedCommit"
+      ? `authored set: ${code.authoredBasis === "allFiles" ? "the whole tree (seeded files included)" : "a heuristic baseline"}`
+      : null,
+    code.treeBasis === "postValidation"
+      ? "measured after validation built the tree"
+      : null,
+    code.truncated ? "truncated: a cap stopped the analysis short" : null,
+  ].filter((caveat): caveat is string => caveat !== null);
+  const title = [
+    `${code.codeLines.toLocaleString("en-US")} lines of code (analyzer v${code.analyzerVersion})`,
+    ...caveats,
+  ].join(" · ");
+  return (
+    <span
+      className={styles.num}
+      data-label="Code"
+      title={title}
+      data-qualified={caveats.length > 0 ? "" : undefined}
+    >
+      {code.codeLines.toLocaleString("en-US")}
+      {caveats.length > 0 && "*"}
     </span>
   );
 }
@@ -283,23 +379,64 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
   },
+  // The engine sits beside the variant because it is the same kind of fact: a run
+  // dimension chosen at launch, and one that decides which other runs this one is
+  // comparable with at all. It is NOT dropped in the `variant` scope the way the
+  // variant column is — a page scoped to one case and variant still lists runs
+  // across every engine that case supports, which is precisely where telling them
+  // apart matters most.
+  //
+  // An in-flight run fills it exactly as a finished one does: the engine is fixed
+  // at launch and lifted onto the job's own `engine_slug` column, so it rides
+  // `JobSummary` onto both `GET /jobs/active` and the run event stream. It is
+  // resolved rather than printed raw, because an absent (or empty) engine IS the
+  // `none` engine — the engineless run every case supports, and what a launch that
+  // named no engine asked for — and spelling the same engine two ways would split
+  // one column's rows in half.
+  {
+    id: "engine",
+    label: "ENGINE",
+    default: "6rem",
+    min: 56,
+    optional: true,
+    sortKey: (row) => row.summary.subject.engineSlug.toLowerCase(),
+    render: (row) => (
+      <span className={styles.variant} data-label="Engine">
+        {row.summary.subject.engineSlug}
+      </span>
+    ),
+    renderActive: (run) => (
+      <span className={styles.variant} data-label="Engine">
+        {resolveEngineSlug(run.engine)}
+      </span>
+    ),
+  },
+  // What identifies a run at a glance differs by harness, so this one cell carries
+  // both — hence the two-part header, and the per-row `data-label` that names which
+  // of the two the phone card is actually showing. A third-party-harness run is its
+  // model. A gg run has no single harness model to name: it binds a model per agent,
+  // and the `modelId` on its card is only a representative primary-slot value (see
+  // `RunSubject::model_id` in crates/core/src/run_record.rs), so what actually
+  // distinguishes one gg run from another is the configuration it was launched from.
+  // A gg run that records no configuration name — assembled by hand, or produced
+  // before the name was carried on the summary card — falls back to its model rather
+  // than showing an empty cell.
   {
     id: "model",
-    label: "MODEL",
+    label: "MODEL / CONFIG",
     default: "1.6fr",
+    // Unchanged by the wider header: the drag floor is already raised to the
+    // measured width of the header's own label (see `useResizableColumns`), so
+    // "MODEL / CONFIG" cannot be dragged down to a stub whatever this says.
     min: 96,
     optional: true,
-    sortKey: (row) => row.modelName.toLowerCase(),
-    render: (row) => (
-      <span className={styles.model} data-label="Model">
-        {row.modelName}
-      </span>
-    ),
-    renderActive: (run, ctx) => (
-      <span className={styles.model} data-label="Model">
-        {ctx.modelName(run.modelId, run.harnessSlug)}
-      </span>
-    ),
+    sortKey: (row) => (row.configName ?? row.modelName).toLowerCase(),
+    render: (row) => modelCell(row.configName, row.modelName),
+    renderActive: (run, ctx) =>
+      modelCell(
+        isGgRun(run.harnessSlug) ? (run.ggPreset ?? null) : null,
+        ctx.modelName(run.modelId, run.harnessSlug),
+      ),
   },
   {
     id: "timestamp",
@@ -314,7 +451,20 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {formatTimestamp(row.summary.startedAt)}
       </span>
     ),
-    renderActive: () => activeDash("Started", false),
+    // A run reports its start the moment it has one — the job stamps `started_at`
+    // when the driver announces `starting`, which is the same instant the produced
+    // record's own `startedAt` is taken from, so the live cell and the recorded one
+    // name the same moment. The dash survives only for a run that has not started
+    // at all (queued, pending, dispatched), where it is not a missing value but the
+    // true answer: this run has not begun, and its enqueue time is not its start.
+    renderActive: (run) =>
+      run.startedAt ? (
+        <span className={styles.when} data-label="Started">
+          {formatTimestamp(run.startedAt)}
+        </span>
+      ) : (
+        activeDash("Started", false)
+      ),
   },
   {
     id: "duration",
@@ -330,7 +480,33 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {formatRunTime(row.summary.metrics.runTimeSeconds)}
       </span>
     ),
-    renderActive: () => activeDash("Duration", true),
+    // A live run counts up from its start, formatted by the same helper the
+    // finished figure uses so the number does not change shape the moment the run
+    // lands. It is measured from `startedAt` and nothing else: time the run spent
+    // queued behind a parallelism cap is not time it ran, and billing it for that
+    // would make two runs of identical work read minutes apart.
+    //
+    // Truncated to whole seconds so the count reads 59s → 1m 0s rather than
+    // rounding its way through a "60s". Clamped at zero because the stamp is the
+    // backend's clock and the tick is the browser's: a skewed pair can put the
+    // start in the future, and a negative duration is never a thing to print.
+    // An unparseable stamp dashes rather than printing NaN.
+    //
+    // This is elapsed wall clock, and reads higher than the `metrics.runTimeSeconds`
+    // that replaces it when the run lands. That figure is the run's measured time:
+    // frozen the instant its container is torn down, with the wait for cluster
+    // capacity subtracted. The job holds at `running` through the post-run analysis
+    // and the validation pass that follow teardown, so this cell counts those too and
+    // steps down by their total on the row that replaces it.
+    renderActive: (run, ctx) => {
+      const started = run.startedAt ? Date.parse(run.startedAt) : Number.NaN;
+      if (Number.isNaN(started)) return activeDash("Duration", true);
+      return (
+        <span className={styles.num} data-label="Duration">
+          {formatRunTime(Math.floor(Math.max(0, ctx.now - started) / 1000))}
+        </span>
+      );
+    },
   },
   {
     id: "tokens",
@@ -361,6 +537,28 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
     renderActive: () => activeDash("Cost", true),
+  },
+  {
+    id: "code",
+    label: "CODE",
+    default: "5.5rem",
+    min: 64,
+    numeric: true,
+    optional: true,
+    // Off by default, and the reason is the corpus rather than the column. Code
+    // analysis is deliberately **not backfilled** — it starts on the day the analyzer
+    // shipped — so for most of the run log this column is a column of dashes. Shipping
+    // it on by default would trade a real figure for a wall of "not measured"; shipping
+    // it in the picker keeps it one click away for anyone comparing analysed runs.
+    defaultVisible: false,
+    // No `sortKey`, for the same reason POINTS has none: the server cannot sort by it
+    // (only the analyzer *version* is lifted to a run column, not the figures), so on a
+    // server-ordered page a sort affordance here would highlight a header and silently
+    // return date order. The ranking this figure exists for is done over the published
+    // summary set — by the Discover surface, or by anything reading `runs.json` — not by
+    // this header.
+    render: (row) => codeCell(row.summary.code),
+    renderActive: () => activeDash("Code", true),
   },
   {
     id: "points",
@@ -417,6 +615,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
           ) : (
             <span className={styles.noRating}>&mdash;</span>
           )}
+          {row.aesthetic && <AestheticBadge rating={row.aesthetic} />}
         </span>
       );
     },
@@ -437,6 +636,7 @@ const COLUMN_BY_ID = new Map(RUN_COLUMNS.map((column) => [column.id, column]));
 const SCOPE_EXCLUDES: Record<RunScope, ReadonlySet<string>> = {
   global: new Set(),
   variant: new Set(["test", "variant"]),
+  case: new Set(["test"]),
   model: new Set(["model"]),
 };
 
@@ -464,14 +664,18 @@ export function sortRuns(
 }
 
 /**
- * Resolve each run's display name and rating once, up front — the two values a
- * cell or a sort needs that aren't already resolved on the card. A hook because
- * it reads the catalog (for names) and the active review source (for ratings);
- * call it at the top of a page, then sort/page/render the result freely.
+ * Resolve each run's display name, rating, and model/configuration identity once,
+ * up front — the values a cell or a sort needs that aren't ready to render off the
+ * card. A hook because it reads the catalog (for names) and the active review
+ * source (for ratings); call it at the top of a page, then sort/page/render the
+ * result freely.
  *
  * A local, unpublished writeup still wins the rating (an in-progress edit must
  * show before it is published); absent one, the summary's own aggregate rating
- * (`summary.rating`) stands in.
+ * (`summary.rating`) stands in. On a validator-rated run the functional rating is
+ * the validators' and comes from the summary even when a local writeup exists —
+ * the writeup supplies only the aesthetic, which likewise wins over the
+ * summary's aggregate.
  *
  * A row reads as unpublished when the console's produced worklist claims it OR the
  * card itself carries no publish timestamp — the listings draw produced runs from
@@ -495,13 +699,18 @@ export function useEnrichedRuns(
           local: localIds.has(summary.id) || !summary.publishedAt,
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
-            findModel(
-              summary.subject.modelId,
-              summary.subject.harnessSlug,
-            )?.name ?? canonicalModelId(summary.subject.modelId),
-          rating:
-            worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
-            summary.rating,
+            findModel(summary.subject.modelId, summary.subject.harnessSlug)
+              ?.name ?? canonicalModelId(summary.subject.modelId),
+          // Guarded on the harness rather than on the field alone, so a non-gg run
+          // that somehow carried a preset could never displace its model.
+          configName: isGgRun(summary.subject.harnessSlug)
+            ? (summary.subject.ggPreset ?? null)
+            : null,
+          rating: summary.validatorRated
+            ? summary.rating
+            : (worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
+              summary.rating),
+          aesthetic: review?.aesthetic ?? summary.aesthetic ?? null,
           // A jam's overall grade: a local, in-progress review wins (it must show
           // before it is published, mirroring the rating); absent one, the
           // summary card's aggregate `score.overallGrade` stands in.

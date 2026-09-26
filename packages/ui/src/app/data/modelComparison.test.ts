@@ -1,11 +1,6 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
-import {
-  meanReported,
-  modelCaseOptions,
-  runIsModel,
-  standInField,
-} from "./modelComparison";
+import { modelCaseOptions, runIsModel, standInField } from "./modelComparison";
 
 // A summary card carrying the fields this module reads. Everything else is
 // irrelevant here, so the fixture stays to the subject, the case name, the
@@ -92,9 +87,17 @@ describe("modelCaseOptions", () => {
 
   it("breaks an equal-run tie on recency, then on the slug", () => {
     const options = modelCaseOptions([
-      run({ id: "a", testCaseSlug: "alpha", startedAt: "2026-01-01T00:00:00Z" }),
+      run({
+        id: "a",
+        testCaseSlug: "alpha",
+        startedAt: "2026-01-01T00:00:00Z",
+      }),
       run({ id: "b", testCaseSlug: "beta", startedAt: "2026-02-01T00:00:00Z" }),
-      run({ id: "c", testCaseSlug: "gamma", startedAt: "2026-02-01T00:00:00Z" }),
+      run({
+        id: "c",
+        testCaseSlug: "gamma",
+        startedAt: "2026-02-01T00:00:00Z",
+      }),
     ]);
 
     expect(options.map((c) => c.slug)).toEqual(["beta", "gamma", "alpha"]);
@@ -125,8 +128,9 @@ describe("modelCaseOptions", () => {
 
 describe("runIsModel", () => {
   it("matches a covered id exactly", () => {
-    expect(runIsModel(run({ modelId: "anthropic/claude" }), ["anthropic/claude"]))
-      .toBe(true);
+    expect(
+      runIsModel(run({ modelId: "anthropic/claude" }), ["anthropic/claude"]),
+    ).toBe(true);
   });
 
   it("matches an OpenRouter-prefixed recording of a covered id", () => {
@@ -138,8 +142,9 @@ describe("runIsModel", () => {
   });
 
   it("does not match another model", () => {
-    expect(runIsModel(run({ modelId: "openai/gpt" }), ["anthropic/claude"]))
-      .toBe(false);
+    expect(
+      runIsModel(run({ modelId: "openai/gpt" }), ["anthropic/claude"]),
+    ).toBe(false);
   });
 });
 
@@ -263,21 +268,5 @@ describe("standInField", () => {
 
   it("has nothing to place over an empty cohort", () => {
     expect(standInField([], SUBJECT, costOf)).toBeNull();
-  });
-});
-
-describe("meanReported", () => {
-  it("averages only the runs that reported the figure", () => {
-    const mean = meanReported(
-      [run({ id: "a", cost: 2 }), run({ id: "b", cost: null }), run({ id: "c", cost: 4 })],
-      costOf,
-    );
-
-    expect(mean).toBe(3);
-  });
-
-  it("is null — not zero — when nothing reported the figure", () => {
-    expect(meanReported([run({ cost: null })], costOf)).toBeNull();
-    expect(meanReported([], costOf)).toBeNull();
   });
 });

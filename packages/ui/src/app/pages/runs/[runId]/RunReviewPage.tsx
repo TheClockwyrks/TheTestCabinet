@@ -1,13 +1,20 @@
 import { Link, useParams } from "react-router";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
-import { Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
-import { useReviewModel } from "../../../data/useTestCase";
+import { useReviewModel } from "../../../data/useRunVariant";
 import {
+  VERDICT_META,
+  automatedVerdicts,
+  isToolchainGated,
   overallGradeOf,
+  reviewAesthetic,
   scoreChecklist,
+  validatorReviewRating,
+  validatorReviewScore,
+  verdictIdsForItem,
   worstRating,
 } from "../../../data/ratings";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -25,7 +32,7 @@ import styles from "./RunDetailPages.module.scss";
 export function RunReviewPage() {
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, reviews }) =>
+      {({ run, reviews, validatorRated }) =>
         // A performance run is graded automatically and carries no review, so no
         // review list links here for one. The route still resolves, though — a
         // stale link or a review recorded before the type went auto-graded — so
@@ -34,7 +41,7 @@ export function RunReviewPage() {
         run.subject.testType === "performance" ? (
           <Panel>
             <div className={styles.reviewTopBar}>
-              <Link to={routes.runDetail(run.id)} className={styles.backLink}>
+              <Link to={routes.runVerdict(run.id)} className={styles.backLink}>
                 ← Results
               </Link>
             </div>
@@ -44,7 +51,11 @@ export function RunReviewPage() {
             </p>
           </Panel>
         ) : (
-          <SingleReview run={run} reviews={reviews} />
+          <SingleReview
+            run={run}
+            reviews={reviews}
+            validatorRated={validatorRated}
+          />
         )
       }
     </RunDetailLayout>
@@ -54,9 +65,14 @@ export function RunReviewPage() {
 function SingleReview({
   run,
   reviews,
+  validatorRated,
 }: {
   run: RunRecord;
   reviews: StoredReview[];
+  /** Whether the run is validator-rated: this review then carries the run-wide
+   * aesthetic tier, its verdict overrides (if any), and prose — the figures in
+   * its header fold the overrides into the validators' verdicts. */
+  validatorRated: boolean;
 }) {
   const { reviewerId } = useParams<{ reviewerId: string }>();
   const gallery = useGalleryData();
@@ -67,14 +83,36 @@ function SingleReview({
   // The overall rating (worst across domains) or, for a game jam, the whole-game
   // overall grade — plus the score — for the top section's header, mirroring how
   // the review list summarizes each review. A jam has no domains, so its grade
-  // badge stands in for the rating.
+  // badge stands in for the rating. On a validator-rated run the figures are the
+  // review's EFFECTIVE ones: the validators' verdicts overlaid with this
+  // review's overrides.
   const jam = model.items.some((it) => it.graded);
-  const overall =
-    review && !jam ? worstRating(review.ratings.map((r) => r.rating)) : null;
+  const gated = isToolchainGated(run.toolchain);
+  const auto = validatorRated
+    ? automatedVerdicts(run.validation.debugScripts ?? [])
+    : [];
+  const overall = review
+    ? validatorRated
+      ? model.items.length > 0
+        ? validatorReviewRating(
+            gated,
+            model.domains,
+            model.items,
+            auto,
+            review.checklist,
+          )
+        : null
+      : !jam
+        ? worstRating(review.ratings.map((r) => r.rating))
+        : null
+    : null;
+  const aesthetic = review ? reviewAesthetic(review) : null;
   const grade = review && jam ? overallGradeOf(review.checklist) : null;
   const score =
     review && model.items.length > 0
-      ? scoreChecklist(model.items, review.checklist)
+      ? validatorRated
+        ? validatorReviewScore(gated, model.items, auto, review.checklist)
+        : scoreChecklist(model.items, review.checklist)
       : null;
 
   // The Edit control belongs only on the signed-in account's own review, wherever a
@@ -87,12 +125,12 @@ function SingleReview({
   return (
     <Panel>
       <div className={styles.reviewTopBar}>
-        <Link to={routes.runDetail(run.id)} className={styles.backLink}>
+        <Link to={routes.runVerdict(run.id)} className={styles.backLink}>
           ← All reviews
         </Link>
         {canEdit && (
           <Link
-            to={routes.runDetail(run.id, { edit: true })}
+            to={routes.runVerdict(run.id, { edit: true })}
             className={styles.editReviewLink}
           >
             Edit review
@@ -108,6 +146,7 @@ function SingleReview({
               reviewer={review.reviewer}
               reviewerPictureUrl={review.reviewerPictureUrl}
               rating={overall}
+              aesthetic={aesthetic}
               grade={grade}
               reviewedAt={review.reviewedAt}
               editedAt={review.editedAt}
@@ -119,15 +158,32 @@ function SingleReview({
               no frontmatter to strip — so it maps straight onto the verdict view.
               The overall headline is suppressed here; the top section above already
               carries this reviewer's rating and score. */}
-          <PublishedVerdict
-            review={{
-              ratings: review.ratings,
-              checklist: review.checklist,
-              body: review.writeup,
-            }}
-            model={model}
-            showOverall={false}
-          />
+          {validatorRated ? (
+            // The review's run-wide aesthetic tier is in the header above; here,
+            // the reviewer's verdict overrides (if any) and their prose. The
+            // full checklist is the validators' and lives on the Verdict tab.
+            <>
+              <ValidatorOverrides
+                review={review}
+                run={run}
+                items={model.items}
+              />
+              <Markdown breaks className={styles.writeupBody}>
+                {review.writeup}
+              </Markdown>
+            </>
+          ) : (
+            <PublishedVerdict
+              review={{
+                ratings: review.ratings,
+                aesthetic: null,
+                checklist: review.checklist,
+                body: review.writeup,
+              }}
+              model={model}
+              showOverall={false}
+            />
+          )}
           {/* The review's edit history, if it has been revised — each edit's note
               and the autogenerated diff of what changed. Renders nothing otherwise. */}
           <ReviewHistory revisions={review.revisions} />
@@ -138,5 +194,80 @@ function SingleReview({
         </p>
       )}
     </Panel>
+  );
+}
+
+// A validator-rated review's verdict OVERRIDES, listed point by point: the point
+// in the reviewer's vocabulary (category › title), what the validators said, what
+// the reviewer decided, and their note. Renders nothing for a review with no
+// overrides — the common case, where the validators' verdicts stand untouched.
+function ValidatorOverrides({
+  review,
+  run,
+  items,
+}: {
+  review: StoredReview;
+  run: RunRecord;
+  items: ReturnType<typeof useReviewModel>["items"];
+}) {
+  const overrides = review.checklist;
+  if (overrides.length === 0) return null;
+
+  // The validators' own verdicts, to show what each override replaced.
+  const autoById = new Map(
+    automatedVerdicts(run.validation.debugScripts ?? []).map((v) => [
+      v.id,
+      v.status,
+    ]),
+  );
+  // Verdict id → the point's own title and category, so a row reads
+  // "Rules › Ball serves" rather than the raw `rules.serve`.
+  const labels = new Map<string, { title: string; category: string }>();
+  for (const item of items) {
+    const subItems = item.subItems ?? [];
+    verdictIdsForItem(item).forEach((vid, i) => {
+      labels.set(vid, {
+        title: subItems[i]?.title ?? item.title,
+        category: subItems.length > 0 ? item.title : "",
+      });
+    });
+  }
+
+  return (
+    <div className={styles.overrides}>
+      <h2 className={styles.checklistHeading}>
+        Overridden verdicts ({overrides.length})
+      </h2>
+      <ul className={styles.overrideList}>
+        {overrides.map((verdict) => {
+          const label = labels.get(verdict.id);
+          const from = autoById.get(verdict.id);
+          return (
+            <li key={verdict.id} className={styles.overrideRow}>
+              <span className={styles.overridePoint}>
+                {label?.category && (
+                  <span className={styles.overrideCategory}>
+                    {label.category} ›{" "}
+                  </span>
+                )}
+                {label?.title ?? verdict.id}
+              </span>
+              <span className={styles.overrideFlip}>
+                <span className={styles.overrideFrom}>
+                  {from ? VERDICT_META[from].label : "Undecided"}
+                </span>
+                <span aria-hidden="true"> → </span>
+                <span className={styles.overrideTo}>
+                  {VERDICT_META[verdict.status].label}
+                </span>
+              </span>
+              {verdict.note && (
+                <span className={styles.overrideNote}>{verdict.note}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

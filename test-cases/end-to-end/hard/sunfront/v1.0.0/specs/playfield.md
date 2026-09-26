@@ -123,5 +123,5 @@ the player has units. Fog is strict:
 - The AI is subject to the same rule conceptually (it does not get to read the player's
   exact yard), but its fog need not be rendered — only the player's view is drawn.
 
-The fog is the heart of the game: you counter what you *see* crossing the sand, having
+The fog is the heart of the game: you counter what you _see_ crossing the sand, having
 built blind. Make it unmistakable in the gameplay reference.

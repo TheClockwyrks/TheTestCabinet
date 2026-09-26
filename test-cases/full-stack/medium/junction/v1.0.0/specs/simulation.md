@@ -38,7 +38,7 @@ specs describe as the game's logic, not its presentation. It must be Rust:
   the **game state machine** (title / how-to / playing / paused / bankrupt) with the menu
   choices each state offers (`specs/controls.md`, `specs/flow.md`).
 
-If a piece of logic decides *what the city is or does*, it belongs in the Rust core. The
+If a piece of logic decides _what the city is or does_, it belongs in the Rust core. The
 front end must **not** re-implement or fork any of these rules; it reads the core's state
 to draw it and forwards the player's actions into the core.
 
@@ -55,7 +55,7 @@ The JavaScript/TypeScript side is a **view and I/O layer** only. It owns:
 - **Input capture** — reading pointer and keyboard events and turning them into calls
   into the core (place a tool here, set the tax rate, change speed, navigate a menu).
 - **Playback** — Web Audio for the produced sounds and music, and
-  `@test-cabinet/particle-runtime` for the produced particle systems.
+  `@clockwyrks/particle-runtime` for the produced particle systems.
 - **Asset loading** and fitting the stage to the window (`specs/overview.md`).
 
 ## Properties the boundary must have
@@ -67,7 +67,7 @@ The JavaScript/TypeScript side is a **view and I/O layer** only. It owns:
 - **Pure of the DOM.** The Rust core must not touch the DOM, Canvas, Web Audio, or the
   network. When the simulation wants a sound played or a particle burst thrown, it
   **records an event** (a sound cue, a effect at a position) that the front end **drains
-  each frame** and acts on — the sim describes *what happened*, the front end decides how
+  each frame** and acts on — the sim describes _what happened_, the front end decides how
   to present it.
 - **Cheap to read each frame.** The front end reads a lot of state every frame (the tile
   fields, the moving vehicles). Expose that state so a frame is **about one step call plus

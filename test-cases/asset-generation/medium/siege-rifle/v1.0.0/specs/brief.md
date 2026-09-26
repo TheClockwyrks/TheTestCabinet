@@ -1,6 +1,6 @@
 # Siege Warden Rifle — modeling brief
 
-Build the **Warden service rifle**, the standard-issue weapon a *Siege* Warden
+Build the **Warden service rifle**, the standard-issue weapon a _Siege_ Warden
 rifleman carries, as a **static hard-surface prop** in **Blender**. You write one
 Blender Python script (`build.py`) that constructs the whole rifle as clean
 geometry and runs it headless through `tcab-blend`, which exports a native
@@ -8,7 +8,7 @@ geometry and runs it headless through `tcab-blend`, which exports a native
 no animation** — a prop is a static model.
 
 This measures **creativity and hard-surface craft**, not instruction-following: the
-brief says *what the rifle is*; the exact shapes, proportions, and construction are
+brief says _what the rifle is_; the exact shapes, proportions, and construction are
 **yours to invent**. There is no target image — build toward this description.
 
 ## What it is

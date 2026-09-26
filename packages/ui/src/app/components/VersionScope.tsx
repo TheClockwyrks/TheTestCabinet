@@ -1,11 +1,11 @@
-// The version-scope control shared by a test case's Metrics and Leaderboard tabs.
-// Both tabs aggregate a case's runs across versions, and both need the same
-// answer to "which versions am I looking at?" — so the scope vocabulary, the
-// membership test, and the control that picks it live here rather than being
-// stated twice (and drifting).
+// The latest-relative version-scope control. The case detail tabs moved onto
+// the coordinate-anchored scope (see `anchoredScope.tsx`), but the model
+// Overview page still scopes a model's runs against the versions THAT MODEL has
+// runs for, measured from the newest of them — so the latest-relative scope
+// vocabulary, the membership test, and the control that picks it live on here.
 
-import { useId, useState } from "react";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import { useState } from "react";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import { parseVersion } from "../data/versions";
 import styles from "./VersionScope.module.scss";
 
@@ -161,60 +161,6 @@ export function VersionScopeControl({ state }: { state: VersionScopeState }) {
           ariaLabel="Version"
         />
       )}
-    </div>
-  );
-}
-
-/** One exact version of a case, for a view that can only ever show one. */
-export interface VersionPickState {
-  version: string;
-  setVersion: (version: string) => void;
-  versions: readonly string[];
-  /** Whether the picker is worth showing — a single-version case has no choice
-   * to make, and `version` is that one version regardless. */
-  show: boolean;
-}
-
-// Track one exact version of a case, defaulting to its latest. This is the
-// single-version sibling of `useVersionScope`, for a view whose figures are only
-// comparable WITHIN one version — a performance case's fuel totals, which are
-// only meaningful against the same scored scenario set — so it picks a cohort
-// rather than widening across several.
-export function useVersionPick(testCase: VersionSet): VersionPickState {
-  const [picked, setPicked] = useState(testCase.latestVersion);
-  // A picked version the case no longer lists (the visitor navigated to another
-  // case without the component remounting) would show an empty board; fall back
-  // to the latest, as the scope hook does.
-  const version = testCase.versions.includes(picked)
-    ? picked
-    : testCase.latestVersion;
-
-  return {
-    version,
-    setVersion: setPicked,
-    versions: testCase.versions,
-    show: testCase.versions.length > 1,
-  };
-}
-
-// The standalone version picker. Unlike the scope control it carries a visible
-// label: on its own, a lone dropdown reading `v1.2.0` doesn't say what it
-// selects. Renders nothing for a case with one version.
-export function VersionPicker({ state }: { state: VersionPickState }) {
-  // Hooks run before the single-version bail-out below, never after it.
-  const selectId = useId();
-  if (!state.show) return null;
-  return (
-    <div className={styles.controls}>
-      <label className={styles.pickerLabel} htmlFor={selectId}>
-        Version
-      </label>
-      <VersionSelect
-        id={selectId}
-        versions={state.versions}
-        value={state.version}
-        onChange={state.setVersion}
-      />
     </div>
   );
 }

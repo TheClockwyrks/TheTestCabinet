@@ -4,7 +4,7 @@
   "private": true,
   "description": "Spectra — a fixed-position formation shooter with two-band polarity combat that runs entirely in the browser.",
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime"
   },
   "devDependencies": {
     "playwright": "1.61.0"

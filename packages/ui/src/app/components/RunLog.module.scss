@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 @use "../styles/surfaces" as s;
 @use "../styles/breakpoints" as bp;
 
@@ -91,10 +92,7 @@
   // Reviews tab — the reviewed run's identity, the account's own rating, and when
   // it reviewed). Resizable via `--ttc-cols` (see the global scope above); the
   // fallback is the resting template used until the user drags a header boundary.
-  grid-template-columns: var(
-    --ttc-cols,
-    1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem
-  );
+  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem);
   min-width: max(100%, 46rem);
 }
 
@@ -136,7 +134,7 @@ a.row {
 
   a.row:hover & {
     opacity: 1;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -312,12 +310,21 @@ a.row:hover .selectCell .spinner,
     color: t.$color-negative;
   }
 
-  // A harness error is a distinct kind of failure (the harness exited early), and
-  // a hang is its silent twin, so tint both with the caution color to set them
-  // apart from the model-output tiers.
+  // A harness error is a distinct kind of failure (the harness exited early), a
+  // hang is its silent twin, and a spent execution ceiling is the harness stopping
+  // itself on a bound the configuration armed, so tint all three with the caution
+  // color to set them apart from the model-output tiers.
   &[data-state="harness_error"],
+  &[data-state="limit_exceeded"],
   &[data-state="hung"] {
     color: t.$color-warning;
+  }
+
+  // A canceled run is not a failure at all — an operator stopped it. Mute it so it
+  // reads as a deliberate stop rather than something the model did wrong, while
+  // still being visible in the list.
+  &[data-state="canceled"] {
+    color: t.$color-text-muted;
   }
 }
 
@@ -407,6 +414,8 @@ a.row:hover .selectCell .spinner,
 .rating {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   font-size: 0.7rem;
 }
 

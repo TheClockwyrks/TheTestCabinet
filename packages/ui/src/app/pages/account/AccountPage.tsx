@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { Avatar, DonutChartWidget, Panel } from "@test-cabinet/ui";
-import type { DonutSegment } from "@test-cabinet/ui";
+import { Avatar, DonutChartWidget, Panel } from "@clockwyrks/ui";
+import type { DonutSegment } from "@clockwyrks/ui";
 import type { ReviewStatSlice, ReviewStats } from "../../../client/types";
 import { RATING_META } from "../../../ratings";
 import { PageLayout } from "../../components/PageLayout";
+import { useRevealNotice } from "../../components/SubmitNotice";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useAuth } from "../../../client/auth";
@@ -76,6 +77,7 @@ export function AccountPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -190,6 +192,15 @@ export function AccountPage() {
               )}
             </div>
           </div>
+          {/* Beside the controls that raise it, not after the card they sit in.
+            Outside the capability guard above, which tracks the connected worker
+            rather than the upload: a worker that drops mid-upload must not take
+            the failure it caused off the screen with it. */}
+          {error && (
+            <p ref={errorRef} className={styles.error} role="alert">
+              {error}
+            </p>
+          )}
           <button
             type="button"
             className={styles.signOut}
@@ -201,7 +212,6 @@ export function AccountPage() {
             Sign out
           </button>
         </Panel>
-        {error && <p className={styles.error}>{error}</p>}
 
         <Panel className={styles.activity}>
           <header className={styles.activityHead}>
@@ -257,9 +267,7 @@ function renderActivity(
       <DonutChartWidget
         framed={false}
         title="Test cases"
-        segments={categorySegments(stats.testCases, (s) =>
-          testCaseName(s.key),
-        )}
+        segments={categorySegments(stats.testCases, (s) => testCaseName(s.key))}
         total={stats.windowReviews}
         centerLabel="reviews"
         emptyMessage="No reviewed test cases yet."
@@ -278,7 +286,7 @@ function renderActivity(
         segments={ratingSegments}
         total={ratingTotal}
         centerLabel="rated"
-        emptyMessage="No domain-rated reviews yet — game jams are graded, not rated."
+        emptyMessage="No domain-rated reviews yet. Game jams are graded, not rated."
       />
     </div>
   );

@@ -1,0 +1,67 @@
+# The one and only Meltdown variant: the whole reactor floor, all five modes.
+# Listed as the single entry in the case manifest's `variants`, so it is the
+# default and every run is a run of it. Every path here resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The reactor floor with all five modes: Containment over three difficulties, The Hundred, Deep Pockets, Bottleneck and Sudden Death."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The five modes are not variants. They are what the player picks from the mode
+# menu, the way Carom's Solo and Versus are modes inside every variant, so
+# `specs/modes.md` is a COMMON spec declared in `test-case.toml` and seeded for
+# every run. A build ships all five.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: half a
+# minute of a real Containment run -- a short wall laid tower by tower, Wave 1
+# sent early into it, the takings spent on upgrades and a level III Forge, then
+# Wave 2 cooking two guns past 100 until they trip and go dark while the surge
+# walks by, a Sink dropped against them, and the wall grown out into a cross
+# while the wave is still running -- plus two stills from the same take: the
+# floor mid-wave with the tripped guns and the Sink, and the inspector open on an
+# Arc sitting exactly on its redline at full power.
+#
+# All of it captured from `references/structured-2d`, driven through the case's
+# own validator harness with the real key and pointer input path and recorded
+# with the engine's own recorder. `showcase/capture/` holds the driver and the
+# README that says how each committed file was produced;
+# `showcase/base/showcase.toml` lists the media in carousel order and
+# `showcase/base/showcase.md` carries the description.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name EXACTLY
+# the engines the case supports (the resolver checks both directions), and the
+# case supports three: `references/none` carries its own runtime layer (frame
+# loop, canvas fit, keyboard and pointer input, audio, overlay, and the
+# `window.__meltdown` surface), `references/simple-2d` hands all of that to the
+# engine package resolved from the repository's `packages/simple-2d` and ships
+# the game as `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`, as the game definition, instance, mode,
+# state and actors `src/game.ts` exports. The game any of them implements is
+# identical, which is what makes a run on one engine comparable with a run on
+# another. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+#
+# With one variant, each reference carries its `src/` directly: there is no
+# per-variant level below the engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override either. The case's common per-engine table covers
+# every run and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# item and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

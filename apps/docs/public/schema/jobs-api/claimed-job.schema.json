@@ -1,5 +1,62 @@
 {
   "$defs": {
+    "GgLoopDetection": {
+      "additionalProperties": false,
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\n**An armed detector writes all five knobs.** What the rule trips on is the whole set of them\ntogether — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector\narmed on figures nobody chose measures gg rather than the model, and an armed detector missing\nany of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one\nis still read and still judged as written, which is what keeps the armed and unarmed arms of one\ncomparison the same document with one switch moved. A knob **set** to a value that cannot bound\nanything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,\non the same terms as [`GgRunLimits`].\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the detector runs for this agent at all. `false`, which is what a profile that says\nnothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming\ntransport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "type": "boolean"
+        },
+        "maxResponseChars": {
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Written and required on the terms\n[`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the\nrepetition rule, which is a declaration rather than an omission.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minOffenders": {
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Written and required on the terms [`window_words`](Self::window_words) is.\n\nMore than one is worth asking for because a single very common token (`the`, `0,`, a brace)\nis ordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minSaturatedRun": {
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "repeatThreshold": {
+          "description": "`P` — how many times a single word may occur within the [window](Self::window_words) before\nit counts as an *offender*. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "windowWords": {
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive, and the minimum sample: the repetition rule cannot fire until\nthis many words have arrived.\n\nOne of the five knobs an **armed** detector writes. What the rule trips on is the five of\nthem together, so a detector armed on figures nobody chose would measure gg rather than the\nmodel, and an armed detector missing any of them refuses the launch. An unarmed detector owes\nnone of them, and a knob written on one is still read and still judged as written.\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
     "LaunchBody": {
       "description": "The body of `POST /jobs`: what to run, with what, against which model. The\ncanonical launch shape — stored verbatim and handed to the driver when the job\nis claimed.",
       "properties": {
@@ -7,6 +64,57 @@
           "default": null,
           "description": "Optional harness authentication mode for this run (`auto`, `subscription`,\nor `api-key`). Omitted keeps the default behavior (API-key, preferring a\nsubscription only when its credentials are available). The driver applies\nit by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console\ncan request subscription mode for a backend-driven run (the only way to run\nthe subscription-only Antigravity harness on the cluster path).",
           "type": ["string", "null"]
+        },
+        "engine": {
+          "description": "Built-in [engine](crate::engine) slug the produced build is written\nagainst (e.g. `simple-2d`) — the runtime supplying its frame loop, input,\naudio, assets, and diagnostics. Omit for the `none` default, exactly as\n`orchestrator` is omitted for `one-shot`: an absent key means the launch\nwants the engineless run, which is what `none` is.\n\nThe slug must be one the engine catalogue knows *and* one the requested\ncase version declares support for; both are checked when the run\nexecutes, not here, so a bad selection fails the run rather than being\nsilently downgraded.",
+          "type": ["string", "null"]
+        },
+        "ggCapabilitySet": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The declarative [capability set](GgCapabilitySet) configuring a **gg** run —\nwhich capabilities are on, their implementations/params, and the model-slot\nbindings. Present when (and only when) [`Self::harness`] is\n[`HarnessSlug::Gg`]: a gg run is\nconfigured by this set rather than by the `(model, orchestrator)` dimensions\na third-party harness run uses. Omitted for every non-gg run. The driver maps\nit into [`RunRequest::gg_capability_set`](crate::RunRequest), whose\n`validate` enforces the gg⇔capability-set invariant."
+        },
+        "ggModelModalities": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "The input modalities each model this **gg** run may bind accepts (`text`,\n`image`, `file`, …), as the model catalog observed them.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms\nas [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model\nthe catalog has no modality list for is simply **absent** from the map, which gg\nreads as unknown rather than as \"text only\": it will try an image and recover if\nthe provider refuses it. Empty for every non-gg run.",
+          "type": "object"
+        },
+        "ggModelPrices": {
+          "additionalProperties": {
+            "$ref": "#/$defs/TokenPrices"
+          },
+          "description": "The curated **list price** (USD per token) each model this **gg** run may\nbind is scored at, resolved from the model catalog at enqueue and stamped\nhere on the same terms as [`gg_model_windows`](Self::gg_model_windows).\n\nA run's comparable cost is computed from the developer's published list\nprice — entered on the model's catalog entry — and nothing else, so the\nfigure is stable across providers and discounts. A gg run binding a model\nwith no list price is refused at enqueue rather than priced off whatever\na provider happened to charge that day. Empty for every non-gg run, whose\nsingle model's price rides in [`model_prices`](Self::model_prices).",
+          "type": "object"
+        },
+        "ggModelProviders": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
+          },
+          "description": "The ordered candidate list each model this **gg** run may be served by.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms as\n[`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog\nhas no candidate for refuses the enqueue rather than launching with an empty list.",
+          "type": "object"
+        },
+        "ggModelWindows": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The context window, in tokens, of each model this **gg** run may bind — the\nmodel catalog's figure for each id in\n[`GgCapabilitySet::bound_model_ids`](crate::gg::GgCapabilitySet::bound_model_ids).\n\n**Filled in by the backend at enqueue, not sent by a client.** The catalog the\nbackend owns is the single store of model facts; resolving the window here — once,\nwhere the catalog lives — is what lets gg carry no model table of its own and\nmakes the figure a *pushed* input to the run rather than something the run\ncontainer has to go and fetch. A client that sends it is overwritten. Empty when\nthe catalog knows no window for any bound model, and for every non-gg run.",
+          "type": "object"
         },
         "harness": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
@@ -23,14 +131,25 @@
           "description": "Opaque model id passed to the harness.",
           "type": "string"
         },
+        "modelPrices": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TokenPrices"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The curated list price (USD per token) of the launch's model, resolved from\nthe model catalog at enqueue and stamped here so the driver prices the run's\ncomparable cost from it without reaching the catalog. `None` for a gg run\n(whose per-model prices ride in `gg_model_prices`) and for a run enqueued\nbefore the catalog priced models."
+        },
         "orchestrator": {
           "default": null,
-          "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default.",
+          "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot`). Omit for the `one-shot` default.",
           "type": ["string", "null"]
         },
         "retryCount": {
           "default": null,
-          "description": "How many times to automatically retry this run after a terminal failure the\nTest Cabinet (or a catastrophic build) is responsible for — an\n[`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a\n[`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A\n[`TimedOut`](crate::run_record::RunState::TimedOut) or\n[`Completed`](crate::run_record::RunState::Completed) outcome is the model's,\nnot a fault to retry, and a user cancel is never retried.\n\nThe default is `1` (one retry) when omitted, so the total attempts allowed is\n`1 + retry_count`: the initial attempt plus up to `retry_count` retries.\n`0` disables retries; the backend clamps the value to a sane maximum. This is\nthe field the run form sends; absent → treated as `1` by the backend.",
+          "description": "How many times to automatically retry this run after a terminal failure the\nTest Cabinet (or a catastrophic build) is responsible for — an\n[`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a\n[`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A\n[`TimedOut`](crate::run_record::RunState::TimedOut) or\n[`Completed`](crate::run_record::RunState::Completed) outcome is the model's,\nnot a fault to retry, and a user cancel is never retried. Neither is a\n[`LimitExceeded`](crate::run_record::RunState::LimitExceeded) run: the harness\nstopped it on a ceiling its own configuration armed, so a fresh attempt reaches\nthe same bound.\n\nThe default is `1` (one retry) when omitted, so the total attempts allowed is\n`1 + retry_count`: the initial attempt plus up to `retry_count` retries.\n`0` disables retries; the backend clamps the value to a sane maximum. This is\nthe field the run form sends; absent → treated as `1` by the backend.",
           "format": "uint32",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -49,6 +168,30 @@
         }
       },
       "required": ["testCase", "version", "variant", "harness", "model"],
+      "type": "object"
+    },
+    "TokenPrices": {
+      "description": "Per-token prices (USD) used to compute the comparable cost.\n\nThese are the model developer's published list prices, curated on the\nmodel's catalog entry — not the billed rate of whichever endpoint served the\nrun. Reasoning tokens are priced at the output rate, so no separate field is\nneeded.\n\nEach price is optional: `None` means the price is **unknown** (OpenRouter\ndoes not list one, or lists a nonsensical value such as a negative sentinel),\nwhich is distinct from `Some(0.0)` (a genuinely free class). A class priced\n`None` poisons any cost it contributes to rather than being silently treated\nas free — see [`Cost::comparable_from`].",
+      "properties": {
+        "cachedInput": {
+          "default": null,
+          "description": "Price per cached input token, or `None` when unknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "output": {
+          "default": null,
+          "description": "Price per output token (also applied to reasoning tokens), or `None` when\nunknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "uncachedInput": {
+          "default": null,
+          "description": "Price per uncached input token, or `None` when unknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        }
+      },
       "type": "object"
     }
   },

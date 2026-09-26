@@ -65,6 +65,14 @@
   white-space: nowrap;
 }
 
+// The harness slug shown after the model name, so a row reads "<model> · <pi>".
+// Muted and lighter so the model stays the primary read while the harness — the
+// axis this board now splits on — is always legible beside it.
+.harness {
+  color: t.$color-text-muted;
+  font-weight: 400;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -81,6 +89,14 @@
 
 .none {
   color: t.$color-text-muted;
+}
+
+// The functional badge (or a jam's grade) with the aesthetic badge beside it.
+.badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 // --- Reliability: the unranked failure tally below the ranked board ----------

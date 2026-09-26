@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Installs Node + NPM. The TypeScript workspaces (run-record, desktop UI, site)
+# Installs Node + NPM. The TypeScript workspaces (run-record, ui, web console, site)
 # and the validator's static build all rely on it.
 set -euo pipefail
 
-# Determine the architecture name that Node uses for the current platform.
-if [ "$BUILDARCH" = "amd64" ]; then
-	readonly NODE_ARCH="x64"
-else
-	readonly NODE_ARCH="arm64"
-fi
+# The architecture name Node uses in its distribution file names, resolved from the
+# machine this runs on rather than passed in.
+case "$(uname -m)" in
+x86_64) readonly NODE_ARCH="x64" ;;
+aarch64 | arm64) readonly NODE_ARCH="arm64" ;;
+*)
+	echo "error: no Node build for $(uname -m)." >&2
+	exit 1
+	;;
+esac
 
 # See https://nodejs.org/en/download for the download URLs.
 readonly ARCHIVE_NAME="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"

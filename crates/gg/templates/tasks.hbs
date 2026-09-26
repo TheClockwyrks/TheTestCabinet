@@ -1,0 +1,9 @@
+# Your tasks
+{{#each tasks}}
+- {{marker}} `{{id}}` ({{status}}) — {{title}}{{#if description}}: {{description}}{{/if}}{{#if ready}}  [ready]{{/if}}{{#if blockedBy}}  [blocked by {{blockedBy}}]{{/if}}
+{{#if inScope}}
+  - in scope: {{inScope}}
+  - out of scope: {{outOfScope}}
+  - done when: {{completionCriteria}}
+{{/if}}
+{{/each}}

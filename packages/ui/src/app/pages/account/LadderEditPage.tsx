@@ -1,40 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type {
+  BufferTarget,
   CoverageGroup,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   Gate,
   LadderAxis,
   LadderInput,
   LadderRungInput,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { HelpTip } from "../../components/HelpTip";
 import { LoadingState } from "../../components/LoadingState";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
+import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
 import { BufferTargetField, ComboPicker } from "./coveragePickers";
 import {
   DEFAULT_GATE,
   GateEditor,
   LadderAxisPicker,
   RungListEditor,
+  rungInput,
 } from "./ladderPickers";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
-
-// The backend's compiled-in review-buffer default, shown as the placeholder until the
-// account's own setting resolves. Only ever a display fallback: the number that
-// actually applies is whatever `GET /coverage-settings` reports, and an empty override
-// field defers to it rather than to this.
-const FALLBACK_BUFFER_TARGET = 10;
 
 /** The run target a new ladder starts with, and the one its control resets to. */
 const DEFAULT_RUNS_PER_CELL = 3;
@@ -66,7 +65,15 @@ export function LadderEditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [runsPerCell, setRunsPerCell] = useState(DEFAULT_RUNS_PER_CELL);
+  // The target every rung is climbed to. Held as the text the operator typed so the
+  // field can be cleared and retyped; the save refuses while it says nothing usable.
+  const runsPerCellField = useNumberFieldState(DEFAULT_RUNS_PER_CELL, {
+    label: "Runs per rung",
+    min: 1,
+    max: 100,
+    integer: true,
+  });
+  const runsPerCell = runsPerCellField.value ?? DEFAULT_RUNS_PER_CELL;
   const [gate, setGate] = useState<Gate>(DEFAULT_GATE);
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
@@ -75,8 +82,10 @@ export function LadderEditPage() {
   // fed exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
   const [autoTopUp, setAutoTopUp] = useState(true);
-  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
-  const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
+  const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
+    DEFAULT_BUFFER_TARGET,
+  );
   // Whether the ladder was enabled when this form loaded. Not state, because nothing
   // here renders or edits it: it is only the fallback for the save's read-back below,
   // for a transport that cannot re-read a schedule on its own. A ladder being created
@@ -104,21 +113,15 @@ export function LadderEditPage() {
           setError("That ladder no longer exists.");
         } else if (existing) {
           setName(existing.name);
-          setRunsPerCell(Math.max(1, existing.runsPerCell || 1));
+          runsPerCellField.set(Math.max(1, existing.runsPerCell || 1));
           setGate(existing.gate);
           setComboGroupIds(existing.comboGroupIds);
           setCombos(existing.combos);
-          // Carried in with their ids, which is what makes a reorder or a version
-          // bump keep every climber's verdicts rather than mint fresh rungs.
-          setRungs(
-            existing.rungs.map((rung) => ({
-              id: rung.id,
-              slug: rung.slug,
-              version: rung.version,
-              variant: rung.variant,
-              ...(rung.runs === undefined ? {} : { runs: rung.runs }),
-            })),
-          );
+          // Carried in whole through the shared projection, ids included — that is
+          // what makes a reorder or a version bump keep every climber's verdicts
+          // rather than mint fresh rungs, and what stops a field this page forgot
+          // from being a field the ladder loses on the next save.
+          setRungs(existing.rungs.map(rungInput));
           setOuterAxis(existing.outerAxis);
           setAutoTopUp(existing.autoTopUp);
           setBufferTarget(existing.bufferTarget ?? null);
@@ -149,7 +152,8 @@ export function LadderEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, ladderId]);
+    // `runsPerCellField.set` is referentially stable (see components/NumberField).
+  }, [backend, token, editing, ladderId, runsPerCellField.set]);
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -166,7 +170,10 @@ export function LadderEditPage() {
   const savable =
     name.trim().length > 0 &&
     rungs.length > 0 &&
-    (comboGroupIds.length > 0 || combos.length > 0);
+    (comboGroupIds.length > 0 || combos.length > 0) &&
+    // A ladder with no run target has no climb to measure, so an emptied or
+    // out-of-range field refuses the save rather than being corrected in place.
+    runsPerCellField.valid;
 
   async function onSave() {
     if (!token || !savable) return;
@@ -196,8 +203,9 @@ export function LadderEditPage() {
           outerAxis,
           paused,
           autoTopUp,
-          // Omitted rather than sent as 0 when there is no override — null means
-          // "inherit my account default", 0 means "never top this ladder up".
+          // Omitted when there is no override — null means "inherit my account
+          // default", a bound of 0 means "never top this ladder up", and no limit
+          // means "everything".
           ...(bufferTarget === null ? {} : { bufferTarget }),
         },
       };
@@ -225,7 +233,7 @@ export function LadderEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit ladders — they are saved to your account.
+          Sign in to edit ladders. They are saved to your account.
         </p>
       </PageLayout>
     );
@@ -241,8 +249,6 @@ export function LadderEditPage() {
           </h1>
         </div>
       </header>
-
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
         <LoadingState label="Loading…" />
@@ -269,27 +275,22 @@ export function LadderEditPage() {
             label="Runs per rung"
             description="How many runs each climber does on a rung before the gate decides it."
             help="A single rung can ask for more than this with its own run count, so one pivotal step can demand more evidence than the rest of the climb."
-            modified={runsPerCell !== DEFAULT_RUNS_PER_CELL}
-            onReset={() => setRunsPerCell(DEFAULT_RUNS_PER_CELL)}
+            modified={runsPerCellField.raw !== String(DEFAULT_RUNS_PER_CELL)}
+            onReset={() => runsPerCellField.set(DEFAULT_RUNS_PER_CELL)}
           >
             {(id) => (
-              <span className={styles.settingNumber}>
-                <input
-                  id={id}
-                  className={exec.input}
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={runsPerCell}
-                  onChange={(e) => {
-                    const n = Math.floor(Number(e.target.value));
-                    setRunsPerCell(
-                      Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
-                    );
-                  }}
-                />
-              </span>
+              // The column is too narrow to read a sentence in, so the field shows
+              // only its invalid state here and the action row below says why the
+              // save is refused.
+              <NumberField
+                id={id}
+                className={exec.input}
+                wrapperClassName={styles.settingNumber}
+                showProblem={false}
+                {...runsPerCellField.bounds}
+                value={runsPerCellField.raw}
+                onChange={runsPerCellField.setRaw}
+              />
             )}
           </SettingRow>
 
@@ -332,8 +333,8 @@ export function LadderEditPage() {
           </p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet. Create one on the Groups tab, or pin one-off
-              combinations below.
+              No combination groups yet. Create one on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -357,10 +358,18 @@ export function LadderEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
+
+          <SubmitNotice message={error} />
+          {/* Why the save is refused, beside the button refusing it. Static rather
+              than a SubmitNotice: it is the state of the form, not the outcome of a
+              press, so it must not scroll the page to itself as the operator types. */}
+          {runsPerCellField.message && (
+            <p className={`${exec.notice} ${exec.warn}`}>
+              {runsPerCellField.message}
+            </p>
+          )}
 
           <div className={styles.editorActions}>
             <button

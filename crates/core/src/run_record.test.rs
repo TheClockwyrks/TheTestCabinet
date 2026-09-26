@@ -1,5 +1,7 @@
 //! Tests proving the run record serializes to the camelCase JSON contract.
 
+use std::collections::BTreeMap;
+
 use serde_json::{Value, json};
 
 use super::*;
@@ -20,7 +22,11 @@ fn sample_record() -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "simple-2d".to_string(),
+            engine_version: Some("1.0.0".to_string()),
             model_id: "anthropic/claude-opus-4".to_string(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),
@@ -43,6 +49,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(1.25),
                 actual: Some(1.40),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -52,11 +59,15 @@ fn sample_record() -> RunRecord {
                 command: "npm ci".to_string(),
                 succeeded: true,
                 detail: None,
+                output: None,
+                attempts: None,
             }),
             build: Some(StepResult {
                 command: "npm run build".to_string(),
                 succeeded: true,
                 detail: None,
+                output: None,
+                attempts: None,
             }),
             checks: vec![CheckResult {
                 view: "title".to_string(),
@@ -91,7 +102,12 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: BTreeMap::new(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     }
 }
 
@@ -111,6 +127,8 @@ fn serializes_to_camel_case_contract() {
             "harnessSlug": "claude",
             "harnessVersion": "1.2.3",
             "orchestratorSlug": "one-shot",
+            "engineSlug": "simple-2d",
+            "engineVersion": "1.0.0",
             "modelId": "anthropic/claude-opus-4"
         },
         "tooling": {
@@ -169,6 +187,46 @@ fn round_trips_through_json() {
 }
 
 #[test]
+fn the_stage_durations_are_omitted_when_absent_and_carried_when_measured() {
+    // A record written before the stage durations were measured deserializes with
+    // all four absent, and absent is not zero: a consumer must be able to tell a
+    // run that recorded no session from one whose session took no time.
+    let json = serde_json::to_string(&sample_record()).expect("serialize");
+    assert!(
+        !json.contains("sessionSeconds"),
+        "an unmeasured stage must not appear on the record at all",
+    );
+    let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(parsed.metrics.session_seconds, None);
+    assert_eq!(parsed.metrics.setup_seconds, None);
+    assert_eq!(parsed.metrics.teardown_seconds, None);
+    assert_eq!(parsed.metrics.validation_seconds, None);
+
+    let mut measured = sample_record();
+    measured.metrics.setup_seconds = Some(200.0);
+    measured.metrics.session_seconds = Some(90.0);
+    measured.metrics.teardown_seconds = Some(10.0);
+    measured.metrics.validation_seconds = Some(45.0);
+    let value = serde_json::to_value(&measured).expect("serialize");
+    assert_eq!(value["metrics"]["setupSeconds"], json!(200.0));
+    assert_eq!(value["metrics"]["sessionSeconds"], json!(90.0));
+    assert_eq!(value["metrics"]["teardownSeconds"], json!(10.0));
+    assert_eq!(value["metrics"]["validationSeconds"], json!(45.0));
+    // …and the three stages still describe the run they were partitioned from.
+    assert_eq!(
+        measured.metrics.setup_seconds.unwrap()
+            + measured.metrics.session_seconds.unwrap()
+            + measured.metrics.teardown_seconds.unwrap(),
+        measured.metrics.run_time_seconds,
+    );
+
+    let round_tripped: RunRecord =
+        serde_json::from_str(&serde_json::to_string(&measured).expect("serialize"))
+            .expect("deserialize");
+    assert_eq!(measured, round_tripped);
+}
+
+#[test]
 fn prior_game_jam_entries_carry_the_seeded_readme() {
     // The entries are inputs to the run, so the record has to carry the README
     // body it was actually shown — not just a pointer to the run it came from,
@@ -195,6 +253,63 @@ fn prior_game_jam_entries_carry_the_seeded_readme() {
 }
 
 #[test]
+fn tool_calls_round_trip_and_default_empty_for_older_records() {
+    // A populated tally serializes under `toolCalls` and round-trips.
+    let mut record = sample_record();
+    record.tool_calls = BTreeMap::from([("todowrite".to_string(), 53), ("read".to_string(), 12)]);
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(value["toolCalls"]["todowrite"], 53);
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.tool_calls, record.tool_calls);
+
+    // An empty tally is omitted from the wire, and a record written before the
+    // field existed still deserializes to an empty map.
+    let empty = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(empty.get("toolCalls").is_none());
+    let parsed: RunRecord = serde_json::from_value(empty).expect("deserialize");
+    assert!(parsed.tool_calls.is_empty());
+}
+
+#[test]
+fn seed_commit_round_trips_and_is_absent_for_older_records() {
+    // A recorded seed commit serializes under `seedCommit` and round-trips verbatim —
+    // it is a git hash, so any normalization would break the tree lookups that use it.
+    let mut record = sample_record();
+    record.seed_commit = Some("9f1c0a3b2d4e5f60718293a4b5c6d7e8f9012345".to_string());
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(
+        value["seedCommit"],
+        json!("9f1c0a3b2d4e5f60718293a4b5c6d7e8f9012345")
+    );
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.seed_commit, record.seed_commit);
+
+    // A run with no seed commit writes no key at all, so nothing downstream can
+    // mistake an empty string for a real hash…
+    let absent = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(absent.get("seedCommit").is_none());
+
+    // …and a record written before the field existed — every record in the corpus
+    // today — still deserializes, with the field absent rather than failing the parse.
+    let parsed: RunRecord = serde_json::from_value(absent).expect("deserialize");
+    assert!(parsed.seed_commit.is_none());
+}
+
+#[test]
+fn code_analysis_is_absent_rather_than_empty_when_a_run_was_never_analysed() {
+    // The distinction the `Option` exists for: "this run was never analysed" must not be
+    // representable as "this run measured an empty tree", which would read as a model
+    // that wrote nothing. So a run with no analysis writes no key at all…
+    let absent = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(absent.get("codeAnalysis").is_none());
+
+    // …and every record in the corpus today — all written before the field existed —
+    // still deserializes, with the field absent rather than failing the parse.
+    let parsed: RunRecord = serde_json::from_value(absent).expect("deserialize");
+    assert!(parsed.code_analysis.is_none());
+}
+
+#[test]
 fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
     // A record written before orchestrator selection existed omits the field;
     // it must still deserialize, defaulting the slug to the original behaviour.
@@ -206,6 +321,48 @@ fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
 
     let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
     assert_eq!(parsed.subject.orchestrator_slug, "one-shot");
+}
+
+#[test]
+fn engine_slug_defaults_to_none_for_older_records() {
+    // A record written before engine selection existed omits both fields. It must
+    // still deserialize, and the default has to be the truth about such a run: it
+    // was built against no runtime, which is exactly what `none` names.
+    let mut value = serde_json::to_value(sample_record()).expect("serialize");
+    let subject = value["subject"].as_object_mut().unwrap();
+    subject.remove("engineSlug");
+    subject.remove("engineVersion");
+
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.subject.engine_slug, crate::engine::NONE_SLUG);
+    assert!(parsed.subject.engine_version.is_none());
+}
+
+#[test]
+fn an_engine_selection_round_trips() {
+    // Both halves of the selection survive a write/read cycle: the slug says which
+    // engine, the version says which build of it, and a comparison between two runs
+    // is only meaningful when both agree.
+    let parsed: RunRecord =
+        serde_json::from_value(serde_json::to_value(sample_record()).expect("serialize"))
+            .expect("deserialize");
+
+    assert_eq!(parsed.subject.engine_slug, "simple-2d");
+    assert_eq!(parsed.subject.engine_version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn an_engine_without_a_runtime_writes_no_version() {
+    // `none` vendors no package, so there is no version to read at seed time. The
+    // key is omitted rather than written as null: a null would read as "an engine
+    // whose version could not be determined", which is a different claim.
+    let mut record = sample_record();
+    record.subject.engine_slug = crate::engine::NONE_SLUG.to_string();
+    record.subject.engine_version = None;
+
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(value["subject"]["engineSlug"], json!("none"));
+    assert!(value["subject"].get("engineVersion").is_none());
 }
 
 #[test]
@@ -226,6 +383,10 @@ fn run_state_serializes_snake_case() {
     assert_eq!(
         serde_json::to_value(RunState::Infrastructure).unwrap(),
         json!("infrastructure")
+    );
+    assert_eq!(
+        serde_json::to_value(RunState::Canceled).unwrap(),
+        json!("canceled")
     );
 }
 
@@ -264,21 +425,90 @@ fn harness_family_wire_round_trips() {
 }
 
 #[test]
+fn gg_is_a_first_class_subject_excluded_from_the_cli_catalog() {
+    // gg is a run subject with a stable wire slug and serde round-trip, exactly
+    // like the CLI harnesses.
+    assert_eq!(HarnessSlug::Gg.as_str(), "gg");
+    assert_eq!(
+        serde_json::to_value(HarnessSlug::Gg).unwrap(),
+        json!("gg"),
+        "gg serde form must match its wire slug",
+    );
+    let parsed: HarnessSlug = serde_json::from_value(json!("gg")).unwrap();
+    assert_eq!(parsed, HarnessSlug::Gg);
+
+    // But it is deliberately not part of the CLI-harness catalog.
+    assert!(
+        !HarnessSlug::ALL.contains(&HarnessSlug::Gg),
+        "gg must not be in ALL (the third-party CLI catalog)",
+    );
+
+    // `from_wire` resolves every ALL slug and gg; ALL-only lookup would miss gg.
+    for slug in HarnessSlug::ALL {
+        assert_eq!(HarnessSlug::from_wire(slug.as_str()), Some(slug));
+    }
+    assert_eq!(HarnessSlug::from_wire("gg"), Some(HarnessSlug::Gg));
+    assert_eq!(HarnessSlug::from_wire("nope"), None);
+}
+
+/// What the queue's per-harness caps and the coverage scheduler's capacity lanes
+/// enumerate: the CLI catalog and gg, which ships no CLI and yet occupies the queue.
+#[test]
+fn the_runnable_harnesses_are_the_catalog_plus_gg() {
+    // Derived from `ALL`, so a harness added to the catalog is queue-tunable without a
+    // second edit — this is what says the derivation actually held.
+    assert_eq!(
+        HarnessSlug::RUNNABLE.to_vec(),
+        HarnessSlug::ALL
+            .into_iter()
+            .chain(std::iter::once(HarnessSlug::Gg))
+            .collect::<Vec<_>>(),
+        "RUNNABLE is the CLI catalog in catalog order, then gg",
+    );
+    // Every variant is queueable: a harness a run can be recorded under but not capped
+    // would be a lane the scheduler could never see.
+    for slug in HarnessSlug::RUNNABLE {
+        assert_eq!(HarnessSlug::from_wire(slug.as_str()), Some(slug));
+    }
+    assert!(HarnessSlug::RUNNABLE.contains(&HarnessSlug::Gg));
+}
+
+#[test]
+fn gg_routes_through_openrouter_consistently() {
+    // For Phase 0 gg reaches its model through OpenRouter, so its family and
+    // routing must agree just as they do for the routed CLI harnesses — otherwise
+    // the pricing canonicalizer and the family filter would disagree for gg.
+    assert!(HarnessSlug::Gg.routes_through_openrouter());
+    assert_eq!(HarnessSlug::Gg.family(), HarnessFamily::Openrouter);
+    // gg's client addresses OpenRouter with the bare `provider/model` id, so it
+    // never gains the CLI-only `openrouter/` launch prefix.
+    assert!(!HarnessSlug::Gg.uses_provider());
+}
+
+#[test]
 fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());
     assert!(RunState::TimedOut.is_publishable());
     assert!(RunState::HarnessError.is_publishable());
+    assert!(RunState::LimitExceeded.is_publishable());
     assert!(RunState::Hung.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
+    // An operator kill is a deliberate stop, not an outcome: nothing about the model
+    // can be concluded from it, so it is never publishable.
+    assert!(!RunState::Canceled.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
     assert!(RunState::Catastrophic.is_publishable_failure());
     assert!(RunState::TimedOut.is_publishable_failure());
     assert!(RunState::HarnessError.is_publishable_failure());
+    // A run the harness stopped on a ceiling its configuration armed is the model's
+    // outcome against that ceiling, so it is reportable signal too.
+    assert!(RunState::LimitExceeded.is_publishable_failure());
     // A hang is real, reportable model signal just like a harness error.
     assert!(RunState::Hung.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
+    assert!(!RunState::Canceled.is_publishable_failure());
 }
 
 #[test]
@@ -290,8 +520,10 @@ fn only_a_loadable_build_is_playable() {
     assert!(!RunState::Catastrophic.has_playable_build());
     assert!(!RunState::TimedOut.has_playable_build());
     assert!(!RunState::HarnessError.has_playable_build());
+    assert!(!RunState::LimitExceeded.has_playable_build());
     assert!(!RunState::Hung.has_playable_build());
     assert!(!RunState::Infrastructure.has_playable_build());
+    assert!(!RunState::Canceled.has_playable_build());
 
     // A state that has a playable build must also release it at publish, or the
     // build would exist but never reach the gallery.
@@ -307,7 +539,7 @@ fn only_a_loadable_build_is_playable() {
 fn all_covers_every_state() {
     // `ALL` is what the backend derives its wire-string lists from, so a new state
     // missing from it would silently drop out of those queries.
-    assert_eq!(RunState::ALL.len(), 6);
+    assert_eq!(RunState::ALL.len(), 8);
     for state in RunState::ALL {
         assert!(
             RunState::ALL.iter().filter(|s| **s == state).count() == 1,
@@ -323,11 +555,15 @@ fn run_state_publishes_artifacts() {
     assert!(RunState::Completed.publishes_artifacts());
     assert!(RunState::Catastrophic.publishes_artifacts());
     assert!(RunState::TimedOut.publishes_artifacts());
-    // A harness error and a hang are recorded only as per-model statistics —
-    // nothing is released — and infrastructure failures never publish at all.
+    // A harness error, a spent execution ceiling and a hang are recorded only as
+    // per-model statistics — nothing is released — and infrastructure failures never
+    // publish at all.
     assert!(!RunState::HarnessError.publishes_artifacts());
+    assert!(!RunState::LimitExceeded.publishes_artifacts());
     assert!(!RunState::Hung.publishes_artifacts());
     assert!(!RunState::Infrastructure.publishes_artifacts());
+    // A killed run releases nothing either: it never reached an outcome.
+    assert!(!RunState::Canceled.publishes_artifacts());
 }
 
 #[test]
@@ -347,6 +583,16 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
             detail: "harness exited with code 1".to_string(),
         }),
         RunState::HarnessError
+    );
+    // A harness that stopped the run on one of its own configured execution
+    // ceilings is held apart from the non-zero exit above, because that outcome is
+    // a property of the configuration and must never be retried.
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessLimitExceeded {
+            slug: "gg".to_string(),
+            detail: "5 consecutive turns failed".to_string(),
+        }),
+        RunState::LimitExceeded
     );
     // A harness killed by the idle watchdog neither finished nor failed: it is a
     // hang, distinct from both the non-zero exit above and the runtime cap.

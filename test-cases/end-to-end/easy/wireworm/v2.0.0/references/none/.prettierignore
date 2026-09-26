@@ -1,0 +1,17 @@
+# Everything that is not authored source: installed packages, build output, and
+# coverage reports.
+node_modules/
+dist/
+build/
+out/
+coverage/
+package-lock.json
+
+# Seeded reading material rather than this project's source: the specification
+# and the artwork that ships beside it.
+specs/
+assets/
+
+# Prose. The formatter handles code; Markdown, including the showcase
+# description, is left to its own linter.
+*.md

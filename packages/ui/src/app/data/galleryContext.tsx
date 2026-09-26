@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -14,33 +15,52 @@ import type {
   MediaKind,
   ModelSpec,
   NineSlice,
+  PerformanceSnapshotCheck,
   RunRecord,
+  RunShowcase,
   RunSubject,
   TournamentRecord,
-} from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
+import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import {
   parseGlb,
   parseSkinnedGlb,
   type PartMesh,
   type SkinnedMesh,
-} from "@test-cabinet/voxel-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/voxel-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type {
   ProgressCallback,
   ProofMedia,
   RunEventStreams,
   StoredReview,
 } from "../../client/types";
-import { type ParsedWriteup, parseWriteup, subItemVerdictId } from "./ratings";
+import {
+  type AestheticRating,
+  type ParsedWriteup,
+  type Rating,
+  parseWriteup,
+  subItemVerdictId,
+} from "./ratings";
+import {
+  assetErrorMessage,
+  createAssetCache,
+  useCachedAsset,
+} from "./assetCache";
 import { extensionFor } from "./proofMedia";
 import { findModelByModelId, type ModelSummary } from "./models";
 import type {
   DomainSummary,
   ReviewItemSummary,
   TestCaseDetail,
+  TestCaseGroupSummary,
   TestCaseSummary,
+  VariantSummary,
 } from "./testCases";
+import type { CabinetStats } from "./cabinetStats";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 
 /**
@@ -51,6 +71,22 @@ import type { RunQuery, RunQueryResult } from "./runQuery";
  * Hosts whose catalog is static (the public site) are always `"ready"`.
  */
 export type CatalogStatus = "loading" | "ready" | "error";
+
+/**
+ * The shipped gg **document corpus** a host with no backend answers analysis queries
+ * from: the documents themselves plus the instant they were exported.
+ *
+ * The static site builds this from the published snapshot's `gg-runs.json`. The corpus
+ * is deployment-wide (a gg document is not account-scoped, exactly as runs are not), and
+ * it is exported **filtered** — no experimental case — and **field-redacted**. A browser
+ * can re-check neither, which is why both happen at export time.
+ */
+export interface GgCorpus {
+  /** When the corpus was exported (RFC 3339), rendered beside every figure it produces. */
+  generatedAt: string;
+  /** The exported documents, in the order the export wrote them. */
+  documents: GgRunDoc[];
+}
 
 /**
  * A run's detail payload, resolved lazily by id: the full {@link RunRecord} plus
@@ -64,6 +100,26 @@ export interface RunDetail {
   record: RunRecord;
   reviews: StoredReview[];
   /**
+   * Whether the run is **validator-rated** (its case version is on the engine
+   * manifest format and is not a game jam): its points and functional rating are
+   * read off the record the moment it completes, it publishes with zero reviews,
+   * and a reviewer rates the run-wide aesthetic channel and may override
+   * individual verdicts. False for a legacy run, whose
+   * review surfaces are unchanged.
+   */
+  validatorRated: boolean;
+  /**
+   * The run's functional rating as its store decided it — the validator-decided
+   * rating on a validator-rated run (present from completion), the review
+   * aggregate on a legacy one — or null while a legacy run is unreviewed.
+   */
+  rating: Rating | null;
+  /**
+   * The run's aggregate aesthetic rating (the worst run-wide tier any reviewer gave),
+   * or null when no review has rated the channel — every legacy run.
+   */
+  aesthetic: AestheticRating | null;
+  /**
    * Whether the run has cleared the publish gate — it is public, in the snapshot
    * and the gallery. The review surfaces branch on this so an already-published
    * run is never offered a Publish action again (its reviewer can still revise
@@ -71,6 +127,16 @@ export interface RunDetail {
    * serves published runs only, so it is always true there.
    */
   published: boolean;
+  /**
+   * The run's showcase — the model's own presentation of the game it built (a
+   * store-page description plus an ordered media carousel), lifted off the stored
+   * record the same way the rating channels are so a page reads `run.showcase`
+   * directly. Null for a run whose tree carried no parseable showcase and for
+   * every record written before the field existed; the Play tab then renders the
+   * plain playable embed. Its media files resolve through
+   * {@link GalleryDataInput.showcaseMediaUrl}.
+   */
+  showcase: RunShowcase | null;
 }
 
 /** The scoring model for a run: the variant's weighted checklist items and its
@@ -80,11 +146,16 @@ export interface RunDetail {
 export interface ReviewModel {
   items: ReviewItemSummary[];
   domains: DomainSummary[];
+  /** Whether the run is validator-rated (see `VariantSummary.validatorRated`):
+   * the items carry failure caps and domains, the functional rating and score
+   * come from the record's validators (reviewer overrides folded in), and a
+   * review carries the run-wide aesthetic tier plus any overrides. */
+  validatorRated: boolean;
 }
 
 // The gallery's data source, injected by the host app. The same routed UI lives
-// in `@test-cabinet/ui`, but its data differs per app: the static site builds
-// this from the build-time public snapshot; the web/desktop consoles build it
+// in `@clockwyrks/ui`, but its data differs per app: the static site builds
+// this from the build-time public snapshot; the web console builds it
 // live from a backend (catalog + published runs) and a worker (in-progress and
 // produced runs). Pages read it through the existing data hooks
 // (`queryRunSummaries`/`useCaseRunSummaries`, `useTestCases`, `findReview`), which
@@ -104,19 +175,15 @@ export type { InProgressRun } from "../../client/types";
  * head-to-head matches and tournaments — the consoles when a worker is connected.
  * The static site omits it, so the arena UI hides. Run methods (`runMatch`,
  * `runTournament`) additionally require {@link GalleryDataInput.canExecute}; the
- * read methods only need this object to be present. Each host wires its own
- * transport behind these: the web host runs matches/tournaments on the dedicated
- * `tcab-arena` service and reads persisted tournaments and replays from the backend
- * (there are no run-local controllers in the web topology — only baselines and
- * pushed controllers are resolvable there); the desktop host invokes the local
- * core's Tauri commands and channels, where a single built-in local worker can also
- * resolve a `"run"` controller from its own output dir.
+ * read methods only need this object to be present. The web console's transport
+ * runs matches/tournaments on the dedicated `tcab-arena` service and reads
+ * persisted tournaments and replays from the backend; only baselines and pushed
+ * controllers are resolvable there.
  */
-/** A worker the arena can run matches/tournaments on. The web host presents a single
- * fixed execution host (the arena service); the desktop host has a single built-in
- * local worker. */
+/** A worker the arena can run matches/tournaments on. The web console presents a
+ * single fixed execution host (the arena service). */
 export interface ArenaWorkerOption {
-  /** Stable id (the local worker uses the reserved id `"local"`). */
+  /** Stable id. */
   id: string;
   /** Display label. */
   label: string;
@@ -124,15 +191,14 @@ export interface ArenaWorkerOption {
 
 export interface ArenaApi {
   /** The workers this host can run matches on, so the arena can offer a worker to
-   * pick. The desktop host resolves a controller of kind `"run"` against its local
-   * worker's output dir; the web host has none of those (its single arena-service
-   * host resolves only baselines and pushed controllers). Pushed and baseline
-   * controllers resolve the same on any host. */
+   * pick. The web console's single arena-service host resolves baselines and
+   * pushed controllers. */
   listWorkers(): ArenaWorkerOption[];
   /** The controllers available to pit for a case: the committed baselines, the
-   * chosen worker's produced adversarial runs (kind `"run"`, desktop only), and the
-   * case's pushed adversarial controllers (kind `"pushed"`). `workerId` selects which
-   * worker contributes its local runs (defaults to the active worker). */
+   * chosen worker's produced adversarial runs (kind `"run"`, when the worker can
+   * resolve them), and the case's pushed adversarial controllers (kind `"pushed"`).
+   * `workerId` selects which worker contributes its local runs (defaults to the
+   * active worker). */
   listControllers(
     slug: string,
     version: string,
@@ -184,72 +250,6 @@ export interface ArenaApi {
 }
 
 /**
- * The harness-authentication capability, supplied only by a host that manages
- * harness credentials for the runs it launches — today the Tauri desktop app,
- * which stands up a local cluster and must give each run's harness an API key or
- * a subscription. The web console (which enqueues against a backend an operator
- * has already credentialed) and the static site omit it, so the Authentication
- * settings section is hidden there. The desktop host wires its implementation over
- * Tauri IPC to the embedded core; see the shell's `harness_auth` commands.
- */
-export type HarnessAuthMode = "auto" | "subscription" | "api-key";
-
-/** One subscription credential file's host status (whether the user is signed in
- * with the harness CLI), for the authentication settings UI. */
-export interface SubscriptionFile {
-  /** Where the file is expected on the host (resolved from the environment). */
-  hostPath: string;
-  /** The data key this file occupies in the cluster subscription Secret. */
-  secretKey: string;
-  /** Whether the file exists on the host right now. */
-  present: boolean;
-  /** Whether the subscription requires this file (versus an optional one). */
-  required: boolean;
-}
-
-/** One harness's authentication state. Never carries the API key value itself —
- * only whether one is set and where it came from. */
-export interface HarnessAuth {
-  /** The harness slug (for example `claude`). */
-  slug: string;
-  /** The human-readable harness name. */
-  name: string;
-  /** The host provider key variable (for example `ANTHROPIC_API_KEY`), or null for
-   * a subscription-only harness with no API-key mode. */
-  apiKeyEnv: string | null;
-  /** Whether the harness supports API-key authentication. */
-  supportsApiKey: boolean;
-  /** Whether the harness supports subscription authentication. */
-  supportsSubscription: boolean;
-  /** The selected authentication method. */
-  selectedMode: HarnessAuthMode;
-  /** Whether an API key is available (override or discovered from the host). */
-  apiKeySet: boolean;
-  /** Where the key comes from: `override`, `dotenv:<file>`, `env`, or `none`. */
-  apiKeySource: string;
-  /** The subscription credential files this harness reads, with host status. */
-  subscriptionFiles: SubscriptionFile[];
-  /** Whether every required subscription file is present on the host. */
-  subscriptionPresent: boolean;
-  /** Readiness for the selected mode: `ready`, `needs-key`, `needs-sign-in`,
-   * `needs-credentials`, or `unsupported`. */
-  readiness: string;
-}
-
-export interface HarnessAuthApi {
-  /** Every harness's current authentication state. */
-  list(): Promise<HarnessAuth[]>;
-  /** Lock (or reset to `auto`) a harness's method; resolves to the refreshed list. */
-  setAuthMode(slug: string, mode: HarnessAuthMode): Promise<HarnessAuth[]>;
-  /** Set (or clear, with `null`) a harness's API key; resolves to the refreshed
-   * list. The value is sent to the host and never held in the gallery state. */
-  setApiKey(slug: string, key: string | null): Promise<HarnessAuth[]>;
-  /** Re-read the host's signed-in subscription files into the cluster; resolves to
-   * the refreshed list. */
-  refreshSubscription(slug: string): Promise<HarnessAuth[]>;
-}
-
-/**
  * One automated-validation media output resolved for display: a debug script's
  * declared output, captured twice — from the model's build (the *actual*) and from
  * the case's reference implementation (the *baseline*) — each as a loadable URL (or
@@ -271,7 +271,9 @@ export interface ValidationMedia {
   id: string;
   /** Human-readable display name, carried through from the declared output. */
   name: string;
-  /** Whether the output is an image or a video clip. */
+  /** Whether the output is a still image, a video clip, or an engine replay — a
+   * recording of the draw commands the build issued, which the console re-draws
+   * onto a canvas of its own rather than playing as a media file. */
   kind: MediaKind;
   /** The model build's captured output (run-scoped), or null when it was not
    * produced/served. */
@@ -281,10 +283,47 @@ export interface ValidationMedia {
    * resolved from the catalog rather than the run tree. Null when the case ships no
    * baseline for this output, or the host cannot serve case-scoped media. */
   baselineUrl: string | null;
+  /**
+   * How to reach a file the *actual* output keeps beside itself, by file name.
+   *
+   * An engine replay may carry its images in flat files next to it rather than
+   * inline (see `CapturedImage` in the replay player's `format.ts`), and those files
+   * live in the same namespace as the recording — so this is built from the same
+   * run-scoped resolver `actualUrl` is, and a host that serves one serves the other.
+   * Null when the host cannot serve run-scoped validation media at all; entries
+   * naming a stored image then report and skip, rather than drawing something else.
+   *
+   * Meaningless for a still or a clip, which carry no table of anything.
+   */
+  actualStoreUrl: ((file: string) => string | null) | null;
+  /** How to reach a file the *baseline* recording keeps beside itself, by file
+   * name — the case-scoped counterpart of {@link actualStoreUrl}, built from the
+   * same resolver `baselineUrl` is. */
+  baselineStoreUrl: ((file: string) => string | null) | null;
 }
 
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
+/**
+ * Which variant of which exact case version, rendered for which engine — the
+ * address of one run's inputs.
+ *
+ * Every field is required: a run records all four, and each of them changes the
+ * text the run was given.
+ */
+export interface CaseVariantRef {
+  /** The case slug. */
+  slug: string;
+  /** The exact case version the run exercised, which is not necessarily the
+   * case's latest. */
+  version: string;
+  /** The variant slug. */
+  variant: string;
+  /** The engine slug the prompt and specs are rendered for. `none` renders the
+   * engineless form, which is what a run selecting no engine received. */
+  engine: string;
+}
+
 export interface GalleryDataInput {
   /**
    * The summary cards for runs sourced locally (produced but not yet published) —
@@ -333,15 +372,50 @@ export interface GalleryDataInput {
    * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
   testCasesStatus: CatalogStatus;
   /**
+   * The repo-defined test-case groups, already in display order — the home page
+   * renders one leaderboard per group (see `useTestCaseGroups`). The console
+   * fetches them from `GET /test-case-groups`; the static site reads them from
+   * the snapshot. Optional, and every consumer degrades gracefully: a host
+   * without them (or whose fetch failed) simply renders no group section.
+   */
+  testCaseGroups?: TestCaseGroupSummary[];
+  /**
+   * The cabinet's whole-of-corpus headline figures — the home page's totals
+   * band and activity chart. The console asks the backend's `GET /stats/cabinet`
+   * (whose corpus covers every recorded run, published or not); the static site
+   * folds its inlined published summaries locally with the mirrored
+   * `foldCabinetStats`. Resolves `null` when the figures cannot be produced (an
+   * unreachable backend), and is omitted by a host that cannot produce them at
+   * all; either way the home page hides the band rather than showing zeros.
+   */
+  getCabinetStats?: () => Promise<CabinetStats | null>;
+  /**
    * Resolve one case in full by slug — its description, variants (prompts,
    * seeded specs, references, checklists), changelog, and errata. The detail
    * counterpart to the summary-level {@link testCases}: a detail surface (the
-   * case/jam detail tabs, a run's Inputs tab, the review scoring model) fetches
-   * the one case it is about rather than the whole catalog carrying every case's
-   * detail. Resolves `null` when no such case is available here. Omitted by a
-   * host that cannot resolve a case by slug.
+   * case/jam detail tabs, the review scoring model) fetches the one case it is
+   * about rather than the whole catalog carrying every case's detail. It resolves
+   * the case's LATEST version engineless, so a surface showing one run's own
+   * inputs uses {@link readCaseVariant} instead. Resolves `null` when no such case
+   * is available here. Omitted by a host that cannot resolve a case by slug.
    */
   readTestCase?: (slug: string) => Promise<TestCaseDetail | null>;
+  /**
+   * Resolve one variant of one *exact* case version, rendered for one engine —
+   * what a run's Inputs surface shows.
+   *
+   * Distinct from {@link readTestCase}, which resolves a case's *latest* version
+   * engineless: a run records its own case version and its own
+   * [engine](https://docs.testcabinet.ai/components/core/engines/), and both change
+   * the text its harness was handed. A run of an older version was given that
+   * version's prompt and specs, and a run on an engine was given the templates'
+   * branch for that engine. Resolving a run's inputs against the latest version's
+   * engineless rendering shows a different deliverable than the one that was run.
+   *
+   * Resolves `null` when this host holds no such case version or variant. Omitted
+   * by a host that cannot resolve one.
+   */
+  readCaseVariant?: (ref: CaseVariantRef) => Promise<VariantSummary | null>;
   /** The model catalog: curated configs merged with the models recorded runs
    * reference, each with its price history. The console fetches it from the
    * backend; the static site reads it from the snapshot. */
@@ -349,12 +423,42 @@ export interface GalleryDataInput {
   /** The model catalog's load state (see {@link CatalogStatus}). */
   modelsStatus: CatalogStatus;
   /**
+   * The published harness comparisons this host can render **read-only**, each the
+   * full read model the backend assembled. Provided only by the static site (from
+   * the snapshot); the consoles leave it `undefined` and fetch the signed-in
+   * account's comparisons through the authed client instead (they are per-account,
+   * not public). A read-only host with none simply renders an empty list. See
+   * {@link readComparison} for a single comparison by id.
+   */
+  comparisons?: Comparison[];
+  /**
+   * Resolve one published comparison by id for a read-only host (the static site),
+   * from its snapshot data. `null` when no published comparison has that id.
+   * Omitted by the consoles, which read a comparison through the authed client.
+   */
+  readComparison?: (id: string) => Comparison | null;
+  /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
-   * static gallery site; true in the web and desktop consoles. Gates the
+   * static gallery site; true in the web console. Gates the
    * run-execution UI (new-run button, live monitor, editable review, the
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * The shipped gg **document corpus**, for a host with no backend to query: the
+   * published snapshot's `gg-runs.json`, which the mirrored browser evaluator answers
+   * queries from directly.
+   *
+   * Supplied only by the static site. The consoles omit it — they have a live document
+   * index behind `POST /gg/query`, which is current where this is a build-time export —
+   * and `useGgSource` prefers the backend wherever both exist. Omitted *and* no backend
+   * means the analysis surface is not mounted at all.
+   *
+   * The documents arrive already filtered (no experimental case) and field-redacted; a
+   * browser cannot re-check either, so the export is where that is decided. Replay
+   * records are **never** part of it.
+   */
+  ggData?: GgCorpus;
   /**
    * Grafana's base URL, or null when this UI has no observability stack behind it
    * (the static gallery site always; a console whose backend reports no
@@ -390,6 +494,23 @@ export interface GalleryDataInput {
     runId: string,
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
+  /**
+   * Fetch a run's **unbounded** code-analysis document — every authored file, every
+   * scored function, every import edge, cycle and clone group — for the run-detail
+   * Code tab's explorer. The *bounded* summary rides on the run record, so the tab's
+   * provenance strip and figure table never wait on this; only the explorer does.
+   *
+   * A host hook rather than a client call because the two hosts source it completely
+   * differently, exactly as they do for {@link fetchRunEvents}: a console reads the
+   * backend's `GET /runs/{id}/code-analysis`, the static site fetches the
+   * generation-keyed snapshot object the publish emitted. Omitted by a host that
+   * cannot reach the document at all, which the tab reports as "not available here".
+   *
+   * Resolves `null` when the run has **no** document — which is most of the corpus,
+   * since analysis is deliberately not backfilled. That is "never measured", and the
+   * tab must say so rather than render an empty explorer.
+   */
+  readCodeAnalysis?: (runId: string) => Promise<CodeAnalysisDocument | null>;
   /**
    * Resolve one run's full record by id, directly from the host's store. The
    * gallery no longer holds full records in memory — pages fetch summary cards a
@@ -438,7 +559,7 @@ export interface GalleryDataInput {
    * `crates/core/src/asset_reference.rs`.
    *
    * Omitted (or returning null) by a host with no snapshot bucket configured — the
-   * end-to-end analogue of a variant that declares no {@link referenceBuild}, and
+   * end-to-end analogue of a variant that declares no {@link referenceBuilds}, and
    * the Reference tab degrades to a short placeholder rather than broken images.
    */
   referenceMediaUrl?: (
@@ -456,6 +577,38 @@ export interface GalleryDataInput {
    * site at the snapshot asset. Omitted by a host that serves no validation media.
    */
   validationMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one of a run's **showcase** files — a carousel
+   * media file, or an image the description references by bare relative path — or
+   * null when the host cannot serve it. `file` is the plain file name the record's
+   * carousel (or the description) carries. Run-scoped, wired the same way
+   * {@link proofMediaUrl} and {@link validationMediaUrl} are: the consoles point at
+   * the backend (published) or worker (produced) showcase endpoint, the static site
+   * at the snapshot asset (where a video's `.webm` name resolves to its published
+   * `.mp4`). Omitted by a host that serves no showcase media.
+   */
+  showcaseMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one media file of a **case variant's** authored
+   * showcase — the case-side counterpart of {@link showcaseMediaUrl}. Unlike a
+   * run's showcase this is **case-scoped** (keyed by slug/version/variant, like
+   * {@link referenceMediaUrl}), because the showcase is authored material
+   * committed with the version, not run output: the consoles point at the
+   * backend's `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
+   * route, the static site at the snapshot's published objects (where a video's
+   * `.webm` name resolves to its published `.mp4`). `file` is the plain file
+   * name the variant's {@link VariantSummary.showcase} carousel (or the case's
+   * {@link TestCaseSummary.showcase} preview) carries.
+   *
+   * Omitted (or returning null) by a host that serves no case showcase media, and
+   * the surfaces degrade exactly like the run showcase ("not available here").
+   */
+  caseShowcaseMediaUrl?: (
+    slug: string,
+    version: string,
+    variant: string,
+    file: string,
+  ) => string | null;
   /**
    * Resolve the URL to download a run's entire produced tree from as one gzip tar
    * (source, build, media, and logs), or null when the host cannot serve it.
@@ -486,13 +639,6 @@ export interface GalleryDataInput {
    * site, which hides the arena UI entirely. See {@link ArenaApi}.
    */
   arena?: ArenaApi;
-  /**
-   * The harness-authentication capability, present only on a host that manages
-   * harness credentials for the runs it launches (the Tauri desktop app). Omitted
-   * by the web console and the static site, which hide the Authentication settings
-   * section. See {@link HarnessAuthApi}.
-   */
-  harnessAuth?: HarnessAuthApi;
 }
 
 /**
@@ -751,6 +897,16 @@ export interface PerformanceScenarioView {
   scenarioUrl: string | null;
   /** The fuel the engine burned on this case. */
   fuel: number | null;
+  /**
+   * The per-snapshot checksums the engine produced when this case was GRADED, in
+   * schedule order.
+   *
+   * Playback re-steps the same module in the browser, so at a graded tick the
+   * frame it emits must carry the checksum recorded here. Handing these to the
+   * player is what lets it check that (see `PlaybackOverlay`'s `graded` prop)
+   * rather than animate whatever arrives on trust.
+   */
+  graded: PerformanceSnapshotCheck[];
 }
 
 /** A performance run's playable scenarios. */
@@ -869,6 +1025,14 @@ export interface GalleryData extends GalleryDataInput {
    */
   fetchTestCase(slug: string): Promise<TestCaseDetail | null>;
   /**
+   * Resolve one variant of one exact case version rendered for one engine,
+   * delegating to the host's {@link GalleryDataInput.readCaseVariant}. Resolves
+   * `null` when the host supplies no resolver or holds no such variant.
+   * Components should reach this through `useRunVariant`, which passes a run's
+   * own recorded version and engine and caches per reference.
+   */
+  fetchCaseVariant(ref: CaseVariantRef): Promise<VariantSummary | null>;
+  /**
    * Resolve a run's `modelId` (optionally with its harness slug, for harness-aware
    * canonicalization) to its catalog entry, over the loaded model catalog. Returns
    * undefined for an id the catalog does not cover.
@@ -890,29 +1054,71 @@ export function GalleryDataProvider({
   value: GalleryDataInput;
   children: ReactNode;
 }) {
-  const full = useMemo<GalleryData>(() => {
-    const {
-      writeups,
-      reviews,
-      proofMediaUrl,
-      assetMediaUrl,
-      validationMediaUrl,
-      validationBaselineUrl,
-      models,
-    } = value;
-    return {
-      ...value,
+  const {
+    writeups,
+    reviews,
+    proofMediaUrl,
+    assetMediaUrl,
+    validationMediaUrl,
+    validationBaselineUrl,
+    models,
+    readRun,
+    readTestCase,
+    readCaseVariant,
+  } = value;
+
+  // The derived methods are memoized on exactly the host inputs each closes
+  // over, NOT on `value` as a whole. A live host's value changes on every
+  // produced-run refresh (a run finishing) and on every in-flight run's state
+  // transition, and consumers key effects and caches on these methods: the
+  // variant cache keys on `fetchCaseVariant`, the detail chrome's fetch on
+  // `fetchRun`, the review surfaces' proof/validation memos on the media
+  // resolvers. Rebuilt per value change, those all restarted on every refresh —
+  // a loaded Verdict tab flipped back to loading and refetched its checklist
+  // each time any run finished. Each method now changes identity only when the
+  // input that would change its answer does.
+
+  // The record/catalog fetchers, one per host resolver. Each keys on its own
+  // resolver alone so the caches keyed on it (`useTestCase`, `useCaseVariant`)
+  // are dropped exactly when the host rebuilds that resolver — on a switched
+  // backend — and never for an unrelated field's change.
+  const fetchRun = useCallback(
+    (runId: string): Promise<RunDetail | null> =>
+      // The gallery holds no full records in memory anymore — only summary
+      // cards — so a detail view resolves the whole record lazily through the
+      // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
+      // site fetches the emitted per-run record asset). A host that supplies none
+      // resolves to null.
+      readRun ? readRun(runId) : Promise.resolve(null),
+    [readRun],
+  );
+  const fetchTestCase = useCallback(
+    (slug: string): Promise<TestCaseDetail | null> =>
+      readTestCase ? readTestCase(slug) : Promise.resolve(null),
+    [readTestCase],
+  );
+  const fetchCaseVariant = useCallback(
+    (ref: CaseVariantRef): Promise<VariantSummary | null> =>
+      readCaseVariant ? readCaseVariant(ref) : Promise.resolve(null),
+    [readCaseVariant],
+  );
+
+  // The in-memory lookups over the host's loaded tables. These legitimately
+  // change with the tables they read (a refresh that found a new review, a
+  // reloaded model catalog).
+  const lookups = useMemo<
+    Pick<
+      GalleryData,
+      "findReview" | "reviewsFor" | "modelForId" | "modelForSlug"
+    >
+  >(
+    () => ({
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
       },
-      fetchRun(runId) {
-        // The gallery holds no full records in memory anymore — only summary
-        // cards — so a detail view resolves the whole record lazily through the
-        // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
-        // site fetches the emitted per-run record asset). A host that supplies none
-        // resolves to null.
-        return value.readRun ? value.readRun(runId) : Promise.resolve(null);
+      reviewsFor(runId) {
+        return reviews[runId] ?? [];
       },
       modelForId(modelId, harnessSlug) {
         return findModelByModelId(models, modelId, harnessSlug);
@@ -925,14 +1131,29 @@ export function GalleryDataProvider({
             model.aliases.some((a) => a.slug === slug),
         );
       },
-      reviewsFor(runId) {
-        return reviews[runId] ?? [];
-      },
-      fetchTestCase(slug) {
-        return value.readTestCase
-          ? value.readTestCase(slug)
-          : Promise.resolve(null);
-      },
+    }),
+    [writeups, reviews, models],
+  );
+
+  // The per-run media views, keyed on the host's URL resolvers. A live host's
+  // resolvers depend only on its transports (they consult the produced worklist
+  // through a ref), so these hold their identity across a refresh too.
+  const media = useMemo<
+    Pick<
+      GalleryData,
+      | "proofMediaFor"
+      | "validationMediaFor"
+      | "assetResultFor"
+      | "voxelResultFor"
+      | "uiResultFor"
+      | "materialResultFor"
+      | "particleResultFor"
+      | "audioResultFor"
+      | "replayResultFor"
+      | "performancePlaybackFor"
+    >
+  >(
+    () => ({
       proofMediaFor(run) {
         return run.validation.proofs.map((proof) => ({
           id: proof.id,
@@ -949,7 +1170,7 @@ export function GalleryDataProvider({
         const media: ValidationMedia[] = [];
         // Each debug script's outputs share one flat name, `<verdict>__<outputId>.<ext>`,
         // with the extension fixed by the output's kind — `png` for a still, `webm`
-        // for a clip. The verdict id is the item's own id, or the composite
+        // for a clip, `json.gz` for an engine replay. The verdict id is the item's own id, or the composite
         // `<item>.<sub>` for a per-sub-item driver, so a sub-item's proof is addressed
         // (and grouped) separately from its siblings'. The *actual* media is run-scoped
         // (served like proof media, keyed by run id); the *baseline* media is
@@ -961,7 +1182,19 @@ export function GalleryDataProvider({
             ? subItemVerdictId(script.itemId, script.subItemId)
             : script.itemId;
           for (const output of script.outputs) {
-            const ext = output.kind === "video" ? "webm" : "png";
+            // A clip is captured as the `.webm` Playwright records natively, a
+            // still as `.png`, and an engine replay as the `.json.gz` the
+            // validator writes: a JSON document stored gzipped, because a format
+            // in which every frame restates the state it inherited is repetitive
+            // by design and compresses to a fraction of itself. It needs no
+            // transcode, so it is served under that one name everywhere, labelled
+            // as the JSON it is with its gzip framing declared.
+            const ext =
+              output.kind === "video"
+                ? "webm"
+                : output.kind === "replay"
+                  ? "json.gz"
+                  : "png";
             const file = `${verdictId}__${output.id}.${ext}`;
             media.push({
               itemId: script.itemId,
@@ -979,6 +1212,19 @@ export function GalleryDataProvider({
               // rather than gated on any per-run presence flag.
               baselineUrl: validationBaselineUrl
                 ? validationBaselineUrl(run.subject, file)
+                : null,
+              // An engine replay may keep its images in flat files beside it, named
+              // the way every other media file of this run (or this case version) is
+              // named. Each side resolves them through the SAME function that
+              // produced its own URL above — run-scoped for the actual, case-scoped
+              // for the baseline — which is why a stored image needs no new endpoint
+              // and works on the static gallery as well as the live console. Bound
+              // per side rather than per file so the pair cannot cross the two.
+              actualStoreUrl: validationMediaUrl
+                ? (stored: string) => validationMediaUrl(run.id, stored)
+                : null,
+              baselineStoreUrl: validationBaselineUrl
+                ? (stored: string) => validationBaselineUrl(run.subject, stored)
                 : null,
             });
           }
@@ -1191,6 +1437,7 @@ export function GalleryDataProvider({
                       ? assetMediaUrl(run.id, scored.scenarioJson)
                       : null,
                     fuel: scored.fuel,
+                    graded: scored.snapshots,
                   },
                 ]
               : [],
@@ -1204,8 +1451,24 @@ export function GalleryDataProvider({
             : null;
         return { correct: performance.correct, moduleUrl, scenarios };
       },
-    };
-  }, [value]);
+    }),
+    [proofMediaUrl, assetMediaUrl, validationMediaUrl, validationBaselineUrl],
+  );
+
+  // The value itself still changes whenever any host field does — consumers
+  // reading `localIds`, `models`, `writeups` off the context need that render —
+  // but the methods spread onto it keep their own identities across it.
+  const full = useMemo<GalleryData>(
+    () => ({
+      ...value,
+      fetchRun,
+      fetchTestCase,
+      fetchCaseVariant,
+      ...lookups,
+      ...media,
+    }),
+    [value, fetchRun, fetchTestCase, fetchCaseVariant, lookups, media],
+  );
   return (
     <GalleryDataContext.Provider value={full}>
       {children}
@@ -1216,15 +1479,44 @@ export function GalleryDataProvider({
 export function useGalleryData(): GalleryData {
   const ctx = useContext(GalleryDataContext);
   if (!ctx) {
-    throw new Error("useGalleryData must be used within a GalleryDataProvider");
+    throw new Error("useGalleryData called outside a <GalleryDataProvider>");
   }
   return ctx;
+}
+
+// The gallery data if a provider is in scope, else null — for the rare consumer
+// that can do without it rather than require one. The gg run views use it to price
+// a run's tokens against the model catalog when it is loaded, while still rendering
+// (minus the derived cost split) in a context, like a bare test harness, that never
+// mounts the provider.
+export function useGalleryDataOptional(): GalleryData | null {
+  return useContext(GalleryDataContext);
 }
 
 // A process-wide cache of fetched per-part `.glb` files, keyed by their resolved URL.
 // Mesh geometry is immutable per published/produced run, so a file fetched once
 // (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.
-const meshFileCache = new Map<string, PartMesh>();
+//
+// Bounded at 256 parts / 128 MB. A voxel rig is tens of parts and a decoded part is
+// vertex arrays rather than the compressed `.glb` that carried them, so the byte
+// budget is what actually binds: 128 MB holds the rigs of the several runs a
+// reviewer flips between while a session that walks a whole gallery drops the ones
+// it left behind.
+const meshFiles = createAssetCache<PartMesh>({
+  name: "voxel part mesh",
+  maxEntries: 256,
+  maxBytes: 128 * 1024 * 1024,
+  weigh: (mesh) =>
+    (mesh.positions.length + mesh.normals.length + mesh.colors.length) * 4 +
+    mesh.indices.length * 4,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`mesh fetch failed: HTTP ${response.status} (${url})`);
+    }
+    return parseGlb(await response.arrayBuffer());
+  },
+});
 
 /** The load state of a set of voxel artifacts (see {@link useVoxelArtifacts}). */
 export interface VoxelArtifacts {
@@ -1253,19 +1545,37 @@ export async function fetchMeshesByPart(
   const servable = parts.filter((p) => p.meshUrl);
   const entries = await Promise.all(
     servable.map(async (part) => {
-      const url = part.meshUrl!;
-      const cached = meshFileCache.get(url);
-      if (cached) return [part.name, cached] as const;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`${part.name}: ${response.status}`);
-      }
-      const file = parseGlb(await response.arrayBuffer());
-      meshFileCache.set(url, file);
+      // The part's name rides on the failure, because the shared loader knows only
+      // the URL and a rig's reviewer needs to know which part of it is missing.
+      const file = await meshFiles
+        .load(part.meshUrl!)
+        .catch((cause: unknown) => {
+          throw new Error(`part ${part.name}: ${assetErrorMessage(cause)}`);
+        });
       return [part.name, file] as const;
     }),
   );
   return Object.fromEntries(entries);
+}
+
+/**
+ * The complete set of meshes for `parts` if every servable one is already cached,
+ * else null — how {@link useVoxelArtifacts} renders a rig it has already built
+ * without a loading state (see "Immutable asset caching" in the UI component doc).
+ * A partial set is no set: the viewer builds one complete rig rather than
+ * flickering part by part.
+ */
+function peekMeshesByPart(
+  parts: readonly { name: string; meshUrl: string | null }[],
+): Record<string, PartMesh> | null {
+  const meshes: Record<string, PartMesh> = {};
+  for (const part of parts) {
+    if (!part.meshUrl) continue;
+    const cached = meshFiles.peek(part.meshUrl);
+    if (cached === undefined) return null;
+    meshes[part.name] = cached;
+  }
+  return meshes;
 }
 
 /**
@@ -1276,37 +1586,78 @@ export async function fetchMeshesByPart(
  * `meshesByPart` stays null until every servable part has resolved, so the viewer
  * builds one complete rig rather than flickering part-by-part.
  */
+/** The state a rig starts in: resolved where every part is already cached. */
+function seedVoxel(
+  parts: readonly { name: string; meshUrl: string | null }[],
+): VoxelArtifacts {
+  const cached = peekMeshesByPart(parts);
+  return cached === null
+    ? { meshesByPart: null, loading: true, error: null }
+    : { meshesByPart: cached, loading: false, error: null };
+}
+
+/** Whether two resolved sets name the same parts and the same mesh objects. */
+function sameMeshes(
+  a: Record<string, PartMesh>,
+  b: Record<string, PartMesh>,
+): boolean {
+  const names = Object.keys(a);
+  if (names.length !== Object.keys(b).length) return false;
+  return names.every((name) => a[name] === b[name]);
+}
+
 export function useVoxelArtifacts(
   parts: readonly { name: string; meshUrl: string | null }[],
 ): VoxelArtifacts {
   // A stable dependency key: the ordered name→url pairs as one string.
   const key = parts.map((p) => `${p.name}=${p.meshUrl ?? ""}`).join("|");
-  const [state, setState] = useState<VoxelArtifacts>({
-    meshesByPart: null,
-    loading: true,
-    error: null,
-  });
+  // Seeded from the cache, and re-seeded during the render that sees a new key
+  // rather than in the effect below: a rig this session has already fetched renders
+  // on the very first frame of a remount, with no spinner over geometry the console
+  // is still holding. Every tab of a run's detail page is its own route, so leaving
+  // the model view and coming back is exactly that remount.
+  const [seenKey, setSeenKey] = useState(key);
+  const [state, setState] = useState<VoxelArtifacts>(() => seedVoxel(parts));
+  if (key !== seenKey) {
+    setSeenKey(key);
+    setState(seedVoxel(parts));
+  }
 
   useEffect(() => {
     const servable = parts.filter((p) => p.meshUrl);
     if (servable.length === 0) {
-      setState({ meshesByPart: {}, loading: false, error: null });
+      // The seed already settled this — a rig with nothing to fetch is resolved on
+      // sight — so a fresh empty record here would only have the viewer rebuild.
+      setState((prev) =>
+        prev.meshesByPart !== null && !prev.loading && prev.error === null
+          ? prev
+          : { meshesByPart: {}, loading: false, error: null },
+      );
       return;
     }
     let cancelled = false;
-    setState({ meshesByPart: null, loading: true, error: null });
 
     fetchMeshesByPart(servable)
       .then((meshesByPart) => {
         if (cancelled) return;
-        setState({ meshesByPart, loading: false, error: null });
+        // A seeded set resolves to the same mesh objects, so it is kept: handing
+        // the viewer a fresh record of identical parts would have it tear the rig
+        // down and rebuild it for nothing.
+        setState((prev) =>
+          prev.meshesByPart !== null &&
+          !prev.loading &&
+          prev.error === null &&
+          sameMeshes(prev.meshesByPart, meshesByPart)
+            ? prev
+            : { meshesByPart, loading: false, error: null },
+        );
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
         setState({
           meshesByPart: null,
           loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
+          error: assetErrorMessage(cause),
         });
       });
 
@@ -1323,22 +1674,28 @@ export function useVoxelArtifacts(
 
 // A process-wide cache of fetched `system.json` definitions, keyed by resolved URL.
 // A published/produced run's system is immutable, so it is fetched at most once and
-// reused by the live viewer across mounts.
-const particleSystemCache = new Map<string, ParticleSystem>();
+// reused by the live viewer across mounts. An authored emitter/force/curve
+// definition is a small document, so 64 of them — more runs than a reviewer holds
+// in play — is the whole bound.
+const particleSystems = createAssetCache<ParticleSystem>({
+  name: "particle system",
+  maxEntries: 64,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `system.json fetch failed: HTTP ${response.status} (${url})`,
+      );
+    }
+    return (await response.json()) as ParticleSystem;
+  },
+});
 
 /** Fetch (and cache) a particle run's emitted `system.json` — the authored
  * emitter/force/curve definition the viewer simulates live. Rejects on a failed
  * fetch or malformed JSON. */
-export async function fetchParticleSystem(
-  url: string,
-): Promise<ParticleSystem> {
-  const cached = particleSystemCache.get(url);
-  if (cached) return cached;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`system.json: ${response.status}`);
-  const system = (await response.json()) as ParticleSystem;
-  particleSystemCache.set(url, system);
-  return system;
+export function fetchParticleSystem(url: string): Promise<ParticleSystem> {
+  return particleSystems.load(url);
 }
 
 /** The load state of a fetched particle `system.json`. */
@@ -1354,54 +1711,46 @@ export interface ParticleSystemState {
  * the WebGL guard promotes). `system` stays null until the fetch resolves.
  */
 export function useParticleSystem(url: string | null): ParticleSystemState {
-  const [state, setState] = useState<ParticleSystemState>({
-    system: null,
-    loading: url !== null,
-    error: null,
-  });
-
-  useEffect(() => {
-    if (url === null) {
-      setState({ system: null, loading: false, error: null });
-      return;
-    }
-    let cancelled = false;
-    setState({ system: null, loading: true, error: null });
-    fetchParticleSystem(url)
-      .then((system) => {
-        if (!cancelled) setState({ system, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return;
-        setState({
-          system: null,
-          loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  return state;
+  const { data, loading, error } = useCachedAsset(particleSystems, url);
+  return useMemo(
+    () => ({ system: data, loading, error }),
+    [data, loading, error],
+  );
 }
 
 // A process-wide cache of decoded skinned meshes, keyed by resolved `.glb` URL. Like
-// {@link meshFileCache}, mesh geometry is immutable per run, so each file is decoded
-// at most once.
-const skinnedMeshCache = new Map<string, SkinnedMesh>();
+// {@link meshFiles}, mesh geometry is immutable per run, so each file is decoded at
+// most once. A skinned run is ONE mesh rather than a rig of parts, but that one mesh
+// carries per-vertex joints and weights on top of the geometry, so this is bounded
+// by bytes on the same reasoning: 96 MB is the several runs a reviewer compares.
+const skinnedMeshes = createAssetCache<SkinnedMesh>({
+  name: "skinned mesh",
+  maxEntries: 32,
+  maxBytes: 96 * 1024 * 1024,
+  weigh: (mesh) =>
+    (mesh.positions.length +
+      mesh.normals.length +
+      mesh.colors.length +
+      mesh.indices.length +
+      mesh.joints.length +
+      mesh.weights.length) *
+      4 +
+    mesh.bones.length * 128,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `mesh.glb fetch failed: HTTP ${response.status} (${url})`,
+      );
+    }
+    return parseSkinnedGlb(await response.arrayBuffer());
+  },
+});
 
 /** Fetch (and cache) a skinned run's single `mesh.glb` and decode it into a
  * {@link SkinnedMesh} with `parseSkinnedGlb`. Rejects on a failed fetch or decode. */
-export async function fetchSkinnedMesh(url: string): Promise<SkinnedMesh> {
-  const cached = skinnedMeshCache.get(url);
-  if (cached) return cached;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`mesh.glb: ${response.status}`);
-  const mesh = parseSkinnedGlb(await response.arrayBuffer());
-  skinnedMeshCache.set(url, mesh);
-  return mesh;
+export function fetchSkinnedMesh(url: string): Promise<SkinnedMesh> {
+  return skinnedMeshes.load(url);
 }
 
 /** The load state of a decoded skinned mesh. */
@@ -1417,35 +1766,9 @@ export interface SkinnedMeshState {
  * `skinnedMeshUrl` (or null to fetch nothing). `mesh` stays null until it resolves.
  */
 export function useSkinnedMesh(url: string | null): SkinnedMeshState {
-  const [state, setState] = useState<SkinnedMeshState>({
-    mesh: null,
-    loading: url !== null,
-    error: null,
-  });
-
-  useEffect(() => {
-    if (url === null) {
-      setState({ mesh: null, loading: false, error: null });
-      return;
-    }
-    let cancelled = false;
-    setState({ mesh: null, loading: true, error: null });
-    fetchSkinnedMesh(url)
-      .then((mesh) => {
-        if (!cancelled) setState({ mesh, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return;
-        setState({
-          mesh: null,
-          loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  return state;
+  const { data, loading, error } = useCachedAsset(skinnedMeshes, url);
+  return useMemo(
+    () => ({ mesh: data, loading, error }),
+    [data, loading, error],
+  );
 }

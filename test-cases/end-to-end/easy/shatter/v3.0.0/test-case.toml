@@ -1,0 +1,2878 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity, recorded in every run.
+slug = "shatter"
+
+# Human-readable display name for this test case.
+name = "Shatter"
+
+# Relative difficulty of this case, surfaced on the site. Shatter is one
+# self-contained real-time loop — inertial flight, one gravity law applied to
+# every ballistic body, rocks that split, escalating waves, a saucer that hunts —
+# with no subsystem big enough to need splitting out behind an interface, so easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "space", "shooter", "physics"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A rock shooter built around a central gravity well: the star at the middle of \
+the field pulls every rock and every shot, so bullets bend as they cross the \
+centre and rocks churn on curved, wrapping paths, while your ship flies free of \
+the pull."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`,
+# it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. It rises from v2.x's 2.5 because an engineless run now writes the
+# whole runtime layer beneath the game as well — the frame loop, the canvas fit,
+# the keyboard, the audio and the overlay — and four hours is comfortably more
+# than a healthy build of that size needs while still catching a session that
+# never terminates.
+max_runtime_hours = 4
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Both variants are the same single game, rated on the
+# same four domains; what `warhead` changes is the rules of the game itself, and
+# that difference is carried by the specs that branch on the selected variant
+# (`specs/overview.md.hbs`, `specs/gravity.md.hbs`, `specs/weapons.md.hbs`,
+# `specs/rocks.md.hbs`, `specs/collision.md.hbs`, `specs/controls.md.hbs`,
+# `specs/ui.md.hbs`, `specs/state.md.hbs` and `specs/instrumentation.md.hbs`).
+# They are rendered before they land, so each variant's seeded spec set reads as
+# one self-contained game and no seeded text ever names the sibling variant.
+#   - base    — the endless arcade game: a rock is destroyed by a single hit and
+#               the ship carries only its gun. The reference build.
+#   - warhead — the same game with ARMORED rocks (a rock carries health, so a
+#               Large takes three hits) and a homing TORPEDO: one guided munition
+#               on a ten-second recharge that flies true through the well and
+#               destroys any rock outright, blasting its fragments outward far
+#               harder than the gun does.
+# This list is a root key, so it must precede the first table header.
+variants = [
+  "variants/base.toml",
+  "variants/warhead.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering, collision detection, and
+# the gameplay framework the game is written inside. It is a *run dimension*,
+# chosen per run alongside the model, the harness, and the variant, and recorded
+# on the run; it is not a property of the game.
+#
+# Shatter supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop and its fixed-step accumulator, the
+#                     canvas fit, the keyboard, the audio, the overlay and the
+#                     `window.__shatter` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` stub the build replaces, debug surface
+#                     included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module: the level, the game mode that holds the run,
+#                     the actors and components the field is drawn by, and the
+#                     debug surface its instance's `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop and fixed-step
+#                     accumulator, canvas fit, input, audio, diagnostics overlay
+#                     and `window.__shatter` surface, and every figure the
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, the three functions, and the
+#                     `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. `src/game.ts` is
+#                     deliberately ABSENT: `src/main.ts` imports it, so
+#                     `npx tsc --noEmit` on a freshly seeded workspace fails on the
+#                     missing module, and that failure is the starting point.
+#
+# This table is the BASE variant's; `variants/warhead.toml` replaces it wholesale
+# with one of its own, because the seeded `src/constants.ts` under each engine
+# differs — warhead's carries the Armor and Torpedo groups and binds `b` to
+# `KeyF`. The engineless project holds no game code for a variant to differ in, so
+# both variants share it, and what warhead changes about the game is carried by
+# the specs, which are rendered per variant before they land. The seeded files
+# land at the run root (`workspaces/none/package.json` seeds to `package.json`).
+#
+# There is no `assets` key anywhere in this manifest: Shatter seeds no art, and
+# every body on the field is drawn in code.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`),
+# so what is checked here is the code the model wrote against configuration the
+# case fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken` and scores it zero,
+# because code that does not compile is not reviewable. The other three are
+# recorded and gate nothing — `test` additionally records the count and coverage
+# the build's own suite reports, which is how a build that ships tests is told
+# apart from one that ships none. Each is spelled `npx` rather than
+# `npm run <script>` so the check is the case's own statement of what is run and
+# does not depend on the model leaving the seeded scripts intact.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. The handle is required as soon as any review item declares a `validation`
+# script, which every one of them does below. It names the ENGINELESS contract: an
+# engineless build writes the surface itself and installs it on
+# `window.__shatter`, so the handle is what a person opening the console of such a
+# build finds. An engine run has no global at all — the build writes the surface,
+# its `initialize` returns it, and a validator reads it back off `engine.debug`.
+# What shape the surface's operations take is the engine's contract: under
+# `simple-2d` a pose takes the current state and returns the next (driven through
+# `engine.apply`) and a reading takes the state and returns what it read; under
+# `structured-2d` a pose takes only its own arguments and arranges the live world,
+# and a reading takes nothing and returns plain data. The seeded specification
+# documents the surface independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
+#
+# There is deliberately no `tick_hz`. The key has two live roles: it is the rate
+# the `--tick-hz` flag on the `browser::drive_script` path hands a driver stepping
+# a build's own fixed timestep, and under an engine it is the default step a
+# scripted engine clock takes. Shatter's three suites are vitest projects that
+# each construct `ConstantClock(TICK_MS)` explicitly and never go through
+# `browser::drive_script`, so neither role has anything to do here. Read the
+# omission as "nothing in this case reads it", not as "nothing steps in ticks":
+# Shatter's engineless surface does step in whole ticks, and its own fixed step —
+# TICK_HZ, 120 — is a rule of the GAME stated in specs/simulation.md and asserted
+# by instrumentation/advance-is-exact, not a property of the harness driving it.
+[instrumentation]
+handle = "__shatter"
+
+# The specs: every one is seeded for EVERY variant of this case, at the `dest`
+# path within the run workspace. The specification is decomposed by concern —
+# seventeen files, each name predicting its contents, each rule living in exactly
+# one of them — and there is a single list: what a variant changes is not a
+# separate per-variant file but a branch inside a common spec, rendered for the
+# selected variant before it lands. Every seeded set thus asserts exactly one
+# game, with no cross-variant language, because the branching resolves at seed
+# time and the model never sees the alternative.
+#
+# There is no proof spec: the media a reviewer looks at is captured by this case's
+# own validators, from scenarios the case controls. The showcase spec below does
+# ask the build for media, but as the game's own store-page presentation rather
+# than as evidence any point is judged on.
+#
+# Every spec is an `.hbs` template where it branches and a plain `.md` where it
+# does not, and two axes are branched on. `engine.slug` selects what the build is
+# handed and what it writes; `variant.slug` selects the armor and the torpedo. A
+# spec's `dest` defaults to its `source` with a trailing `.hbs` stripped, so an
+# `.md.hbs` source seeds to the same `.md` path.
+#
+# What the specs deliberately do NOT fix is the look. No palette, no typeface and
+# no HUD layout figure is seeded, stated or validated: appearance is loose and
+# reviewed, `specs/overview.md` carries a legibility table asking only that each body is
+# present and told apart from the rest, and the `presentation` items below assert an RGB
+# distance out of 441 rather than a hex value.
+
+# What the game is and what the finished build must be: the premise, the hard
+# requirements, the fixed 1280x720 field and its centre convention, the field-fit
+# requirement, that the field is drawn dark, and the legibility table.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The arena: the field, the wrap on both axes, the seam, and the star fixed at the
+# centre with its solid core and decorative halo.
+[[spec]]
+source = "specs/field.md"
+
+# The well: the pull law, the softening radius, which bodies are pulled and which
+# are powered and never touched.
+[[spec]]
+source = "specs/gravity.md.hbs"
+
+# The core the whole game advances on: the fixed timestep, the per-tick order, and
+# the draws the game makes at random.
+[[spec]]
+source = "specs/simulation.md.hbs"
+
+# The ship the player flies: geometry, turn rate, thrust, drag, the speed cap, and
+# the safe point.
+[[spec]]
+source = "specs/ship.md"
+
+# What the ship shoots: the gun under both variants, and warhead's torpedo.
+[[spec]]
+source = "specs/weapons.md.hbs"
+
+# The drifting rocks: the three sizes, the split ladder, star recycling, and —
+# under warhead — armor.
+[[spec]]
+source = "specs/rocks.md.hbs"
+
+# The enemy saucer: its cadence, its movement, its steering clear of the core, and
+# its aimed fire.
+[[spec]]
+source = "specs/saucer.md"
+
+# Every impact and what it does, including both fragment kicks and the
+# swept-or-continuous requirement.
+[[spec]]
+source = "specs/collision.md.hbs"
+
+# The run: lives, respawn, the grace window, and the wave loop.
+[[spec]]
+source = "specs/progression.md"
+
+# Every score figure, and the extra ship. It branches on the variant so that only
+# warhead is told a hit can leave a rock standing.
+[[spec]]
+source = "specs/scoring.md.hbs"
+
+# The keys: every action the game answers to and what is bound to it.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The five screens, their menus, the HUD, and the wave banner.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The six audio cues, the mute toggle, and the requirement that the game runs
+# whether or not audio does.
+[[spec]]
+source = "specs/audio.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the `ShatterState`
+# contract the debug surface reads and poses and the validators read back, stated
+# by the case rather than by the seeded `src/game.ts`; under `structured-2d` it is
+# the equivalent live class extending the engine's `GameState`; under `none` the
+# build owns the shape and the debug surface is the only contract over it.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every variant must expose: a render-free,
+# steppable core; an API to drive and inspect the game from code; and a read-only
+# debug overlay. Framed as an ordinary developer affordance of the game. It
+# branches on the engine for how the surface is reached and what shape its
+# operations take, and on the variant for the torpedo operations.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
+# behavior, not appearance, so there is no visual target to seed or to score
+# against. v2.x seeded three rendered mockups and an eleven-entry palette, and
+# every `color/*` validator asserted a hex value; none of that survives this major
+# bump. Every piece of evidence a reviewer sees now comes from this case's
+# validators, which pose each scenario against the game the build wrote and
+# capture what it renders. The automated load check still runs.
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them — a flawless gravity well cannot mask a ship
+# that will not turn. Every case must declare at least one. This case is on the
+# engine format, so it is validator-rated: each domain's FUNCTIONAL rating is
+# decided by the validators behind the point checklist below (every point names
+# the domains its failure lowers and how far — see `domains` / `failure_cap`
+# there), and the reviewer's judgement lives in the separate AESTHETIC rating of
+# each domain. Every warhead point rolls up to one of these four; the variant
+# declares no domain of its own.
+[[domain]]
+id = "gravity"
+name = "Gravity & the Star"
+description = "The signature: the inverse-square pull on every ballistic body, the powered craft it never touches, and the solid core that deflects the ship, absorbs a shot and recycles a rock."
+
+[[domain]]
+id = "flight"
+name = "The Ship"
+description = "The ship the player flies: rotation, thrust, drag and the speed cap, the wrap it carries its velocity through, the gun it fires, and the lives, respawn and grace window around it."
+
+[[domain]]
+id = "arcade"
+name = "Rocks, Saucer & Waves"
+description = "The board the ship flies in: the rocks and how they split and recycle, the escalating waves, the saucer that hunts and fires, and the score."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "What the game looks and sounds like: the five screens and their menus, the HUD, whether the field the build drew is legible and its bodies told apart, and the audio cues."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare
+# name grouping the points a reviewer grades — and each
+# `[[review.categories.items]]` under it is one graded review item, worth one
+# point (the default weight), so a category is worth the number of items it holds
+# (no fractional scoring). A category carries no prose of its own; each review
+# item states in `description` the claim its validator checks. A point a variant
+# adds lives in that variant's own file instead. The checklist is reporter-side
+# material — never seeded into a run, so the model never sees it; each item
+# restates a rule the seeded specification already states, and every threshold a
+# validator asserts is derived from a figure or rule in the specs plus a numeric
+# tolerance, never tuned against a reference run.
+#
+# EVERY point on this checklist carries a validation script, and every point is
+# ONE observable behavior, so a build fails exactly the rule it breaks (a wave
+# that turns over and a wave that announces the wrong number are two points, not
+# one). Each script is a vitest suite under
+# `validation/<engine>/<group>/<item id>.test.ts`. The `<engine>` level is the
+# ENGINE the suite is written against — a validator speaks one engine's
+# vocabulary, so this case, which supports three, ships one directory per engine:
+# `validation/none/` drives the build in Chromium through `window.__shatter`, and
+# `validation/simple-2d/` and `validation/structured-2d/` each run in process
+# against their vendored engine. The three are the same scenarios; only how they
+# reach the build differs. The directory for the run's engine is what gets staged
+# into the built workspace at `validation/`.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. Each point declares exactly one output. `kind = "image"` is the
+# default — a single captured frame, the right evidence for a posed scenario read
+# once — and `kind = "replay"` is the exception, on the twenty-two points whose
+# requirement IS motion. There is no `kind = "video"` anywhere. A REPLAY ENDS ON
+# THE OUTCOME, NOT ON THE INSTANT OF MEASUREMENT: the suite arms the recorder
+# before the scenario's last beat and stops it after the effect has played out — a
+# second of the fragments coming apart, of the wave arriving, of the core that
+# took the torpedo — while the reading the verdict rests on is still taken at the
+# instant the event happened. Both kinds are evidence beside the verdict rather
+# than any part of it: a point passes or fails on its assertions alone.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers. `failure_cap` is
+# the highest functional rating those domains may reach while the point fails;
+# each domain gets the LOWEST cap among its failing points, and a domain with no
+# failing point is flawless. The caps are graded by how much of the game a failure
+# takes away: `broken` where the miss makes the game impossible to play as
+# intended (no debug surface, a ship that will not turn or thrust, a gun that will
+# not fire, a rock that does not split, a wave that never turns over, a game that
+# cannot be started or lost, the well not pulling at all); `scuffed` where it
+# makes an optional path unplayable or normal play unpleasant (the saucer moving
+# or firing wrongly, a screen misreporting the run, the banner ordering wrong, the
+# extra ship never awarded, the field not fitting the window); `passable` where it
+# affects play without breaking it (a tolerance on a stated figure, an edge case
+# of a rule whose main direction passes, a cue, a per-size figure where the other
+# sizes are right); and `great` where the standard flow is untouched. No point
+# caps at `flawless`: a failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ---------------------------------------------------------
+# The debug surface every scenario in this case is posed through, graded operation
+# by operation. Each of the per-roster clears, the per-id removals, the two world
+# gates and the three saucer faculties gets its own point, so a build that
+# implements one of them wrongly is named by the item that decides it rather than
+# contaminating every scenario that leans on it. `poses-read-back` is the rule the
+# whole surface is built to: every operation sets one field, and `snapshot()`
+# reports every field an operation can set, so each is verifiable by setting a
+# value and reading it back.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug surface is present and complete"
+description = "Every operation specs/instrumentation.md names is a function on the surface, version is SHATTER_DEBUG_VERSION (1), and the surface is live: a posed rock reads back and drifts when the game is advanced."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "surface", name = "The posed field the surface was exercised over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed field carrying a rock of each size, a bullet, an enemy bullet and a saucer, every field listed in the snapshot shape specs/instrumentation.md fixes is present with its documented type."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "snapshot", name = "The field the reported snapshot describes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back"
+title = "Every pose is reported by the snapshot"
+description = "Each pose's value is read back from the snapshot: the screen, the menu index, the score, the lives, the wave, the wave banner, the ship's position, velocity, angle, invulnerability and fire cooldown, a rock's velocity, the saucer's velocity, the two world gates, the ship's contact gate, the saucer's three faculties, and the three clocks addSaucer brings a saucer on with. Mute is not in the list: there is no setMuted."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
+  { id = "posed", name = "The fully posed game every value was read back from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores-title"
+title = "reset returns the game to its title values"
+description = "After a run has been posed with a score, lives, a wave, rocks, bullets and a saucer, reset() restores every declared field to the title value specs/instrumentation.md lists and leaves muted untouched."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
+  { id = "reset", name = "The title screen reset restored", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advance-is-exact"
+title = "Advancing moves exactly the time asked for"
+description = "Advancing n ticks moves simTime by exactly n x TICK_DT within one tick, and one second of game time covered as one advance and as 120 single-tick advances leaves simTime and a posed rock in the same place."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/advance-is-exact.test.ts", outputs = [
+  { id = "advance", name = "A posed rock advanced a second of game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clock-is-held"
+title = "Nothing advances unless a step asks it to"
+description = "With the clock held, advancing nothing advances nothing: advance(0) under none, and engine.advance(0) under either engine, leaves simTime and every posed body exactly as they stood, which a build whose accumulator forces a minimum step, or which runs a tick on entry, fails. Reading the field through snapshot() repeatedly leaves the same reading too, since a snapshot is a pure read."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clock-is-held.test.ts", outputs = [
+  { id = "held", name = "The field held exactly as it was posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-rocks"
+title = "clearRocks empties the rocks alone"
+description = "clearRocks() removes every rock and leaves the bullets, enemy bullets and saucer standing."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-rocks.test.ts", outputs = [
+  { id = "cleared", name = "The field with the rocks gone and the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-bullets"
+title = "clearBullets empties the ship's bullets alone"
+description = "clearBullets() removes every one of the ship's bullets and leaves the rocks, enemy bullets and saucer standing."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-bullets.test.ts", outputs = [
+  { id = "cleared", name = "The field with the ship's bullets gone and the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-enemy-bullets"
+title = "clearEnemyBullets empties the saucer's fire alone"
+description = "clearEnemyBullets() removes every enemy bullet and leaves the rocks, bullets and saucer standing."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-enemy-bullets.test.ts", outputs = [
+  { id = "cleared", name = "The field with the enemy fire gone and the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-rock"
+title = "removeRock removes one rock by id"
+description = "Of three posed rocks, removeRock(id) removes exactly the one named and leaves the other two carrying their ids."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-rock.test.ts", outputs = [
+  { id = "removed", name = "The two rocks that outlived the one addressed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-bullet"
+title = "removeBullet removes one bullet by id"
+description = "Of three posed bullets, removeBullet(id) removes exactly the one named and leaves the other two carrying their ids."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-bullet.test.ts", outputs = [
+  { id = "removed", name = "The two bullets that outlived the one addressed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-enemy-bullet"
+title = "removeEnemyBullet removes one enemy bullet by id"
+description = "Of three posed enemy bullets, removeEnemyBullet(id) removes exactly the one named and leaves the other two carrying their ids."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-enemy-bullet.test.ts", outputs = [
+  { id = "removed", name = "The two enemy bullets that outlived the one addressed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-saucer"
+title = "removeSaucer clears the saucer alone"
+description = "removeSaucer() leaves saucer null and leaves the rocks, bullets and enemy bullets standing."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-saucer.test.ts", outputs = [
+  { id = "removed", name = "The field with the saucer gone and the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entity-ids"
+title = "Every entity carries a distinct, stable id"
+description = "Each rock, bullet and enemy bullet added takes an id distinct from every other live entity's, appears last in its own roster, and keeps that id across advances."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/entity-ids.test.ts", outputs = [
+  { id = "roster", name = "The populated field the ids were read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-spawning-gate"
+title = "Wave spawning off leaves an emptied field empty"
+description = "With setWaveSpawning(false) a field emptied by shooting raises no banner, advances no wave and spawns no rock over ten seconds of game time; with it on, the same field turns over."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/wave-spawning-gate.test.ts", outputs = [
+  { id = "quiet", name = "The emptied field still empty ten seconds on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-spawning-gate"
+title = "Saucer spawning off keeps the saucer away"
+description = "With setSaucerSpawning(false) no saucer joins over twenty seconds of game time, past the SAUCER_FIRST_DELAY (18 s) the first arrival is due at; with it on, one joins without the window grading when it arrives."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-spawning-gate.test.ts", outputs = [
+  { id = "quiet", name = "The field with no saucer past the first delay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-collision-gate"
+title = "Contact off costs no life"
+description = "With setShipCollision(false) a rock advanced onto the ship leaves lives unchanged and the screen still playing; with it on, the same scenario costs a life."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "instrumentation/ship-collision-gate.test.ts", outputs = [
+  { id = "overlap", name = "The rock sitting over the ship with every life intact", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-mind-gate"
+title = "Mind off holds the saucer's course"
+description = "A saucer with setSaucerMind(false) reports the same velocity after four weave intervals; one with its mind on reports a vertical velocity that has changed sign."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-mind-gate.test.ts", outputs = [
+  { id = "course", name = "The saucer holding the course it was posed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-gun-gate"
+title = "Gun off fires nothing"
+description = "A saucer with setSaucerGun(false) adds no enemy bullet over four fire intervals; with it on it adds several."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-gun-gate.test.ts", outputs = [
+  { id = "silent", name = "The saucer with no fire of its own in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-travel-gate"
+title = "Travel off holds the saucer still"
+description = "A saucer with setSaucerTravel(false) reports the same centre a second later, while its gun runs on and fires."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-travel-gate.test.ts", outputs = [
+  { id = "held", name = "The held saucer, still firing from where it stands", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-due"
+title = "Posing the due times the next arrival"
+description = "On a game just begun with the arrival gate on, setSaucerDue(3) reads back as saucerDue with saucerClock still at 0, no saucer is on the field half a second before the due, and one arrives within a tenth of a second either side of it."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-due.test.ts", outputs = [
+  { id = "posed", name = "The saucer the posed due brought in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-weave"
+title = "Posing the weave sends the first reroll that way"
+description = "For a saucer at rest with its mind on and its travel off, setSaucerWeave(-1) and then setSaucerWeave(1) on a fresh saucer each read back as the saucer's weave, and one interval later the first reroll has set its vertical velocity to SAUCER_WEAVE_SPEED along the posed direction."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-weave.test.ts", outputs = [
+  { id = "posed", name = "The saucer past its first reroll, weaving the posed way", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-edge"
+title = "Posing the entry edge decides the next arrival's edge"
+description = "setNextSaucerEdge(right) and, on a fresh game, setNextSaucerEdge(left) each read back as nextSaucerEdge, the arrival that follows is first reported within 40 units of the posed edge, and nextSaucerEdge is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-edge.test.ts", outputs = [
+  { id = "posed", name = "The arrival at the posed edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-row"
+title = "Posing the entry row decides the next arrival's row"
+description = "setNextSaucerRow(123) and, on a fresh game, setNextSaucerRow(597) each read back as nextSaucerRow, the arrival that follows is first reported on exactly that row, and nextSaucerRow is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-row.test.ts", outputs = [
+  { id = "posed", name = "The arrival on the posed row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-aim"
+title = "Posing the aim error decides the next shot's aim"
+description = "With the saucer held still with its mind off and the ship 400 units away, setNextSaucerAim(+8 degrees) and then setNextSaucerAim(-8 degrees) each read back as nextSaucerAim, the shot that follows leaves along the bearing to the ship offset by the posed error within half a degree, and nextSaucerAim is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-aim.test.ts", outputs = [
+  { id = "posed", name = "The shot fired at the posed aim error", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-rock-speed"
+title = "Posing the base speed decides the next placement's speeds"
+description = "At wave 1 with the wave loop on, setNextRockSpeed(100) reads back as nextRockSpeed, every rock the wave a posed banner announces puts up drifts at 100 within 2 units per second on the tick it arrives, and nextRockSpeed is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-rock-speed.test.ts", outputs = [
+  { id = "posed", name = "The wave put up at the posed base speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-recycle-edge"
+title = "Posing the re-entry edge decides where the next recycle re-enters"
+description = "For a rock dropped onto the star, setNextRecycleEdge(left) and, on a second sling, setNextRecycleEdge(bottom) each read back as nextRecycleEdge, the rock re-enters within 100 units of the posed edge, and nextRecycleEdge is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-recycle-edge.test.ts", outputs = [
+  { id = "posed", name = "The rock re-entering at the posed edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-score-grants-no-life"
+title = "Posing the score grants no extra ship"
+description = "setScore across an EXTRA_LIFE_STEP (10,000) boundary leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-score-grants-no-life.test.ts", outputs = [
+  { id = "posed", name = "The posed score with the ship count unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-wave-spawns-nothing"
+title = "Posing the wave spawns nothing"
+description = "setWave(n) changes the reported wave and leaves the rock roster exactly as it was, spawning nothing and clearing nothing."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-wave-spawns-nothing.test.ts", outputs = [
+  { id = "posed", name = "The posed wave number over an untouched field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "Toggling the overlay over a posed field draws every fact specs/instrumentation.md lists as a diagnostic source."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay.test.ts", outputs = [
+  { id = "overlay", name = "The debug overlay over a posed field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-is-a-read-only-toggle"
+title = "The overlay goes up and down on its key and changes nothing"
+description = "The backtick key puts the panel up over a posed field; the screen, the score, the ships, the wave, the rosters and the ship's pose all read the same either side of it and the accumulated simulation time advances by exactly the tick the press spent; and a second press takes the panel down again. Scoped to `none`: under an engine the panel, its key and its read-only-ness are the runtime's."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-is-a-read-only-toggle.test.ts", engines = ["none"], outputs = [
+  { id = "toggled", name = "The overlay the backtick key put up", kind = "image" },
+] }
+
+# --- The field ---------------------------------------------------------------
+# The wrap is checked once per body rather than once for the field, because a build
+# that wraps the ship and forgets the enemy bullet is wrong in exactly one place
+# and should lose exactly one point. The two seam items are the ones a build most
+# often misses: a body straddling a seam is drawn on both sides, and two bodies
+# touching across one collide.
+[[review.categories]]
+id = "field"
+title = "The field"
+[[review.categories.items]]
+id = "field-fit"
+title = "The whole field stays visible and centred"
+description = "The entire 1280x720 field, out to all four edges, is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "field/field-fit.test.ts", outputs = [
+  { id = "fitted", name = "The whole field fitted and centred in the window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "star-fixed-at-centre"
+title = "The star sits at the field's centre and never moves"
+description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still ten seconds of play later."
+domains = ["gravity", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "field/star-fixed-at-centre.test.ts", outputs = [
+  { id = "star", name = "The star still centred ten seconds into play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-ship-right"
+title = "The ship wraps at the right edge"
+description = "A ship driven off the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-right.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the right seam and re-entering at the left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-ship-left"
+title = "The ship wraps at the left edge"
+description = "A ship driven off the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-left.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the left seam and re-entering at the right", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-ship-top"
+title = "The ship wraps at the top edge"
+description = "A ship driven off the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-top.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the top seam and re-entering at the bottom", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-ship-bottom"
+title = "The ship wraps at the bottom edge"
+description = "A ship driven off the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-bottom.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the bottom seam and re-entering at the top", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-right"
+title = "A bullet wraps at the right edge"
+description = "A bullet posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-right.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the left edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-left"
+title = "A bullet wraps at the left edge"
+description = "A bullet posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-left.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-top"
+title = "A bullet wraps at the top edge"
+description = "A bullet posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-top.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-bottom"
+title = "A bullet wraps at the bottom edge"
+description = "A bullet posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-bottom.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-right"
+title = "A rock wraps at the right edge"
+description = "A rock posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-right.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the left edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-left"
+title = "A rock wraps at the left edge"
+description = "A rock posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-left.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-top"
+title = "A rock wraps at the top edge"
+description = "A rock posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-top.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-bottom"
+title = "A rock wraps at the bottom edge"
+description = "A rock posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-bottom.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-saucer-top"
+title = "The saucer wraps at the top edge"
+description = "A saucer driven off the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges the saucer crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "field/wrap-saucer-top.test.ts", outputs = [
+  { id = "wrap", name = "The saucer re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-saucer-bottom"
+title = "The saucer wraps at the bottom edge"
+description = "A saucer driven off the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges the saucer crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "field/wrap-saucer-bottom.test.ts", outputs = [
+  { id = "wrap", name = "The saucer re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-right"
+title = "An enemy bullet wraps at the right edge"
+description = "An enemy bullet posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-right.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the left edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-left"
+title = "An enemy bullet wraps at the left edge"
+description = "An enemy bullet posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-left.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-top"
+title = "An enemy bullet wraps at the top edge"
+description = "An enemy bullet posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-top.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-bottom"
+title = "An enemy bullet wraps at the bottom edge"
+description = "An enemy bullet posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-bottom.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-carries-velocity"
+title = "A wrap carries the velocity across"
+description = "A body's velocity is unchanged across a wrap, within a tolerance of the tick's own acceleration."
+domains = ["flight", "arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-carries-velocity.test.ts", outputs = [
+  { id = "wrap", name = "A body carrying its velocity through the seam", kind = "image" },
+] }
+[[review.categories.items]]
+id = "seam-drawn-both-sides"
+title = "A body on a seam is drawn on both sides"
+description = "A rock posed straddling the right edge draws pixels distinct from the background within its radius of both the right edge and the left."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "field/seam-drawn-both-sides.test.ts", outputs = [
+  { id = "seam", name = "A rock drawn on both sides of the seam", kind = "image" },
+] }
+[[review.categories.items]]
+id = "seam-collision"
+title = "Bodies touching across a seam collide"
+description = "A bullet posed just inside the left edge, travelling left, destroys a rock posed just inside the right edge on the same row."
+domains = ["flight", "arcade"]
+failure_cap = "broken"
+validation = { script = "field/seam-collision.test.ts", outputs = [
+  { id = "seam", name = "The shot that struck across the seam", kind = "image" },
+] }
+
+# --- The gravity well --------------------------------------------------------
+# The case's signature. Both directions are graded: the law pulls every ballistic
+# body, and it never touches a powered one. `pull-magnitude`, `pull-direction` and
+# `softening-cap` read the velocity a body at rest gains over ONE tick, so the
+# reading is the acceleration the law fixes rather than a path a tolerance could
+# absorb.
+[[review.categories]]
+id = "gravity"
+title = "The gravity well"
+[[review.categories.items]]
+id = "bullet-curves"
+title = "The well bends a bullet"
+description = "A bullet fired across the field on a line passing 150 units from the star ends more than 40 units from where the same shot with no pull would have reached, bent toward the star."
+domains = ["gravity"]
+failure_cap = "broken"
+validation = { script = "gravity/bullet-curves.test.ts", outputs = [
+  { id = "curve", name = "A shot bending around the star", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "rock-curves"
+title = "The well bends a rock"
+description = "A rock drifting across the field past the star follows a curved path, its velocity direction turning toward the star over a second of game time."
+domains = ["gravity"]
+failure_cap = "broken"
+validation = { script = "gravity/rock-curves.test.ts", outputs = [
+  { id = "curve", name = "A rock curving past the well", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "enemy-bullet-curves"
+title = "The well bends a saucer bullet"
+description = "An enemy bullet posed on the same line as bullet-curves is bent by the same law."
+domains = ["gravity"]
+failure_cap = "passable"
+validation = { script = "gravity/enemy-bullet-curves.test.ts", outputs = [
+  { id = "curve", name = "A saucer bullet bent by the well", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-free"
+title = "The well never pulls the ship"
+description = "A ship posed at rest 120 units from the star, with no thrust, is still at rest at the same centre after two seconds of game time."
+domains = ["gravity", "flight"]
+failure_cap = "broken"
+validation = { script = "gravity/ship-free.test.ts", outputs = [
+  { id = "free", name = "The ship holding its station beside the star", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-free"
+title = "The well never pulls the saucer"
+description = "A saucer posed 120 units from the star with its mind off holds its velocity over two seconds of game time."
+domains = ["gravity", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "gravity/saucer-free.test.ts", outputs = [
+  { id = "free", name = "The saucer crossing beside the star, untouched by the well", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pull-magnitude"
+title = "The pull follows the inverse-square law"
+description = "A bullet posed at rest at each of 200, 150 and 120 units from the star gains velocity over one tick within 5 percent of MU / d^2 x TICK_DT."
+domains = ["gravity"]
+failure_cap = "broken"
+validation = { script = "gravity/pull-magnitude.test.ts", outputs = [
+  { id = "sample", name = "The three bullets the pull was sampled from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pull-direction"
+title = "The pull is toward the star's centre"
+description = "The velocity a body at rest gains over one tick points at the star's centre within one degree, sampled from four bearings."
+domains = ["gravity"]
+failure_cap = "broken"
+validation = { script = "gravity/pull-direction.test.ts", outputs = [
+  { id = "bearings", name = "The four bearings the pull was sampled from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "softening-cap"
+title = "The pull is capped inside the softening radius"
+description = "A bullet posed at rest 60 units from the star gains velocity over one tick within 5 percent of MU / SOFTEN^2 x TICK_DT, not of MU / 60^2 x TICK_DT."
+domains = ["gravity"]
+failure_cap = "passable"
+validation = { script = "gravity/softening-cap.test.ts", outputs = [
+  { id = "sample", name = "The bullet posed inside the softening radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "direct-not-wrapped"
+title = "The pull uses the direct vector, not a wrapped one"
+description = "A rock posed 40 units inside a corner is pulled toward the star's centre across the field rather than toward the nearest wrapped image of it, and its acceleration matches the direct distance."
+domains = ["gravity"]
+failure_cap = "passable"
+validation = { script = "gravity/direct-not-wrapped.test.ts", outputs = [
+  { id = "corner", name = "The rock in the corner, pulled across the field", kind = "image" },
+] }
+
+# --- The star's core ---------------------------------------------------------
+# The core is the one physical boundary on the field, and it answers each body
+# differently: it absorbs a shot, it takes a rock, and it deflects the ship without
+# harming it. The slide is graded as four separate points — the standoff, the
+# tangential component kept, the inward component removed and the facing left
+# alone — so a build that zeroes the whole velocity and a build that reflects it
+# fail different points.
+[[review.categories]]
+id = "star-core"
+title = "The star's core"
+[[review.categories.items]]
+id = "bullet-absorbed"
+title = "The core absorbs a bullet"
+description = "A bullet driven into the core is removed, leaving the bullet roster empty and the score unchanged."
+domains = ["gravity", "flight"]
+failure_cap = "broken"
+validation = { script = "star-core/bullet-absorbed.test.ts", outputs = [
+  { id = "absorbed", name = "The core with the shot gone into it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enemy-bullet-absorbed"
+title = "The core absorbs a saucer bullet"
+description = "An enemy bullet driven into the core is removed."
+domains = ["gravity", "arcade"]
+failure_cap = "passable"
+validation = { script = "star-core/enemy-bullet-absorbed.test.ts", outputs = [
+  { id = "absorbed", name = "The core with the enemy round gone into it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rock-taken-at-the-core"
+title = "The core takes a rock"
+description = "A rock driven into the core is no longer at the core the tick after its circle reaches it."
+domains = ["gravity", "arcade"]
+failure_cap = "broken"
+validation = { script = "star-core/rock-taken-at-the-core.test.ts", outputs = [
+  { id = "taken", name = "The core the instant after it took the rock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-slides-along-the-core"
+title = "The ship slides along the core"
+description = "A ship driven into the core ends with its centre exactly CORE_R + SHIP_R (44) from the star's centre, within one unit."
+domains = ["gravity", "flight"]
+failure_cap = "broken"
+validation = { script = "star-core/ship-slides-along-the-core.test.ts", outputs = [
+  { id = "slide", name = "The ship sliding around the core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ship-keeps-its-tangential-speed"
+title = "The slide keeps the tangential motion"
+description = "A ship striking the core off-centre keeps the component of its velocity along the surface, within 5 percent."
+domains = ["gravity", "flight"]
+failure_cap = "scuffed"
+validation = { script = "star-core/ship-keeps-its-tangential-speed.test.ts", outputs = [
+  { id = "slide", name = "The ship carrying its motion along the surface", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-loses-its-inward-speed"
+title = "The slide removes the inward motion"
+description = "The same contact leaves the component of the ship's velocity heading into the core at 0 within 5 units per second, so a build that zeroes the whole velocity and a build that reflects it fail different points."
+domains = ["gravity", "flight"]
+failure_cap = "scuffed"
+validation = { script = "star-core/ship-loses-its-inward-speed.test.ts", outputs = [
+  { id = "slide", name = "The ship with its inward motion taken off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-keeps-its-facing"
+title = "The slide leaves the facing alone"
+description = "A ship's facing angle is unchanged by the contact."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "star-core/ship-keeps-its-facing.test.ts", outputs = [
+  { id = "facing", name = "The ship on the core, still facing where it was", kind = "image" },
+] }
+[[review.categories.items]]
+id = "core-costs-no-life"
+title = "The core costs no life"
+description = "A ship driven into the core with its contact gate on keeps all three ships and stays on the playing screen."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "star-core/core-costs-no-life.test.ts", outputs = [
+  { id = "intact", name = "The ship on the core with every life intact", kind = "image" },
+] }
+
+# --- Inertial flight ---------------------------------------------------------
+# The ship the player actually flies: a constant turn rate, thrust along the
+# facing, a drag half-life and a speed cap. Each figure is one point, and rotation
+# is graded in both directions because a build that mixes the two signs is wrong in
+# one place.
+[[review.categories]]
+id = "flight"
+title = "Inertial flight"
+[[review.categories.items]]
+id = "thrust-accelerates"
+title = "Thrust accelerates the ship"
+description = "Holding thrust for one second from rest leaves the ship's speed at SHIP_THRUST (480) less the drag the half-life removes, within 5 percent."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "flight/thrust-accelerates.test.ts", outputs = [
+  { id = "thrust", name = "The ship under a second of thrust", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-along-facing"
+title = "Thrust acts along the facing"
+description = "Holding thrust from rest at each of four facings leaves the velocity pointing along that facing within one degree."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "flight/thrust-along-facing.test.ts", outputs = [
+  { id = "facings", name = "The four facings thrust was sampled at", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-halves-in-three-seconds"
+title = "An un-thrusting ship halves its speed every three seconds"
+description = "A ship posed at 400 units per second with no thrust reports half that speed after SHIP_DRAG_HALFLIFE (3.0) seconds of game time, within 3 percent."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "flight/drag-halves-in-three-seconds.test.ts", outputs = [
+  { id = "coast", name = "The ship coasting its speed down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-cap"
+title = "The ship's speed is capped"
+description = "A ship posed at SHIP_MAX (680) and thrusting for two seconds never exceeds SHIP_MAX by more than 1 unit per second."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "flight/speed-cap.test.ts", outputs = [
+  { id = "capped", name = "The ship held at its speed cap under thrust", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-rate-left"
+title = "The left rotation runs at the stated rate"
+description = "Holding the left action for one second turns the facing counter-clockwise by SHIP_TURN (300 degrees), within 3 percent."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "flight/turn-rate-left.test.ts", outputs = [
+  { id = "turn", name = "The ship after a second of turning left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-rate-right"
+title = "The right rotation runs at the stated rate"
+description = "Holding the right action for one second turns the facing clockwise by SHIP_TURN (300 degrees), within 3 percent."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "flight/turn-rate-right.test.ts", outputs = [
+  { id = "turn", name = "The ship after a second of turning right", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rotation-keeps-velocity"
+title = "Rotation changes the facing alone"
+description = "A ship posed with a velocity, turned for a second with no thrust, holds that velocity to within what the drag alone accounts for."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "flight/rotation-keeps-velocity.test.ts", outputs = [
+  { id = "drift", name = "The ship turned about while holding its drift", kind = "image" },
+] }
+
+# --- The gun -----------------------------------------------------------------
+# What the ship shoots: the muzzle velocity, the drift it inherits, the lifetime,
+# the on-screen cap and the fire gate, then the trail. `no-tunnelling-at-speed` is
+# the bullet half of the swept-or-continuous requirement specs/collision.md states,
+# and it is the one item a build with a per-tick overlap test fails while passing
+# every radius point.
+[[review.categories]]
+id = "bullets"
+title = "The gun"
+[[review.categories.items]]
+id = "fires-from-the-nose"
+title = "A shot leaves from the nose"
+description = "A bullet fired from a ship at rest appears within the ship's own radius of its centre, ahead of it along its facing."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "bullets/fires-from-the-nose.test.ts", outputs = [
+  { id = "muzzle", name = "The round leaving the ship's nose", kind = "image" },
+] }
+[[review.categories.items]]
+id = "muzzle-speed"
+title = "A shot leaves at the muzzle speed"
+description = "A bullet fired from a ship at rest leaves at MUZZLE_SPEED (520) along the ship's facing, within 2 percent."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "bullets/muzzle-speed.test.ts", outputs = [
+  { id = "muzzle", name = "The round at the instant it left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inherits-ship-velocity"
+title = "A shot carries the ship's drift"
+description = "A bullet fired from a ship moving at 300 units per second across its own facing leaves with the vector sum of that drift and the muzzle velocity, within 3 percent."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "bullets/inherits-ship-velocity.test.ts", outputs = [
+  { id = "muzzle", name = "A round fired from a drifting ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lifetime"
+title = "A bullet expires after 1.5 seconds"
+description = "A bullet posed clear of everything is still in flight at 1.4 s of game time and gone by 1.6 s."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "bullets/lifetime.test.ts", outputs = [
+  { id = "expiry", name = "The field the instant after the round expired", kind = "image" },
+] }
+[[review.categories.items]]
+id = "max-four"
+title = "At most four bullets exist at once"
+description = "With four of the ship's bullets in flight, firing adds none until one expires."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "bullets/max-four.test.ts", outputs = [
+  { id = "capped", name = "Four rounds up and the gun adding no more", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-rate"
+title = "Shots are gated to one every 22 ticks"
+description = "Holding fire for ten seconds of game time takes 1200 / FIRE_INTERVAL_TICKS shots, within one — a window long enough that one shot of tolerance pins the gate to 22 ticks."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "bullets/fire-rate.test.ts", outputs = [
+  { id = "salvo", name = "Ten seconds of held fire", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-cooldown-blocks"
+title = "A shot within the gate is refused"
+description = "With setFireCooldown(10), firing adds no bullet; after ten ticks it adds one."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "bullets/fire-cooldown-blocks.test.ts", outputs = [
+  { id = "gated", name = "The gun refusing a shot inside its gate", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-tunnelling-at-speed"
+title = "A fast shot does not pass through a rock"
+description = "On a quiet field, a bullet posed one tick's travel short of a Small and moving through its centre at MUZZLE_SPEED + SHIP_MAX (1200 units per second) — a per-tick step of 10 units against a combined radius of BULLET_R + ROCK_RADIUS.small (17) — destroys it on the next tick; the same shot offset by more than that combined radius misses."
+domains = ["flight", "arcade"]
+failure_cap = "broken"
+validation = { script = "bullets/no-tunnelling-at-speed.test.ts", outputs = [
+  { id = "sweep", name = "The fast round taking the Small it would have tunnelled through", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "trail-drawn"
+title = "A moving bullet draws a trail"
+description = "Pixels distinct from the background lie along the segment behind a moving bullet, back toward where it stood TRAIL_TICKS ago."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "bullets/trail-drawn.test.ts", outputs = [
+  { id = "trail", name = "The tail drawn behind a moving round", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-follows-the-wrap"
+title = "The trail follows a bullet across a seam"
+description = "A bullet crossing the right edge draws its trail behind it at the left edge rather than smearing across the field: no drawn pixel of the trail lies more than TRAIL_TICKS of travel from the bullet by shortest wrapped distance."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "bullets/trail-follows-the-wrap.test.ts", outputs = [
+  { id = "trail", name = "The trail carried across the seam behind the round", kind = "image" },
+] }
+
+# --- The rocks ---------------------------------------------------------------
+# The drift, the split ladder, the fan a kill throws and the star's recycling.
+# The two fragment items are split in two directions on purpose (see the fold-in
+# fix in changelog.md): the AVERAGE of the two fragment velocities is the parent's
+# whatever the kick did, and the DIFFERENCE is twice the kick with the parent's
+# motion cancelled. Both pose the parent far out at (320, 620) and give it a
+# diagonal drift against a horizontal shot, so a build that kicks across the rock's
+# course and a build that kicks across the bullet's travel differ by construction
+# rather than by luck.
+[[review.categories]]
+id = "rocks"
+title = "The rocks"
+[[review.categories.items]]
+id = "radius-large"
+title = "A Large collides at radius 46"
+description = "A bullet passing 44 units from a Large's centre destroys it and one passing 50 units misses."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/radius-large.test.ts", outputs = [
+  { id = "radius", name = "The pair of shots either side of a Large's radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "radius-medium"
+title = "A Medium collides at radius 26"
+description = "A bullet passing 24 units from a Medium's centre destroys it and one passing 30 units misses."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/radius-medium.test.ts", outputs = [
+  { id = "radius", name = "The pair of shots either side of a Medium's radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "radius-small"
+title = "A Small collides at radius 14"
+description = "A bullet passing 12 units from a Small's centre destroys it and one passing 18 units misses."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/radius-small.test.ts", outputs = [
+  { id = "radius", name = "The pair of shots either side of a Small's radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drift-speed-large"
+title = "A Large spawns inside its speed range"
+description = "Every Large a wave spawns has a speed in [60, 110] scaled by that wave's multiplier, within 2 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/drift-speed-large.test.ts", outputs = [
+  { id = "wave", name = "The wave the drift speeds were read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drift-speed-medium"
+title = "A Medium enters inside its speed range"
+description = "Every Medium a recycle re-enters with has a speed in [90, 150], within 2 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/drift-speed-medium.test.ts", outputs = [
+  { id = "entry", name = "A Medium re-entering the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drift-speed-small"
+title = "A Small enters inside its speed range"
+description = "Every Small a recycle re-enters with has a speed in [130, 210], within 2 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/drift-speed-small.test.ts", outputs = [
+  { id = "entry", name = "A Small re-entering the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "split-large"
+title = "A Large becomes two Medium"
+description = "Shooting a Large down leaves exactly two more Medium rocks than before and one fewer Large."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "rocks/split-large.test.ts", outputs = [
+  { id = "split", name = "The two Medium a Large came apart into", kind = "image" },
+] }
+[[review.categories.items]]
+id = "split-medium"
+title = "A Medium becomes two Small"
+description = "Shooting a Medium down leaves exactly two more Small rocks than before and one fewer Medium."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "rocks/split-medium.test.ts", outputs = [
+  { id = "split", name = "The two Small a Medium came apart into", kind = "image" },
+] }
+[[review.categories.items]]
+id = "split-small"
+title = "A Small becomes nothing"
+description = "Shooting a Small down leaves the field with one fewer rock and no new one."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "rocks/split-small.test.ts", outputs = [
+  { id = "split", name = "The field a destroyed Small left behind", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fragments-at-the-parents-position"
+title = "Fragments appear where the parent died"
+description = "Both fragments appear within one tick of travel of the destroyed rock's last reported centre."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/fragments-at-the-parents-position.test.ts", outputs = [
+  { id = "fragments", name = "The fragments standing where the parent died", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fragment-velocity-carries-the-parent"
+title = "Fragments carry the parent's motion"
+description = "The average of the two fragments' velocities is the parent's velocity on the tick before the fatal round landed, within 10 units per second, with the parent posed at (320, 620) drifting (-60, -60) and shot horizontally."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "rocks/fragment-velocity-carries-the-parent.test.ts", outputs = [
+  { id = "fan", name = "The fragments carrying the parent's drift away with them", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fragment-kick-is-perpendicular-to-the-shot"
+title = "The fan lies across the shot"
+description = "With the parent posed at (320, 620) drifting (-60, -60) and shot horizontally, the difference between the two fragments' velocities lies within 30 units per second of perpendicular to the bullet's travel, rather than along the rock's own course."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "rocks/fragment-kick-is-perpendicular-to-the-shot.test.ts", outputs = [
+  { id = "fan", name = "The fan opening across the shot rather than the drift", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fragment-kick-magnitude"
+title = "The fan opens at the stated kick"
+description = "Half the magnitude of the difference between the two fragments' velocities is SPLIT_KICK (90), within 10 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/fragment-kick-magnitude.test.ts", outputs = [
+  { id = "fan", name = "The fan at the width the kick opens it to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fragment-kick-opposite-sides"
+title = "The two fragments go opposite ways"
+description = "The two fragments' velocities differ from their average by vectors within 5 degrees of opposite."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/fragment-kick-opposite-sides.test.ts", outputs = [
+  { id = "fan", name = "The two fragments thrown to opposite sides", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rocks-pass-through-each-other"
+title = "Rocks do not collide with one another"
+description = "Two rocks posed on a collision course pass through each other, both surviving with their velocities unchanged by the crossing."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/rocks-pass-through-each-other.test.ts", outputs = [
+  { id = "crossing", name = "Two rocks crossing through one another", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-re-enters-from-off-screen"
+title = "A recycled rock re-enters from an edge"
+description = "A rock the star takes re-appears within 100 units of one of the four edges rather than at the core."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "rocks/recycle-re-enters-from-off-screen.test.ts", outputs = [
+  { id = "recycle", name = "A rock taken at the core and returned at an edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "recycle-enters-moving-inward"
+title = "A recycled rock heads into the field"
+description = "The re-entering rock's velocity carries it away from the edge it entered at."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/recycle-enters-moving-inward.test.ts", outputs = [
+  { id = "recycle", name = "The recycled rock heading into the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-resets-speed"
+title = "A recycled rock gets a fresh drift speed"
+description = "A Large slung through the star at 400 units per second re-enters at a speed inside [60, 110], so repeated recycling never accelerates it."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "rocks/recycle-resets-speed.test.ts", outputs = [
+  { id = "recycle", name = "The recycled Large back at a Large's drift speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-keeps-the-count"
+title = "Recycling does not empty the field"
+description = "The rock count is the same the tick after a recycle as the tick before."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "rocks/recycle-keeps-the-count.test.ts", outputs = [
+  { id = "recycle", name = "The field with its rock count unchanged by the recycle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-keeps-the-size"
+title = "A recycled rock comes back the same size"
+description = "The rock that re-enters is the same size as the one the star took."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/recycle-keeps-the-size.test.ts", outputs = [
+  { id = "recycle", name = "The recycled rock back at the size it went in", kind = "image" },
+] }
+# The item is deliberately NOT stated as "stays where it was posed". Every rock is a
+# pulled body and specs/gravity.md fixes MU at 4,500,000, so even at the field's
+# furthest corner from the star (734 units, an acceleration of 8.35 units/s^2) a
+# conformant build's rock drifts 4.2 units in the second — an item asserting
+# stillness would fail every spec-honouring build on all three engines. Gating
+# gravity to rescue the wording is worse still: the well is this case's signature
+# mechanic and the debug surface deliberately carries no operation that holds a
+# rock out of it.
+[[review.categories.items]]
+id = "spin-is-cosmetic"
+title = "A rock's spin does not move it"
+description = "A rock posed at rest on a cleared field is read a second of game time later: the bearing of its velocity and of its displacement each point at the star's centre within one degree, and the component of each across that bearing is 0 within one unit per second and one unit. A drawn spin that leaks into the simulation shows up as exactly that tangential component."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "rocks/spin-is-cosmetic.test.ts", outputs = [
+  { id = "spin", name = "The rock a second on, moved only by the well", kind = "image" },
+] }
+
+# --- The saucer --------------------------------------------------------------
+# The saucer has three separable faculties — it decides, it shoots, and it moves —
+# and each item below turns off the two it is not about, so every scenario reads
+# one requirement. `avoids-the-core` is the item the fold-in fix of changelog.md
+# reshaped: it flies 36 real crossings the specification's own entry rule produces
+# and decides on the closest approach of all of them, rather than posing the saucer
+# where the behavior is impossible.
+[[review.categories]]
+id = "saucer"
+title = "The saucer"
+[[review.categories.items]]
+id = "first-arrives-at-18s"
+title = "The first saucer arrives about 18 seconds in"
+description = "With saucer spawning on and no saucer added, none is on the field at 16 s of game time and one is by 20 s."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/first-arrives-at-18s.test.ts", outputs = [
+  { id = "arrival", name = "The first saucer, twenty seconds into a game", kind = "image" },
+] }
+# There is no roster to count: the slot is single by construction, which is why the
+# requirement is decided on the continuity of the arrival id rather than on a count.
+# Without the id the item would pass vacuously for every build and the snapshot
+# shape would bake in the requirement it exists to decide.
+[[review.categories.items]]
+id = "at-most-one-at-a-time"
+title = "Only one saucer is up at a time"
+description = "With spawning on and the first due posed short through setSaucerDue, the saucer.id sampled every tick across fifty seconds of game time never changes from one live saucer to another without a tick reporting saucer null between the two visits, so a build whose spawner starts a second visit over a live one fails."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/at-most-one-at-a-time.test.ts", outputs = [
+  { id = "visit", name = "One visit on the field at a time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "subsequent-gap"
+title = "Later saucers arrive 25 to 35 seconds apart"
+description = "With the first due posed short through setSaucerDue, the interval between one saucer leaving and the next arriving lies in [25, 35] seconds, read in each of three games."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/subsequent-gap.test.ts", outputs = [
+  { id = "gap", name = "The saucer that followed the gap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enters-at-an-edge"
+title = "A saucer enters from the left or the right"
+description = "Posed to enter at the left edge and at the right in turn, twice each, every arrival's first reported centre is within 40 units of the edge it was posed to enter at."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/enters-at-an-edge.test.ts", outputs = [
+  { id = "entry", name = "A saucer entering at the field's edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entry-row-inside-the-range"
+title = "The entry row lies inside the stated range"
+description = "Every entry row across six arrivals over two games lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; that the rows vary is a separate item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/entry-row-inside-the-range.test.ts", outputs = [
+  { id = "entry", name = "One of the six arrivals the rows were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enters-at-a-random-row"
+title = "A saucer enters at a row drawn across the field"
+description = "Across six arrivals over two games the entry rows are not all one row: the highest and the lowest differ by more than the half unit of float slack a draw over whole-numbered ends can carry, which a row drawn afresh for every arrival always does and a build entering on one fixed lane never does. The variation alone; the range bound is a separate item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/enters-at-a-random-row.test.ts", outputs = [
+  { id = "rows", name = "One of the six arrivals the rows were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "crosses-at-cruise"
+title = "A saucer crosses at 140 units per second"
+description = "With its mind and gun off, a saucer's horizontal displacement over two seconds of game time is 2 x SAUCER_SPEED, within 3 percent."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/crosses-at-cruise.test.ts", outputs = [
+  { id = "cruise", name = "The saucer two seconds into its crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "weaves-vertically"
+title = "A saucer weaves up and down"
+description = "With travel off, a saucer's vertical velocity changes sign at least twice over four weave intervals."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/weaves-vertically.test.ts", outputs = [
+  { id = "weave", name = "The saucer's weave rerolling up and down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "weave-interval"
+title = "The weave rerolls about once a second"
+description = "With travel off, the time between two changes of the vertical velocity is SAUCER_WEAVE_INTERVAL (1.0 s), within 20 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/weave-interval.test.ts", outputs = [
+  { id = "weave", name = "The saucer on the tick its weave rerolled", kind = "image" },
+] }
+[[review.categories.items]]
+id = "weave-speed"
+title = "The weave runs at the stated speed"
+description = "With travel off, every vertical velocity the weave takes past its first interval has magnitude SAUCER_WEAVE_SPEED (90), within 5 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/weave-speed.test.ts", outputs = [
+  { id = "weave", name = "The saucer at the fastest weave it drew", kind = "image" },
+] }
+# The recording is of the CLOSEST crossing, not the first: the sweep runs all 36 and
+# keeps the row, edge and weave of the worst approach, and the validator then arms
+# the recorder over a re-posed run of exactly that crossing, so the reviewer
+# watches the approach the verdict rests on. Filming the first crossing instead
+# loses the fold-in fix — on a failing build the dead-on approach is frequently one
+# it handles cleanly, and the item then reads as a false positive to anyone
+# watching. The distance is measured to the LINE between samples rather than to the
+# samples, because reading the samples alone at an eight-tick stride reports the
+# saucer further out than it got, which is the wrong direction for a check hunting
+# a build that came too close.
+[[review.categories.items]]
+id = "avoids-the-core"
+title = "A saucer never overlaps the star's core"
+description = "Across 20 crossings — five rows from 80 units below the star's row to 80 above it in 40-unit steps, each from the left edge and from the right, the whole set flown with the weave posed down and posed up, with the gun off — the closest approach of any of them to the star's centre, measured as the distance to the line between eight-tick samples, exceeds CORE_R + SAUCER_R (48)."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/avoids-the-core.test.ts", outputs = [
+  { id = "closest", name = "The closest of the 20 crossings to the core", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "despawns-after-12s"
+title = "A saucer leaves after 12 seconds"
+description = "A saucer added with its mind and gun off is still up at 11.5 s of game time and gone by 12.5 s."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/despawns-after-12s.test.ts", outputs = [
+  { id = "departure", name = "The field the saucer left after its twelve seconds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "passes-through-rocks"
+title = "Rocks do not harm the saucer"
+description = "A rock advanced through a saucer with its travel off leaves the saucer up and the rock intact."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/passes-through-rocks.test.ts", outputs = [
+  { id = "overlap", name = "The rock passing over the saucer, both intact", kind = "image" },
+] }
+[[review.categories.items]]
+id = "destroyed-by-a-bullet"
+title = "A bullet destroys the saucer"
+description = "A bullet driven into a saucer removes both, leaving saucer null."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "saucer/destroyed-by-a-bullet.test.ts", outputs = [
+  { id = "kill", name = "The field the instant the saucer was shot down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fires-every-1p6s"
+title = "The saucer fires on its own cadence"
+description = "With its mind and travel off, a saucer adds one enemy bullet every SAUCER_FIRE_INTERVAL (1.6 s), within 10 percent, over five shots."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/fires-every-1p6s.test.ts", outputs = [
+  { id = "cadence", name = "Five shots taken on the saucer's cadence", kind = "image" },
+] }
+[[review.categories.items]]
+id = "aims-at-the-ship"
+title = "The saucer aims at the ship"
+description = "With its mind and travel off and the ship posed 400 units away, a shot whose aim error is posed at 0 through setNextSaucerAim leaves along the bearing to the ship within half a degree, from each of two saucer positions on opposite sides of the ship."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/aims-at-the-ship.test.ts", outputs = [
+  { id = "aim", name = "The shot leaving straight for the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "aim-error-within-10-degrees"
+title = "The aim error stays inside 10 degrees"
+description = "Every one of eight unposed shots at a stationary ship leaves within SAUCER_AIM_ERROR (10 degrees) of the bearing to the ship. The bound alone; the scatter is a separate item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/aim-error-within-10-degrees.test.ts", outputs = [
+  { id = "aim", name = "The eight shots inside the error bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "aim-error-varies-per-shot"
+title = "The aim error is redrawn for every shot"
+description = "Across those same eight shots at a stationary ship the bearings are not all equal: the widest two differ by more than a quarter of a degree, which an offset drawn afresh for every shot always does and a build that aims dead-on, or reuses one offset, never does. specs/saucer.md states the draw as fresh per shot, which is the rule this item asserts."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/aim-error-varies-per-shot.test.ts", outputs = [
+  { id = "scatter", name = "The scatter across eight shots at a still ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-carries-the-saucers-velocity"
+title = "A saucer bullet carries the saucer's motion"
+description = "With the saucer posed at a velocity, a shot leaves at that velocity plus SAUCER_BULLET_SPEED (300) along its aim, within 3 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/bullet-carries-the-saucers-velocity.test.ts", outputs = [
+  { id = "shot", name = "A shot leaving a moving saucer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-life"
+title = "A saucer bullet expires after 1.4 seconds"
+description = "An enemy bullet posed clear of everything is in flight at 1.3 s of game time and gone by 1.5 s."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/bullet-life.test.ts", outputs = [
+  { id = "expiry", name = "The field the instant after the enemy round expired", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-harms-only-the-ship"
+title = "A saucer bullet passes over rocks"
+description = "An enemy bullet driven through a rock leaves the rock whole and the bullet in flight, and the score unchanged."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/bullet-harms-only-the-ship.test.ts", outputs = [
+  { id = "overlap", name = "The enemy round passing over an untouched rock", kind = "image" },
+] }
+# New in v3.0.0 (see changelog.md). Nothing graded that RESTART begins a game clear
+# of saucers, so a build that rebuilds its world but leaves the saucer flying
+# passed all five saucer items while handing a fresh wave 1 an enemy already
+# firing. Its three anti-false-positive devices are each load-bearing: the saucer
+# is read at the PAUSE as well as after the restart, since a visit is finite and
+# one that left on its own is otherwise indistinguishable; a life is spent first,
+# because a game that merely RESUMED also has three ships unless one was spent; and
+# the pause selection is ADDRESSED through setMenuIndex(1) rather than counted in
+# key presses, since specs/ui.md fixes the order of the pause entries but not which
+# one the menu opens on.
+[[review.categories.items]]
+id = "a-restart-clears-the-saucer"
+title = "A restart begins a game with no saucer"
+description = "From a game down to two ships with a saucer up, confirming RESTART on the pause menu gives a game reporting screen playing, saucer null the instant it starts and still null two seconds in, and lives back at START_LIVES; the saucer is asserted present at the pause, so its absence afterwards is the restart's doing."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "saucer/a-restart-clears-the-saucer.test.ts", outputs = [
+  { id = "restart", name = "The restarted game, clear of the saucer that was up", kind = "replay" },
+] }
+
+# --- Waves -------------------------------------------------------------------
+# A wave clears on a TRANSITION, not on a predicate: specs/progression.md states
+# that a wave clears on the tick in which the last rock on the field is destroyed,
+# so a field that holds no rocks and has had none destroyed is playing rather than
+# cleared. Both directions carry an item, because a build that clears on an empty
+# predicate and a build that never clears at all would otherwise be
+# indistinguishable on one. Every item here reaches its cleared field by SHOOTING
+# the rocks down through the harness, never through clearRocks — which the
+# specification defines as a way to make room, awarding no score and destroying
+# nothing (see the fold-in fix in changelog.md).
+[[review.categories]]
+id = "waves"
+title = "Waves"
+[[review.categories.items]]
+id = "wave-one-spawns-four"
+title = "Wave 1 puts up four Large rocks"
+description = "The wave that follows a cleared wave 0 holds exactly WAVE_BASE_ROCKS + 1 (4) Large rocks."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "waves/wave-one-spawns-four.test.ts", outputs = [
+  { id = "wave", name = "The four Large rocks of wave 1", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-n-spawns-three-plus-n"
+title = "Wave N puts up 3 + N Large rocks"
+description = "With the wave posed at 6 and the field shot clear, the wave that arrives holds 10 Large rocks."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "waves/wave-n-spawns-three-plus-n.test.ts", outputs = [
+  { id = "wave", name = "The ten Large rocks of wave 7", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawns-clear-of-the-ship"
+title = "A wave spawns clear of the ship"
+description = "Every rock a wave spawns is at least WAVE_MIN_SHIP_DIST (300) from the ship by shortest wrapped distance."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "waves/spawns-clear-of-the-ship.test.ts", outputs = [
+  { id = "wave", name = "The wave standing clear of the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawns-clear-of-the-star"
+title = "A wave spawns clear of the star"
+description = "Every rock a wave spawns is at least WAVE_MIN_STAR_DIST (200) from the star's centre."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "waves/spawns-clear-of-the-star.test.ts", outputs = [
+  { id = "wave", name = "The wave standing clear of the star", kind = "image" },
+] }
+[[review.categories.items]]
+id = "speed-scales-per-wave"
+title = "Each wave drifts 4 percent faster"
+description = "With the base drift speed posed at 100 through setNextRockSpeed, every rock of wave 6 arrives at 100 x (1 + WAVE_SPEED_STEP x 5) = 120 units per second, within 2, read against the wave the build reports."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "waves/speed-scales-per-wave.test.ts", outputs = [
+  { id = "wave", name = "The faster rocks of a later wave", kind = "image" },
+] }
+[[review.categories.items]]
+id = "speed-is-capped"
+title = "The wave speed scaling stops at 40 percent"
+description = "With the base drift speed posed at 100 through setNextRockSpeed, every rock of wave 20 arrives at 100 x (1 + WAVE_SPEED_CAP) = 140 units per second, within 2, read against the wave the build reports."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "waves/speed-is-capped.test.ts", outputs = [
+  { id = "wave", name = "Wave 20's rocks, at the capped drift speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clears-on-last-rock"
+title = "Destroying the last rock turns the wave over"
+description = "Shooting the field down to one Small, and never using clearRocks, and then destroying it raises the banner (waveBanner > 0) on that tick. The transition alone: the number the banner announces is wave-number-increments's point, and the negative direction is an-empty-field-does-not-clear-by-itself's, so a build misses one point per requirement rather than three per defect."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "waves/clears-on-last-rock.test.ts", outputs = [
+  { id = "clear", name = "The last Small destroyed and the banner going up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "an-empty-field-does-not-clear-by-itself"
+title = "An emptied field is not a cleared wave"
+description = "A field emptied with clearRocks, from which nothing was destroyed, raises no banner and advances no wave over ten seconds."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "waves/an-empty-field-does-not-clear-by-itself.test.ts", outputs = [
+  { id = "quiet", name = "The emptied field, still playing rather than cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-number-increments"
+title = "The wave number rises by one"
+description = "The wave the banner announces is exactly one more than the wave just cleared."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "waves/wave-number-increments.test.ts", outputs = [
+  { id = "banner", name = "The banner announcing the next wave by number", kind = "image" },
+] }
+[[review.categories.items]]
+id = "banner-runs-for-1p5s"
+title = "The banner runs for a second and a half"
+description = "The banner raised by a clear is showing 1.4 s later and gone by 1.6 s."
+domains = ["arcade", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "waves/banner-runs-for-1p5s.test.ts", outputs = [
+  { id = "banner", name = "The banner in its last moments", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-rock-during-the-banner"
+title = "The field stays empty while the banner runs"
+description = "No rock is on the field at any tick while the banner is showing."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "waves/no-rock-during-the-banner.test.ts", outputs = [
+  { id = "banner", name = "The empty field behind the running banner", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawns-as-the-banner-ends"
+title = "The rocks arrive as the banner ends"
+description = "Every rock of the announced wave is on the field within a tick of the banner reaching 0."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "waves/spawns-as-the-banner-ends.test.ts", outputs = [
+  { id = "arrival", name = "The wave arriving as the banner runs out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "the-ship-flies-during-the-banner"
+title = "The banner is a breather, not a pause"
+description = "A ship holding thrust while the banner runs gains speed over the banner exactly as it would in play."
+domains = ["arcade", "flight"]
+failure_cap = "passable"
+validation = { script = "waves/the-ship-flies-during-the-banner.test.ts", outputs = [
+  { id = "banner", name = "The ship flying on under the banner", kind = "image" },
+] }
+[[review.categories.items]]
+id = "the-saucer-hunts-during-the-banner"
+title = "A saucer keeps hunting through the banner"
+description = "A saucer up when the last rock dies is still travelling and still firing while the banner shows."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "waves/the-saucer-hunts-during-the-banner.test.ts", outputs = [
+  { id = "banner", name = "The saucer still hunting under the banner", kind = "image" },
+] }
+
+# --- Lives and respawn -------------------------------------------------------
+# Every item here turns the ship's lethal contact test back on with
+# setShipCollision(true), because the contact test IS their requirement. Each way a
+# life can be lost is its own point, and so is each property of the respawn, so a
+# build that respawns at the right place facing the wrong way loses one point
+# rather than four. `a-fast-approach-still-costs-a-life` is the ship's half of the
+# swept-or-continuous requirement specs/collision.md states.
+[[review.categories]]
+id = "lives"
+title = "Lives and respawn"
+[[review.categories.items]]
+id = "starts-with-three"
+title = "A new game starts with three ships"
+description = "A game opened from the title reports lives 3."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/starts-with-three.test.ts", outputs = [
+  { id = "opening", name = "A fresh game with its three ships", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-rock-costs-a-life"
+title = "A rock destroys the ship"
+description = "A rock advanced onto the ship with its contact gate on drops lives by exactly one."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/a-rock-costs-a-life.test.ts", outputs = [
+  { id = "contact", name = "The rock reaching the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "the-saucer-costs-a-life"
+title = "The saucer destroys the ship"
+description = "A saucer advanced onto the ship drops lives by exactly one."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/the-saucer-costs-a-life.test.ts", outputs = [
+  { id = "contact", name = "The saucer reaching the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-saucer-bullet-costs-a-life"
+title = "A saucer bullet destroys the ship"
+description = "An enemy bullet driven into the ship drops lives by exactly one."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/a-saucer-bullet-costs-a-life.test.ts", outputs = [
+  { id = "contact", name = "The enemy round reaching the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawns-at-the-safe-point"
+title = "The next ship appears at the safe point"
+description = "After a death with lives remaining, the ship's centre is (SAFE_X, SAFE_Y) within one unit."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "lives/respawns-at-the-safe-point.test.ts", outputs = [
+  { id = "respawn", name = "The next ship at the safe point", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawns-at-rest"
+title = "The next ship appears at rest"
+description = "Its speed after the respawn is 0 within 1 unit per second."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "lives/respawns-at-rest.test.ts", outputs = [
+  { id = "respawn", name = "The next ship standing still", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawns-facing-up"
+title = "The next ship faces up"
+description = "Its facing after the respawn is FACE_UP within one degree."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "lives/respawns-facing-up.test.ts", outputs = [
+  { id = "respawn", name = "The next ship facing straight up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invuln-window"
+title = "The respawn grace opens at 2.5 seconds"
+description = "ship.invuln is INVULN_TIME (2.5) within one tick immediately after the respawn."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "lives/invuln-window.test.ts", outputs = [
+  { id = "grace", name = "The respawned ship at the top of its grace", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invuln-counts-down"
+title = "The respawn grace counts down with game time"
+description = "From that opening value, ship.invuln falls by exactly the game time advanced, within one tick, sampled at 0.5 s, 1.0 s and 2.0 s."
+domains = ["flight"]
+failure_cap = "passable"
+validation = { script = "lives/invuln-counts-down.test.ts", outputs = [
+  { id = "grace", name = "The grace part-way down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invuln-ignores-a-rock"
+title = "A ship in its grace ignores a rock"
+description = "A rock advanced onto a ship with setShipInvuln(2.0) and its contact gate on costs no life."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/invuln-ignores-a-rock.test.ts", outputs = [
+  { id = "grace", name = "The rock passing over a ship inside its grace", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invuln-ends"
+title = "Contact resumes the instant the grace ends"
+description = "The same rock, advanced onto the ship after the grace has run out, costs a life."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/invuln-ends.test.ts", outputs = [
+  { id = "grace", name = "The grace running out and the contact landing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-only-with-lives-left"
+title = "The last death puts no new ship up"
+description = "With setLives(1), a fatal contact puts no ship at the safe point: nothing is drawn there and the ship's reported centre does not return to (SAFE_X, SAFE_Y). The screen transition is screens/game-over-on-the-last-life's point, not this one."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/respawn-only-with-lives-left.test.ts", outputs = [
+  { id = "empty", name = "The empty safe point after the last ship was lost", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-at-zero"
+title = "The last ship lost takes the counter to zero"
+description = "lives reads exactly 0 after the last ship is destroyed. The counter alone; the screen it puts up is screens/game-over-on-the-last-life's point."
+domains = ["flight", "arcade"]
+failure_cap = "broken"
+validation = { script = "lives/game-over-at-zero.test.ts", outputs = [
+  { id = "zero", name = "The run with its ship counter at zero", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-fast-approach-still-costs-a-life"
+title = "A rock closing fast is not passed through"
+description = "With the contact gate on, a Small drifting at the top of its own stated range (210) meets a ship flying at SHIP_MAX (680) head-on — neither body posed past its own bound, the pair closing at 890 units per second — from just outside the combined radius of SHIP_R + ROCK_RADIUS.small (28), and costs exactly one life on the next tick. This is the ship's half of the swept-or-continuous requirement specs/collision.md states; bullets/no-tunnelling-at-speed is the bullet's."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "lives/a-fast-approach-still-costs-a-life.test.ts", outputs = [
+  { id = "sweep", name = "The fast rock taking the ship it would have tunnelled through", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "extra-ship-at-10000"
+title = "An extra ship is awarded at 10,000"
+description = "With the score posed just below 10,000, a real kill that carries it across raises lives by exactly one."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "lives/extra-ship-at-10000.test.ts", outputs = [
+  { id = "award", name = "The extra ship the crossing awarded", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extra-ship-at-20000"
+title = "An extra ship is awarded at every multiple"
+description = "The same test across the 20,000 boundary raises lives by exactly one, so the award repeats rather than firing once."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "lives/extra-ship-at-20000.test.ts", outputs = [
+  { id = "award", name = "The second extra ship, at the next multiple", kind = "image" },
+] }
+
+# --- Scoring -----------------------------------------------------------------
+# One point per scoring figure, plus the two rules that bound the score: a rock the
+# star recycles pays nothing, and the score never falls within a game.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "large-scores-20"
+title = "Destroying a Large scores 20"
+description = "Shooting a Large down raises the score by exactly SCORE_LARGE."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "scoring/large-scores-20.test.ts", outputs = [
+  { id = "score", name = "The score after a Large came apart", kind = "image" },
+] }
+[[review.categories.items]]
+id = "medium-scores-50"
+title = "Destroying a Medium scores 50"
+description = "Shooting a Medium down raises the score by exactly SCORE_MEDIUM."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "scoring/medium-scores-50.test.ts", outputs = [
+  { id = "score", name = "The score after a Medium came apart", kind = "image" },
+] }
+[[review.categories.items]]
+id = "small-scores-100"
+title = "Destroying a Small scores 100"
+description = "Shooting a Small down raises the score by exactly SCORE_SMALL."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "scoring/small-scores-100.test.ts", outputs = [
+  { id = "score", name = "The score after a Small was destroyed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-scores-200"
+title = "Destroying the saucer scores 200"
+description = "A bullet into the saucer raises the score by exactly SCORE_SAUCER."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "scoring/saucer-scores-200.test.ts", outputs = [
+  { id = "score", name = "The score after the saucer was shot down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycling-scores-nothing"
+title = "A recycled rock scores nothing"
+description = "A rock the star takes leaves the score exactly as it was."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/recycling-scores-nothing.test.ts", outputs = [
+  { id = "score", name = "The unchanged score over a recycled rock", kind = "image" },
+] }
+# The item reaches the scoring path directly rather than through the wave loop and
+# the saucer's arrival cadence, which it does not decide — and which would make it
+# vacuous in the direction that matters, since a build whose wave loop never spawns
+# records no scoring event at all and every sample is then equal.
+[[review.categories.items]]
+id = "score-only-rises"
+title = "The score never falls within a game"
+description = "On the quiet field startPlaying leaves, with both world gates off, every scoring event the game has is posed directly and the score is sampled every tick: a Large is shot down through its whole Medium and Small ladder, a saucer is added and shot, and one rock is slung into the star for a recycle. No sample is below the one before it."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/score-only-rises.test.ts", outputs = [
+  { id = "run", name = "The scoring run the samples were taken across", kind = "image" },
+] }
+
+# --- Controls ----------------------------------------------------------------
+# Each item drives ONE binding through the real key path — Chromium's own keyboard
+# under `none`, a dispatched key event at the engine's listener under an engine —
+# and reads the effect it is bound to. There is no keyboard operation on the debug
+# surface: the keyboard belongs to the runtime beneath the game, so a key that the
+# build never wired up fails here rather than being posed around. Every item is
+# capped `scuffed` unless noted, because a key that does nothing makes a path of
+# normal play unpleasant without making the game impossible; the four that carry
+# the whole of flying are `broken`, and a duplicate binding whose primary is
+# graded elsewhere is `passable`.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "rotate-left-arrow"
+title = "ArrowLeft turns the ship counter-clockwise"
+description = "Holding ArrowLeft for one second turns the ship's facing counter-clockwise, and releasing it stops the turn."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "controls/rotate-left-arrow.test.ts", outputs = [
+  { id = "turn", name = "The ship turned counter-clockwise by ArrowLeft", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rotate-right-arrow"
+title = "ArrowRight turns the ship clockwise"
+description = "Holding ArrowRight for one second turns the ship's facing clockwise, and releasing it stops the turn."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "controls/rotate-right-arrow.test.ts", outputs = [
+  { id = "turn", name = "The ship turned clockwise by ArrowRight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rotate-a"
+title = "KeyA turns the ship counter-clockwise"
+description = "Holding KeyA turns the ship's facing counter-clockwise, the same way ArrowLeft does."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "controls/rotate-a.test.ts", outputs = [
+  { id = "turn", name = "The ship turned counter-clockwise by KeyA", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rotate-d"
+title = "KeyD turns the ship clockwise"
+description = "Holding KeyD turns the ship's facing clockwise, the same way ArrowRight does."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "controls/rotate-d.test.ts", outputs = [
+  { id = "turn", name = "The ship turned clockwise by KeyD", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-up"
+title = "ArrowUp thrusts"
+description = "Holding ArrowUp accelerates the ship along its facing, and releasing it stops the thrust."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "controls/thrust-up.test.ts", outputs = [
+  { id = "thrust", name = "The ship under thrust held on ArrowUp", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-w"
+title = "KeyW thrusts"
+description = "Holding KeyW accelerates the ship along its facing, the same way ArrowUp does."
+domains = ["flight"]
+failure_cap = "scuffed"
+validation = { script = "controls/thrust-w.test.ts", outputs = [
+  { id = "thrust", name = "The ship under thrust held on KeyW", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-space"
+title = "Space fires one shot"
+description = "A press of Space with the gun off cooldown adds exactly one bullet to the roster."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "controls/fire-space.test.ts", outputs = [
+  { id = "shot", name = "The round Space put in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape pauses a game in play"
+description = "Escape pressed while the screen is playing gives screen paused."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-escape.test.ts", outputs = [
+  { id = "paused", name = "The pause menu Escape opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "KeyP pauses a game in play"
+description = "KeyP pressed while the screen is playing gives screen paused."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-p.test.ts", outputs = [
+  { id = "paused", name = "The pause menu KeyP opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-up-arrow"
+title = "ArrowUp moves a menu selection up"
+description = "ArrowUp pressed on a menu lowers menuIndex by one."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-up-arrow.test.ts", outputs = [
+  { id = "menu", name = "The selection ArrowUp moved up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down-arrow"
+title = "ArrowDown moves a menu selection down"
+description = "ArrowDown pressed on a menu raises menuIndex by one."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-down-arrow.test.ts", outputs = [
+  { id = "menu", name = "The selection ArrowDown moved down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-w"
+title = "KeyW moves a menu selection up"
+description = "KeyW pressed on a menu lowers menuIndex by one."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/menu-w.test.ts", outputs = [
+  { id = "menu", name = "The selection KeyW moved up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-s"
+title = "KeyS moves a menu selection down"
+description = "KeyS pressed on a menu raises menuIndex by one."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/menu-s.test.ts", outputs = [
+  { id = "menu", name = "The selection KeyS moved down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-enter"
+title = "Enter confirms a menu selection"
+description = "Enter pressed on the title menu's first entry starts a game."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/confirm-enter.test.ts", outputs = [
+  { id = "confirmed", name = "The game Enter started from the title menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-space"
+title = "Space confirms a menu selection"
+description = "Space pressed on the title menu's first entry starts a game."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/confirm-space.test.ts", outputs = [
+  { id = "confirmed", name = "The game Space started from the title menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-escape"
+title = "Escape leaves the how-to screen"
+description = "Escape pressed on the how-to screen gives screen title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/back-escape.test.ts", outputs = [
+  { id = "back", name = "The title screen Escape returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-m"
+title = "KeyM toggles mute, and muted reports it"
+description = "KeyM toggles the runtime's mute bit and the snapshot's muted follows it, in both directions."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/mute-m.test.ts", outputs = [
+  { id = "muted", name = "The game with mute toggled on by KeyM", kind = "image" },
+] }
+
+# --- Screens and menus -------------------------------------------------------
+# The five screens, what each shows, and every route between them. Each transition
+# is its own point, so a build whose pause menu resumes but never restarts loses
+# one point rather than the whole category.
+[[review.categories]]
+id = "screens"
+title = "Screens and menus"
+[[review.categories.items]]
+id = "title-shows-the-title"
+title = "The title screen shows the title and tagline"
+description = "On load, drawn text is present for TITLE_TEXT and TAGLINE_TEXT."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-shows-the-title.test.ts", outputs = [
+  { id = "title", name = "The title screen on load", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-entries"
+title = "The title menu shows both entries in order"
+description = "Both TITLE_ITEMS are drawn, the first above the second."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-menu-entries.test.ts", outputs = [
+  { id = "menu", name = "The title menu's two entries in order", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-highlight"
+title = "The title menu shows which entry is selected"
+description = "The entry menuIndex names is drawn differently from the other, and the difference moves with setMenuIndex."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-menu-highlight.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved onto the second entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "play-starts-a-game"
+title = "Confirming PLAY starts a game"
+description = "With the title menu on entry 0, confirm gives screen playing, lives START_LIVES and score 0."
+domains = ["presentation", "arcade"]
+failure_cap = "broken"
+validation = { script = "screens/play-starts-a-game.test.ts", outputs = [
+  { id = "opening", name = "The opening wave PLAY started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-reachable"
+title = "HOW TO PLAY opens the how-to screen"
+description = "With the title menu on entry 1, confirm gives screen howto."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-reachable.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen the second entry opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-shows-the-controls"
+title = "The how-to screen names the keys"
+description = "The how-to screen draws text naming every key specs/controls.md binds, so the screen specs/ui.md says explains the game is not empty."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-shows-the-controls.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen with the keys it names", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns"
+title = "The how-to screen returns to the title"
+description = "back from howto gives screen title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the how-to returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-confirm-returns"
+title = "Confirming on the how-to screen returns to the title"
+description = "The how-to shows no menu of its own, so confirming leaves it as leaving it does: a confirm press on howto gives screen title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-confirm-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen confirming the how-to returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns-to-its-entry"
+title = "The return from the how-to lands on the entry that opened it"
+description = "The how-to leaves the title's highlight exactly as it was, so a how-to opened by confirming TITLE_ITEMS entry 1 returns with menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns-to-its-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on HOW TO PLAY", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-the-field"
+title = "Pausing freezes the field"
+description = "With a rock drifting, pausing and advancing two seconds leaves every body where it stood and every timer where it was, per the rule specs/ui.md states that the paused screen advances nothing. simTime still accumulates, which the same rule fixes."
+domains = ["presentation", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes-the-field.test.ts", outputs = [
+  { id = "frozen", name = "The field held still behind the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-entries"
+title = "The pause menu shows its three entries in order"
+description = "All three PAUSE_ITEMS are drawn in the order the spec fixes."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-menu-entries.test.ts", outputs = [
+  { id = "menu", name = "The pause menu's three entries in order", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-returns-to-play"
+title = "RESUME returns to the game in progress"
+description = "Confirming entry 0 gives screen playing with the score, lives, wave and every body exactly as they stood, per the rule specs/ui.md states that RESUME returns to the game as it stood."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-returns-to-play.test.ts", outputs = [
+  { id = "resumed", name = "The game resumed exactly as it stood", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-p"
+title = "The pause key resumes a paused game"
+description = "Pausing again from a paused game with a posed score, ships, wave and a rock on the field gives screen playing with all four exactly as they stood."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-p.test.ts", outputs = [
+  { id = "resumed", name = "The game the pause key gave back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-escape"
+title = "Escape resumes a paused game, once"
+description = "One Escape press on a paused game gives screen playing with the run and the field as they stood, and it is still playing a quarter of a second later, since a frame carrying pause or back resumes and does nothing else."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-escape.test.ts", outputs = [
+  { id = "resumed", name = "The game one Escape press gave back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "restart-begins-a-new-game"
+title = "RESTART begins a new game"
+description = "Confirming entry 1 from a game with a posed score and two ships gives screen playing, score 0 and lives START_LIVES."
+domains = ["presentation", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/restart-begins-a-new-game.test.ts", outputs = [
+  { id = "restarted", name = "The fresh game RESTART began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "quit-returns-to-the-title"
+title = "QUIT TO MENU returns to the title"
+description = "Confirming entry 2 gives screen title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/quit-returns-to-the-title.test.ts", outputs = [
+  { id = "title", name = "The title screen QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "quit-returns-to-the-play-entry"
+title = "The return from a quit lands on the entry that started the match"
+description = "Confirming entry 2 on the pause menu gives menuIndex 0, PLAY, the title entry specs/ui.md names as the one that led away into the match. That the screen is title is quit-returns-to-the-title's point."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/quit-returns-to-the-play-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on PLAY", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-on-the-last-life"
+title = "Losing the last ship shows game over"
+description = "The screen is gameover the tick after the last ship is destroyed."
+domains = ["presentation", "flight"]
+failure_cap = "broken"
+validation = { script = "screens/game-over-on-the-last-life.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen the last death put up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-shows-the-score"
+title = "The game-over screen shows the final score"
+description = "The posed final score is drawn on the screen."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/game-over-shows-the-score.test.ts", outputs = [
+  { id = "gameover", name = "The final score on the game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-shows-the-wave"
+title = "The game-over screen shows the wave reached"
+description = "The posed wave number is drawn on the screen."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/game-over-shows-the-wave.test.ts", outputs = [
+  { id = "gameover", name = "The wave reached, on the game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "play-again-starts-a-game"
+title = "PLAY AGAIN starts a new game"
+description = "Confirming entry 0 on the game-over screen gives screen playing with score 0 and lives START_LIVES."
+domains = ["presentation", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/play-again-starts-a-game.test.ts", outputs = [
+  { id = "opening", name = "The fresh game PLAY AGAIN began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-returns-to-the-title"
+title = "MENU returns to the title"
+description = "Confirming entry 1 on the game-over screen gives screen title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/game-over-menu-returns-to-the-title.test.ts", outputs = [
+  { id = "title", name = "The title screen MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-returns-to-the-play-entry"
+title = "The return from the game-over menu lands on the entry that started the match"
+description = "Confirming entry 1 on the game-over screen gives menuIndex 0, PLAY, the title entry specs/ui.md names as the one that led away into the match. That the screen is title is game-over-menu-returns-to-the-title's point."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/game-over-menu-returns-to-the-play-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on PLAY", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-returns"
+title = "Leaving the game-over screen returns to the title"
+description = "Leaving the game-over screen does what MENU does: a back press on gameover gives screen title with menuIndex 0."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/gameover-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen leaving the game-over reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-selection-stays-in-range"
+title = "A menu selection never leaves its entries"
+description = "Driving the menu move action ten times in each direction on every menu leaves menuIndex inside that menu's entry count throughout."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/menu-selection-stays-in-range.test.ts", outputs = [
+  { id = "menu", name = "The selection held inside the menu's entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-wraps-up"
+title = "Up wraps from the first entry to the last"
+description = "With the pause menu posed on entry 0, one press of the up key gives menuIndex 2, the last of its three entries."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-up.test.ts", outputs = [
+  { id = "menu", name = "The last entry the up move wrapped onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-wraps-down"
+title = "Down wraps from the last entry to the first"
+description = "With the pause menu posed on entry 2, one press of the down key gives menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-down.test.ts", outputs = [
+  { id = "menu", name = "The first entry the down move wrapped onto", kind = "image" },
+] }
+
+# --- The menus under a mouse and under a finger ------------------------------
+# `specs/ui.md` has every menu take a pointer and touch as well as the keyboard,
+# over the hit regions the build reports through `menuItemRect`
+# (specs/instrumentation.md). Every item below drives a REAL device at the middle
+# of the region the build named, so where a build lays its menu out is its own
+# business and what it does when a device arrives there is not. Selecting and
+# confirming are separate items in each direction, because a build commonly wires
+# one and not the other, and the two cancel items are the edge `specs/ui.md`
+# states outright: a confirm requires both of its edges inside one region.
+[[review.categories]]
+id = "pointer"
+title = "The menus under a mouse"
+[[review.categories.items]]
+id = "pointer-hover-selects"
+title = "The mouse highlights the entry it moves onto"
+description = "With the title's highlight posed on entry 0, moving the mouse to the middle of the region menuItemRect reports for entry 1 gives menuIndex 1, with the screen still title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The entry the mouse moved onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-click-confirms"
+title = "A click confirms the entry it is made in"
+description = "A press and a release both inside entry 1's region on the title confirm HOW TO PLAY, giving screen howto."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "confirmed", name = "The screen the click reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-slide-off-cancels"
+title = "A press and a release in different regions confirm nothing"
+description = "A press inside entry 1's region released inside entry 0's leaves screen title, since a confirm requires both of its edges inside one region."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "cancelled", name = "The title still showing after the slide-off", kind = "image" },
+] }
+[[review.categories]]
+id = "touch"
+title = "The menus under a finger"
+[[review.categories.items]]
+id = "touch-landing-selects"
+title = "A contact landing on an entry highlights it"
+description = "With the title's highlight posed on entry 0, a touch contact landing in entry 1's region gives menuIndex 1, with the screen still title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "menu", name = "The entry the contact landed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-confirms"
+title = "A tap confirms the entry it lands and lifts in"
+description = "A contact landing and lifting inside entry 1's region on the title confirms HOW TO PLAY, giving screen howto."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "confirmed", name = "The screen the tap reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-drag-cancels"
+title = "A contact lifted on a different entry confirms nothing"
+description = "A contact landing in entry 1's region and lifting in entry 0's leaves screen title, since a confirm requires both of its edges inside one region."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "cancelled", name = "The title still showing after the slide-off", kind = "image" },
+] }
+
+# --- Look and readouts -------------------------------------------------------
+# Every item here checks that a thing is PRESENT where the specification says
+# something is drawn, or that it CHANGES when the specification says it changes,
+# always measured against whatever background the build itself painted and never
+# against a color this checklist names. No palette and no typeface is seeded or
+# asserted, and how any of it looks is the reviewer's to rate. No item mandates a
+# drawing style either: a build drawing cratered, textured or lumpy-but-round rocks
+# is legible and conformant, and a build blinking its invulnerable ship by color,
+# by outline weight or by alpha is too.
+[[review.categories]]
+id = "presentation"
+title = "Look and readouts"
+[[review.categories.items]]
+id = "ship-is-drawn-and-distinct"
+title = "The ship is drawn on the field"
+description = "Pixels within SHIP_R of the posed ship's centre differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "presentation/ship-is-drawn-and-distinct.test.ts", outputs = [
+  { id = "ship", name = "The ship drawn against the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-facing-is-legible"
+title = "The ship's facing is legible"
+description = "The drawn ship changes between two facings a half turn apart: samples inside the hull's own disc are redrawn between the two frames."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/ship-facing-is-legible.test.ts", outputs = [
+  { id = "facings", name = "The ship drawn at four facings", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rocks-are-drawn-and-distinct"
+title = "A rock is drawn on the field"
+description = "Pixels inside a posed rock differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "presentation/rocks-are-drawn-and-distinct.test.ts", outputs = [
+  { id = "rock", name = "A rock drawn beside the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "star-core-is-drawn"
+title = "The star's core is drawn at its radius"
+description = "Pixels within CORE_R of (640, 360) differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/star-core-is-drawn.test.ts", outputs = [
+  { id = "core", name = "The star's core at its radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "star-halo-fades-outward"
+title = "The star's halo is drawn, and stops where it must"
+description = "The annulus between CORE_R and HALO_R carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/star-halo-fades-outward.test.ts", outputs = [
+  { id = "halo", name = "The halo fading outward from the core", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-is-drawn-and-distinct"
+title = "The saucer is drawn on the field"
+description = "Pixels inside a posed saucer differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/saucer-is-drawn-and-distinct.test.ts", outputs = [
+  { id = "saucer", name = "The saucer drawn beside a rock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-is-drawn-and-distinct"
+title = "A bullet is drawn on the field"
+description = "Pixels within BULLET_R of a posed bullet differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/bullet-is-drawn-and-distinct.test.ts", outputs = [
+  { id = "bullet", name = "A round drawn against the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-flame-while-thrusting"
+title = "A flame shows while thrust is applied"
+description = "Drawn pixels behind the ship's tail appear while thrust is held and are absent a tick after it is released."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/thrust-flame-while-thrusting.test.ts", outputs = [
+  { id = "flame", name = "The flame at the ship's tail under thrust", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invulnerable-ship-blinks"
+title = "A ship in its grace reads as protected"
+description = "Over the grace window the ship's drawn appearance — the pixels within the hull's nose-to-tail length (34) of its centre — differs from its steady appearance at some sampled instant: at least 12 of the 441 points sampled over that disc read further from their steady readings than the sensing floor of 8, of the 441 an RGB distance can span — the level below which a sampling cannot tell a redrawing from the rounding of an 8-bit channel. Once the grace has run out the ship reads as the steady ship again, with no more than 4 of those points still that far from it. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/invulnerable-ship-blinks.test.ts", outputs = [
+  { id = "grace", name = "The ship drawn inside its respawn grace", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-score-is-drawn"
+title = "The score is drawn in the HUD"
+description = "The posed score's digits are drawn in the upper portion of the field, clear of the star."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-score-is-drawn.test.ts", outputs = [
+  { id = "hud", name = "The score drawn in the HUD", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-lives-are-drawn"
+title = "The HUD draws one glyph per ship in reserve"
+description = "With lives posed at 3, 2 and 1, the count of drawn ship glyphs in the HUD is 2, 1 and 0."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-lives-are-drawn.test.ts", outputs = [
+  { id = "hud", name = "The reserve glyphs at each ship count", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-banner-is-drawn"
+title = "The wave banner is drawn while it runs"
+description = "With a banner posed, text naming the wave number is drawn near the field's centre, and it is gone once the banner has run out."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/wave-banner-is-drawn.test.ts", outputs = [
+  { id = "banner", name = "The wave banner drawn over the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extra-ship-indication"
+title = "An awarded ship is announced"
+description = "A real kill carrying the score across a 10,000 boundary draws something on the field that was not there the tick before, for at least half a second."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/extra-ship-indication.test.ts", outputs = [
+  { id = "award", name = "The award drawn as the score crossed the boundary", kind = "image" },
+] }
+[[review.categories.items]]
+id = "screen-text-is-legible"
+title = "Every screen draws text"
+description = "On each of the five screens, the build submits at least one non-empty text draw."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/screen-text-is-legible.test.ts", outputs = [
+  { id = "screens", name = "The five screens the text was sampled on", kind = "image" },
+] }
+
+# --- Audio -------------------------------------------------------------------
+# Six cues, the mute toggle, and the requirement that the game runs whether or not
+# audio does. The six cue items are capped `passable`, not `scuffed`: a cap is the
+# ceiling on a whole domain and a run's functional rating is its worst domain, so a
+# `scuffed` cue cap would let one absent sound effect cap the entire run. One
+# missing cue leaves the standard flow of gameplay untouched, which is what the
+# failure-cap table reserves `passable` for. `mute-silences` keeps `scuffed`,
+# because mute is an optional path a player relies on.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "fire-cue"
+title = "Firing plays its cue"
+description = "Taking a shot plays the fire cue exactly once."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/fire-cue.test.ts", outputs = [
+  { id = "shot", name = "The shot the cue was played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shatter-cue"
+title = "A rock breaking plays its cue"
+description = "Destroying a rock plays the shatter cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/shatter-cue.test.ts", outputs = [
+  { id = "kill", name = "The rock breaking as the cue played", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-cue-starts"
+title = "Thrust starts a held sound"
+description = "Holding thrust starts the thrust cue and it is still sounding a second later."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/thrust-cue-starts.test.ts", outputs = [
+  { id = "thrust", name = "The ship under the thrust the cue is held for", kind = "image" },
+] }
+[[review.categories.items]]
+id = "thrust-cue-stops"
+title = "Releasing thrust stops the held sound"
+description = "Releasing thrust stops the thrust cue within a tenth of a second."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/thrust-cue-stops.test.ts", outputs = [
+  { id = "released", name = "The ship a tick after thrust was released", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-arrival-cue"
+title = "A saucer arriving plays its cue"
+description = "The tick a saucer joins the field plays the saucer cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/saucer-arrival-cue.test.ts", outputs = [
+  { id = "arrival", name = "The saucer arriving as the cue played", kind = "image" },
+] }
+[[review.categories.items]]
+id = "death-cue"
+title = "The ship being destroyed plays its cue"
+description = "A fatal contact plays the death cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/death-cue.test.ts", outputs = [
+  { id = "death", name = "The fatal contact the cue was played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extra-ship-cue"
+title = "An awarded ship plays its cue"
+description = "A kill carrying the score across a 10,000 boundary plays the extraLife cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/extra-ship-cue.test.ts", outputs = [
+  { id = "award", name = "The crossing the cue was played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-silences"
+title = "A muted game stays fully playable"
+description = "With sound muted through its action, a shot is taken, a rock is destroyed and the ship is lost, and under `none` no sound starts across any of them."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/mute-silences.test.ts", outputs = [
+  { id = "muted", name = "The muted game the three events were driven in", kind = "image" },
+] }
+
+# --- Showcase ----------------------------------------------------------------
+# Read off the produced tree rather than off the running game. The showcase is the
+# store-page presentation of the finished build — a player-facing description and
+# an ordered carousel of captured media, in a `showcase/` directory at the root of
+# the produced repository — which `specs/showcase.md` defines and
+# `specs/overview.md` lists among the things the build ships.
+#
+# It is worth THREE points rather than one, because it is a deliverable of its own:
+# a whole file of the specification, and the one piece of a run a person meets
+# before they meet the game. Every other point on this checklist is one behavior of
+# the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase flies, shoots
+# and scores exactly as well as one that did, so the miss costs the presentation
+# and leaves the standard flow of gameplay untouched. The weight and the cap say
+# different things on purpose — how much of the score the point carries, and how
+# far a failure may drag a rating down.
+#
+# It lowers `presentation` alone. This case rates the game on four domains, three
+# of which are the simulation the ship flies in; a showcase that never turned up
+# says nothing about the well, the flight model or the board, and everything about
+# what the build presents.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of `presentation` rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is a
+# `.png` copied out of the build's own showcase, so a reviewer sees the picture the
+# build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

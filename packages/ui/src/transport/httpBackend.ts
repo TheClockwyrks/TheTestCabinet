@@ -10,16 +10,20 @@
 import type {
   BackendClient,
   BatchLaunchResult,
+  ComparisonPublishOutcome,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
 } from "../client";
 import { runPhase } from "../client/runPhase";
+import { readOutcome } from "../client/absence";
 import type {
   AssetKind,
   AssetPreview,
   AuthResult,
   BackendIdentity,
+  CaseShowcase,
+  CatalogShowcase,
   Domain,
   Erratum,
   HarnessConfigEntry,
@@ -29,10 +33,18 @@ import type {
   LaunchOrigin,
   LogoFetchResult,
   Model,
+  ModelAccuracy,
   ModelInput,
+  ModelCandidates,
+  ModelListing,
+  ModelProbe,
+  ModelProbeDetail,
+  ModelProbeProviders,
+  ModelProbeTriggerInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  ProviderStats,
   PublishEnqueued,
   PublishProgress,
   PublishResult,
@@ -51,19 +63,47 @@ import type {
   StoredRun,
   TestCase,
   TestType,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "../client";
+import type { AssetSheet, ModelSpec, RunRecord } from "@clockwyrks/run-record";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
-  AssetSheet,
-  ModelSpec,
-  RunRecord,
-} from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+  CabinetStatsResponse,
+  TestCaseGroupOut,
+  TestCaseGroupsResponse,
+} from "@clockwyrks/run-record/backend-api";
 import type {
   BulkCancelOut,
+  GgRunRequest,
+  LaunchAck,
+  LaunchBody,
   StreamOpened,
-} from "@test-cabinet/run-record/jobs-api";
+} from "@clockwyrks/run-record/jobs-api";
+import type {
+  GgConfig,
+  GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
+  GgProgramLanguage,
+} from "@clockwyrks/run-record/gg";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type {
+  GgDashboard,
+  GgDashboardInput,
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryBatch,
+  GgQueryBatchResponse,
+  GgQueryResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
+} from "@clockwyrks/run-record/gg-query";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -77,7 +117,11 @@ import type {
   CoverageSettingsInput,
   HaltResult,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
+import type {
+  Comparison,
+  ComparisonInput,
+} from "@clockwyrks/run-record/comparison";
 import type {
   LadderClimberInput,
   LadderInput,
@@ -89,7 +133,7 @@ import type {
   LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import {
   delJson,
   delVoid,
@@ -105,6 +149,8 @@ import {
   applyScoreExclusions,
   excludedVerdictIds,
   mergeReviewItems,
+  type AestheticRating,
+  type Rating,
 } from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
@@ -135,6 +181,12 @@ interface CatalogEntry {
   difficulty: string;
   tags: string[];
   summary: string | null;
+  // The case's catalog showcase preview (the latest visible version's first
+  // variant, in manifest order, that declares one), with the media list a card's
+  // preview stage loops. The wire shape matches the client's `CatalogShowcase`
+  // exactly, so it is carried through verbatim. Null when no variant of the
+  // latest version declares one; absent on a backend that predates the field.
+  showcase?: CatalogShowcase | null;
 }
 
 // `GET /test-cases/{slug}/versions` — the versions for one case, wrapped in
@@ -142,6 +194,14 @@ interface CatalogEntry {
 interface VersionsResponse {
   slug: string;
   versions: string[];
+}
+
+// One starter-workspace file in a resolved version: its store-relative `source`
+// artifact key (what the version artifacts route serves the bytes by) and the
+// run-root-relative `dest` it is seeded at.
+interface WorkspaceFileDescriptor {
+  source: string;
+  dest: string;
 }
 
 // A spec descriptor in a resolved version (its store-relative `source` key and
@@ -184,6 +244,14 @@ interface ResolvedVersion {
   changelog: string;
   maxRuntimeSeconds: number;
   testType: TestType;
+  // Whether the version is on the engine manifest format (see
+  // `VersionInfo.engineFormat`); with the test type, whether it is validator-rated.
+  engineFormat: boolean;
+  // The engines a run of this version may select, each with the version range the
+  // case accepts it at. Never empty — a version that declares none supports the
+  // engineless run. The range is the host's business, so only the slug is carried
+  // any further.
+  engines: { slug: string }[];
   // The asset shape an asset-generation case produces (camelCase `AssetKind`),
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
@@ -208,6 +276,12 @@ interface ResolvedVersion {
   // Known-issue errata recorded for this version. Absent on a backend that
   // predates the field.
   errata?: Erratum[];
+  // The case's COMMON starter-workspace files, keyed by engine slug (the
+  // engineless set under "none") — a starter project is written against a
+  // runtime, so a case ships one set per engine. A variant that declares its own
+  // `workspace` (below) replaces this set entirely. Absent on a backend that
+  // predates the tables.
+  workspace?: Record<string, WorkspaceFileDescriptor[]>;
   variants: {
     slug: string;
     name: string;
@@ -220,15 +294,25 @@ interface ResolvedVersion {
     // The variant's own additive scoring domains (rated only when this variant is
     // selected, on top of the case's common ones).
     domains?: Domain[];
-    // The absolute URL of this variant's reference implementation, recorded in the
-    // backend's `case_reference_build` table. Null when the variant declares none;
-    // absent on a backend that predates the field.
-    referenceBuild?: string | null;
+    // The absolute URLs of this variant's reference implementations, keyed by the
+    // engine each was built for, from the backend's `case_reference_build` table.
+    // Absent on a backend that predates the field.
+    referenceBuilds?: Record<string, string>;
     // An ASSET-GENERATION variant's published reference frames: the indices whose
     // rendered image + action log `tcab publish-reference` uploaded to the public
     // snapshot bucket. Null when none is published; absent on a backend that
     // predates the field (which is why the whole feature degrades to "no tab").
     referenceSheet?: { frames: number[] } | null;
+    // The variant's own starter-workspace override (same per-engine keying as
+    // the version-level `workspace`), replacing the common set for this variant
+    // when declared. Null/absent when the variant inherits the common workspace.
+    workspace?: Record<string, WorkspaceFileDescriptor[]> | null;
+    // The variant's authored showcase: the description plus the media carousel,
+    // each entry addressed by plain file name against the backend's case-scoped
+    // showcase route. The wire shape matches the client's `CaseShowcase`
+    // exactly, so it is carried through verbatim. Null when the variant declares
+    // none; absent on a backend that predates the field.
+    showcase?: CaseShowcase | null;
   }[];
 }
 
@@ -239,6 +323,11 @@ interface ReviewResponse {
   reviewer: string;
   username?: string | null;
   ratings: StoredReview["ratings"];
+  // The reviewer's run-wide aesthetic tier; absent on a legacy run's review.
+  aesthetic?: StoredReview["aesthetic"];
+  // LEGACY: per-domain aesthetic ratings, carried only by a backend serving old
+  // stored rows; a review's run-wide tier resolves as `aesthetic ?? worst(these)`.
+  aesthetics?: StoredReview["aesthetics"];
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
@@ -254,6 +343,16 @@ interface StoredRunResponse {
   reviews?: ReviewResponse[] | null;
   published?: boolean;
   links?: { sourceRepo: string | null; playableBuild: string | null };
+  // The two rating channels the store decides (see `StoredRun`): the functional
+  // `rating` (validator-decided on a validator-rated run, the review aggregate on
+  // a legacy one), the aggregate `aesthetic`, and which way the functional one
+  // was decided.
+  rating: Rating | null;
+  aesthetic: AestheticRating | null;
+  validatorRated: boolean;
+  // The run's score against its case version's checklist weights (see
+  // `StoredRun.score`); null when the case version isn't ingested.
+  score: RunScoreOut | null;
 }
 
 // `GET /runs`: a page of stored runs plus the cursor for the next page. The
@@ -285,6 +384,8 @@ function toStoredReview(rv: ReviewResponse): StoredReview {
     reviewer: rv.reviewer,
     username: rv.username ?? null,
     ratings: rv.ratings,
+    aesthetic: rv.aesthetic ?? null,
+    aesthetics: rv.aesthetics ?? [],
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
@@ -301,7 +402,16 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     ? { ...r.record, links: { ...r.record.links, ...r.links } }
     : r.record;
   const reviews: StoredReview[] = (r.reviews ?? []).map(toStoredReview);
-  return { id: record.id, record, reviews, published: r.published ?? true };
+  return {
+    id: record.id,
+    record,
+    reviews,
+    published: r.published ?? true,
+    rating: r.rating,
+    aesthetic: r.aesthetic,
+    validatorRated: r.validatorRated,
+    score: r.score,
+  };
 }
 
 // Resolve an account/reviewer id to its profile-picture URL on the auth service
@@ -372,6 +482,18 @@ function ladderPath(id: string, suffix = ""): string {
   return `/ladders/${encodeURIComponent(id)}${suffix}`;
 }
 
+// The backend route serving one raw artifact of a case version by its
+// store-relative key. The key is a `{*path}` wildcard on the backend (it holds
+// slashes), so each segment is escaped individually rather than the key whole.
+function versionArtifactPath(
+  slug: string,
+  version: string,
+  source: string,
+): string {
+  const key = source.split("/").map(encodeURIComponent).join("/");
+  return `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${key}`;
+}
+
 export function createHttpBackend(baseUrl: string): BackendClient {
   return {
     async identity(): Promise<BackendIdentity> {
@@ -398,7 +520,22 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         difficulty: e.difficulty,
         tags: e.tags,
         summary: e.summary,
+        // The catalog showcase preview, verbatim (the wire shape is the
+        // client's). Null on a backend that predates the field, so the catalog
+        // simply renders its placeholder stage.
+        showcase: e.showcase ?? null,
       }));
+    },
+
+    async listTestCaseGroups(): Promise<TestCaseGroupOut[]> {
+      // Served already in display order (rank ascending then name, resolved at
+      // ingest — rank never rides the wire); unwrapped from the `groups`
+      // envelope and consumed as-is.
+      const { groups } = await getJson<TestCaseGroupsResponse>(
+        baseUrl,
+        "/test-case-groups",
+      );
+      return groups;
     },
 
     async listVersions(slug: string): Promise<string[]> {
@@ -409,10 +546,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return versions;
     },
 
-    async resolveVersion(slug: string, version: string): Promise<VersionInfo> {
+    async resolveVersion(
+      slug: string,
+      version: string,
+      engine: string,
+    ): Promise<VersionInfo> {
+      // `engine` selects which engine each variant's prompt is rendered for: a
+      // case's `prompt.hbs` branches on it, so a run surface names the engine its
+      // run recorded and a case surface names the engineless one.
       const r = await getJson<ResolvedVersion>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}?engine=${encodeURIComponent(engine)}`,
       );
       return {
         slug: r.slug,
@@ -425,6 +569,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         changelog: r.changelog,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
+        engineFormat: r.engineFormat,
+        // The engines this version supports, which is exactly what the run form's
+        // engine picker offers.
+        engines: r.engines.map((engine) => engine.slug),
         assetKind: r.assetKind ?? null,
         // Case-level runtime packages (shared by every variant), each with a
         // UI-only description. Absent on a backend that predates the field.
@@ -467,17 +615,40 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
-          // The variant's reference-implementation build URL, carried through
-          // verbatim (already an absolute Cloudflare Pages URL — the backend
-          // records exactly what `tcab publish-reference` deployed). Null when the
-          // variant declares none.
-          referenceBuild: v.referenceBuild ?? null,
+          // The variant's reference-implementation build URLs, one per engine,
+          // carried through verbatim (each already an absolute Cloudflare Pages URL
+          // — the backend records exactly what `tcab publish-reference` deployed).
+          // Empty when the variant declares none.
+          referenceBuilds: v.referenceBuilds ?? {},
           // An asset-generation variant's published reference frames. Carried as
           // indices only — the frame images and action logs live in the public
           // snapshot bucket, addressed by key (see `referenceMediaKey`). Null on a
           // backend that predates the field, so the Reference tab simply never
           // appears rather than pointing at objects that were never published.
           referenceSheet: v.referenceSheet ?? null,
+          // The variant's authored showcase, verbatim (the wire shape is the
+          // client's); the media bytes are addressed separately through the
+          // gallery's `caseShowcaseMediaUrl`. Null when the variant declares
+          // none or the backend predates the field.
+          showcase: v.showcase ?? null,
+          // The variant's EFFECTIVE starter workspace: its own override when it
+          // declares one, else the case's common set — the same fallback a
+          // run's seed applies — selected for the engine this resolution named
+          // (the backend keys the sets by engine slug, the engineless one under
+          // "none", matching the `engine` a caller passes here). Each file
+          // resolves to the version artifacts route on the backend base, so the
+          // Inputs tree fetches a starter file lazily. Empty when the case
+          // seeds no starter file for the engine or the backend predates the
+          // tables.
+          workspace: ((v.workspace ?? r.workspace)?.[engine] ?? []).map(
+            (file) => ({
+              path: file.dest,
+              url: joinUrl(
+                baseUrl,
+                versionArtifactPath(r.slug, r.version, file.source),
+              ),
+            }),
+          ),
         })),
       };
     },
@@ -486,6 +657,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       slug: string,
       version: string,
       variant: string,
+      engine: string,
     ): Promise<Specification> {
       // The backend renders each seeded spec for the selected variant and returns
       // the whole set as one bundle — a template spec's `{{#if (eq variant.slug …)}}`
@@ -493,9 +665,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       // handlebars-free files the harness receives (the spec analogue of the
       // rendered prompt). This is why we no longer fetch the raw `/artifacts` bytes
       // per spec and stitch them here: those are the unrendered templates.
+      // `engine` renders the spec bodies under that engine's branch, as it does the
+      // prompt on the resolved version.
       return getJson<Specification>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}?engine=${encodeURIComponent(engine)}`,
       );
     },
 
@@ -571,6 +745,86 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         baseUrl,
         `/models/seed?runId=${encodeURIComponent(runId)}`,
       );
+    },
+
+    async lookupOpenrouterModel(
+      slug: string,
+      token: string,
+    ): Promise<ModelListing> {
+      return getJson<ModelListing>(
+        baseUrl,
+        `/models/openrouter?slug=${encodeURIComponent(slug)}`,
+        token,
+      );
+    },
+
+    async listModelProbes(slug: string): Promise<ModelProbe[]> {
+      const body = await getJson<{ probes: ModelProbe[] }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+      );
+      return body.probes;
+    },
+
+    async getModelProbe(id: string): Promise<ModelProbeDetail> {
+      return getJson<ModelProbeDetail>(
+        baseUrl,
+        `/model-probes/${encodeURIComponent(id)}`,
+      );
+    },
+
+    async triggerModelProbe(
+      slug: string,
+      input: ModelProbeTriggerInput,
+      token: string,
+    ): Promise<ModelProbe> {
+      const body = await postJson<{ probe: ModelProbe }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+        input,
+        token,
+      );
+      return body.probe;
+    },
+
+    async listModelProbeProviders(
+      slug: string,
+      token: string,
+    ): Promise<ModelProbeProviders> {
+      return getJson<ModelProbeProviders>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probe-providers`,
+        token,
+      );
+    },
+
+    async getModelCandidates(
+      slug: string,
+      token: string,
+    ): Promise<ModelCandidates> {
+      return getJson<ModelCandidates>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/candidates`,
+        token,
+      );
+    },
+
+    async getProviderStats(): Promise<ProviderStats> {
+      // The wire shape matches `ProviderStats` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ProviderStats>(baseUrl, "/stats/providers");
+    },
+
+    async getModelAccuracy(): Promise<ModelAccuracy> {
+      // The wire shape matches `ModelAccuracy` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ModelAccuracy>(baseUrl, "/stats/model-accuracy");
+    },
+
+    async getCabinetStats(): Promise<CabinetStatsResponse> {
+      // The wire shape matches `CabinetStatsResponse` field-for-field
+      // (camelCase), no envelope to unwrap.
+      return getJson<CabinetStatsResponse>(baseUrl, "/stats/cabinet");
     },
 
     async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
@@ -660,7 +914,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       input: CoverageSettingsInput,
       token: string,
     ): Promise<CoverageSettings> {
-      // The backend clamps the target, so it echoes back what it actually stored
+      // The backend clamps a bound, so it echoes back what it actually stored
       // rather than what was asked for — display that, not the submitted value.
       return putJson<CoverageSettings>(
         baseUrl,
@@ -881,6 +1135,238 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
+    // The operator's saved gg configurations — named capability sets the account
+    // section registers and the new-run form launches once `gg` is the chosen
+    // orchestrator. Per-account, so every call carries the bearer token.
+    async listGgConfigs(token: string): Promise<GgConfig[]> {
+      return getJson<GgConfig[]>(baseUrl, "/gg/configs", token);
+    },
+
+    async createGgConfig(
+      input: GgConfigInput,
+      token: string,
+    ): Promise<GgConfig> {
+      return postJson<GgConfig>(baseUrl, "/gg/configs", input, token);
+    },
+
+    async updateGgConfig(
+      id: string,
+      input: GgConfigInput,
+      token: string,
+    ): Promise<GgConfig> {
+      return putJson<GgConfig>(
+        baseUrl,
+        `/gg/configs/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgConfig(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
+    },
+
+    // The operator's saved gg agents — agent profiles authored on their own, which a
+    // configuration imports and may override locally. Per-account, like the
+    // configurations that import them.
+    async listGgAgents(token: string): Promise<GgSavedAgent[]> {
+      return getJson<GgSavedAgent[]>(baseUrl, "/gg/agents", token);
+    },
+
+    async createGgAgent(
+      input: GgSavedAgentInput,
+      token: string,
+    ): Promise<GgSavedAgent> {
+      return postJson<GgSavedAgent>(baseUrl, "/gg/agents", input, token);
+    },
+
+    async updateGgAgent(
+      id: string,
+      input: GgSavedAgentInput,
+      token: string,
+    ): Promise<GgSavedAgent> {
+      return putJson<GgSavedAgent>(
+        baseUrl,
+        `/gg/agents/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgAgent(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/agents/${encodeURIComponent(id)}`, token);
+    },
+
+    // The gg analysis query surface. The body is the *compiled* query — the client
+    // owns the parser, so nothing about what a query means is decided twice.
+    async runGgQuery(query: GgQuery, token: string): Promise<GgQueryResponse> {
+      return postJson<GgQueryResponse>(baseUrl, "/gg/query", query, token);
+    },
+
+    // A whole board in one request. Not an optimisation: the batch is what makes
+    // every panel of a board answer from the same index read, so two panels can
+    // never disagree because the corpus refreshed between them.
+    async runGgQueryBatch(
+      batch: GgQueryBatch,
+      token: string,
+    ): Promise<GgQueryBatchResponse> {
+      return postJson<GgQueryBatchResponse>(
+        baseUrl,
+        "/gg/query/batch",
+        batch,
+        token,
+      );
+    },
+
+    async getGgFields(token: string): Promise<GgFieldCatalog> {
+      return getJson<GgFieldCatalog>(baseUrl, "/gg/fields", token);
+    },
+
+    // The operator's saved views over the corpus. Per-account, so every call carries
+    // the bearer token as an owner filter rather than only as a gate.
+    async listGgSavedQueries(token: string): Promise<GgSavedQuery[]> {
+      return getJson<GgSavedQuery[]>(baseUrl, "/gg/saved-queries", token);
+    },
+
+    async createGgSavedQuery(
+      input: GgSavedQueryInput,
+      token: string,
+    ): Promise<GgSavedQuery> {
+      return postJson<GgSavedQuery>(baseUrl, "/gg/saved-queries", input, token);
+    },
+
+    async updateGgSavedQuery(
+      id: string,
+      input: GgSavedQueryInput,
+      token: string,
+    ): Promise<GgSavedQuery> {
+      return putJson<GgSavedQuery>(
+        baseUrl,
+        `/gg/saved-queries/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgSavedQuery(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/gg/saved-queries/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listGgDashboards(token: string): Promise<GgDashboard[]> {
+      return getJson<GgDashboard[]>(baseUrl, "/gg/dashboards", token);
+    },
+
+    async getGgDashboard(id: string, token: string): Promise<GgDashboard> {
+      return getJson<GgDashboard>(
+        baseUrl,
+        `/gg/dashboards/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async createGgDashboard(
+      input: GgDashboardInput,
+      token: string,
+    ): Promise<GgDashboard> {
+      return postJson<GgDashboard>(baseUrl, "/gg/dashboards", input, token);
+    },
+
+    async updateGgDashboard(
+      id: string,
+      input: GgDashboardInput,
+      token: string,
+    ): Promise<GgDashboard> {
+      return putJson<GgDashboard>(
+        baseUrl,
+        `/gg/dashboards/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgDashboard(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`, token);
+    },
+
+    // gg's reference, in two calls because it is two documents: the language-independent
+    // index (families, tools, the arm list), and one arm's responses-as-code surface.
+    //
+    // No token on either: the documents are static and caller-independent, so the backend
+    // serves them to anyone who can reach it. That is also why they are fetched rather
+    // than bundled — the deployment projects them from the gg *it* ships, so the answer to
+    // "what does this deployment's gg tell models" comes from that deployment and not from
+    // whatever gg this console was built beside.
+    async ggReference(): Promise<GgReference> {
+      return getJson<GgReference>(baseUrl, "/gg/reference");
+    },
+
+    // The language id is a `GgProgramLanguage`, so it is already one of the eleven the
+    // wire knows — but it is still encoded, because a path segment built by concatenation
+    // is a habit worth not having, and the backend's own `404` is the check that decides.
+    async ggReferenceApi(language: GgProgramLanguage): Promise<GgReferenceApi> {
+      return getJson<GgReferenceApi>(
+        baseUrl,
+        `/gg/reference/${encodeURIComponent(language)}`,
+      );
+    },
+
+    async listComparisons(token: string): Promise<Comparison[]> {
+      return getJson<Comparison[]>(baseUrl, "/comparisons", token);
+    },
+
+    async getComparison(id: string, token: string): Promise<Comparison> {
+      return getJson<Comparison>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async createComparison(
+      input: ComparisonInput,
+      token: string,
+    ): Promise<Comparison> {
+      return postJson<Comparison>(baseUrl, "/comparisons", input, token);
+    },
+
+    async updateComparison(
+      id: string,
+      input: ComparisonInput,
+      token: string,
+    ): Promise<Comparison> {
+      return putJson<Comparison>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteComparison(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/comparisons/${encodeURIComponent(id)}`, token);
+    },
+
+    async publishComparison(
+      id: string,
+      token: string,
+    ): Promise<ComparisonPublishOutcome> {
+      // `POST /comparisons/{id}/publish` marks the comparison published and
+      // best-effort enqueues one ordinary publish job per publishable arm run,
+      // resolving which were enqueued and which were skipped (with why). It does
+      // *not* return the updated comparison (see `ComparisonPublishOutcome`'s
+      // doc in clients.ts) — the caller re-fetches or flips `published` locally.
+      return postJson<ComparisonPublishOutcome>(
+        baseUrl,
+        `/comparisons/${encodeURIComponent(id)}/publish`,
+        {},
+        token,
+      );
+    },
+
     async listMyReviews(
       opts: { limit?: number; offset?: number } | undefined,
       token: string,
@@ -938,13 +1424,24 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.offset != null) params.set("offset", String(opts.offset));
       if (opts?.state) params.set("state", opts.state);
       if (opts?.testCase) params.set("testCase", opts.testCase);
+      // Like `versions`, the case list rides as one comma-separated param
+      // (`testCases=meltdown,valence`), matching the backend's split-and-trim.
+      if (opts?.testCases?.length)
+        params.set("testCases", opts.testCases.join(","));
       if (opts?.model) params.set("model", opts.model);
       if (opts?.harness) params.set("harness", opts.harness);
       if (opts?.variant) params.set("variant", opts.variant);
       if (opts?.version) params.set("version", opts.version);
+      // The list rides as one comma-separated param
+      // (`versions=v1.0.0,v1.1.0`), matching the backend's split-and-trim.
+      if (opts?.versions?.length)
+        params.set("versions", opts.versions.join(","));
+      if (opts?.engine) params.set("engine", opts.engine);
+      if (opts?.ggConfigId) params.set("ggConfigId", opts.ggConfigId);
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");
+      if (opts?.aesthetic) params.set("aesthetic", opts.aesthetic);
       if (opts?.q) params.set("q", opts.q);
       if (opts?.sort) params.set("sort", opts.sort);
       if (opts?.dir) params.set("dir", opts.dir);
@@ -981,6 +1478,33 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         onProgress,
       );
       return { events, raw: null };
+    },
+
+    async readCodeAnalysis(id: string): Promise<CodeAnalysisDocument | null> {
+      // Same shape as the replay read, and for the same reasons: the backend serves the
+      // stored document as JSON and 404s for a run that has none — which is every run
+      // recorded before the analyzer shipped, since the corpus is not backfilled. A raw
+      // fetch lets that 404 resolve to `null` (a tidy "not analysed" state) while any
+      // other non-2xx still surfaces as an error.
+      //
+      // The request advertises no `accept-encoding` of its own: the browser always sends
+      // one, and the route negotiates the stored gzip against the *request's* header.
+      //
+      // The document is not version-tagged the way a replay record is, and does not need
+      // to be: it carries `analyzerVersion` as data (which generation computed the
+      // figures, so a mixed corpus is visible rather than a silent step change), while
+      // the document's *shape* is the contract type this app is compiled against.
+      const res = await fetch(
+        joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/code-analysis`),
+        { headers: { accept: "application/json" } },
+      );
+      // Classified through the shared seam, so this resolver's `null` means the
+      // one thing it is allowed to mean and its failures carry their status as
+      // data like every other read's.
+      if (readOutcome(res, `code analysis for run ${id}`) === "absent") {
+        return null;
+      }
+      return (await res.json()) as CodeAnalysisDocument;
     },
   };
 }
@@ -1040,7 +1564,7 @@ interface ClientConfigResponse {
   // when adversarial execution is not served (a single-box dev setup).
   arenaUrl?: string | null;
   // Grafana's base URL — non-null when the deployment runs the observability
-  // stack — or null when it does not (local/desktop, or any overlay without the
+  // stack — or null when it does not (a local stack, or any overlay without the
   // observability component). Used to link a run to the traces it emitted.
   grafanaUrl?: string | null;
   // The public **read** base URL of the snapshot bucket (the R2 bucket the backend
@@ -1070,14 +1594,24 @@ interface LaunchBatchAckResponse {
 // The backend's `LaunchBody` (camelCase) for one run. Shared by the single
 // (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
 // drift on how a `LaunchConfig` is put on the wire.
-function launchBodyOf(config: LaunchConfig) {
+function launchBodyOf(config: LaunchConfig): LaunchBody {
   return {
     testCase: config.testCase,
     version: config.version,
     variant: config.variant,
-    harness: config.harness,
+    // The console collects the slug from its own harness catalog, which mirrors
+    // the contract's `HarnessSlug` in the same order, so the narrowing is a
+    // restatement of what the picker can produce rather than a claim about
+    // arbitrary input.
+    harness: config.harness as LaunchBody["harness"],
     model: config.modelId,
     orchestrator: config.orchestrator,
+    // Omitted entirely by a caller that pins no engine — a comparison arm, which
+    // varies the combination and not the runtime, means the `none` default, which the
+    // backend spells as an absent field. The run form and a coverage plan's cells both
+    // name one. Typing this return against the contract's own `LaunchBody` is what
+    // keeps a field the console collects from being silently dropped here.
+    ...(config.engine ? { engine: config.engine } : {}),
     ...(config.maxRuntimeOverride != null
       ? { maxRuntimeSeconds: config.maxRuntimeOverride }
       : {}),
@@ -1408,17 +1942,32 @@ export function createBackendExec(
       }));
     },
 
+    async launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck> {
+      // Enqueue a gg run on its own endpoint (`POST /gg/runs`); the dispatcher
+      // creates the gg driver Job. gg is configured by the request's capability
+      // set rather than a `(harness, model, orchestrator)` tuple, so — unlike
+      // `launchRun` — the `GgRunRequest` is already the exact wire body (camelCase)
+      // and is posted verbatim. Same account gate as `POST /jobs`: the signed-in
+      // account's token rides along as `Authorization: Bearer` (a missing/invalid
+      // token is rejected `401`). Unlike `launchRun`, the whole ack is returned —
+      // its `statusUrl`/`liveUrl` locate the run — since the console watches a gg
+      // run through the ack's `jobId`.
+      return postJson<LaunchAck>(backendUrl, "/gg/runs", req, token);
+    },
+
     async getRun(runId: string): Promise<RunJob> {
       // The job status carries the record *id*, not the record; read the record
-      // back from the run store when the job succeeded so the caller still gets a
-      // populated `RunJob`.
+      // back from the run store whenever the job has one so the caller gets a
+      // populated `RunJob`. That is not only the succeeded case: a failed job
+      // retains the failure record its driver built, and a canceled one retains the
+      // partial record for the killed run.
       const status = await getJson<JobStatusResponse>(
         backendUrl,
         `/jobs/${encodeURIComponent(runId)}`,
       );
       const state = mapJobState(status.state);
       let record: RunRecord | null = null;
-      if (state === "completed" && status.recordId) {
+      if (status.recordId) {
         record = (await resolveBuild(await backend.readRun(status.recordId)))
           .record;
       }
@@ -1749,6 +2298,9 @@ export function createBackendExec(
         `/runs/${encodeURIComponent(id)}/reviews`,
         {
           ratings: review.ratings,
+          // The run-wide aesthetic tier; omitted (not null) on a legacy run's
+          // review, which has no aesthetic channel for the backend to accept.
+          aesthetic: review.aesthetic ?? undefined,
           writeup: review.writeup,
           checklist: review.checklist,
           // Only meaningful on an edit; the backend ignores it on a first submission.
@@ -1782,6 +2334,24 @@ export function createBackendExec(
         backendUrl,
         `/runs/${encodeURIComponent(id)}`,
         token,
+      );
+    },
+
+    async listUnreadableRuns(opts?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<UnreadableRunPage> {
+      // `GET /runs/unreadable` is an open read like the other run reads, and is the
+      // one listing that serves the runs whose records the backend cannot decode. It
+      // carries the same numbered pager (limit + offset) as the other worklists, and
+      // its `total` counts every such run so a pager sized from it lands on rows.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      return getJson<UnreadableRunPage>(
+        backendUrl,
+        `/runs/unreadable${query ? `?${query}` : ""}`,
       );
     },
 
@@ -1843,6 +2413,9 @@ export function createBackendExec(
     validationMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "validation", file);
     },
+    showcaseMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "showcase", file);
+    },
 
     // The whole run tree as one gzip tar, served by the artifact service (which
     // holds the tree; the control-plane backend is not in the artifact path). Null
@@ -1872,36 +2445,43 @@ async function streamLive(
 ): Promise<void> {
   const backend = createHttpBackend(backendUrl);
   try {
-    const res = await fetch(
-      joinUrl(backendUrl, `/jobs/${encodeURIComponent(runId)}/live`),
-      {
-        headers: { accept: "application/x-ndjson" },
-        signal: controller.signal,
-      },
-    );
-    if (!res.ok || !res.body) {
-      throw new Error(`live stream failed: ${res.status}`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (line) emitLine(line, handlers);
+    // The connection can drop mid-body without the run being over — a
+    // port-forward or proxy resetting it, a browser giving up on a stalled read
+    // (Chromium reports either as `TypeError: Error in input stream`). That is a
+    // transport fault, not a run outcome, so it is never surfaced as one: the job
+    // is re-read, and a run that has since ended resolves to its real outcome
+    // below, while a run still going is re-joined. The backend replays the whole
+    // backlog to a new subscriber, so the events already forwarded are skipped by
+    // count — the backlog is append-only and in order, which makes the count the
+    // resume cursor.
+    const cursor: LiveCursor = { delivered: 0 };
+    let status: JobStatusResponse | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await readLiveStream(
+          backendUrl,
+          runId,
+          handlers,
+          controller.signal,
+          cursor,
+        );
+        break;
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        status = await getJson<JobStatusResponse>(
+          backendUrl,
+          `/jobs/${encodeURIComponent(runId)}`,
+        ).catch(() => null);
+        if (status && mapJobState(status.state) !== "running") break;
+        if (attempt >= LIVE_RECONNECT_ATTEMPTS) throw e;
+        status = null;
+        await delay(LIVE_RECONNECT_DELAY_MS, controller.signal);
       }
     }
-    const tail = buffer.trim();
-    if (tail) emitLine(tail, handlers);
 
     // The stream closes when the run reaches a terminal state; read the job back
     // to learn how it ended and (on success) the produced record to open.
-    const status = await getJson<JobStatusResponse>(
+    status ??= await getJson<JobStatusResponse>(
       backendUrl,
       `/jobs/${encodeURIComponent(runId)}`,
     );
@@ -1913,9 +2493,21 @@ async function streamLive(
     } else if (status.state === "canceled") {
       // An operator killed the run. Report it as an intentional stop rather than a
       // fault, so the monitor shows "canceled" instead of "failed".
+      //
+      // The killed run's record is not attached yet: the backend closes this stream
+      // the instant the cancel lands, and the driver only posts the record once it
+      // has actually stopped the harness a few seconds later. Wait briefly for it so
+      // the monitor can offer the retained run rather than dead-ending, and settle
+      // for `null` if it never arrives (the driver died with the pod, say) — the run
+      // list is the fallback either way.
+      const recordId = await awaitCanceledRecordId(backendUrl, runId);
+      const record = recordId
+        ? (await resolveBuild(await backend.readRun(recordId))).record
+        : null;
       handlers.onDone({
         kind: "canceled",
         message: status.detail ?? "Run canceled.",
+        record,
       });
     } else {
       handlers.onDone({
@@ -1926,6 +2518,149 @@ async function streamLive(
   } catch (e) {
     if (controller.signal.aborted) return;
     handlers.onError?.(e);
+  }
+}
+
+// How many times a dropped live stream is re-joined before the drop is reported,
+// and the pause before each attempt. The drops seen in practice are momentary
+// (a port-forward resetting one connection), so a short pause is enough; the
+// cap keeps a backend that is genuinely unreachable from being hammered forever.
+const LIVE_RECONNECT_ATTEMPTS = 5;
+const LIVE_RECONNECT_DELAY_MS = 1_000;
+
+// How far into a job's event backlog a subscriber has forwarded — the resume
+// point for a re-joined stream. Advanced in place as lines are forwarded, so it
+// stays correct when the read fails partway through.
+interface LiveCursor {
+  delivered: number;
+}
+
+// Open `GET /jobs/{id}/live` and forward every line until the backend closes it,
+// skipping the first `cursor.delivered` events (a re-joined stream's replayed
+// backlog) and advancing the cursor past each event forwarded. Rejects with the
+// transport's error when the read fails before the backend closed the stream.
+async function readLiveStream(
+  backendUrl: string,
+  runId: string,
+  handlers: RunSubscription,
+  signal: AbortSignal,
+  cursor: LiveCursor,
+): Promise<void> {
+  const res = await fetch(
+    joinUrl(backendUrl, `/jobs/${encodeURIComponent(runId)}/live`),
+    {
+      headers: { accept: "application/x-ndjson" },
+      signal,
+    },
+  );
+  // Split, because a 2xx with no readable body is a different condition from a
+  // refused request and the merged message reported the wrong one ("live stream
+  // failed: 200").
+  if (!res.ok) {
+    throw new Error(
+      `live stream failed for run ${runId}: HTTP ${res.status} ${res.statusText}`,
+    );
+  }
+  if (!res.body) {
+    throw new Error(`live stream for run ${runId} carried no body`);
+  }
+  // Previews are not counted: the backend replays only the latest frame per
+  // kind, and re-delivering one is harmless.
+  let seen = 0;
+  const forward = (line: string): void => {
+    if (isPreviewLine(line)) {
+      emitLine(line, handlers);
+      return;
+    }
+    seen += 1;
+    if (seen <= cursor.delivered) return;
+    emitLine(line, handlers);
+    cursor.delivered = seen;
+  };
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) forward(line);
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) forward(tail);
+}
+
+// Whether a live-stream line is an asset-preview frame rather than an event.
+function isPreviewLine(line: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as { type?: unknown }).type === "asset_preview"
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Wait `ms`, resolving early (without error) if `signal` aborts meanwhile so an
+// unsubscribed monitor never lingers on a reconnect pause.
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// How long the monitor waits for a killed run's record to be attached, and how
+// often it re-reads the job while it waits. The driver notices a cancellation on
+// its own poll (a few seconds), stops the harness, uploads whatever partial
+// artifacts it collected, and only then posts the record — so the window is
+// seconds, not instant. The cap keeps a driver that died with its pod from hanging
+// the monitor on a record that is never coming.
+const CANCELED_RECORD_WAIT_MS = 30_000;
+const CANCELED_RECORD_POLL_MS = 1_000;
+
+// Poll a canceled job for the id of the partial record its driver hands back, up to
+// {@link CANCELED_RECORD_WAIT_MS}. Resolves to the id once it lands, or `null` if
+// the wait runs out (or the job cannot be re-read — a transient failure here is not
+// worth surfacing over an already-terminal run).
+async function awaitCanceledRecordId(
+  backendUrl: string,
+  runId: string,
+): Promise<string | null> {
+  const deadline = Date.now() + CANCELED_RECORD_WAIT_MS;
+  for (;;) {
+    try {
+      const status = await getJson<JobStatusResponse>(
+        backendUrl,
+        `/jobs/${encodeURIComponent(runId)}`,
+      );
+      if (status.recordId) return status.recordId;
+    } catch {
+      // Keep waiting; the next tick re-reads.
+    }
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) =>
+      setTimeout(resolve, CANCELED_RECORD_POLL_MS),
+    );
   }
 }
 
@@ -1998,8 +2733,15 @@ async function streamPublish(
   const res = await fetch(joinUrl(backendUrl, liveUrl), {
     headers: { accept: "application/x-ndjson" },
   });
-  if (!res.ok || !res.body) {
-    throw new Error(`publish stream failed: ${res.status}`);
+  // Split for the same reason as the live stream: a 2xx with no readable body is
+  // its own condition, and reporting it as the status would name a success.
+  if (!res.ok) {
+    throw new Error(
+      `publish stream failed: HTTP ${res.status} ${res.statusText}`,
+    );
+  }
+  if (!res.body) {
+    throw new Error("publish stream carried no body");
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -2026,7 +2768,9 @@ async function streamPublish(
     }
     if (parsed.type === "result") {
       if (parsed.state === "failed") {
-        throw new Error(parsed.detail ?? "Publish failed.");
+        // The publisher's own reason where it gave one; it already reads as a
+        // sentence, so it is not re-wrapped.
+        throw new Error(parsed.detail ?? "publish failed");
       }
       terminal = {
         published: true,
@@ -2053,9 +2797,7 @@ async function streamPublish(
   // The stream closes only after the terminal result; its absence means the
   // connection dropped before the publish reported an outcome.
   if (!terminal) {
-    throw new Error(
-      "The publish stream ended before reporting a result — retry to observe it.",
-    );
+    throw new Error("publish stream ended before reporting a result");
   }
   return terminal;
 }

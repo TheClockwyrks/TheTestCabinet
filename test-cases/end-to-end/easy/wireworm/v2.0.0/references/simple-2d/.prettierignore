@@ -1,0 +1,19 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, and the vendored engine.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+.vendor/
+package-lock.json
+
+# Seeded reading material rather than this project's source: the specification,
+# the artwork that ships beside it, and the engine's own documentation.
+specs/
+assets/
+engine/
+
+# Prose. The formatter handles code; Markdown, including the showcase
+# description, is left to its own linter.
+*.md

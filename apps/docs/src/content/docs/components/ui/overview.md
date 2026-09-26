@@ -2,138 +2,192 @@
 title: Overview
 ---
 
-The UI library (`@test-cabinet/ui`, in `packages/ui`) is the shared frontend
-code for The Test Cabinet's three GUIs — the [public site](/components/site/overview/),
-the [web console](/components/web/overview/), and the
-[Tauri app](/components/tauri/overview/). It hosts the **entire routed gallery
-application** plus the presentational primitives those GUIs render, so the three
-apps are thin hosts over one shared app rather than three separate
-implementations.
+The UI library (`@clockwyrks/ui`, in `packages/ui`) is the shared frontend code
+for The Test Cabinet's two GUIs: the [public
+site](/components/site/overview/) and the [web
+console](/components/web/overview/). It hosts the entire routed gallery
+application plus the primitives those GUIs render, so both are thin hosts over
+one application.
 
-It is a code-sharing library, not a component itself: it ships no service and
-runs in no process of its own. Each GUI mounts the shared app inside its own
-router and supplies it a data source; the [site](/components/site/overview/),
-[web](/components/web/overview/), and [Tauri](/components/tauri/overview/) hosts
-differ only in (a) where that data comes from and (b) whether they enable run
-execution.
+It ships no service and runs in no process of its own. Each GUI mounts the
+shared app inside its own router and supplies it a data source, and the two
+hosts differ only in where that data comes from and which capabilities they
+enable.
 
-## What it provides
+## Subpath entries
 
-The package exposes three subpath entries: its root (`@test-cabinet/ui`) ships
-the primitives and the rating model; `@test-cabinet/ui/app` ships the full routed
-gallery application; and `@test-cabinet/ui/client` ships the backend/worker client
-interfaces. A host imports only what it needs.
+A host imports only the entries it needs.
 
-- **The routed gallery application** (`./app`) — the whole site UI: the routed
-  pages (Home, Test Cases, Runs, Models, About), the app shell and topbar, and
-  the synthwave backdrop, *plus* the run-execution screens (new run, live
-  monitor, review, the account and sign-in/registration pages, the Connections
-  settings) and the notification subsystem. The topbar carries the console-only
-  affordances — the notifications bell and the account control (the signed-in
-  user, linking to the account page, or a sign-in prompt) — beside the Settings
-  gear. All three GUIs mount the same `GalleryApp` component. It reads its data and its
-  capabilities from context, so a host varies it only by what it provides — not
-  by swapping out screens. There is no longer a separate "console" build: the
-  consoles *are* this gallery app with run execution turned on.
-- **The data and capability context** — `GalleryDataProvider` and the
-  `GalleryData` it carries. Each host builds this from its own source: the static
-  [site](/components/site/overview/) from the build-time public snapshot, and the
-  [web](/components/web/overview/) and [Tauri](/components/tauri/overview/)
-  consoles live from a backend (via the shared `useLiveGallery`
-  assembly). A `canExecute` flag on this value is what gates the run-execution
-  surface — the new-run button, the live monitor, the editable review, the
-  account and sign-in/registration pages with their topbar account control, the
-  Connections settings, and the notification layer — so the static site renders
-  the same component with those parts off. The value also resolves each run's
-  submitted [proof-of-implementation](/components/core/validation/#proofs) media to
-  loadable URLs (a published run from the backend; a produced run over HTTP from
-  the [artifact service](/components/artifacts/overview/)'s proof endpoint; the
-  site from snapshot assets), which the reworked review flow and the run **Proof**
-  tab display beside the expected references. It resolves an
-  [asset-generation](/testing/asset-generation/overview/) run's media — the
-  regenerated, target, and preview images plus the action log, and for a
-  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
-  emitted per-part `.glb` and `rig.json` — the same way (a
-  published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
-  run from the artifact service's matching endpoint; the site from snapshot
-  assets), which the **Verdict** tab's result view shows side by side. A voxel run
-  additionally renders an **interactive 3D model** through the `VoxelViewer`
-  component — a lazy-loaded React Three Fiber canvas that mounts the
-  [voxel-runtime](/components/voxel-runtime/overview/)'s `VoxelRig` (a `voxel-model`
-  auto-rotating; a `voxel-animation` orbit-drag with a range control per caller
-  joint, e.g. `turret_yaw`, playback of each auto-play joint, and a play button per
-  case-authored **predetermined animation**), falling back to the emitted
-  preview PNG (rendered by the binary with wgpu) where WebGL is unavailable or reduced motion is requested so the run
-  stays reviewable. Each 3D view carries an **expand-to-fullscreen** button: inline,
-  scroll-to-zoom is disabled (the model rotates but does not zoom); expanded, both
-  scroll-to-zoom and grab-to-rotate are enabled. The **live monitor** renders a
-  voxel run's in-progress model the same way — rebuilding it in 3D from the streamed
-  `.glb` bytes (decoded with the same `parseGlb`) after each operation (a **Scene** view assembling every part whose
-  mount location is known, and a **Model** view for one part at a time) instead of
-  the emitted preview PNG. (Both
-  consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
-  desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
-- **Presentational primitives** (`./` root) — the brand-neutral building blocks
-  every GUI uses: the Markdown renderer, the rating badge, panels, the metric
-  tile, the spec/reference accordion, pagination, the chart wrapper, and the
-  modal `Dialog` (see [Dialogs](#dialogs)).
-- **The client interfaces** (`./client`) — the `BackendClient` and
-  `WorkerClient` interfaces the consoles are written against, plus the React
-  contexts that supply them. The app depends only on these interfaces; each
-  console provides a transport (HTTP in the web app, Tauri commands in the desktop
-  app) behind them. This is what lets one app serve both consoles.
-- **The rating model** (`./` root) — the `Rating` tiers and their display
-  metadata, mirroring the [reviews](/components/core/results/#reviews) model in
-  the core, so every GUI shows ratings identically.
+| Entry                       | Contents                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| `@clockwyrks/ui`            | Presentational primitives, the rating model, and model-id helpers. |
+| `@clockwyrks/ui/app`        | The full routed gallery application and its data context.          |
+| `@clockwyrks/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
+| `@clockwyrks/ui/transport`  | The HTTP transports the web console mounts.                        |
+| `@clockwyrks/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
+
+## The gallery application
+
+One routed application serves every host. It covers the gallery a reader
+browses, the run-execution surface an operator launches, watches, reviews and
+publishes runs from, and the notification subsystem. It reads its data and its
+capabilities from context, so a host varies it by what it provides rather than
+by swapping screens. Route paths are built through the exported route builders,
+so each path is defined in one place.
+
+## The data and capability context
+
+Each host builds the gallery data value from its own source. The static site
+builds it from the build-time public snapshot. The web console builds it live
+from a backend.
+
+A `canExecute` flag on that value gates the run-execution surface, including
+authentication and notifications. Optional capability members gate the rest.
+`arena` is present on a host that can run adversarial matches and tournaments.
+A host that omits one hides the corresponding surface.
+
+The value also resolves a run's media to loadable URLs, whichever host is
+asking: proof-of-implementation media, an asset-generation run's regenerated,
+target and preview images with its action log, a voxel run's per-part `.glb` and
+`rig.json`, a particle run's `system.json`, and case-scoped validation
+baselines. The site resolves these from snapshot assets, a console from the
+backend for a published run and from the [artifact
+service](/components/artifacts/overview/) for a produced one.
+
+A run's inputs resolve one variant of one exact case version rendered for one
+engine, using the run's own recorded version and engine. A console resolves them
+from the backend's version and specs routes. The site resolves them from the
+snapshot's case document for that version.
+
+Listing pages are answered through a paged, filtered, sorted query the host
+implements. A console forwards it to the backend's offset endpoint. The site
+answers it from its in-memory summary index with the same semantics, so paging
+is identical on either host.
+
+## The case detail coordinate
+
+A test case's detail page is anchored to one selected coordinate: a version, a
+variant of that version, and an engine that version supports. The coordinate
+lives in the URL and travels across the whole page, so everything describing the
+deliverable describes the same one and any selection is a link someone else can
+open. Selection is canonical: an unknown version resolves to the latest, and a
+variant or engine the selected version does not declare resolves to that
+version's default. A run is launched against the resolved coordinate.
+
+A description ships with the version it describes, so the page shows the
+anchored version's own description. While an older version is anchored, the
+page names the latest version and links to it, and the link re-anchors the page
+to that version.
+
+The page's run aggregations scope relative to the anchored coordinate rather
+than selecting one of their own, and that scope lives in the URL alongside it. A
+view widened across engines lists each engine separately rather than folding
+them, since runs under different engines measure different work.
+
+A case's changelog and errata cover every version regardless of the anchor.
+
+## The run log
+
+Every listing of runs renders one shared log. A listing that includes runs still
+in flight lists them apart from the finished rows, since a run with no record
+yet has nothing to sort or page by.
+
+A run's duration counts from its `startedAt` and from nothing else, which keeps
+queued time out of it, and the count begins when the run reaches `starting`. It
+advances off one clock the whole log shares, and the log holds that clock only
+while a duration is moving.
+
+### Deleting a run
+
+An unpublished run is deletable and a published one is not, which is the rule the
+backend enforces and the only one there is. A surface offering the action decides
+from the run's own publish state, read off the record or the summary card it has
+already resolved, rather than from the console's produced worklist — that worklist
+is a cache of the runs it has caught up with, and it lags a run whose record is
+still being written, which a canceled run's is for as long as its driver takes to
+stop the harness, drain telemetry and hand the partial record back. A surface
+holding nothing but a run id falls back to the worklist.
+
+The affordance is hidden only where the host can delete no run at all, and is
+shown disabled with its reason wherever the host could delete but this run
+currently cannot be, so a state that will pass on its own is visible rather than
+absent.
+
+A cancellation's follow-up read is deferred accordingly: every refresh fired when
+the cancel returns is premature, so the console watches the canceled runs for the
+records their drivers hand back and re-reads as they land, whether the
+cancellation came from one run's control or from a bulk sweep.
+
+## Asset viewers
+
+A produced asset is rendered interactively rather than as a still image. A voxel
+run mounts the [voxel runtime](/components/voxel-runtime/overview/)'s rig in a
+React Three Fiber canvas, where its joints are posed and its model-authored
+animations played. A particle run mounts the [particle
+runtime](/components/particle-runtime/overview/)'s player and simulates the
+effect live. Each 3D view falls back to the emitted preview image where WebGL is
+unavailable or reduced motion is requested, so a run stays reviewable.
+
+## Client interfaces and transports
+
+`./client` declares the backend and worker client interfaces the console is
+written against, plus the React contexts that supply them and the
+authentication context. The app depends only on these interfaces.
+
+`./transport` is the single implementation of the backend wire protocol: the
+HTTP backend and execution clients, the HTTP arena client, and the helpers that
+read the artifact, arena, snapshot, and Grafana URLs the backend reports from
+`GET /config`. The web console mounts these transports.
+
+## Immutable asset caching
+
+A produced run's artifacts do not change once created, so the app resolves each
+by URL through a process-wide cache that survives a component unmounting.
+Leaving a view and returning to it re-reads the cache rather than the network,
+and a cache hit renders without a loading state. A failed fetch is evicted from
+the cache so it is retried.
+
+## Loading, absence and failure
+
+A surface shows a loading state while its data is in flight, and names an entity
+as not found once the read has settled without it. A read that failed is
+reported as a failure, distinct from both.
+
+Those three states decide only what a surface with nothing to show renders. Data
+already resolved is rendered whatever the latest read did: a read that failed
+over a list already on screen is stale data, reported beside the rows rather
+than in place of them. A source keeps what it has resolved rather than emptying
+it on a refresh that failed, and a surface reads its own data before it reads
+that source's load state.
+
+A resolver reports the same three outcomes to the surface above it. It resolves
+to nothing only where the store answered and holds no such entity — the store's
+own `404` — and fails for every other unanswered read, so no host turns an
+unreachable store into an absence.
+
+## Numeric fields
+
+A form's numeric input holds what the operator typed, including nothing at all,
+so a value is replaced by clearing the field and typing. The form reports an
+empty or out-of-range field as invalid and refuses to submit it, and the backend
+validates the same bounds.
+
+## Submit outcomes
+
+Every save, launch and publish reports its outcome, covering the failure that
+stopped it and the progress and success of one that ran.
 
 ## Dialogs
 
-No GUI uses the browser's own `alert()` / `confirm()`. Every question a
-destructive control asks — deleting a run, killing or sweeping in-flight runs,
-halting a plan or ladder, deleting a group/plan/ladder or a model configuration,
-marking a run unplayable, restoring a run's validator verdicts — is asked through
-the themed modal instead, so it reads as part of the cabinet rather than as the
-operating system, and so it can carry more than a line of plain text.
+Every question a destructive control asks is asked through the themed modal
+rather than the browser's own `alert()` and `confirm()`, so a destructive action
+confirms before it runs and its question carries more than a line of plain text.
 
-Two pieces:
-
-- **`Dialog`** (a presentational primitive) — the scrim and neon-outlined panel,
-  portalled to `document.body` so it escapes any panel's overflow or stacking
-  context. It is modal: Escape and a click on the scrim dismiss it, focus opens
-  on the default action and is trapped until the dialog is answered, and the page
-  behind it cannot scroll. Its height is capped at the viewport, and its optional
-  **detail region** scrolls at a capped height inside that — so a dialog that
-  enumerates a hundred changes asks its question exactly the way a three-line one
-  does, and can never grow taller than the page.
-- **`useConfirm()`** (app layer, provided once by `GalleryApp`) — the imperative
-  `confirm(…)` / `alert(…)` pair a click handler awaits, so a call site keeps the
-  guard-clause shape the native dialogs had:
-
-  ```tsx
-  if (!(await confirm({ title: "Delete run", message: "…" }))) return;
-  ```
-
-  Both take an optional `details` node, which lands in the dialog's scrollable
-  detail region. The reviewer's bulk **Restore validator verdicts** uses it to
-  list every point the restore would change and which way each verdict would flip
-  (`describeAutoVerdictRestore`), because by the time a reviewer reaches for that
-  control they cannot be expected to hold which of their own calls the machine
-  disagrees with.
+The dialog is modal and its confirmation is awaited at the call site. Both a
+confirmation and an alert may carry details beyond the question itself.
 
 ## Theming
 
-The components are themed through a small set of `--tcab-*` CSS custom
-properties (a documented token contract with synthwave defaults). Each app
-supplies its own values: the site maps them onto its existing palette so the
-moved components render exactly as before, and the console apps can theme
-themselves independently. No component hard-codes a palette.
-
-## Status
-
-Implemented in `packages/ui`. All three hosts mount the shared `GalleryApp`: the
-[site](/components/site/overview/) renders it from the build-time snapshot with
-run execution off, and the [web](/components/web/overview/) and
-[Tauri](/components/tauri/overview/) consoles render it live with run execution
-on, supplying the backend/worker transports behind the client interfaces. The
-earlier separate "console" build and the standalone tab console it grew out of
-have been retired in favor of this single shared app.
+Components are themed through the `--tcab-*` CSS custom properties. The
+`tokens.css` entry supplies working defaults, and an app may override any
+property in its own global styles. Every palette value comes from a token.

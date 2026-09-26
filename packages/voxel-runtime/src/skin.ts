@@ -48,7 +48,10 @@ export function skinningMatrices(
 
 /** The mesh data {@link skinMesh} deforms: positions/normals to transform and the
  * per-vertex `JOINTS_0`/`WEIGHTS_0` that bind them to the bone matrices. */
-export type SkinnableMesh = Pick<SkinnedMesh, "positions" | "normals" | "joints" | "weights">;
+export type SkinnableMesh = Pick<
+  SkinnedMesh,
+  "positions" | "normals" | "joints" | "weights"
+>;
 
 /**
  * Linear-blend-skin a {@link SkinnedMesh} on the CPU: transform every vertex's

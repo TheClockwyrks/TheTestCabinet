@@ -59,7 +59,12 @@ export class FogOverlay {
     this.data = new Uint8Array(MASK_N * MASK_N * 4);
     for (let i = 0; i < MASK_N * MASK_N; i++) this.data[i * 4 + 3] = 255; // opaque alpha channel
 
-    this.texture = new THREE.DataTexture(this.data, MASK_N, MASK_N, THREE.RGBAFormat);
+    this.texture = new THREE.DataTexture(
+      this.data,
+      MASK_N,
+      MASK_N,
+      THREE.RGBAFormat,
+    );
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;
     this.texture.wrapS = THREE.ClampToEdgeWrapping;

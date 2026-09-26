@@ -1,0 +1,322 @@
+# Three balls at once, each its own contest: its own hold, its own launch at a
+# random angle, its own respawn onto a field that never stops for it, and a
+# collision with the other two. The change applies to both Solo and Versus, so
+# multi is rated on the case's common `single-player` and `versus` domains — it
+# adds no domain of its own.
+slug = "multi"
+name = "Multi-ball"
+description = "Three independent balls that collide with each other — each with its own hold, its own random launch, and its own respawn."
+
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: multi keeps base's fixed, upright obstacles, and its three
+# independent balls replace the single served one (the `multi` branches of
+# `specs/overview.md.hbs`, `specs/balls.md.hbs`, `specs/ui.md.hbs`,
+# `specs/modes/single-player.md.hbs`, `specs/state.md.hbs` and
+# `specs/instrumentation.md.hbs`). So multi declares no `spec` of its own.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/multi"
+
+# The authored, *correct* static build of this variant, one per engine — see
+# `variants/base.toml` for what a reference implementation is and how it is
+# published. Under `none` the build carries its own runtime in `src/host.ts`;
+# under `simple-2d` it hands the same surfaces to the engine package resolved from
+# the repository's `packages/simple-2d`; under `structured-2d` it builds the same
+# game inside the framework of the engine package resolved from
+# `packages/structured-2d`. The game every one implements is identical, which is
+# what makes them comparable.
+[reference_implementation]
+none = "references/none/multi"
+"simple-2d" = "references/simple-2d/multi"
+"structured-2d" = "references/structured-2d/multi"
+
+# This variant needs a starter project of its own under each engine that seeds
+# one: the seeded `src/constants.ts` under `simple-2d` and under `structured-2d`
+# carries the home points, the ball count and the
+# contact distance, and `CUES` names the fifth cue. The surface that addresses the
+# balls by index and reports them as an array is the multi branch of
+# `specs/instrumentation.md.hbs`, and the build writes it. The table REPLACES the case's
+# `[workspaces]` rather than layering on it, so it names one directory per engine
+# exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/multi/simple-2d"
+"structured-2d" = "workspaces/multi/structured-2d"
+
+# The multi-specific category, worth one point per item. It applies to the whole
+# game (both Solo and Versus), and every point is about the one thing this variant
+# adds: that the three balls are independent of each other and solid to each
+# other. The `format` is inherited from the case manifest (`[review] format = 2`).
+# Every point carries `domains` and `failure_cap` on the scale the case manifest
+# sets out above its `[review]` table: the three balls, their independence and
+# their collision ARE this variant, so missing them is a rule noticeably wrong
+# (`scuffed`); a waiting ball's solidity and the launch draw are edge rules
+# (`passable`), a point that never scores is `broken`, and the extra cue is a
+# secondary path (`passable`).
+[[review.categories]]
+id = "multi-ball"
+title = "Multi-Ball"
+[[review.categories.items]]
+id = "three-balls"
+title = "Three balls, each on its own home point"
+description = "At the title and at the opening of a match, snapshot().balls has three entries whose centers are BALL_HOMES[0..2] ((640, 180), (640, 360), (640, 540)) in play order, each held at match start."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: read the balls back at the title screen and at the opening
+# of a real match, and confirm there are three, each on its own home point and each
+# waiting. See validation/<engine>/multi/three-balls.test.ts.
+validation = { script = "multi/three-balls.test.ts", outputs = [
+  { id = "field", name = "Three balls waiting on their home points", kind = "image" },
+] }
+[[review.categories.items]]
+id = "independent-hold"
+title = "Every ball holds on its own timer"
+description = "On the first frame after match start on which any ball is in flight, all three balls are in flight and the screen is playing."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: open a match and step one frame at a time until the first
+# ball leaves, then read all three on that frame — all in flight, and the field
+# live. See validation/<engine>/multi/independent-hold.test.ts.
+validation = { script = "multi/independent-hold.test.ts", outputs = [
+  { id = "launch", name = "The three balls launching together", kind = "replay" },
+] }
+# The respawn is two points, split along what a failure costs. That the SCORED ball
+# goes home and holds is how the game gives the ball back; that the OTHER TWO are
+# left alone is the whole of what this variant is. A build that resets all three on
+# every point plays a different game, and one that scores a ball and never returns it
+# runs out of balls, so the two are graded apart rather than averaged. That the
+# screen stays on `playing` is not a clause here: `gameplay.scoring-p1-continues`
+# and `gameplay.scoring-p2-continues` below already assert it on both goals.
+[[review.categories.items]]
+id = "independent-respawn"
+title = "A scored ball goes home and holds"
+description = "On the frame a ball crosses a goal edge, that ball is at its own home point of BALL_HOMES and held."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: set two balls bouncing in lanes the third never crosses,
+# drive the third out the right goal, and read the frame the score turns over — the
+# scored ball home and holding. See
+# validation/<engine>/multi/independent-respawn.test.ts.
+validation = { script = "multi/independent-respawn.test.ts", outputs = [
+  { id = "respawn", name = "One ball respawning while the other two play on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-leaves-others"
+title = "A scored ball leaves the other two alone"
+description = "On the frame a ball crosses a goal edge, the other two balls are still in flight carrying the velocities they had on the frame before, within 1 percent of speed."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: the same scenario, read from the other two balls: set them
+# bouncing in lanes the third never crosses, drive the third out the right goal, and
+# compare their velocities across the frame the score turned over. See
+# validation/<engine>/multi/respawn-leaves-others.test.ts.
+validation = { script = "multi/respawn-leaves-others.test.ts", outputs = [
+  { id = "others", name = "Two balls playing on through another ball's point", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ball-collision"
+title = "Balls collide with each other"
+description = "Two balls posed head on at equal speed leave the collision each carrying the other's arrival velocity, within 1 percent of speed, with their centers at least BALL_COLLIDE_DIST apart."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose two balls level on the mid-field lane closing head on,
+# and read them the frame they come apart — each leaving the way the other arrived,
+# at the speed it arrived with. See validation/<engine>/multi/ball-collision.test.ts.
+validation = { script = "multi/ball-collision.test.ts", outputs = [
+  { id = "collision", name = "Two balls meeting head on and exchanging velocities", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "waiting-ball-solid"
+title = "A waiting ball is solid and immovable"
+description = "A moving ball aimed at a held ball reflects with vx reversed at its arrival speed within 1 percent, while the held ball keeps its home point, its held flag, and its hold timer."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: open a match, aim one ball straight at the next ball's home
+# point, and read the frame it turns round — the target unmoved and still holding,
+# the moving ball away at the speed it arrived with. See
+# validation/<engine>/multi/waiting-ball-solid.test.ts.
+validation = { script = "multi/waiting-ball-solid.test.ts", outputs = [
+  { id = "bounce", name = "A moving ball bouncing off a waiting one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "launch-angle-posed"
+title = "A launch leaves along the ball's launch angle"
+description = "With each of the three balls' launchAngle posed to an angle of its own, every ball leaves its launch along the angle it holds, within 1 degree."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: open a match over the three balls alone, pose three
+# unrelated angles through `setBallLaunchAngle`, cut the holds, and read each
+# ball's heading on the launch frame. See
+# validation/<engine>/multi/launch-angle-posed.test.ts.
+validation = { script = "multi/launch-angle-posed.test.ts", outputs = [
+  { id = "launch", name = "Three balls leaving along three posed headings", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "launch-angle-drawn"
+title = "Launch angles are drawn over the full circle"
+description = "Over sixteen draws of drawBallLaunchAngle on one ball, every launchAngle reads back inside [0, 2*PI), and the draws are not all the same angle."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: draw the angle sixteen times through the operation that
+# performs parking's one draw and nothing else, reading it back off the snapshot
+# each time. Every reading is held to the circle, and the sample to the one thing
+# a draw over a continuum shows and a fixed launch cannot: the readings differ.
+# How the angles spread around the circle is the reviewer's to judge from the
+# replay. See validation/<engine>/multi/launch-angle-drawn.test.ts.
+validation = { script = "multi/launch-angle-drawn.test.ts", outputs = [
+  { id = "launch", name = "Three balls leaving on their last drawn headings", kind = "replay" },
+] }
+
+# Multi's launch, hold and scoring are not the case's common ones, so — like base
+# and gyre with their serve-direction points — this variant reuses the common
+# `gameplay` category's id (see `merge_review_items` in the core) and contributes
+# its own points to it. What differs is the mechanic rather than the wording: a
+# launch is aimed at nothing and so has no direction to check, a hold belongs to a
+# ball rather than to the match, and a point takes one ball out of play instead of
+# freezing the field. The common set therefore carries none of these, and each
+# variant states the version of them its own rules make true.
+[[review.categories]]
+id = "gameplay"
+title = "Gameplay"
+[[review.categories.items]]
+id = "launch-speed"
+title = "Launch speed"
+description = "Every one of the three balls leaves its launch at SERVE_SPEED (520 units per second), within 1 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: open a match, cut the hold short, and read every ball's
+# speed on the launch frame. See validation/<engine>/multi/launch-speed.test.ts.
+validation = { script = "multi/launch-speed.test.ts", outputs = [
+  { id = "launch", name = "Three balls leaving at the launch speed", kind = "replay" },
+] }
+# The hold is two points, because the two holds are reached by different code. The
+# opening one is set when a match starts; the relaunch one is set when a ball is
+# taken out of play mid-rally, and a build that never re-arms it leaves the field a
+# ball short for the rest of the match. Graded together, a build that gets the
+# opening hold right and never relaunches scored exactly what a build that got
+# neither scored.
+[[review.categories.items]]
+id = "hold-length"
+title = "Opening hold length"
+description = "From match start, the balls launch on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a match from the title with menu keys and count the
+# frames to the launch. See validation/<engine>/multi/hold-length.test.ts.
+validation = { script = "multi/hold-length.test.ts", outputs = [
+  { id = "hold", name = "The opening hold running out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "relaunch-hold"
+title = "Relaunch hold length"
+description = "A ball that has just been scored leaves its home point again on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed since its point, within one frame."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real point and count the frames from the goal to the
+# scored ball leaving again. See validation/<engine>/multi/relaunch-hold.test.ts.
+validation = { script = "multi/relaunch-hold.test.ts", outputs = [
+  { id = "relaunch", name = "A scored ball's hold running out", kind = "replay" },
+] }
+# Scoring is checked per side, and each side is two points. The increment is what
+# decides a match, so it carries `broken`; that the field DOES NOT stop for it is the
+# rule this variant replaces base's countdown with, and a build that freezes the
+# other two balls on every point is playing base with three balls rather than multi,
+# which is a rule noticeably wrong (`scuffed`) rather than an unplayable game.
+[[review.categories.items]]
+id = "scoring-p1"
+title = "Player one scores past the right goal"
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: drive a real ball out the right goal and confirm player one's
+# score increments and player two's does not. See
+# validation/<engine>/multi/scoring-p1.test.ts.
+validation = { script = "multi/scoring-p1.test.ts", outputs = [
+  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p1-continues"
+title = "The field plays on after player one scores"
+description = "On the frame a ball crosses the right goal edge, screen is still playing: the point opens no countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the right goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/multi/scoring-p1-continues.test.ts.
+validation = { script = "multi/scoring-p1-continues.test.ts", outputs = [
+  { id = "playing", name = "The field still live through a point on the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2"
+title = "Player two scores past the left goal"
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: drive a real ball out the left goal and confirm player two's
+# score increments and player one's does not. See
+# validation/<engine>/multi/scoring-p2.test.ts.
+validation = { script = "multi/scoring-p2.test.ts", outputs = [
+  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2-continues"
+title = "The field plays on after player two scores"
+description = "On the frame a ball crosses the left goal edge, screen is still playing: the point opens no countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the left goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/multi/scoring-p2-continues.test.ts.
+validation = { script = "multi/scoring-p2-continues.test.ts", outputs = [
+  { id = "playing", name = "The field still live through a point on the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "match-win"
+title = "Match win at 11, lead by 2"
+description = "From 10-9, a point to 11-9 sets winner to left, screen to matchover, and leaves the score at 11-9."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score. See
+# validation/<engine>/multi/match-win.test.ts.
+validation = { script = "multi/match-win.test.ts", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deuce"
+title = "Deuce past 10-10"
+description = "From 10-10, a point to 11-10 leaves winner null and the screen on playing, and a further point to 12-10 sets winner and screen to matchover."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
+# a further point to 12-10 must. See validation/<engine>/multi/deuce.test.ts.
+validation = { script = "multi/deuce.test.ts", outputs = [
+  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
+] }
+
+# The fifth cue. `specs/ui.md` fixes exactly four cues for a single-ball game and
+# names the event each belongs to; multi has one more event — two balls meeting —
+# so it has one more cue, and one more point. It joins the case's COMMON `audio`
+# category by reusing its id, exactly as the points above join `gameplay`.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "ball-bounce"
+title = "Ball-bounce cue"
+description = "The ball-bounce cue plays once on the frame two balls bounce off each other, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose two balls closing head on across an empty lane and read
+# the cues on the frame they come apart — the ball-bounce cue, once. Under `none`
+# the cue's name is not observable from outside the build, so what is checked there
+# is that a sound is emitted on the collision frame and on no frame before it. See
+# validation/<engine>/multi/ball-bounce.test.ts.
+validation = { script = "multi/ball-bounce.test.ts", outputs = [
+  { id = "bounce", name = "Two balls bouncing off each other", kind = "replay" },
+] }

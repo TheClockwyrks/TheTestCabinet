@@ -1,0 +1,222 @@
+import { describe, expect, it } from "vitest";
+import type { RunRecord } from "@clockwyrks/run-record";
+import { CODE_METRICS } from "@clockwyrks/run-record/code-metrics";
+import {
+  codeFigureFamilies,
+  codeMetric,
+  familyHeading,
+  formatCodeBytes,
+  formatCodeNumber,
+  formatMetricValue,
+  formatTestDuration,
+  isApproximate,
+  lookupMetric,
+  toolchainCoverage,
+  toolchainTests,
+} from "./codeFormat";
+
+describe("the metric catalog", () => {
+  // R11's mitigation is that the approximate label is a **data field**, so the picker,
+  // the axis, the table header and the docs page cannot disagree. These two assertions
+  // are what make that true of this app: the flag is read from the generated catalog,
+  // never asserted in the UI, so flipping it in the analyzer flips it here.
+  it("reports the reference-counting figures as approximate", () => {
+    expect(isApproximate("api.unreferencedExports")).toBe(true);
+    expect(isApproximate("api.unreferencedExportRatio")).toBe(true);
+    expect(isApproximate("graph.orphans")).toBe(true);
+  });
+
+  it("reports a directly counted figure as exact", () => {
+    expect(isApproximate("size.files")).toBe(false);
+    expect(isApproximate("complexity.maxCyclomatic")).toBe(false);
+  });
+
+  // An unknown path is not approximate: marking everything unknown as approximate
+  // would put a caveat on figures that do not need one and devalue the marker where it
+  // is real.
+  it("treats an unknown path as exact and unlabelled", () => {
+    expect(codeMetric("nope.not.a.metric")).toBeUndefined();
+    expect(isApproximate("nope.not.a.metric")).toBe(false);
+  });
+
+  it("carries the analyzer's own label and unit", () => {
+    expect(codeMetric("size.giniCodeLines")).toMatchObject({
+      label: "Size Gini",
+      unit: "ratio",
+      family: "size",
+    });
+  });
+});
+
+describe("formatMetricValue", () => {
+  it("renders each unit the way the CLI report does", () => {
+    expect(formatMetricValue(66258, "count")).toBe("66,258");
+    expect(formatMetricValue(2.4444, "score")).toBe("2.4");
+    expect(formatMetricValue(0.6213, "ratio")).toBe("62.1%");
+    expect(formatMetricValue(3.14159, "perKiloLine")).toBe("3.1/kloc");
+    expect(formatMetricValue(2048, "bytes")).toBe("2.0 KiB");
+    expect(formatMetricValue(true, "boolean")).toBe("yes");
+    expect(formatMetricValue(false, "boolean")).toBe("no");
+  });
+
+  // A catalog/summary mismatch must stay off the page rather than rendering `null` at
+  // the reader.
+  it("declines a value its unit cannot describe", () => {
+    expect(formatMetricValue("many", "count")).toBeNull();
+    expect(formatMetricValue(1, "boolean")).toBeNull();
+    expect(formatMetricValue(undefined, "count")).toBeNull();
+    expect(formatMetricValue(Number.NaN, "score")).toBeNull();
+  });
+
+  it("keeps a whole number whole and a mean fractional", () => {
+    expect(formatCodeNumber(1200)).toBe("1,200");
+    expect(formatCodeNumber(4.06)).toBe("4.1");
+    expect(formatCodeBytes(512)).toBe("512 B");
+    expect(formatCodeBytes(5 * 1024 * 1024)).toBe("5.0 MiB");
+  });
+});
+
+describe("lookupMetric", () => {
+  it("resolves a dotted path", () => {
+    expect(lookupMetric({ size: { files: 12 } }, "size.files")).toBe(12);
+  });
+
+  // A missing key and an explicit null are the same answer, because that is exactly
+  // what an absent language block looks like: a pure-Rust tree carries no `typescript`
+  // block, and "TypeScript files: 0" for it would be noise dressed as a measurement.
+  it("treats an absent block and an explicit null alike", () => {
+    expect(
+      lookupMetric({ typescript: null }, "typescript.files"),
+    ).toBeUndefined();
+    expect(lookupMetric({}, "typescript.files")).toBeUndefined();
+  });
+});
+
+describe("codeFigureFamilies", () => {
+  const summary = {
+    analyzerVersion: 1,
+    size: { files: 3, codeLines: 120 },
+    api: { exports: 4, unreferencedExports: 1 },
+    // Absent, as a pure-Rust tree's would be.
+    typescript: null,
+  };
+
+  it("groups figures by family, in catalog order", () => {
+    const families = codeFigureFamilies(summary).map((f) => f.family);
+    expect(families).toEqual(["provenance", "size", "api"]);
+  });
+
+  it("omits a family the tree has no values for", () => {
+    expect(codeFigureFamilies(summary).map((f) => f.family)).not.toContain(
+      "typescript",
+    );
+  });
+
+  it("carries the approximate flag through to the rendered figure", () => {
+    const api = codeFigureFamilies(summary).find((f) => f.family === "api")!;
+    expect(api.figures.find((f) => f.path === "api.exports")?.approximate).toBe(
+      false,
+    );
+    expect(
+      api.figures.find((f) => f.path === "api.unreferencedExports")
+        ?.approximate,
+    ).toBe(true);
+  });
+
+  it("names a family the way the CLI report does, and passes an unknown one through", () => {
+    expect(familyHeading("graph")).toBe("Module graph");
+    expect(familyHeading("brand-new")).toBe("brand-new");
+  });
+});
+
+describe("familyHeading", () => {
+  // The walk's diagnostics — what it truncated, what it skipped, what it refused — were
+  // headed "Coverage", which they never were. The heading collided with the console's
+  // Coverage feature area and, now that the page carries executed figures, with real code
+  // coverage.
+  it("heads the walk's own diagnostics as analysis notes", () => {
+    expect(familyHeading("notes")).toBe("Analysis notes");
+  });
+
+  // The static counts under this family are how much test code the model WROTE. Nothing
+  // under it ran, and the executed suite has the better claim to the word "Tests".
+  it("heads the static test counts as authorship, not as tests", () => {
+    expect(familyHeading("tests")).toBe("Test authorship");
+  });
+
+  // The assertion that keeps the collision from creeping back on any family at all: with
+  // executed coverage on the same page, exactly one thing may be called "Coverage", and
+  // it is not in this table.
+  it("gives no catalog family a heading that reads as executed results", () => {
+    const headings = new Set(
+      CODE_METRICS.map((metric) => familyHeading(metric.family)),
+    );
+    expect([...headings]).not.toContain("Coverage");
+    expect([...headings]).not.toContain("Tests");
+  });
+});
+
+// The gate on the two executed bands. It tests whether file-derived data was actually
+// PARSED — never whether a manifest declared a `test` command — because a case that
+// declares one but whose vitest config still writes only a terminal table produces no
+// report file, and must show nothing at all rather than an empty widget.
+describe("the executed-tier gates", () => {
+  const run = (toolchain: unknown) => ({ toolchain }) as unknown as RunRecord;
+
+  it("reports nothing for a run with no toolchain block at all", () => {
+    expect(toolchainTests(run(undefined))).toBeNull();
+    expect(toolchainCoverage(run(undefined))).toBeNull();
+  });
+
+  // The shape every case version predating the report-file contract produces: the command
+  // ran, and wrote no file for either reader to parse.
+  it("reports nothing for a test command that wrote no report files", () => {
+    const ran = run({ test: { result: { ran: true, exitCode: 0 } } });
+    expect(toolchainTests(ran)).toBeNull();
+    expect(toolchainCoverage(ran)).toBeNull();
+  });
+
+  // Two files, two gates: a config can write the test report and no coverage summary.
+  it("gates the two independently", () => {
+    const partial = run({
+      test: { result: { ran: true }, tests: { total: 3, passed: 3 } },
+    });
+    expect(toolchainTests(partial)).toMatchObject({ total: 3 });
+    expect(toolchainCoverage(partial)).toBeNull();
+  });
+
+  // A present block of zeroes is the runner saying the build shipped no tests. That is a
+  // result, and it renders — unlike an absent block, which is not a measurement at all.
+  it("distinguishes a reported zero from nothing reported", () => {
+    const none = run({
+      test: { result: { ran: true }, tests: { total: 0, succeeded: true } },
+    });
+    expect(toolchainTests(none)).not.toBeNull();
+    expect(toolchainTests(none)?.total).toBe(0);
+  });
+});
+
+// A test's duration, as the runner timed it — and the absence of one, which is the
+// difference between "not timed" and "instant".
+describe("formatTestDuration", () => {
+  it("scales the figure to what it is", () => {
+    expect(formatTestDuration(4)).toBe("4 ms");
+    expect(formatTestDuration(0.4)).toBe("0.4 ms");
+    expect(formatTestDuration(12.6)).toBe("13 ms");
+    expect(formatTestDuration(1500)).toBe("1.5 s");
+    expect(formatTestDuration(64000)).toBe("64 s");
+  });
+
+  // The reason this returns null rather than a string: absence is NOT TIMED, never zero,
+  // and the widget has to be able to say so.
+  it("reports an absent duration as not a figure at all", () => {
+    expect(formatTestDuration(undefined)).toBeNull();
+    expect(formatTestDuration(Number.NaN)).toBeNull();
+    expect(formatTestDuration(-1)).toBeNull();
+  });
+
+  // A recorded zero IS a measurement, and reads as one.
+  it("keeps a reported zero", () => {
+    expect(formatTestDuration(0)).toBe("0 ms");
+  });
+});

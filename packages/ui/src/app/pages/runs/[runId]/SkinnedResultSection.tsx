@@ -1,8 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { AnimationSpec, JointSpec, ModelSpec } from "@test-cabinet/run-record";
-import type { SkinnedMesh } from "@test-cabinet/voxel-runtime";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import type {
+  AnimationSpec,
+  JointSpec,
+  ModelSpec,
+} from "@clockwyrks/run-record";
+import type { SkinnedMesh } from "@clockwyrks/voxel-runtime";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import {
   fetchSkinnedMesh,
   useSkinnedMesh,
@@ -34,7 +38,13 @@ const EMPTY_ANIMATIONS: AnimationSpec[] = [];
 
 /** The static PNG fallback (the model's rendered preview), shown when WebGL is
  * unavailable, the user prefers reduced motion, or the mesh is still decoding. */
-function SkinnedFallback({ url, label }: { url: string | null; label: string }) {
+function SkinnedFallback({
+  url,
+  label,
+}: {
+  url: string | null;
+  label: string;
+}) {
   const box: CSSProperties = {
     width: "100%",
     height: "100%",
@@ -165,9 +175,7 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
   useEffect(() => {
     setEnabled(supportsWebGL() && !prefersReducedMotion());
   }, []);
-  const { mesh } = useSkinnedMesh(
-    enabled ? view.skinnedMeshUrl : null,
-  );
+  const { mesh } = useSkinnedMesh(enabled ? view.skinnedMeshUrl : null);
 
   const [mode, setMode] = useState<ViewerMode>("animations");
   const [selectedAnimation, setSelectedAnimation] = useState(
@@ -207,9 +215,9 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
       <p className={styles.secondary}>
         One continuous mesh bound to the rig and deformed by{" "}
         <strong>linear-blend skinning</strong>. Switch between the model&rsquo;s{" "}
-        <strong>animations</strong> and its game-drivable <strong>joints</strong>{" "}
-        (posed by a slider) to judge how cleanly the skin deforms. Drag the model to
-        orbit it.
+        <strong>animations</strong> and its game-drivable{" "}
+        <strong>joints</strong> (posed by a slider) to judge how cleanly the
+        skin deforms. Drag the model to orbit it.
       </p>
       <div className={styles.rigModeSwitch}>
         <SegmentedControl
@@ -283,8 +291,8 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
               })
             ) : (
               <p className={styles.secondary}>
-                This model exposes no game-drivable joints — its motion lives in the
-                Animations tab.
+                This model exposes no game-drivable joints. Its motion lives in
+                the Animations tab.
               </p>
             )}
           </div>
@@ -339,7 +347,7 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
             {part.operationCount}
             {part.actionsUrl ? (
               <>
-                {" — "}
+                {" · "}
                 <a href={part.actionsUrl} target="_blank" rel="noreferrer">
                   action log
                 </a>

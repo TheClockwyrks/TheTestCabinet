@@ -57,6 +57,9 @@ export const routes = {
   testCaseReference: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
+  // The Models section's Providers tab — per-provider health folded from
+  // recorded gg runs and probe evidence.
+  modelsProviders: (): string => "/models/providers",
   // The model detail index — its Overview tab, which reports the model one test
   // case at a time. The `?case=`/`?variant=` parameters the tab writes select
   // which cohort it opens on, so a specific reading is linkable.
@@ -66,6 +69,10 @@ export const routes = {
     `/models/${encodeURIComponent(modelId)}/stats`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
+  // The Probes tab — the model's responses-as-code readiness probes: trigger
+  // controls, history, and per-probe detail, all on the one page.
+  modelProbes: (modelId: string): string =>
+    `/models/${encodeURIComponent(modelId)}/probes`,
   // The add/edit model config form (consoles only; the static site is read-only
   // and never links here). `modelNew` opens a blank draft, optionally seeded from
   // a run of an unknown model (`?fromRun=<runId>`) or pre-claiming a known id
@@ -82,6 +89,7 @@ export const routes = {
     `/models/${encodeURIComponent(slug)}/edit`,
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
+  aboutRatings: (): string => "/about/ratings",
   aboutMetrics: (): string => "/about/metrics",
   // Settings routes (consoles only; the static site never links to them). The
   // base path redirects to Appearance, the section's first tab.
@@ -110,10 +118,17 @@ export const routes = {
   accountCoveragePlanNew: (): string => "/account/coverage/new",
   accountCoveragePlan: (planId: string): string =>
     `/account/coverage/${planId}`,
+  // A plan's other two surfaces. Each tab is its own URL so a reviewer working
+  // through a queue, or steering the matrix, can link and return to the one they
+  // are on rather than the dashboard the plan opens at.
+  accountCoveragePlanReviews: (planId: string): string =>
+    `/account/coverage/${planId}/reviews`,
+  accountCoveragePlanTests: (planId: string): string =>
+    `/account/coverage/${planId}/tests`,
   accountCoveragePlanEdit: (planId: string): string =>
     `/account/coverage/${planId}/edit`,
   // The account section's ladders tab (consoles only): the reviewer's ladders — an
-  // ordered climb of version-pinned cases each harness/model combination advances
+  // ordered climb of version-pinned cases each combination advances
   // through on its own, gated on that account's own reviews. A sibling of coverage,
   // not a mode of it, so it gets its own routes rather than a query parameter.
   accountLadders: (): string => "/account/ladders",
@@ -129,6 +144,30 @@ export const routes = {
   accountGroupNew: (): string => "/account/groups/new",
   accountGroupEdit: (groupId: string): string =>
     `/account/groups/${groupId}/edit`,
+  // The account section's gg Configs tab: the operator's registered gg
+  // configurations (named capability sets) and their create/edit pages. A configuration is what the
+  // new-run form launches once `gg` is picked as the orchestrator. `new` is a static
+  // segment so it ranks above `:configId`; the create page optionally seeds itself
+  // from an existing configuration (`?from=saved:<id>`) so one can be duplicated.
+  accountGgConfigs: (): string => "/account/gg",
+  accountGgConfigNew: (from?: string): string =>
+    from
+      ? `/account/gg/new?from=${encodeURIComponent(from)}`
+      : "/account/gg/new",
+  accountGgConfigEdit: (configId: string): string =>
+    `/account/gg/${configId}/edit`,
+  // The account section's gg Agents tab: the operator's saved gg agents, agent
+  // profiles authored on their own for configurations to import. Its own section
+  // tab, but still pathed under `/account/gg` — `agents` is a static segment there,
+  // so it ranks above `:configId` the same way `new` does, and its own pages sit
+  // under it.
+  accountGgAgents: (): string => "/account/gg/agents",
+  accountGgAgentNew: (from?: string): string =>
+    from
+      ? `/account/gg/agents/new?from=${encodeURIComponent(from)}`
+      : "/account/gg/agents/new",
+  accountGgAgentEdit: (agentId: string): string =>
+    `/account/gg/agents/${agentId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
@@ -142,6 +181,14 @@ export const routes = {
   // instead of hunting through the all-runs listing. Nothing on the public gallery
   // could appear here by definition.
   runUnpublished: (): string => "/runs/unpublished",
+  // The unreadable-runs worklist (consoles only): stored runs whose records the
+  // backend can no longer decode, which appear in no other listing and are deleted
+  // from here. Static segment beside `/runs/:runId`, like the others.
+  runUnreadable: (): string => "/runs/unreadable",
+  // The harness-comparisons list — the Runs section's "Comparisons" tab, beside
+  // "Tests". Rendered on BOTH hosts (read-only on the static site, off the
+  // snapshot); a static segment beside `/runs/:runId`, like the others.
+  runsComparisons: (): string => "/runs/comparisons",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -149,21 +196,106 @@ export const routes = {
     slug?: string;
     version?: string;
     variant?: string;
+    engine?: string;
   }): string => {
     const params = new URLSearchParams();
     if (preselect?.slug) params.set("slug", preselect.slug);
     if (preselect?.version) params.set("version", preselect.version);
     if (preselect?.variant) params.set("variant", preselect.variant);
+    if (preselect?.engine) params.set("engine", preselect.engine);
     const query = params.toString();
     return query ? `/runs/new?${query}` : "/runs/new";
   },
   runMonitor: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/live`,
-  // The run's default (Verdict) tab. `edit` opens the review editor in revise
-  // mode — used by the single-review page's Edit control to return here with the
-  // owner's review form reopened.
-  runDetail: (runId: string, opts?: { edit?: boolean }): string =>
-    `/runs/${encodeURIComponent(runId)}${opts?.edit ? "?edit=1" : ""}`,
+  // gg run-execution routes (consoles only; the static site never links to them).
+  // gg is launched from the ordinary new-run form — picking `gg` as the
+  // orchestrator swaps the harness picker for the operator's saved gg
+  // configurations — so there is no separate gg launch page. `ggMonitor` watches an
+  // enqueued gg run: it rides the same `GET /jobs/{id}/live` relay as `runMonitor`
+  // but renders gg's native telemetry, so it is its own page keyed by the launch
+  // ack's job id. It lives under a literal `/runs/gg` segment (more specific than
+  // the `/runs/:runId` dynamic route, so no collision).
+  ggMonitor: (jobId: string): string =>
+    `/runs/gg/${encodeURIComponent(jobId)}/live`,
+  // The gg **analysis** section (consoles only): its own top-level `/gg` space,
+  // entered from the topbar's analyze control. It keeps the app's chrome but swaps
+  // the mark for a back arrow and the section nav for gg's own tabs. It opens on
+  // the recorded sessions, with Dashboards, Discover and Saved as its siblings
+  // below.
+  ggAnalysis: (): string => "/gg",
+  // **Discover** — the TCQ query surface. The whole query rides in the URL as its
+  // **source text**, never its compiled form: that is what keeps `now-30d`
+  // relative, so a link shared on Monday still means "the last thirty days" when it
+  // is opened on Friday, and what stops a later grammar addition from invalidating
+  // a link somebody already pasted somewhere.
+  ggAnalysisDiscover: (query?: string, opts?: { range?: string }): string => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (opts?.range) params.set("range", opts.range);
+    const search = params.toString();
+    return search ? `/gg/query?${search}` : "/gg/query";
+  },
+  // **Dashboards** — the boards list. The built-in overview lives at the
+  // `overview` id below rather than in this list's storage: it is defined as
+  // ordinary query text through the same machinery a user board uses, so it cannot
+  // silently rot the way a hardcoded breakdown did.
+  ggAnalysisDashboards: (): string => "/gg/dashboards",
+  // One board, rendered. Deep-linkable, because a board is the thing people leave
+  // open — and answered by exactly one batched request whatever its panel count.
+  ggAnalysisDashboard: (dashboardId: string): string =>
+    `/gg/dashboards/${encodeURIComponent(dashboardId)}`,
+  // **Saved** — the operator's saved queries. `new` prefills the form from
+  // Discover's editor (`?q=` as **text**, `?range=` as the picker token), so a
+  // question is composed where the completer and the field sidebar are and saved
+  // without a second editor existing anywhere.
+  ggAnalysisSaved: (opts?: {
+    create?: { query: string; range?: string };
+  }): string => {
+    if (!opts?.create) return "/gg/saved";
+    const params = new URLSearchParams({ new: "1" });
+    if (opts.create.query) params.set("q", opts.create.query);
+    if (opts.create.range) params.set("range", opts.create.range);
+    return `/gg/saved?${params.toString()}`;
+  },
+  // **Reference** — gg's own tool and responses-as-code surface, as models are
+  // shown it. The bare path is what the section nav links to and what a reader
+  // types; it redirects to the Tools tab rather than rendering it, so the tab a
+  // page is on is always readable in the address bar (the same shape the
+  // test-case catalog's bare `/test-cases` takes).
+  ggReference: (): string => "/gg/reference",
+  // One entry of either tab is linkable through a search parameter rather than a
+  // path segment: a tool name is the model's own identifier and a function's is
+  // `object.name`, neither of which is ours to put in a path, and the selection is
+  // a *view* of a page that is otherwise the same document either way.
+  ggReferenceTools: (tool?: string): string =>
+    tool
+      ? `/gg/reference/tools?tool=${encodeURIComponent(tool)}`
+      : "/gg/reference/tools",
+  // The API tab carries a second parameter, because its document is per **SDK arm**:
+  // gg offers one set of capabilities under eleven idiomatic spellings, so "which
+  // function" and "spelled in which language" are two independent halves of one
+  // address and a link that pinned only the first would land a reader on whichever
+  // arm the page happened to open on. `lang` is a `GgProgramLanguage` id, the same
+  // string a run's language capability is configured with.
+  ggReferenceApi: (opts?: { fn?: string; lang?: string }): string => {
+    const params = new URLSearchParams();
+    if (opts?.lang) params.set("lang", opts.lang);
+    if (opts?.fn) params.set("fn", opts.fn);
+    const query = params.toString();
+    return query ? `/gg/reference/api?${query}` : "/gg/reference/api";
+  },
+  // The run's landing tab: the bare run URL is the Play tab (the build exactly as
+  // the model wrote it). A run with no playable build — an asset-generation,
+  // adversarial, or performance run, or one whose state produced nothing to host —
+  // redirects from here to its Verdict tab. Generic "open this run" links use
+  // this; links that mean "this run's verdict/review" use `runVerdict`.
+  runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
+  // The run's Verdict tab (labelled "Results" for a results-scored run). `edit`
+  // opens the review editor in revise mode — used by the single-review page's
+  // Edit control to return here with the owner's review form reopened.
+  runVerdict: (runId: string, opts?: { edit?: boolean }): string =>
+    `/runs/${encodeURIComponent(runId)}/verdict${opts?.edit ? "?edit=1" : ""}`,
   // One reviewer's full review of a run: their writeup and per-item verdicts.
   // Keyed by the reviewing account's id (a run carries at most one review per
   // account), so each review is its own linkable URL.
@@ -173,6 +305,8 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/inputs`,
   runProof: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/proof`,
+  // Legacy: Play now lives at the bare run URL (`runDetail`), and `/play` only
+  // redirects there so old deep links keep working. Nothing new should link here.
   runPlay: (runId: string): string => `/runs/${encodeURIComponent(runId)}/play`,
   runMetrics: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/metrics`,
@@ -180,6 +314,16 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
+  // A finished **gg** run's rich view: the same capability-shaped panels its live
+  // monitor rendered (activity, agent tree, context fill, plan, board, tasks,
+  // knowledge), rebuilt from the recorded telemetry. Offered only on a gg run, so
+  // opening one from the runs list gets back everything the live view showed.
+  runGg: (runId: string): string => `/runs/${encodeURIComponent(runId)}/gg`,
+  // The static read of the code the run's model wrote: the provenance it was measured
+  // under, the shape of the tree, and an explorer over every file and function. Offered
+  // on any harness's run that carries an analysis (analysing a directory is
+  // harness-agnostic), which means runs from the day the analyzer shipped onward.
+  runCode: (runId: string): string => `/runs/${encodeURIComponent(runId)}/code`,
   // The "Other" section (consoles only): a tabbed list page collecting the
   // surfaces that don't belong on the Test Cases page — Game Jams and
   // Tournaments. The bare `/other` redirects to the first tab (Game Jams). Each
@@ -201,6 +345,16 @@ export const routes = {
     `/game-jams/${encodeURIComponent(slug)}/leaderboard`,
   gameJamMetrics: (slug: string): string =>
     `/game-jams/${encodeURIComponent(slug)}/metrics`,
+  // Harness-comparison routes. The list is the Runs section's Comparisons tab
+  // (`runsComparisons`) and a comparison's detail (`/comparisons/:id`) both render
+  // on every host (read-only on the static site). Create/edit mutate a per-account
+  // comparison, so they are console-only. `new` is a static segment so it outranks
+  // the dynamic `:id`.
+  comparisonNew: (): string => "/comparisons/new",
+  comparisonDetail: (id: string): string =>
+    `/comparisons/${encodeURIComponent(id)}`,
+  comparisonEdit: (id: string): string =>
+    `/comparisons/${encodeURIComponent(id)}/edit`,
   // A tournament's standings + matches (consoles only). The Tournaments list now
   // lives under Other (`/other/tournaments`), but each tournament keeps its own
   // revisitable detail route.
@@ -235,6 +389,11 @@ export const routePatterns = {
   testCaseArena: "/test-cases/:slug/arena",
   testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
+  // The `/models/providers` static path outranks the `/models/:modelId` dynamic
+  // route, so the section's Providers tab is reachable at a literal segment
+  // beside the model detail (the same literal-beside-param shape `/models/new`
+  // uses).
+  modelsProviders: "/models/providers",
   // The `/models/new` static path outranks the `/models/:modelId` dynamic route,
   // so a blank/seeded config form is reachable at a literal segment beside the
   // model detail (the same literal-beside-param shape `/runs/new` uses).
@@ -243,8 +402,10 @@ export const routePatterns = {
   modelStats: "/models/:modelId/stats",
   modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
+  modelProbes: "/models/:modelId/probes",
   about: "/about",
   aboutTesting: "/about/testing",
+  aboutRatings: "/about/ratings",
   aboutMetrics: "/about/metrics",
   settings: "/settings",
   settingsAppearance: "/settings/appearance",
@@ -255,12 +416,15 @@ export const routePatterns = {
   login: "/login",
   register: "/register",
   accountReviews: "/account/reviews",
-  // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
-  // are more specific than the bare list/detail, and `new` (static) ranks above
-  // the dynamic `:planId`, so react-router matches them correctly.
+  // The account section's reviewer-coverage surfaces. A plan's tabs
+  // (`:planId/reviews`, `:planId/tests`) and its editor are more specific than
+  // the bare detail, and `new` (static) ranks above the dynamic `:planId`, so
+  // react-router matches them correctly.
   accountCoverage: "/account/coverage",
   accountCoveragePlanNew: "/account/coverage/new",
   accountCoveragePlan: "/account/coverage/:planId",
+  accountCoveragePlanReviews: "/account/coverage/:planId/reviews",
+  accountCoveragePlanTests: "/account/coverage/:planId/tests",
   accountCoveragePlanEdit: "/account/coverage/:planId/edit",
   // The ladder surfaces, laid out exactly as the plan ones: `new` (static) ranks
   // above the dynamic `:ladderId`, and `:ladderId/edit` is more specific than the
@@ -272,20 +436,58 @@ export const routePatterns = {
   accountGroups: "/account/groups",
   accountGroupNew: "/account/groups/new",
   accountGroupEdit: "/account/groups/:groupId/edit",
+  // The account section's gg configurations. `new` (static) outranks the dynamic
+  // `:configId`, so route order does not matter.
+  accountGgConfigs: "/account/gg",
+  accountGgConfigNew: "/account/gg/new",
+  accountGgConfigEdit: "/account/gg/:configId/edit",
+  // The saved gg agents — their own section tab, sharing the `/account/gg`
+  // prefix. `agents` is static, so it and its children outrank the dynamic
+  // `:configId`.
+  accountGgAgents: "/account/gg/agents",
+  accountGgAgentNew: "/account/gg/agents/new",
+  accountGgAgentEdit: "/account/gg/agents/:agentId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
   runUnpublished: "/runs/unpublished",
+  runUnreadable: "/runs/unreadable",
+  runsComparisons: "/runs/comparisons",
   runNew: "/runs/new",
+  // gg run-execution routes. The literal `/runs/gg` segment outranks the
+  // `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId` is a sibling
+  // of the plain `runMonitor` under that same static prefix.
+  ggMonitor: "/runs/gg/:jobId/live",
+  // The gg analysis section's own top-level space (console-only). One route per
+  // tab, so a surface is linkable and survives a reload; the index is the sessions
+  // list, and Discover is its sibling.
+  ggAnalysis: "/gg",
+  ggAnalysisDiscover: "/gg/query",
+  // Dashboards and Saved. `/gg/dashboards` is static and `/gg/dashboards/:id` its
+  // child, so neither collides with `/gg/query`.
+  ggAnalysisDashboards: "/gg/dashboards",
+  ggAnalysisDashboard: "/gg/dashboards/:dashboardId",
+  ggAnalysisSaved: "/gg/saved",
+  // Reference. `/gg/reference` is static — it redirects to the Tools tab — and its
+  // two tabs are static children of it, so nothing here collides with `/gg/query`
+  // or `/gg/dashboards`. The selected tool/function
+  // rides in the query string, so no dynamic segment is needed under either tab.
+  ggReference: "/gg/reference",
+  ggReferenceTools: "/gg/reference/tools",
+  ggReferenceApi: "/gg/reference/api",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
+  runVerdict: "/runs/:runId/verdict",
   runReview: "/runs/:runId/reviews/:reviewerId",
   runInputs: "/runs/:runId/inputs",
   runProof: "/runs/:runId/proof",
+  // Legacy: redirects to the bare run URL, which is now the Play tab.
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
+  runGg: "/runs/:runId/gg",
+  runCode: "/runs/:runId/code",
   // The Other section: the tabbed list (Game Jams / Tournaments) and the game-jam
   // detail routes. The tab slugs are literal siblings under `/other`; the
   // game-jam detail's sub-tabs mirror the test-case detail's, one route each so a
@@ -298,6 +500,11 @@ export const routePatterns = {
   gameJamRuns: "/game-jams/:slug/runs",
   gameJamLeaderboard: "/game-jams/:slug/leaderboard",
   gameJamMetrics: "/game-jams/:slug/metrics",
+  // Harness-comparison routes. `new` (static) outranks the dynamic `:id`, like
+  // the account section's gg-config/coverage-plan routes above.
+  comparisonNew: "/comparisons/new",
+  comparisonDetail: "/comparisons/:id",
+  comparisonEdit: "/comparisons/:id/edit",
   tournamentDetail: "/tournaments/:id",
 } as const;
 

@@ -367,7 +367,7 @@ impl Notifier {
     /// The receiver is taken **before** the id is published to the client, so nothing
     /// can be lost between registering and subscribing.
     pub fn open_stream(&self) -> StreamHandle {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = cuid2::create_id();
         let receiver = self.tx.subscribe();
         let topics = Arc::new(StreamTopics::new());
         self.streams

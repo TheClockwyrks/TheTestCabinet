@@ -1,9 +1,9 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
-import { canonicalModelId } from "@test-cabinet/ui";
+import { canonicalModelId } from "@clockwyrks/ui";
 import { describeRunState } from "../data/runState";
 import { isPublishable } from "../data/useRunPublish";
 import { useFindModel } from "../data/useModels";
@@ -24,8 +24,10 @@ import {
   type RunScope,
 } from "./runColumns";
 import { useColumnVisibility } from "./useColumnVisibility";
+import { useNow } from "./useNow";
 import { useResizableColumns } from "./useResizableColumns";
 import { useTableSort, type SortState } from "./useTableSort";
+import { runLivePath } from "../data/runLinks";
 import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
 
@@ -118,6 +120,15 @@ export function useRunTable({
 // to the default `date`/`desc` query for it: the header still highlights, and the
 // data simply comes back date-ordered. Note the two id differences from the sort
 // tokens: the TIMESTAMP column maps to `date` and the DURATION column to `runtime`.
+//
+// The MODEL / CONFIG column maps to the server's `model` key, which orders by the
+// run's model/configuration IDENTITY — `COALESCE(gg_preset, model_id)` over the
+// lifted run columns — so an `externalOrder` page positions a gg row by the
+// configuration it shows, not by the representative model behind it. One nuance
+// survives, and is deliberate: the server orders by the raw recorded model id
+// while a locally sorted log's `sortKey` uses the catalog's resolved display name,
+// because the DB column holds no catalog lookup. Configuration names, which are
+// recorded verbatim, order identically either way.
 const COLUMN_SORT_KEYS: Readonly<Record<string, RunSort>> = {
   test: "testCase",
   category: "testType",
@@ -277,8 +288,26 @@ export function RunLog({
     columns: visible,
   });
 
+  // The one clock every live cell reads. It lives here rather than in the cells so
+  // the whole log agrees on the second it is showing, and here rather than in the
+  // page so a tick re-renders the log alone. `ctx` is rebuilt on every render already
+  // and is nothing's memo dependency, so carrying `now` on it defeats no memoisation
+  // downstream.
+  //
+  // The gate is the one cell whose output actually moves between ticks: DURATION,
+  // shown (it is hidden by default) and counting for a run that has reached its
+  // start. A tick re-renders every row in the log, so anything looser buys a second's
+  // worth of work for identical DOM — a queued run under a parallelism cap would tick
+  // the whole log for as long as it waited. The hook re-reads the clock the moment it
+  // goes live again, so un-hiding the column or a run reaching `starting` shows the
+  // right second immediately.
+  const now = useNow(
+    visibleIds.has("duration") && active.some((run) => run.startedAt != null),
+  );
+
   const ctx: RunRenderContext = {
     visible: visibleIds,
+    now,
     testCaseName,
     testCaseType,
     modelName: (modelId, harnessSlug) =>
@@ -335,7 +364,9 @@ export function RunLog({
         {active.map((run) => (
           <Link
             key={run.runId}
-            to={routes.runMonitor(run.runId)}
+            // A gg run is watched on gg's own rich monitor, not the generic
+            // harness feed — the same view its launch handed off to.
+            to={runLivePath(run.runId, run.harnessSlug)}
             className={styles.row}
             data-active=""
             data-failed={run.state === "failed" ? "" : undefined}

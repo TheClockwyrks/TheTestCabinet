@@ -37,13 +37,40 @@ mod m20260715_000014_create_coverage_plan;
 mod m20260715_000015_add_review_plan_migrated;
 mod m20260719_000016_create_review_revision;
 mod m20260721_000017_create_case_reference_sheet;
+mod m20260723_000018_add_job_gg_config;
+mod m20260724_000019_create_gg_config;
+mod m20260724_000020_add_model_price_input_modalities;
+mod m20260727_000021_create_comparison;
+mod m20260731_000022_add_run_gg_preset;
 mod m20260731_000023_add_job_test_type;
+mod m20260801_000024_add_run_updated_at;
+mod m20260801_000025_add_run_code_analyzer_version;
+mod m20260801_000026_create_gg_saved_views;
 mod m20260808_000024_publish_job_unique_queued_run;
 mod m20260815_000025_add_job_queue_seq;
 mod m20260815_000026_add_job_attribution;
 mod m20260815_000027_add_coverage_plan_scheduling;
 mod m20260815_000028_create_coverage_settings;
 mod m20260815_000029_create_ladder;
+mod m20260818_000030_create_gg_agent;
+mod m20260818_000031_add_gg_config_agent_sources;
+mod m20260820_000032_add_case_reference_build_engine;
+mod m20260820_000032_drop_gg_agent_model_slots;
+mod m20260822_000033_add_run_engine_slug;
+mod m20260823_000034_create_model_probe;
+mod m20260824_000035_probe_forced_submission;
+mod m20260824_000036_probe_docview_scenarios;
+mod m20260824_000037_add_validator_ratings;
+mod m20260827_000038_add_review_aesthetic;
+mod m20260830_000039_add_run_record_readability;
+mod m20260901_000040_add_gg_cell_identity;
+mod m20260901_000041_add_gg_config_id;
+mod m20260901_000042_create_backfill_state;
+mod m20260901_000043_add_engine_pins;
+mod m20260906_000044_add_job_started_at;
+mod m20260922_000045_add_provider_pin;
+mod m20260923_000046_add_model_list_price;
+mod m20260923_000047_add_model_provider_policy;
 
 pub struct Migrator;
 
@@ -68,13 +95,40 @@ impl MigratorTrait for Migrator {
             Box::new(m20260715_000015_add_review_plan_migrated::Migration),
             Box::new(m20260719_000016_create_review_revision::Migration),
             Box::new(m20260721_000017_create_case_reference_sheet::Migration),
+            Box::new(m20260723_000018_add_job_gg_config::Migration),
+            Box::new(m20260724_000019_create_gg_config::Migration),
+            Box::new(m20260724_000020_add_model_price_input_modalities::Migration),
+            Box::new(m20260727_000021_create_comparison::Migration),
+            Box::new(m20260731_000022_add_run_gg_preset::Migration),
             Box::new(m20260731_000023_add_job_test_type::Migration),
+            Box::new(m20260801_000024_add_run_updated_at::Migration),
+            Box::new(m20260801_000025_add_run_code_analyzer_version::Migration),
+            Box::new(m20260801_000026_create_gg_saved_views::Migration),
             Box::new(m20260808_000024_publish_job_unique_queued_run::Migration),
             Box::new(m20260815_000025_add_job_queue_seq::Migration),
             Box::new(m20260815_000026_add_job_attribution::Migration),
             Box::new(m20260815_000027_add_coverage_plan_scheduling::Migration),
             Box::new(m20260815_000028_create_coverage_settings::Migration),
             Box::new(m20260815_000029_create_ladder::Migration),
+            Box::new(m20260818_000030_create_gg_agent::Migration),
+            Box::new(m20260818_000031_add_gg_config_agent_sources::Migration),
+            Box::new(m20260820_000032_add_case_reference_build_engine::Migration),
+            Box::new(m20260820_000032_drop_gg_agent_model_slots::Migration),
+            Box::new(m20260822_000033_add_run_engine_slug::Migration),
+            Box::new(m20260823_000034_create_model_probe::Migration),
+            Box::new(m20260824_000035_probe_forced_submission::Migration),
+            Box::new(m20260824_000036_probe_docview_scenarios::Migration),
+            Box::new(m20260824_000037_add_validator_ratings::Migration),
+            Box::new(m20260827_000038_add_review_aesthetic::Migration),
+            Box::new(m20260830_000039_add_run_record_readability::Migration),
+            Box::new(m20260901_000040_add_gg_cell_identity::Migration),
+            Box::new(m20260901_000041_add_gg_config_id::Migration),
+            Box::new(m20260901_000042_create_backfill_state::Migration),
+            Box::new(m20260901_000043_add_engine_pins::Migration),
+            Box::new(m20260906_000044_add_job_started_at::Migration),
+            Box::new(m20260922_000045_add_provider_pin::Migration),
+            Box::new(m20260923_000046_add_model_list_price::Migration),
+            Box::new(m20260923_000047_add_model_provider_policy::Migration),
         ]
     }
 }

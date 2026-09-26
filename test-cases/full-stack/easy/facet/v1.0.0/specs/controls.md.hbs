@@ -1,0 +1,202 @@
+# Facet — Controls
+
+This file defines how a player operates the game: the pointer plays the board
+and works every screen, and the keyboard drives the menus from the other side.
+The cell centers the pointer is measured against are in `specs/board.md`, and
+the rules that decide whether a requested swap is accepted are in
+`specs/rules.md`. Every figure below carries the name this specification gives
+it.
+
+## The pointer
+
+A mouse, a pen, and a finger on a touchscreen all drive the pointer, and the
+game reads them the same way. Everything the pointer does below is done by all
+three.
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the pointer belongs to the runtime layer you
+write. What the game reads from that layer is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, a
+release edge, and which of `mouse`, `pen`, and `touch` drove it. That layer
+delivers all three devices on that one path, and it takes the browser's own
+gestures on the canvas: panning, pinch-zoom, double-tap zoom, text selection,
+and the context menu. A drag on a touchscreen therefore reaches the game whole
+rather than being taken for a scroll part way through. How the layer produces
+those is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+The pointer belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. What the game reads from it is a pointer
+position in the game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`)
+stage, a press edge, a release edge, and the device that drove it.
+{{else}}
+The pointer belongs to the engine, which documents it in the `engine/` directory
+at the root of this repository. What the game reads from it is a pointer
+position in the game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`)
+stage, a press edge, a release edge, and the device that drove it, delivered as
+the ordered samples the player controller reads from the engine each frame, so a
+drag that crossed several cells between two frames arrives as every position it
+visited rather than as the last one alone.
+{{/if}}
+
+The game acts on the primary pointer alone, so a second finger resting on the
+screen changes nothing. Each pointer position the game reads is resolved on its
+own, in the order the positions arrive. `state.pointer` mirrors the position,
+the press state, and the device every frame, as `specs/state.md` describes.
+
+## Pointer targets
+
+Every screen carries a set of pointer targets: axis-aligned rectangles the
+pointer operates the screen through. A target has an id, a position, and a size
+in the stage's logical units, and `specs/instrumentation.md` reports the current
+screen's targets under those ids.
+
+| Screen | Targets, in this order |
+| --- | --- |
+| `title` | `menu-0`, `menu-1`, one per entry of `TITLE_ITEMS` |
+| `howto` | `back` |
+| `playing` | `pause` |
+| `paused` | `menu-0`, `menu-1`, one per entry of `PAUSED_ITEMS` |
+| `levelclear` | `menu-0`, `menu-1`, one per entry of `LEVELCLEAR_ITEMS` |
+| `gameover` | `menu-0`, `menu-1`, one per entry of `GAMEOVER_ITEMS` |
+
+Every target on every screen satisfies all four of these:
+
+| Requirement | Value |
+| --- | --- |
+| Width | at least `TARGET_MIN_W` (`96`) |
+| Height | at least `TARGET_MIN_H` (`72`) |
+| Placement | wholly within the stage |
+| Separation | no two targets on one screen overlap |
+
+The width and the height are what a fingertip needs, so every target is worked
+by touch as readily as by a mouse.
+
+A `menu-<i>` target covers the drawn menu item that `state.menuIndex` `i`
+highlights. The `back` target covers a drawn control reading `BACK_LABEL`
+(`BACK`) and the `pause` target one reading `PAUSE_LABEL` (`PAUSE`), each
+legible at the stage size. What each target looks like is the build's to design,
+within the requirements in `specs/overview.md`.
+
+On `playing` the `pause` target lies wholly outside the board's extent, which
+`specs/board.md` gives, so it never covers a cell.
+
+## Operating a screen with the pointer
+
+A pointer position lies in at most one target, since no two on a screen overlap.
+
+| The pointer | What happens |
+| --- | --- |
+| Moves within a `menu-<i>` target while pressed on nothing | `state.menuIndex` becomes `i`. |
+| Presses within a target | The highlight moves as the row above describes, and that target is armed. |
+| Releases within the armed target | The target is taken, and it is disarmed. |
+| Releases anywhere else | Nothing is taken, and the armed target is disarmed. |
+
+Taking a target does exactly what the same choice does from the keyboard:
+
+| Target | Taken |
+| --- | --- |
+| `menu-<i>` | The same as `confirm` with `state.menuIndex` at `i`. |
+| `back` | The same as the `back` action on that screen. |
+| `pause` | The same as the `pause` action. |
+
+A press outside every target arms nothing. Leaving a screen disarms whatever was
+armed on it, so a press carried across a screen change takes nothing.
+
+The highlight moving on a press is what makes a touchscreen behave as a mouse
+does: a finger has no hover, so the press is what tells the player which item
+their release will take.
+
+## Targeting a cell
+
+The board is played on the `playing` screen, everywhere outside that screen's
+`pause` target.
+
+The pointer targets the cell whose center is nearest the pointer position, when
+that center lies within `GEM_HIT_R` (`36`) of it. `GEM_HIT_R` is half of
+`CELL_PITCH` (`72`), so at most one cell center lies strictly within that radius,
+and a position lying exactly `GEM_HIT_R` from two centers targets the cell at the
+lower row, and within one row the cell at the lower column. A pointer farther than
+`GEM_HIT_R` from every cell center targets no cell.
+
+## Selecting, offering, and playing a move
+
+A move is made by taking hold of a gem and letting go of it beside its neighbor.
+The gem the player has hold of is the one at `state.selection`, and the neighbor
+it is currently being offered into is `state.offer`. Nothing reaches the move
+rules until the pointer is released.
+
+A press targets a cell as above. The rows below are evaluated in order, and the
+first row that matches is the one that applies.
+
+| Targeted cell | What the press does |
+| --- | --- |
+| Any cell, while nothing is selected | Selects that cell, with no offer standing. |
+| The selected cell | Leaves it selected and withdraws any standing offer, so the gem is taken hold of again where it started. |
+| A cell orthogonally adjacent to the selected cell | Offers the selected gem into that cell. |
+| Any other cell | Moves the selection to that cell, with no offer standing. |
+| No cell, the press lying farther than `GEM_HIT_R` from every cell center | Clears the selection and any offer, leaving the board as it stands. |
+
+While the pointer is held down, each position it reaches is read against the
+selected cell:
+
+| The pointer moves within `GEM_HIT_R` of | What happens |
+| --- | --- |
+| The selected cell | The standing offer is withdrawn, so nothing is offered. |
+| A cell orthogonally adjacent to the selected cell | That cell becomes the offer, replacing any offer standing. |
+| Any other cell, or no cell | Nothing changes. |
+
+The release is what plays a move:
+
+| At the release | What happens |
+| --- | --- |
+| An offer stands | The swap of the selected cell with the offered cell is requested, and the offer and the selection are both cleared. |
+| No offer stands | The selection and the board stand as they are. |
+
+So a player who takes hold of a gem, carries it onto a neighbor, and carries it
+back where it came from has withdrawn the offer, and the release plays nothing.
+A move is played only by a release with an offer standing.
+
+Every requested swap goes through one acceptance path, and the move rules in
+`specs/rules.md` decide it. An accepted swap runs the swap animation
+`specs/rules.md` times before its first chain step resolves.
+
+While an offer stands the two gems are drawn exchanged, as `specs/ui.md`
+describes, so a player sees the move a release would play.
+
+## Actions and bindings
+
+`ACTIONS` holds the actions the game registers with the runtime, and `BINDINGS`
+maps each action to the keys that fire it. Each action is read once per frame as
+a press edge. The keyboard drives the menus; the board is played with the
+pointer alone.
+
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the menu highlight up. |
+| `down` | Moves the menu highlight down. |
+| `confirm` | Chooses the highlighted menu item. |
+| `pause` | Enters and leaves `paused` from `playing`. |
+| `mute` | Toggles the runtime's mute bit. |
+| `back` | Leaves `howto` and `gameover`. |
+
+Every key is a `KeyboardEvent.code`, so a binding is a physical key rather than
+a layout-dependent character.
+
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp` |
+| `down` | `ArrowDown` |
+| `confirm` | `Enter`, `Space` |
+| `pause` | `Escape`, `KeyP` |
+| `mute` | `KeyM` |
+| `back` | `Escape` |
+
+Each key listed for an action fires that action on its own, so either key of a
+two-key action is enough. `Escape` fires both `pause` and `back`, and the two
+act on screens that do not overlap: `pause` acts on `playing` and `paused` and
+nowhere else, `back` on `howto` and `gameover` and nowhere else. So `Escape`
+raises the pause menu from the board, drops it again, and backs out of every
+other screen that can be backed out of.
+
+The screens these actions move between, and where each one leads, are in
+`specs/ui.md`.

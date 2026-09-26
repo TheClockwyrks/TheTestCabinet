@@ -5,6 +5,8 @@
 //! harness is invoked non-interactively, and how each reports its usage. A run
 //! corresponds to a single harness session driven to completion.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 use crate::auth::SubscriptionSpec;
@@ -13,13 +15,13 @@ use crate::event::{EventFormat, EventSink, HarnessEvent};
 use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
-use crate::test_case::{AssetKind, TestType};
+use crate::test_case::{AssetDimension, AssetKind, TestType};
 
-/// The default registry/namespace the run-container image is published under,
-/// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
-/// `containers/build.sh` pushes to, so the resolve side and the publish side
-/// default to the same place.
-const DEFAULT_CONTAINER_REGISTRY: &str = "ghcr.io/theclockwyrks";
+/// The default registry the run-container image is pulled from, used when
+/// `TCAB_CONTAINER_REGISTRY` is unset: the Test Cabinet Azure Container Registry,
+/// which the Azure pipeline pushes every run-container image to and every cluster
+/// it deploys pulls from.
+const DEFAULT_CONTAINER_REGISTRY: &str = "testcabinet.azurecr.io";
 /// The default image tag, used when `TCAB_CONTAINER_TAG` is unset.
 const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// The name of the Rust/wasm base run-container image (`base-wasm`), used by every
@@ -27,7 +29,8 @@ const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// toolchain (Rust + `wasm32-unknown-unknown` + wasm-bindgen + wasm-pack + binaryen),
 /// so an end-to-end (or full-stack) build may author its simulation core in Rust and
 /// ship it as a committed wasm build input. A harness installs its CLI into this image
-/// at run time (see [`AgentHarness::install_command`]); there is no per-harness image.
+/// at run time (see [`AgentHarness::install_command`]); there is no per-harness image,
+/// except the [gg variant](ImageSpec::gg_variant) of this one.
 /// The pure-Node base (`test-cabinet-base`) is the build-time parent of this image and
 /// the asset-generation images, and is not itself resolved as a run image.
 const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
@@ -37,11 +40,23 @@ const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
 /// `PATH`, so a model can both build a program and produce its own assets in one
 /// run (see `containers/full-stack-2d/Dockerfile`).
 const FULL_STACK_2D_IMAGE_NAME: &str = "test-cabinet-full-stack-2d";
+/// The name of the 3D full-stack run-container image, used by every full-stack run
+/// whose case declares `asset_dimension = "3d"`. It is a **superset** of the
+/// full-stack-2d image — the same six 2D binaries, and audio staged from the case's
+/// `[audio] packs` exactly as there — plus the voxel-model and 3D-particle tooling (`voxel`,
+/// `voxel-anim`, `particle-3d`) and the Mesa software-Vulkan runtime those three render
+/// their previews through. The meshed/SDF families (`mc`/`sn`/`dc` and their
+/// `-anim`/`-skin` binaries) and the Blender toolchain are deliberately not in it: they
+/// are a far heavier toolchain and no full-stack case needs them yet. It is a separate
+/// image rather than an addition to the 2D one because the 3D tooling is weight every
+/// 2D full-stack run would otherwise pull and never use (see
+/// `containers/full-stack-3d/Dockerfile`).
+const FULL_STACK_3D_IMAGE_NAME: &str = "test-cabinet-full-stack-3d";
 /// The name of the game-jam run-container image, used by every game-jam run. A jam
 /// is a full-stack-style build (it produces its own 2D assets and ships a browser
 /// game) but is deliberately **not** a full-stack case, so it resolves its own image
 /// rather than borrowing full-stack's. The image is the full-stack-2d image (the six
-/// 2D asset-generation binaries and the audio packs on `PATH`, over the base-wasm
+/// 2D asset-generation binaries on `PATH`, over the base-wasm
 /// Rust → WebAssembly toolchain, so a jam may author its core in Rust and ship it as
 /// committed wasm) — plus nothing but its own identity, so a deployment can pin the
 /// jam image independently and coreutils `date` is present for a model to check its
@@ -125,12 +140,40 @@ const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 /// training scenarios (see `containers/performance/Dockerfile`).
 const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 
+/// The suffix that names the **gg variant** of a run image: the same image plus the
+/// language toolchains a [`gg`](HarnessSlug::Gg) run's
+/// [responses-as-code](https://docs.testcabinet.ai/gg/languages/compilation/) programs are
+/// compiled with (`containers/gg/Dockerfile`).
+///
+/// Every run image has one, and it is *derived* rather than listed: the variant of
+/// `test-cabinet-sprite` is `test-cabinet-sprite-gg` and there is no image for which the
+/// question "does it have a variant?" has a second answer. That is the whole of
+/// [`ImageSpec::gg_variant`], and it is why a gg run can never resolve an image with no
+/// toolchains in it.
+///
+/// They are separate published images rather than a layer on the shared ones because
+/// those toolchains exist for one harness. A run driven by any other harness must not
+/// carry them: they are gigabytes a run that cannot use them would pull, and a model that
+/// found a Swift compiler on `PATH` in an end-to-end run would have been handed a
+/// capability no other arm of that comparison has.
+const GG_IMAGE_NAME_SUFFIX: &str = "-gg";
+/// The suffix that names a gg variant's override environment variable, the counterpart of
+/// [`GG_IMAGE_NAME_SUFFIX`]. A gg variant is pinned on its own, exactly as every other
+/// image is: it is a different image with a different build, and an override that covered
+/// both it and its parent could only ever be right for one.
+const GG_IMAGE_OVERRIDE_ENV_SUFFIX: &str = "_GG";
+
 /// The environment variable that pins a verbatim override for the base-wasm
 /// (end-to-end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
 const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
 /// The environment variable that pins a verbatim override for the full-stack (2D)
 /// image.
 const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
+/// The environment variable that pins a verbatim override for the 3D full-stack image.
+/// Separate from the 2D one for the reason every per-image override is separate: the two
+/// full-stack images are different builds, so an override that covered both could only
+/// ever be right for one.
+const FULL_STACK_3D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_3D";
 /// The environment variable that pins a verbatim override for the game-jam image.
 const GAME_JAM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM";
 /// The environment variable that pins a verbatim override for the sprite image.
@@ -188,21 +231,19 @@ const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
 /// image.
 const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 
-/// Every per-image override environment variable [`resolve_run_image`] consults,
-/// one per run image, in image build order. This is the **canonical set** a
-/// deployment must forward from the dispatcher into each driver `Job` so a full-ref
-/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
-/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
-/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
+/// Every per-image override environment variable a run's own image can be pinned
+/// with, one per run image, in image build order — **without** the gg variants, which
+/// [`RUN_IMAGE_OVERRIDE_ENVS`] derives from these.
 ///
 /// It lives here, beside the override constants and `image_spec_for`, so a new
 /// asset kind is wired in ONE place; the `run_image_override_envs_is_exhaustive`
 /// test fails the build if any kind's `override_env` is missing from this list (or
 /// vice versa), so the dispatcher's forwarded set can never again silently drift
 /// behind the images that exist.
-pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
+const RUN_IMAGE_OVERRIDE_ENVS_PLAIN: &[&str] = &[
     BASE_WASM_IMAGE_OVERRIDE_ENV,
     FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
+    FULL_STACK_3D_IMAGE_OVERRIDE_ENV,
     GAME_JAM_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
@@ -229,6 +270,30 @@ pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
     PERFORMANCE_IMAGE_OVERRIDE_ENV,
 ];
 
+/// Every per-image override environment variable [`resolve_run_image`] consults: each
+/// run image's own, and each one's `_GG` counterpart pinning that image's **gg variant**
+/// (the same image plus the language toolchains a `gg` run's programs are compiled with).
+/// This is the **canonical set** a deployment must
+/// forward from the dispatcher into each driver `Job` so a full-ref
+/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
+/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
+/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
+///
+/// The variants are derived rather than listed, for the same reason their image names
+/// are: there is exactly one per run image and no set of images to keep in step.
+pub static RUN_IMAGE_OVERRIDE_ENVS: std::sync::LazyLock<Vec<String>> =
+    std::sync::LazyLock::new(|| {
+        RUN_IMAGE_OVERRIDE_ENVS_PLAIN
+            .iter()
+            .flat_map(|env| {
+                [
+                    (*env).to_string(),
+                    format!("{env}{GG_IMAGE_OVERRIDE_ENV_SUFFIX}"),
+                ]
+            })
+            .collect()
+    });
+
 /// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for
 /// *that image* specifically. There is deliberately no override that spans every
@@ -236,156 +301,209 @@ pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
 /// different image, so a single override could only ever be right for one.
 struct ImageSpec {
     /// The image name composed with the registry/tag, e.g. `test-cabinet-base`.
-    name: &'static str,
+    ///
+    /// Owned for the [gg variant](Self::gg_variant) alone, which derives its name from
+    /// its parent's rather than being one of the constants above.
+    name: Cow<'static, str>,
     /// The env var pinning a verbatim reference for this image.
-    override_env: &'static str,
+    override_env: Cow<'static, str>,
 }
 
-/// The [`ImageSpec`] for a run, selected by its [`TestType`] and (for
-/// asset-generation) its [`AssetKind`]. End-to-end runs use the base-wasm image (the
-/// base plus the shared Rust/wasm toolchain);
-/// single-sprite runs use the sprite image (the base plus the baked-in `draw`
-/// binary); sprite-sheet runs use the sprite-sheet image (the base plus the
-/// baked-in `draw-sheet` binary); adversarial runs use the adversarial image (the
-/// base plus the Rust + `wasm32-unknown-unknown` toolchain a controller compiles
-/// to wasm with, and the baked-in Foray CLI + buildkit + references); performance
-/// runs use the performance image (the same wasm toolchain plus the baked-in
-/// Lattice CLI + buildkit + reference engines + training scenarios). Each has its
-/// own override env var so a host can pin one image
-/// without disturbing the others. `asset_kind` is ignored outside an
-/// asset-generation run (it is always [`AssetKind::Sprite`] there).
-fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
+impl ImageSpec {
+    /// One of the run images named by the constants above.
+    const fn of(name: &'static str, override_env: &'static str) -> Self {
+        Self {
+            name: Cow::Borrowed(name),
+            override_env: Cow::Borrowed(override_env),
+        }
+    }
+
+    /// The **gg variant** of this image: the same image plus the language toolchains a
+    /// [`gg`](HarnessSlug::Gg) run's
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/languages/compilation/) programs
+    /// are compiled with, named by appending [`GG_IMAGE_NAME_SUFFIX`] (and its override
+    /// by appending [`GG_IMAGE_OVERRIDE_ENV_SUFFIX`]).
+    ///
+    /// gg is the one harness whose runs need something baked into the image rather than
+    /// installed at run time. Every other harness is a CLI a run downloads
+    /// ([`AgentHarness::install_command`]) and gg itself is a single static binary copied
+    /// in, but a gg run driving responses-as-code in a compiled language needs that
+    /// language's *compiler* on the turn path — and a program's language is resolved
+    /// **per agent**, so one run may drive a C# agent and a Python agent at once and
+    /// every toolchain has to be present together.
+    ///
+    /// # Every image has one
+    ///
+    /// This is a derivation, not a lookup, and that is the point: whichever image a run
+    /// would otherwise get — an asset-generation kind, a full-stack dimension, blender,
+    /// adversarial — the gg variant of it is published and carries the same toolchain
+    /// tree. Selection reads three axes ([`TestType`], [`AssetKind`] and
+    /// [`AssetDimension`]), and no combination of the three resolves a gg image with
+    /// no compilers in it, because there is no list that could be missing one — an
+    /// axis brings the variants of every image it selects with it.
+    /// `containers/build.sh` builds a variant of every name in
+    /// `containers/image-names.sh` for the same reason, and
+    /// `every_resolvable_image_is_one_the_build_publishes` fails the build if the two
+    /// ever disagree.
+    fn gg_variant(&self) -> Self {
+        Self {
+            name: Cow::Owned(format!("{}{GG_IMAGE_NAME_SUFFIX}", self.name)),
+            override_env: Cow::Owned(format!(
+                "{}{GG_IMAGE_OVERRIDE_ENV_SUFFIX}",
+                self.override_env
+            )),
+        }
+    }
+}
+
+/// The [`ImageSpec`] for a run, selected by its [`TestType`] and — for the two types
+/// that have more than one image to choose between — its [`AssetKind`] (asset
+/// generation) or its [`AssetDimension`] (full-stack). End-to-end runs use the
+/// base-wasm image (the base plus the shared Rust/wasm toolchain); full-stack runs use
+/// the full-stack image of their declared dimension (the 2D six binaries, plus the
+/// voxel/3D-particle tooling for `3d`); single-sprite runs use the sprite image (the
+/// base plus the baked-in `draw` binary); sprite-sheet runs use the sprite-sheet image
+/// (the base plus the baked-in `draw-sheet` binary); adversarial runs use the
+/// adversarial image (the base plus the Rust + `wasm32-unknown-unknown` toolchain a
+/// controller compiles to wasm with, and the baked-in Foray CLI + buildkit +
+/// references); performance runs use the performance image (the same wasm toolchain
+/// plus the baked-in Lattice CLI + buildkit + reference engines + training scenarios).
+/// Each has its own override env var so a host can pin one image without disturbing the
+/// others. `asset_kind` is ignored outside an asset-generation run (it is always
+/// [`AssetKind::Sprite`] there), and `asset_dimension` outside a full-stack one (always
+/// [`AssetDimension::TwoD`]) — resolution rejects a manifest that sets either where it
+/// means nothing, so the value reaching here off any other type is the default.
+fn image_spec_for(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
+) -> ImageSpec {
     match test_type {
-        TestType::EndToEnd => ImageSpec {
-            name: BASE_WASM_IMAGE_NAME,
-            override_env: BASE_WASM_IMAGE_OVERRIDE_ENV,
-        },
-        TestType::FullStack => ImageSpec {
-            name: FULL_STACK_2D_IMAGE_NAME,
-            override_env: FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
+        TestType::EndToEnd => ImageSpec::of(BASE_WASM_IMAGE_NAME, BASE_WASM_IMAGE_OVERRIDE_ENV),
+        // The two full-stack images are the same shape — a wasm-capable base with the
+        // asset-authoring binaries baked in — differing only in which binaries. The 3D
+        // one is a superset, but it is not the default: its voxel/particle-3d tooling
+        // and the Mesa stack they render through are weight a 2D case would pull and
+        // never use, so a case opts into it with `asset_dimension = "3d"`.
+        TestType::FullStack => match asset_dimension {
+            AssetDimension::TwoD => {
+                ImageSpec::of(FULL_STACK_2D_IMAGE_NAME, FULL_STACK_2D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetDimension::ThreeD => {
+                ImageSpec::of(FULL_STACK_3D_IMAGE_NAME, FULL_STACK_3D_IMAGE_OVERRIDE_ENV)
+            }
         },
         // A game jam produces its own 2D assets and builds a browser game like a
         // full-stack run, but it is not a full-stack case: it resolves its own
         // (full-stack-2d-derived) image so a deployment can pin the jam image on its
-        // own.
-        TestType::GameJam => ImageSpec {
-            name: GAME_JAM_IMAGE_NAME,
-            override_env: GAME_JAM_IMAGE_OVERRIDE_ENV,
-        },
+        // own. It deliberately has no dimension to select on either — a jam is one
+        // theme with one image, and its manifest format has no `asset_dimension`.
+        TestType::GameJam => ImageSpec::of(GAME_JAM_IMAGE_NAME, GAME_JAM_IMAGE_OVERRIDE_ENV),
         TestType::AssetGeneration => match asset_kind {
-            AssetKind::Sprite => ImageSpec {
-                name: SPRITE_IMAGE_NAME,
-                override_env: SPRITE_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SpriteSheet => ImageSpec {
-                name: SPRITE_SHEET_IMAGE_NAME,
-                override_env: SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::VoxelModel => ImageSpec {
-                name: VOXEL_IMAGE_NAME,
-                override_env: VOXEL_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::VoxelAnimation => ImageSpec {
-                name: VOXEL_ANIMATION_IMAGE_NAME,
-                override_env: VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McModel => ImageSpec {
-                name: MC_IMAGE_NAME,
-                override_env: MC_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McAnimation => ImageSpec {
-                name: MC_ANIMATION_IMAGE_NAME,
-                override_env: MC_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnModel => ImageSpec {
-                name: SN_IMAGE_NAME,
-                override_env: SN_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnAnimation => ImageSpec {
-                name: SN_ANIMATION_IMAGE_NAME,
-                override_env: SN_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcModel => ImageSpec {
-                name: DC_IMAGE_NAME,
-                override_env: DC_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcAnimation => ImageSpec {
-                name: DC_ANIMATION_IMAGE_NAME,
-                override_env: DC_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Ui => ImageSpec {
-                name: UI_IMAGE_NAME,
-                override_env: UI_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Material => ImageSpec {
-                name: MATERIAL_IMAGE_NAME,
-                override_env: MATERIAL_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McSkinned => ImageSpec {
-                name: MC_SKINNED_IMAGE_NAME,
-                override_env: MC_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnSkinned => ImageSpec {
-                name: SN_SKINNED_IMAGE_NAME,
-                override_env: SN_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcSkinned => ImageSpec {
-                name: DC_SKINNED_IMAGE_NAME,
-                override_env: DC_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Particle2d => ImageSpec {
-                name: PARTICLE_2D_IMAGE_NAME,
-                override_env: PARTICLE_2D_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Particle3d => ImageSpec {
-                name: PARTICLE_3D_IMAGE_NAME,
-                override_env: PARTICLE_3D_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SfxSynth => ImageSpec {
-                name: SFX_SYNTH_IMAGE_NAME,
-                override_env: SFX_SYNTH_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SfxSample => ImageSpec {
-                name: SFX_SAMPLE_IMAGE_NAME,
-                override_env: SFX_SAMPLE_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Music => ImageSpec {
-                name: MUSIC_IMAGE_NAME,
-                override_env: MUSIC_IMAGE_OVERRIDE_ENV,
-            },
+            AssetKind::Sprite => ImageSpec::of(SPRITE_IMAGE_NAME, SPRITE_IMAGE_OVERRIDE_ENV),
+            AssetKind::SpriteSheet => {
+                ImageSpec::of(SPRITE_SHEET_IMAGE_NAME, SPRITE_SHEET_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::VoxelModel => ImageSpec::of(VOXEL_IMAGE_NAME, VOXEL_IMAGE_OVERRIDE_ENV),
+            AssetKind::VoxelAnimation => ImageSpec::of(
+                VOXEL_ANIMATION_IMAGE_NAME,
+                VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
+            ),
+            AssetKind::McModel => ImageSpec::of(MC_IMAGE_NAME, MC_IMAGE_OVERRIDE_ENV),
+            AssetKind::McAnimation => {
+                ImageSpec::of(MC_ANIMATION_IMAGE_NAME, MC_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SnModel => ImageSpec::of(SN_IMAGE_NAME, SN_IMAGE_OVERRIDE_ENV),
+            AssetKind::SnAnimation => {
+                ImageSpec::of(SN_ANIMATION_IMAGE_NAME, SN_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::DcModel => ImageSpec::of(DC_IMAGE_NAME, DC_IMAGE_OVERRIDE_ENV),
+            AssetKind::DcAnimation => {
+                ImageSpec::of(DC_ANIMATION_IMAGE_NAME, DC_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Ui => ImageSpec::of(UI_IMAGE_NAME, UI_IMAGE_OVERRIDE_ENV),
+            AssetKind::Material => ImageSpec::of(MATERIAL_IMAGE_NAME, MATERIAL_IMAGE_OVERRIDE_ENV),
+            AssetKind::McSkinned => {
+                ImageSpec::of(MC_SKINNED_IMAGE_NAME, MC_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SnSkinned => {
+                ImageSpec::of(SN_SKINNED_IMAGE_NAME, SN_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::DcSkinned => {
+                ImageSpec::of(DC_SKINNED_IMAGE_NAME, DC_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Particle2d => {
+                ImageSpec::of(PARTICLE_2D_IMAGE_NAME, PARTICLE_2D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Particle3d => {
+                ImageSpec::of(PARTICLE_3D_IMAGE_NAME, PARTICLE_3D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SfxSynth => {
+                ImageSpec::of(SFX_SYNTH_IMAGE_NAME, SFX_SYNTH_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SfxSample => {
+                ImageSpec::of(SFX_SAMPLE_IMAGE_NAME, SFX_SAMPLE_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Music => ImageSpec::of(MUSIC_IMAGE_NAME, MUSIC_IMAGE_OVERRIDE_ENV),
             // The whole Blender family shares one image (headless Blender + `tcab-blend`).
             AssetKind::BlenderCharacter | AssetKind::BlenderProp | AssetKind::BlenderMechanism => {
-                ImageSpec {
-                    name: BLENDER_IMAGE_NAME,
-                    override_env: BLENDER_IMAGE_OVERRIDE_ENV,
-                }
+                ImageSpec::of(BLENDER_IMAGE_NAME, BLENDER_IMAGE_OVERRIDE_ENV)
             }
         },
-        TestType::Adversarial => ImageSpec {
-            name: ADVERSARIAL_IMAGE_NAME,
-            override_env: ADVERSARIAL_IMAGE_OVERRIDE_ENV,
-        },
-        TestType::Performance => ImageSpec {
-            name: PERFORMANCE_IMAGE_NAME,
-            override_env: PERFORMANCE_IMAGE_OVERRIDE_ENV,
-        },
+        TestType::Adversarial => {
+            ImageSpec::of(ADVERSARIAL_IMAGE_NAME, ADVERSARIAL_IMAGE_OVERRIDE_ENV)
+        }
+        TestType::Performance => {
+            ImageSpec::of(PERFORMANCE_IMAGE_NAME, PERFORMANCE_IMAGE_OVERRIDE_ENV)
+        }
     }
 }
 
-/// Resolve the run-container image reference for a run, from the environment. The
-/// image is selected by the run's [`TestType`] and (for asset-generation) its
-/// [`AssetKind`] — end-to-end runs use the base-wasm image, single-sprite runs use the
-/// sprite image, sprite-sheet runs use the sprite-sheet image, adversarial runs
-/// use the adversarial image — and the harness's CLI is installed into the
-/// container at run time rather than baked into a per-harness image. The runner
-/// pulls the image directly from a registry — it does **not** ask any backend, so
-/// a runner pointed at any backend (or none) resolves it the same way (see
+/// The [`ImageSpec`] a run resolves once its harness is known: [`image_spec_for`], swapped
+/// for its [gg variant](ImageSpec::gg_variant) when the subject is [`gg`](HarnessSlug::Gg).
+///
+/// Total in both directions: every harness resolves an image, and for gg that image always
+/// carries the toolchains, because the variant is derived from the parent rather than
+/// looked up in a list that could be missing an entry.
+///
+/// Separate from [`resolve_run_image`] so the selection can be asserted without touching
+/// process-global environment, exactly as [`compose_run_image`] is.
+fn image_spec_for_run(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
+    harness: HarnessSlug,
+) -> ImageSpec {
+    let spec = image_spec_for(test_type, asset_kind, asset_dimension);
+    if harness != HarnessSlug::Gg {
+        return spec;
+    }
+    spec.gg_variant()
+}
+
+/// Resolve the run-container image reference for a run, from the environment. The image
+/// is selected by the run's [`TestType`], by its [`AssetKind`] for asset-generation,
+/// and by its [`AssetDimension`] for full-stack — end-to-end runs use the base-wasm
+/// image, full-stack runs use the full-stack image of their declared dimension,
+/// single-sprite runs use the sprite image, sprite-sheet runs use the sprite-sheet
+/// image, adversarial runs use the adversarial image — and the harness's CLI is
+/// installed into the container at run time rather than baked into a per-harness image.
+/// The runner pulls the image directly from a registry — it does **not** ask any
+/// backend, so a runner pointed at any backend (or none) resolves it the same way (see
 /// `docs/components/core/execution.md`).
+///
+/// `harness` is taken for the one thing that is not installed at run time: a
+/// [`gg`](HarnessSlug::Gg) run resolves the **gg variant** of the image it
+/// would otherwise get, carrying the language toolchains its programs are compiled with.
+/// Every other slug resolves the shared image, which is what keeps those toolchains off
+/// the runs that must not have them.
 ///
 /// Precedence:
 /// 1. The image's **own** override — `TCAB_CONTAINER_IMAGE_BASE_WASM` for an end-to-end
-///    run, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
-///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run — a full, verbatim
+///    run, `TCAB_CONTAINER_IMAGE_FULL_STACK_2D` / `_FULL_STACK_3D` for a full-stack run
+///    of either dimension, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
+///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run, and the `_GG` suffixed
+///    counterpart for a gg run, which resolves the variant — a full, verbatim
 ///    reference. Set it to a `@sha256:…` digest to pin an exact image, or to point
 ///    at a private build. There is no override that applies to every image: they
 ///    differ, so each is pinned on its own.
@@ -398,13 +516,19 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 ///    An explicitly empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix,
 ///    naming a local image (`{name}:{tag}`) for offline development.
 ///
-/// The default with nothing set is the published image on the latest tag, e.g.
-/// `ghcr.io/theclockwyrks/test-cabinet-base-wasm:latest` for an end-to-end run.
-pub fn resolve_run_image(test_type: TestType, asset_kind: AssetKind) -> String {
-    let spec = image_spec_for(test_type, asset_kind);
+/// The default with nothing set is the image in the Test Cabinet ACR on the latest
+/// tag, e.g. `testcabinet.azurecr.io/test-cabinet-base-wasm:latest` for an end-to-end
+/// run.
+pub fn resolve_run_image(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
+    harness: HarnessSlug,
+) -> String {
+    let spec = image_spec_for_run(test_type, asset_kind, asset_dimension, harness);
     compose_run_image(
-        spec.name,
-        std::env::var(spec.override_env).ok(),
+        &spec.name,
+        std::env::var(spec.override_env.as_ref()).ok(),
         std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
         std::env::var("TCAB_CONTAINER_TAG").ok(),
     )
@@ -485,11 +609,11 @@ pub struct HarnessOutcome {
     ///
     /// Harnesses that drive a single provider directly through an API key (for
     /// example Claude Code, which reports `total_cost_usd`) emit the exact
-    /// amount charged. Because such a harness talks to one provider at one
-    /// price, this figure is both the actual charge and a provider-stable
-    /// comparable value, so the orchestrator uses it directly and skips the
-    /// OpenRouter price lookup. Harnesses that do not report a cost leave this
-    /// `None` and fall back to OpenRouter-derived pricing.
+    /// amount charged. The figure is what the run was billed, so the run engine
+    /// records it as the actual cost; the comparable cost is computed from the
+    /// model's curated list price regardless. Harnesses that do not report a
+    /// cost leave this `None`, and the actual cost falls back to the comparable
+    /// figure.
     pub reported_cost: Option<f64>,
     /// Every raw output line the harness produced, in arrival order, recorded so
     /// a run can persist the untranslated stream alongside its translation.
@@ -497,6 +621,43 @@ pub struct HarnessOutcome {
     /// The normalized events translated from the raw output, in the order they
     /// were produced, recorded for persistence beside the raw stream.
     pub translated_events: Vec<HarnessEvent>,
+    /// The compact, aggregatable [summary](crate::gg::GgSessionSummary) of a **gg**
+    /// run's outcome, lifted from the terminal
+    /// [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary) telemetry event
+    /// the gg binary emits just before it ends. Recorded onto the run
+    /// ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) so result
+    /// aggregation can slice a gg run's outcome without re-parsing its event stream.
+    /// `None` for every third-party-harness run (which emits no such event) and for a
+    /// gg run that ended before emitting one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gg_summary: Option<crate::gg::GgSessionSummary>,
+    /// How many times each tool was invoked over the session, keyed by lowercased
+    /// raw tool name — **including** tools that are recognized and consumed without
+    /// emitting an event (the todo tools). Accumulated by the
+    /// [event parser](crate::event::EventParser) as the stream is translated, and
+    /// recorded onto the run so a comparison can diagnose tool-call behavior that a
+    /// count derived from the event stream alone would miss. Empty for a gg run
+    /// (whose per-tool detail comes from its own telemetry) and for any harness
+    /// with no tool activity.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub tool_calls: std::collections::BTreeMap<String, u64>,
+    /// Whether this session was ended by an **operator cancellation** rather than by the
+    /// model or a ceiling — the run was killed, the harness was asked to wind down, and
+    /// what is carried here is everything it had accumulated at that point.
+    ///
+    /// It rides the *outcome* rather than an error because a canceled session is not a
+    /// failure to drive: it succeeded in producing a partial result, and the whole point
+    /// of cancelling cooperatively is that the run then finishes through its ordinary
+    /// post-session path (collect the tree, fold the metrics, write the record) instead
+    /// of unwinding and losing all of it. The engine reads it to mark the run
+    /// [`RunState::Canceled`](crate::run_record::RunState::Canceled) and to skip
+    /// validation, which would be new work on a run that was told to stop.
+    ///
+    /// A [gg](crate::gg) session is the only one that ever sets it: gg is the one harness
+    /// that can be asked to stop, and a canceled run of any other is destroyed by the
+    /// driver without an outcome ever being produced.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub canceled: bool,
 }
 
 /// Reports whether a harness's CLI was installed and can be invoked.

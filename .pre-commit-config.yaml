@@ -1,19 +1,5 @@
 # pre-commit configuration for The Test Cabinet.
 #
-# Most of these are fast, trivial gates that run on every `git commit`. The two
-# deliberate exceptions are clippy (rust-clippy) and rustdoc (rust-doc): both
-# compile the workspace and so are slower, but they guard against landing lint
-# failures locally. They share their compilation artifacts, so running the pair
-# costs little more than clippy alone. The remaining slow gates (the test suite,
-# the web/docs builds) still live only in CI (scripts/ci/*, driven by
-# azure-pipelines.yml and .github/workflows/ci.yml).
-#
-# Note rust-doc is not doctests: it checks that doc comments' intra-doc links
-# resolve, which no other gate sees. Doctests (`cargo test --doc`) run the code
-# examples inside those comments and stay CI-only — every doctest in this
-# workspace is currently `ignore`/`text`, so running them locally would cost
-# ~35s to execute zero tests.
-#
 # Setup is a single idempotent command: `scripts/setup-hooks.sh` (also run
 # automatically when the devcontainer is created). If a hook ever blocks a commit
 # you know is fine, `git commit --no-verify` bypasses it; CI remains the backstop.
@@ -27,15 +13,42 @@ repos:
     hooks:
       - id: check-added-large-files
         # Committed case media are an intentional binary category that routinely
-        # exceeds the 500KB default; exempt those dirs. `validation-baseline/` holds
-        # the webm/png baseline clips synthesized by `tcab publish-reference
-        # --baselines-only`; `reference/screenshots/` holds the per-variant reference
-        # renders of a case's authored mockups (a full-detail gameplay frame is a
-        # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
-        # systems, and audio the reference build produced with the asset-generation
-        # tools (a music bed is several MB of WAV). All are generated wholesale and
-        # tracked deliberately.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/'
+        # exceeds the 500KB default; exempt those dirs. `reference/screenshots/`
+        # holds the per-variant reference renders of a case's authored mockups (a
+        # full-detail gameplay frame is a large PNG). `reference-impl/<variant>/assets/` and the per-engine layouts that
+        # replaced it — `references/<engine>/assets/` and
+        # `references/<engine>/<variant>/assets/` — hold the sprites, models, particle
+        # systems, and audio the reference build produced with the asset-generation tools
+        # (a music bed is several MB of WAV); all three spellings are named because the
+        # older cases still carry the first and the newer ones use whichever of the other
+        # two their workspace shape calls for. A case version's `showcase/`
+        # dirs hold the per-variant showcase media captured from the reference
+        # implementation (a solve video is over a megabyte). All are generated
+        # wholesale and tracked deliberately.
+        #
+        # `crates/gg/src/sandbox/guests/` and `crates/gg/src/sandbox/checkers/` USED
+        # TO BE EXEMPT HERE, and removing them is the point rather than tidying: those
+        # directories held what each gg program language carries — the guest component
+        # that evaluates a program (~13MB, it embeds a whole language runtime) and, for
+        # a language that type-checks, the compiler that judges one (~6MB). Thirty-three
+        # such artifacts, ~117MB, are not committed any more; every one is cut into a
+        # cargo `OUT_DIR` by a crate under `crates/gg-sandbox-artifacts/` on the same
+        # build that compiles the host that embeds it. `guests/` no longer exists and
+        # `checkers/` holds five small hand-written source files. So this hook is now a
+        # STRUCTURAL guard on that decision: put a multi-megabyte guest back under
+        # either path and the commit is refused, by a rule that does not have to know
+        # gg exists. That is worth more than the exemption ever was, and it is why the
+        # exemption must not come back.
+        #
+        # It is the second guard over those paths and not the only one, and the sizes
+        # are why: this hook's threshold is 500 kB, while nine of the thirty-three
+        # artifacts were smaller than that — both 52 kB adapters, every
+        # `*.toolchain.json`, both `*.compiler.json`. `.gitignore` carries an ALLOWLIST
+        # for `crates/gg/src/sandbox/checkers/` that names the five files which belong
+        # there and ignores everything else, plus a whole-directory ignore for
+        # `guests/`. That one is about WHETHER a generated artifact may be committed at
+        # all; this one is about how big anything may be, anywhere.
+        exclude: "(^|/)reference/screenshots/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/"
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -71,11 +84,13 @@ repos:
         # following", which shellcheck exits non-zero on — so the gate failed the
         # moment any of them was touched, unrelated to the edit.
         args: [-x]
-        # The per-case reference implementations under */reference-impl/ are
-        # authored, frozen build artifacts (game-asset generators full of
-        # intentional word-splitting); CI never shellcheck-linted them, so keep
-        # them out of the commit gate. Maintained tooling is still checked.
-        exclude: '(^|/)reference-impl/'
+        # The per-case reference implementations are authored, frozen build
+        # artifacts (game-asset generators full of intentional word-splitting);
+        # CI never shellcheck-linted them, so keep them out of the commit gate.
+        # Maintained tooling is still checked. They sit under */reference-impl/
+        # on the older case layouts and under */references/ on the reworked
+        # ones, so both names are named here.
+        exclude: "(^|/)(reference-impl|references)/"
 
   # Repo-specific gates. Their logic lives in committed scripts / this committed
   # config (never an untracked local file) so every clone runs the same checks.
@@ -91,15 +106,86 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: seeded-contract
+        name: seeded contract package
+        description: Reject evaluation vocabulary in the generated contract package that is vendored into a model's workspace.
+        entry: scripts/ci/seeded-contract-check.sh
+        language: script
+        # Greps the whole generated package, which changes as a side effect of a
+        # Rust doc comment rather than of editing anything under it, so staging is
+        # not what decides whether this needs to run.
+        always_run: true
+        pass_filenames: false
+
       - id: no-nul-bytes
         name: NUL bytes in text files
         description: Reject a NUL byte in a file git reads as text, which makes grep and rg report zero matches in it.
         entry: scripts/hooks/no-nul-bytes.sh
         language: script
         # Takes the staged paths and skips the ones .gitattributes declares a
-        # binary format, so the committed wasm components, MIDI and icons are
-        # excused by a declaration rather than by a list here that would rot.
+        # binary format, so the committed wasm components, SDK jars, MIDI and
+        # icons are excused by a declaration rather than by a list here that
+        # would rot.
         types: [file]
+
+      - id: build-context
+        name: Dockerfile build context
+        description: Reject a Dockerfile COPY — or a gg guest package — that the .dockerignore allowlist keeps out of the build context.
+        entry: scripts/ci/build-context.sh
+        language: script
+        # Reads every Dockerfile against the allowlist that applies to it, so it does
+        # not take file arguments; trigger whenever either side of that pair is
+        # staged. This is the only gate that sees the defect at all — the image builds
+        # live on a GitHub workflow that runs on master/staging, long after the
+        # commit.
+        #
+        # The pattern is case-insensitive in `[Dd]ockerfile` and matches a
+        # `.dockerignore` at any depth rather than only at the root, because both of
+        # those are now real: the devcontainer image is `.devcontainer/ubuntu.dockerfile`
+        # and carries its own `ubuntu.dockerfile.dockerignore` beside it (BuildKit
+        # prefers a per-dockerfile ignore over the context root's). Under the previous
+        # pattern neither file could trigger this hook, which is precisely the shape
+        # of defect it exists to catch.
+        #
+        # `packages/gg-sandbox` is the third arm of the pattern because the gate's
+        # second check is not about a COPY at all: the driver image's gg stage copies
+        # the whole context and then COMPILES those packages, so a new one — the java
+        # and kotlin arms' shared `gg-sandbox-jvm` crossing was the first — belongs in
+        # the allowlist while no Dockerfile mentions it. Staging the new package is the
+        # only moment anything can notice.
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^packages/gg-sandbox'
+        pass_filenames: false
+
+      - id: audio-packs
+        name: audio pack declarations
+        description: Reject a version whose [audio] packs is missing, or names a pack that does not resolve against containers/sample-packs/.
+        entry: scripts/ci/audio-packs-check.mjs
+        language: script
+        # Points straight at the CI checker rather than a wrapper under
+        # scripts/hooks/, the way build-context does: the only thing
+        # scripts/ci/audio-packs-lint.sh adds is the `npm ci` a clean CI checkout
+        # needs, and a working tree already has node_modules.
+        #
+        # It reads EVERY version, not the staged ones, so it takes no file
+        # arguments — and it has to, because the rule it enforces is that a
+        # declaration EXISTS: publishing a pack, or retiring one, re-judges every
+        # manifest in the repository rather than only the file that changed.
+        files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/'
+        pass_filenames: false
+
+      - id: spec-vocabulary
+        name: seeded spec vocabulary
+        description: Reject evaluation vocabulary — this project's name, `tcab`, "benchmark", "test case", a review surface — in a spec or prompt that is seeded into a model's workspace.
+        entry: scripts/ci/spec-vocabulary-check.sh
+        language: script
+        # The spec counterpart of seeded-contract above. Unlike that one it is
+        # scoped: `files` fires it when a commit touches the seeded set — a
+        # version's prompt.hbs or anything under its specs/, or the shared prompt
+        # preambles in prompt.rs — and it then reads EVERY non-frozen version
+        # rather than the staged paths, so it takes no file arguments. The
+        # checker is dependency-free node and finishes in a fraction of a second.
+        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^crates/core/src/prompt\.rs$'
+        pass_filenames: false
 
       - id: rust-fmt
         name: cargo fmt (--check)
@@ -111,27 +197,7 @@ repos:
         files: '\.rs$'
         pass_filenames: false
 
-      - id: rust-clippy
-        name: cargo clippy (warnings denied)
-        description: Run Clippy across the workspace with warnings denied (mirrors CI's rust-lint).
-        entry: scripts/hooks/rust-clippy.sh
-        language: script
-        # Clippy operates on the whole workspace, not individual files; trigger
-        # whenever any Rust source is staged, but don't pass file paths.
-        files: '\.rs$'
-        pass_filenames: false
-
-      - id: rust-doc
-        name: cargo doc (warnings denied)
-        description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
-        entry: scripts/hooks/rust-doc.sh
-        language: script
-        # rustdoc operates on the whole workspace, not individual files; trigger
-        # whenever any Rust source is staged, but don't pass file paths.
-        files: '\.rs$'
-        pass_filenames: false
-
-      # The two spec-lint gates below run the npm workspace's own locked
+      # The two prose gates below run the npm workspace's own locked
       # markdownlint-cli2/cspell (via scripts/hooks/) rather than copies declared
       # with `additional_dependencies`. pre-commit installs those into an isolated
       # node env that resolves each tool's transitive dependencies fresh at
@@ -143,15 +209,16 @@ repos:
       # verdict and the CI verdict the same by construction.
       - id: markdownlint
         name: markdownlint
-        description: Lint the test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
+        description: Lint the specs' and the documentation site's Markdown style (shares .markdownlint-cli2.yaml).
         entry: scripts/hooks/specs-markdownlint.sh
         language: script
-        # .markdownlint-cli2.yaml's globs drive the file set (mirroring
-        # `npm run lint:md`), so don't pass paths; trigger whenever a spec
-        # Markdown file is staged, the way rust-fmt keys off staged Rust — or
-        # whenever the rule config itself changes, since that re-judges every
-        # spec, not just the staged ones.
-        files: '^(test-cases|game-jams)/.*\.md$|^\.markdownlint-cli2\.yaml$'
+        # .markdownlint-cli2.yaml's globs drive the file set — test-cases/**/*.md,
+        # game-jams/**/*.md, test-case-groups/**/*.md and the documentation site —
+        # mirroring `npm run lint:md`,
+        # so don't pass paths; trigger whenever a linted Markdown file is staged, the
+        # way rust-fmt keys off staged Rust — or whenever the rule config itself
+        # changes, since that re-judges every page, not just the staged ones.
+        files: '^(test-cases/.*\.md|game-jams/.*\.md|test-case-groups/.*\.md|apps/docs/src/content/docs/.*\.md|\.markdownlint-cli2\.yaml)$'
         pass_filenames: false
 
       - id: cspell
@@ -164,5 +231,5 @@ repos:
         # one of those extensions is staged — or whenever the config or the
         # project dictionary changes, since deleting a word there can unmask a
         # spelling anywhere in the corpus, not just in what is staged.
-        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$|^cspell\.json$|^\.cspell/'
+        files: '^(test-cases|game-jams|test-case-groups)/.*\.(md|html|css|toml|hbs)$|^cspell\.json$|^\.cspell/'
         pass_filenames: false

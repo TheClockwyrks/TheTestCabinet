@@ -1,0 +1,66 @@
+Build **Facet**, a gem-matching puzzle that runs entirely in the browser, and
+produce the art, the effects, and the sound it plays yourself during this build.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` is the entry point: it says how the
+rest of the specification is organized, what you implement, which files stay as
+they are, the code quality the build is held to, and the commands that run over
+the finished repository. `specs/assets.md` is the production contract for the
+art, the effects, and the sound the game plays: it names the tools on your
+`PATH`, what each one produces, and how the produced files are wired in. The
+project's own `README.md` describes the workspace as it was seeded.
+
+{{#if (eq engine.slug "none")}}
+This build stands on no engine, so the runtime layer beneath the game is yours
+to write as well. Its dependencies are already installed, so you can build and
+test right away.
+{{else if (eq engine.slug "simple-2d")}}
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install. Its dependencies are already
+installed, so you can build and test right away. The engine's own documentation
+is at `{{engine.docs}}`, and it is the authoritative description of the engine's
+API. Build the game on the engine rather than beside it.
+{{else}}
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install. Its dependencies are already
+installed, so you can build and test right away. The engine's own documentation
+is at `{{engine.docs}}`, and it is the authoritative description of the engine's
+API. Build the game inside the engine's framework rather than beside it.
+{{/if}}
+
+## The build interface
+
+`npm ci` followed by `npm run build`, with no other manual step, is how the
+project is installed and built. `specs/overview.md` states what that must
+produce and where.
+
+## Driving the game in a browser
+
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser.
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on
+`PATH`; it lives in your project's `node_modules` like any other dependency.
+Launch Chromium with the `--no-sandbox` argument, since this container has no
+Chromium sandbox and a default launch fails.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+directly from this repository's commits, so work you leave uncommitted is not
+published. When the build is complete, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with nothing
+uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
+build output, and coverage reports, so a clean tree means committing your source,
+your tests, your `package-lock.json`, the produced files under `public/assets/`,
+your `showcase/` directory, and your `README.md`.

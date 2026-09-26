@@ -1,0 +1,2586 @@
+slug = "coil"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which engines
+# a run may select, how the produced implementation is built and checked, and what a
+# reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Coil"
+
+# Test type. Coil is a `full-stack` case: an end-to-end (playable-browser-game) case
+# with one addition — the model under test must PRODUCE some of the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. Here that produced set is the snake's full sprite
+# set and the game's sound and music; everything else (the board, walls, obstacles,
+# pellet, and HUD) is still drawn in code. The `full-stack` type, with
+# `asset_dimension` left at its `2d` default, schedules the run onto the
+# `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` — `draw`,
+# `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others;
+# `specs/assets.md` is the production contract. A root identity field, so it sits above
+# the first table.
+type = "full-stack"
+
+# Relative difficulty of this case, surfaced on the site. Coil's rules are simple: a
+# polished, playable build with a correct fixed-timestep loop, grid-locked turning, a
+# decaying combo, and several states. It also asks the model to PRODUCE the snake's
+# sprite set (an animated biting head plus body and corner sprites) and the game's sound
+# and music with the on-`PATH` tools, but that production pass sits over a small, simple
+# game, so the case belongs at the easy end of the full-stack scale.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "grid", "score-attack"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon grid serpent that grows with every pellet, where eating in quick \
+succession builds a decaying combo multiplier — so the real game is planning \
+the most efficient route, not just staying alive — and the build must produce \
+its own snake sprites and sound with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. The game itself is small, but producing the snake's sprite set and the
+# game's audio with the on-`PATH` tools is a real added pass, so Coil gets three
+# hours — comfortably more than a healthy build needs while still bounding a session
+# that never terminates.
+max_runtime_hours = 3
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order — the
+# first is the default. Neither variant seeds a mode spec of its own: what differs
+# between them — the mode's menu entry, its HUD label and, for maze, the interior
+# obstacle course — is branched by variant slug inside the common
+# `specs/mode.md.hbs` template.
+# Each variant is exactly one mode:
+#   - base — Classic mode: the grid-serpent run on the open board.
+#   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
+#            thread (declares its own `maze` domain).
+# This list is a root key, so it must precede the first table header.
+variants = [
+  "variants/base.toml",
+  "variants/maze.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness, and the variant, and recorded on the run; it is not a property of
+# the game.
+#
+# Coil supports three, and the game is the same grid serpent under all of them.
+# What differs is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the fixed-tick loop, the canvas fit, the keyboard input, the
+#                     audio, the overlay and the `window.__coil` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the entry module
+#                     around it (`src/main.ts`, plus the `src/game.ts` the build
+#                     writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds the same
+#                     entry module; the build writes its game module — the game
+#                     definition, its mode, its state and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+# What does NOT differ is the asset-production pass. Every engine run still produces
+# the snake's sprite set and the game's sound and music with the on-`PATH` binaries,
+# because no engine supplies art or audio; `specs/assets.md` is the same contract
+# under all three.
+#
+# `none` supplies no package and therefore carries no version, so it is named in the
+# bare `engines` list; `simple-2d` and `structured-2d` each carry a range and are
+# named in `[[engine]]` tables. `min_version` is the 1.0.0 contract the specs and the
+# validators are written against, and there is deliberately no `max_version`, so a
+# later 1.x or 2.x from the host package store is accepted as it lands. Widening or
+# moving a range means a new case version, so the pin is the statement that THIS spec
+# set matches THIS contract.
+#
+# This declaration deliberately does not describe an engine. An engine ships its own
+# documentation from its own package and seeding puts it in the run for the model to
+# read, so the specs seeded from this folder never restate an engine's API. Where a
+# spec speaks of the runtime it states only what is specific to *this game* under it —
+# which surfaces the build still supplies, Coil's action list, and Coil's cue names.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same TypeScript, lint, format and test configuration
+# the `[toolchain]` commands below run against, an `index.html` holding the canvas,
+# and the project-local `playwright` dependency the model drives the built game
+# through. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own fixed-tick loop, canvas fit,
+#                     keyboard input, audio, diagnostics overlay and `window.__coil`
+#                     surface, and every figure this specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored in
+#                     at seed time so the build imports it by its bare package name,
+#                     and seeds the two case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes —
+#                     the stage and board geometry, the starting chain, the tick and
+#                     the turn buffer, the combo and its window, the mode's copy, the
+#                     screen copy, the action bindings, the cue names, and the paths
+#                     the produced files land at; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, and the game's update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes
+#                     `src/game.ts`: the game definition the engine drives — its mode,
+#                     its live state, and its actors — and the debug surface its
+#                     instance's `initialize` returns.
+#
+# This table must name EXACTLY the engines the case supports; the resolver checks
+# both directions. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`).
+#
+# A variant may replace this whole table with one of its own, which Maze does,
+# because `src/constants.ts` carries the mode: its menu entry, its HUD label, and
+# the interior cells it lays as obstacles, none of which is the same under the two
+# modes. The engineless project holds no game code for a variant to differ in — only
+# the configuration the build is written against — so every variant shares it, and
+# what a variant changes about the game reaches an engineless run through the specs,
+# which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
+
+# The audio packs the run container is staged with. These are the whole of what
+# `sfx-sample` and `music` can reach; no other pack is present. A tool config
+# that names no pack plays the first pack of that kind, so `combat-core` is
+# behind every unqualified `sfx-sample` call and `synthwave` behind every
+# unqualified `music` call.
+#
+# `combat-core` is the sample pack the `eat`, `combo-up`, and `death` cues layer
+# over. Its snaps and short impacts are what a bite well under a tick is built
+# from, and its low booms are the one heavy sound the game makes
+# (`specs/assets.md`). `synthwave` is the bank the bed is sequenced on, because
+# the board is neon and the bed has to sit under it without changing what the
+# game looks like it sounds like. An orchestra or a general-MIDI band would take
+# the bed somewhere Coil does not go, so neither is staged.
+[audio]
+packs = ["combat-core@0.1.0", "synthwave@0.1.0"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. A full-stack build is written in TypeScript, and the seeded
+# workspace ships the configuration each of these commands reads (`tsconfig.json`,
+# `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so what is checked here
+# is the code the model wrote against configuration the case fixed. The commands run
+# host-side over the collected tree after the run's container is gone, so a slow suite
+# costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does not
+# compile is not reviewable. The other three are recorded and gate nothing — `test`
+# additionally records the count and coverage the build's own suite reports, which is
+# how a build that ships tests is told apart from one that ships none. Each is spelled
+# `npx` rather than `npm run <script>` so the check is the case's own statement of what
+# is run and does not depend on the model leaving the seeded scripts intact. These four
+# are exactly the commands `specs/overview.md` tells the build will be run over the
+# finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once here.
+# It is reporter-side and never seeded; the seeded specification documents the surface
+# independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its scenario
+# through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__coil` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run has
+# NO global at all: the build writes the surface, its `initialize` returns it — beside
+# the state as `[state, debug]` under `simple-2d`, alone under `structured-2d` — and a
+# caller reads it back off `engine.debug`. Because `simple-2d` holds the state by value
+# and hands every reader a read-only view, its surface is written in the shape of
+# `update` — a pose takes the current state and returns the next, applied through
+# `engine.apply`, and a reading takes the state and returns what it read, called with
+# `engine.state`. `structured-2d` holds the world live, so its poses take only their own
+# arguments and act on it at the call, and its readings return plain data. One handle,
+# three ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. Coil is clocked at a fixed 8 Hz and its engineless
+# surface moves time in seconds and frames, leaving the simulation to consume them into
+# whole ticks, but a validator now builds its own clock and drives it directly rather
+# than asking the runtime to convert ticks back into real seconds, so the case has
+# nothing left to state here.
+[instrumentation]
+handle = "__coil"
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within the
+# run workspace. Every one of these is common: neither variant declares a spec of its
+# own, because the difference between Classic and Maze is a rule of the same game
+# rather than a different game, and a rule belongs beside the rules it sits with.
+#
+# The specification is decomposed by concern: the overview, the board geometry, the
+# movement simulation, the scoring and the combo, the mode and its menu entry, the
+# controls, the screens and the audio, the produced-asset contract, the
+# debugging/automation surface, and the showcase the build ships.
+#
+# A source is an `.hbs` template only where it actually branches, and there are two
+# axes to branch on. `variant.slug` selects the mode — its menu entry and, for Maze,
+# the fixed course of fatal interior obstacles — so a variant's rendered set describes
+# exactly one mode and reads as fully self-contained. `engine.slug` selects what the
+# build is handed and what it must write. A spec's `dest` defaults to its `source`
+# (with a trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same `.md`
+# path and a plain `.md` source is seeded verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/movement.md"
+
+[[spec]]
+source = "specs/scoring.md"
+
+[[spec]]
+source = "specs/mode.md.hbs"
+
+[[spec]]
+source = "specs/controls.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The asset-production contract: the assets the model must PRODUCE with the on-PATH
+# binaries during the run — the snake's sprite set and the game's cues and music —
+# where each file lands in the workspace, how it is loaded, and the bar each is held
+# to; and what stays drawn in code. It branches on the engine, because an engineless
+# build loads and decodes its own files while an engine run goes through the engine's
+# asset loader and cue bus. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The debugging and automation surface every build must expose: a render-free,
+# steppable core, an API to drive and inspect the game from code, and a read-only debug
+# overlay. Seeded for every run and framed as an ordinary developer affordance of the
+# game. It branches on both axes — the variant, for the snapshot's `mode` value and for
+# the pair of operations that clear and place the obstacle cells only Maze lays, and the
+# engine, for how the surface is reached and what shape its operations take.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished build ships beside its source: a `showcase/` directory
+# holding a player-facing description and a short carousel of captured media. It
+# branches on the engine, because an engineless build records motion as a `.webm`
+# clip while an engine run records it as a replay through the engine's recorder.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them: a flawless snake game cannot mask crude,
+# un-produced art or silence, and a beautiful produced snake cannot mask a game
+# that does not play correctly. Every case must declare at least one. This case is
+# on the engine format, so it is validator-rated: each domain's FUNCTIONAL rating
+# is decided by the validators behind the point checklist below (every point names
+# the domains its failure lowers and how far, through `domains` and `failure_cap`
+# there), and the reviewer's judgement lives in the separate AESTHETIC rating of
+# each domain, which is the look, the polish and the feel. The Maze variant adds
+# its own `maze` domain (see `variants/maze.toml`).
+[[domain]]
+id = "gameplay"
+name = "Gameplay"
+description = "The single-player snake game itself, and how it plays: the fixed-tick movement, grid-locked turning, growth and collision, the decaying combo, the scoring, and the states."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "Everything a player sees and hears. The produced assets first: the snake's sprite set, an animated head that bites when it eats and the body, corner and tail sprites that render it turning, and the produced sound effects and music bed the game plays. Then the board, the pellet, the HUD and the screens the build draws in code around them."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY, a bare name
+# grouping the points a reviewer grades, and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight) unless
+# it declares a `weight` of its own, so a category is worth the sum of its items'
+# weights and there is no fractional scoring. One point declares a weight: the
+# showcase, which is a whole deliverable rather than one rule. A category carries
+# no prose of its own; each review item states in `description` the claim its
+# validator checks, and its verdict is recorded under the composite id
+# `<category id>.<item id>`. The checklist is reporter-side
+# material, never seeded into a run, so the model never sees it; each item restates
+# a requirement the seeded specification already states, and every threshold a
+# validator asserts is a figure or rule the specs fix plus an honest tolerance.
+#
+# EVERY point carries a validation script, and every point is ONE observable
+# behavior, so a build fails exactly the rule it breaks. Each wall is its own
+# point, each steering direction is its own point, each key bound to an action is
+# its own point, and each screen transition is its own point in one direction. Each
+# edge case the rules already imply is a point of its own as well, rather than a
+# caveat in the specification: an update shorter than a tick, a third request at a
+# full turn buffer, the last valid cell on a crowded board, the tail entered on a
+# growth tick, the combo window read at 27 ticks and again at 28.
+#
+# Each script is a vitest suite under `validation/<engine>/<category>/<item id>.test.ts`,
+# and the path a point declares is relative to `validation/<engine>/`, so the same
+# declaration must resolve in every engine's validator project. The `<engine>` level
+# is the ENGINE the suite is written against, because a validator speaks one
+# engine's vocabulary: `validation/none/` drives the built site in Chromium through
+# `window.__coil`, and `validation/simple-2d/` and `validation/structured-2d/` each
+# run in process against their vendored engine and reach the surface through
+# `engine.debug`. The three run the same scenarios and differ only in how they reach
+# the build. The directory for the run's engine is what gets staged into the built
+# workspace at `validation/`.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. A `replay` output is a draw-command recording, armed around the
+# section the point is about (the eat, the fatal tick, the window draining) and
+# never around the arrangement that got there. An `image` output is a single
+# captured frame, and it is what a point takes whose check reads a produced file
+# off the workspace rather than driving the game, because a recorder armed around
+# no drive records nothing and an output that never turns up is read as a contract
+# failure. Both are evidence beside the verdict rather than any part of it: a
+# point passes or fails on its assertions alone.
+#
+# NOTHING here asks a reviewer to judge how the game looks or sounds. Appearance is
+# rated through the domains above. The points about what is drawn assert only what
+# the specification fixes: that the stage is fitted, that each piece on the board
+# is drawn rather than left as the ground under it, that the copy each screen
+# names is drawn, that the snake is painted from produced sprites rather than from
+# shapes, and that the produced sounds carry signal and hold the lengths
+# `specs/assets.md` fixes for them.
+#
+# EVERY point also carries `domains` and `failure_cap`. `domains` names the scoring
+# domains a failure lowers: a rule of the simulation lowers `gameplay`, a point
+# about what is drawn or heard lowers `presentation`, and the surface every other
+# point is driven through lowers both. `failure_cap` is the highest functional
+# rating those domains may reach while the point fails; each domain takes the LOWEST
+# cap among its failing points, and a domain with no failing point is flawless. The
+# caps are graded by how much of the game a failure takes away: `broken` where the
+# game cannot be played as intended (no debug surface, a snake that does not move, a
+# game that never advances itself, a pellet that is never replaced, a round that
+# cannot be started); `scuffed` where a rule the game is
+# built on is noticeably wrong (a turn refused or wrongly taken, a wall that is not
+# fatal, the tail rule, the combo lapse, a piece of the board that cannot be told
+# apart, a snake not drawn from its produced sprites); `passable` where the fault is
+# a tolerance, an edge case, a ceiling or a secondary path (a window read at one of
+# its two edges, a menu that does not wrap, a cue that does not fire, a sound the
+# wrong length); and `great` where it is a cosmetic detail (the copy on a screen, a
+# second key bound to an action a first key already covers). No point caps at
+# `flawless`: a failure always costs something.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The surface every other point is driven through. It is a deliverable of the
+# case, so a surface that is missing, hollow, or wrong fails here by name rather
+# than showing up only as every other point failing to run. The three driver
+# switches are checked one at a time, because each one is what lets a later
+# point hold one faculty still while it watches another, and the posed next
+# spawn is checked one stated behavior at a time, because it is what lets a
+# later point decide where a draw lands rather than sample it.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "debug-api"
+title = "Debug and automation surface present"
+description = "Every operation specs/instrumentation.md names for this mode is present on the debug surface, each poses or reads the running game, and snapshot reports the full documented shape with live values."
+domains = ["gameplay", "presentation"]
+failure_cap = "broken"
+# Automated validation: reach the surface, confirm every named operation is a
+# function, drive each one against a real game, and read a snapshot back
+# carrying every documented field. See
+# validation/<engine>/instrumentation/debug-api.test.ts.
+validation = { script = "instrumentation/debug-api.test.ts", outputs = [
+  { id = "state", name = "The driven game the surface was read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores"
+title = "reset restores the opening state"
+description = "reset() returns the game to its opening values: the title screen, menuIndex and titleIndex 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the starting chain of specs/board.md facing right, an empty turn buffer, no live pellet, no posed pellet cell, and all three driver switches on."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a thoroughly disturbed game (a moved snake, a
+# score, a live combo, a posed next pellet, the switches off), then reset and
+# read every field of the snapshot back. See
+# validation/<engine>/instrumentation/reset-restores.test.ts.
+validation = { script = "instrumentation/reset-restores.test.ts", outputs = [
+  { id = "reset", name = "The game the moment after a reset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "steering-off-holds-heading"
+title = "Steering off holds the snake's heading"
+description = "With setSnakeSteering(false) the turn buffer stays empty and dir holds its value however many steering requests arrive."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn steering off, request every direction over several
+# ticks, and confirm turns stays empty and dir never changes. See
+# validation/<engine>/instrumentation/steering-off-holds-heading.test.ts.
+validation = { script = "instrumentation/steering-off-holds-heading.test.ts", outputs = [
+  { id = "held", name = "The snake holding its heading with steering off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "steering-off-still-travels"
+title = "Steering off leaves the snake travelling"
+description = "With setSnakeSteering(false) the head still advances one cell along dir on every tick, because the switch holds the steering alone."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn steering off, run several ticks, and confirm the
+# head advanced one cell along dir on each of them. See
+# validation/<engine>/instrumentation/steering-off-still-travels.test.ts.
+validation = { script = "instrumentation/steering-off-still-travels.test.ts", outputs = [
+  { id = "travelling", name = "The snake travelling on with steering off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "steering-on-takes-requests"
+title = "Steering turned back on takes requests again"
+description = "After setSnakeSteering(true) the next steering request lands in the turn buffer and the following tick applies it to dir."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn steering off, turn it back on, request one turn,
+# and read the buffer and dir across the next tick. See
+# validation/<engine>/instrumentation/steering-on-takes-requests.test.ts.
+validation = { script = "instrumentation/steering-on-takes-requests.test.ts", outputs = [
+  { id = "resumed", name = "A turn taken once steering is back on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "travel-off-holds-the-chain"
+title = "Travel off holds the snake still"
+description = "With setSnakeTravel(false) the chain holds the cells it stands on over many ticks, so nothing collides and nothing is eaten."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn travel off, pose the head one cell from a wall, run
+# far more ticks than it would take to reach it, and confirm the chain and the
+# screen are unchanged. See
+# validation/<engine>/instrumentation/travel-off-holds-the-chain.test.ts.
+validation = { script = "instrumentation/travel-off-holds-the-chain.test.ts", outputs = [
+  { id = "held", name = "The chain standing still with travel off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "travel-off-still-turns"
+title = "Travel off leaves the snake steering"
+description = "With setSnakeTravel(false) a buffered turn is still taken on the tick and dir changes, because the switch holds the travel alone."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn travel off, request one turn, run a tick, and read
+# the buffer and dir. See
+# validation/<engine>/instrumentation/travel-off-still-turns.test.ts.
+validation = { script = "instrumentation/travel-off-still-turns.test.ts", outputs = [
+  { id = "turned", name = "A turn taken while the chain stands still", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pellet-respawn-switch"
+title = "The respawn switch leaves an eaten pellet unreplaced"
+description = "With setPelletRespawn(false) a pellet eaten by the head leaves pellet at null rather than placing the next one, and the round carries on."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn respawn off, place a pellet ahead of the head, eat
+# it, and confirm the score rose while pellet is null. See
+# validation/<engine>/instrumentation/pellet-respawn-switch.test.ts.
+validation = { script = "instrumentation/pellet-respawn-switch.test.ts", outputs = [
+  { id = "unreplaced", name = "An eaten pellet left unreplaced", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "next-pellet-lands-where-posed"
+title = "setNextPellet poses the next spawn"
+description = "After setNextPellet(col, row) the snapshot reports nextPellet as that cell, and the tick that eats with respawn on places the next pellet on it rather than on a drawn cell, the posed cell being in the valid set at that moment."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a chain and a meal ahead of it, pose a free cell
+# elsewhere as the next pellet, read the pose back, eat, and read where the
+# pellet landed. See
+# validation/<engine>/instrumentation/next-pellet-lands-where-posed.test.ts.
+validation = { script = "instrumentation/next-pellet-lands-where-posed.test.ts", outputs = [
+  { id = "posed", name = "An eat placing the pellet on the posed cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "next-pellet-consumed-by-the-spawn"
+title = "A spawn consumes the posed cell"
+description = "The spawn that placed the pellet on the posed cell leaves nextPellet at null, so the pose stands for one spawn alone."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the next pellet, drive the eat that spawns it, and
+# read nextPellet back off the snapshot. See
+# validation/<engine>/instrumentation/next-pellet-consumed-by-the-spawn.test.ts.
+validation = { script = "instrumentation/next-pellet-consumed-by-the-spawn.test.ts", outputs = [
+  { id = "consumed", name = "The pose gone once the spawn took it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "draw-pellet-cell-changes-nothing"
+title = "drawPelletCell leaves the game as it stands"
+description = "A call of drawPelletCell answers a cell and leaves every field of the snapshot as it stood, the live pellet, the chain, the figures, and a posed next cell included."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a board carrying a chain, a live pellet, a score,
+# and a posed next cell, read the snapshot, call drawPelletCell, and read the
+# snapshot again. See
+# validation/<engine>/instrumentation/draw-pellet-cell-changes-nothing.test.ts.
+validation = { script = "instrumentation/draw-pellet-cell-changes-nothing.test.ts", outputs = [
+  { id = "standing", name = "The board standing as posed after the draw", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-pellet-outside-the-valid-set-is-discarded"
+title = "A posed cell outside the valid set is discarded"
+description = "When the posed cell holds a snake segment at the moment of the spawn, the spawn discards the pose, places the pellet on a cell of the valid set instead, and leaves nextPellet at null."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a body cell of the chain as the next pellet, eat,
+# and read that the pellet landed clear of the chain with the pose consumed. See
+# validation/<engine>/instrumentation/next-pellet-outside-the-valid-set-is-discarded.test.ts.
+validation = { script = "instrumentation/next-pellet-outside-the-valid-set-is-discarded.test.ts", outputs = [
+  { id = "discarded", name = "A discarded pose and the drawn pellet in its stead", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "next-pellet-survives-respawn-off"
+title = "A posed cell outlives an eat with respawn off"
+description = "With setPelletRespawn(false) the tick that eats makes no spawn, so nextPellet still reports the posed cell after the eat."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the next pellet with respawn off, eat, and read
+# nextPellet back unchanged. See
+# validation/<engine>/instrumentation/next-pellet-survives-respawn-off.test.ts.
+validation = { script = "instrumentation/next-pellet-survives-respawn-off.test.ts", outputs = [
+  { id = "kept", name = "The pose standing through an eat with respawn off", kind = "replay" },
+] }
+
+# --- Movement -----------------------------------------------------------------
+# The tick itself: that it moves the snake exactly one cell, that it runs at the
+# rate specs/movement.md fixes however the elapsed time was divided into
+# updates, and that the build drives it from its own clock rather than waiting
+# to be poked.
+[[review.categories]]
+id = "movement"
+title = "Movement"
+[[review.categories.items]]
+id = "one-cell-per-tick"
+title = "One cell per tick"
+description = "A tick advances the head exactly one cell in the direction dir names, and no further."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a chain with clear board ahead of it, run one tick,
+# and compare the new head cell against the old one plus the direction vector.
+# See validation/<engine>/movement/one-cell-per-tick.test.ts.
+validation = { script = "movement/one-cell-per-tick.test.ts", outputs = [
+  { id = "move", name = "The head advancing one cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "body-follows-head"
+title = "Each segment takes the cell ahead of it"
+description = "After a tick that eats nothing, every body segment holds the cell the segment ahead of it held before the tick, so the chain stays contiguous with no gap and no branch."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a chain several cells long, run one tick, and
+# compare the new chain against the old one shifted by a cell. See
+# validation/<engine>/movement/body-follows-head.test.ts.
+validation = { script = "movement/body-follows-head.test.ts", outputs = [
+  { id = "follow", name = "The chain following the head", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "constant-rate"
+title = "Eight ticks in a second of game time"
+description = "One second of game time resolves exactly eight ticks, so ticks rises by eight and the head travels eight cells."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a clear run ahead of the head, advance one second
+# of game time on the validator's own clock, and read ticks and the head cell.
+# See validation/<engine>/movement/constant-rate.test.ts.
+validation = { script = "movement/constant-rate.test.ts", outputs = [
+  { id = "rate", name = "Eight ticks in one second", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-speedup-when-long"
+title = "Growth never speeds the tick up"
+description = "A snake of thirty cells advances exactly eight cells in one second of game time, the same rate a three-cell snake does."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a thirty-cell chain with a clear run ahead of it,
+# advance one second of game time, and read ticks and the head's travel. See
+# validation/<engine>/movement/no-speedup-when-long.test.ts.
+validation = { script = "movement/no-speedup-when-long.test.ts", outputs = [
+  { id = "speed", name = "A long snake at the same fixed rate", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "subdivision-invariant"
+title = "The tick is driven by elapsed time, not by frames"
+description = "One second of game time delivered as sixty updates resolves the same eight ticks, and leaves the same head cell, as one second delivered in a single update."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: run the same posed scenario twice, once in a single
+# update and once in sixty, and compare ticks and the head cell. See
+# validation/<engine>/movement/subdivision-invariant.test.ts.
+validation = { script = "movement/subdivision-invariant.test.ts", outputs = [
+  { id = "divided", name = "A second delivered in sixty updates", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sub-tick-update-runs-no-tick"
+title = "An update shorter than a tick resolves none"
+description = "An update covering less than TICK_SECONDS resolves no tick: ticks is unchanged and the head has not moved, and the remainder carries so the tick lands once the accumulated time reaches TICK_SECONDS."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: advance a fraction of TICK_SECONDS, confirm nothing
+# resolved, then advance the remainder and confirm exactly one tick resolved.
+# See validation/<engine>/movement/sub-tick-update-runs-no-tick.test.ts.
+validation = { script = "movement/sub-tick-update-runs-no-tick.test.ts", outputs = [
+  { id = "carried", name = "The remainder carried into the next update", kind = "replay" },
+] }
+
+# --- Turning ------------------------------------------------------------------
+# Steering is buffered rather than applied where it is made, and step 1 of the
+# tick decides what happens to each request. Every direction is its own point,
+# and so is every way a request is refused, so a build fails exactly the rule it
+# breaks.
+[[review.categories]]
+id = "turning"
+title = "Turning"
+[[review.categories.items]]
+id = "applied-next-tick"
+title = "A turn takes effect on the next tick"
+description = "A steering request moves nothing at the call: the chain and dir are unchanged until a tick resolves, and the head then advances the new way."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: request a perpendicular turn, read the snapshot before
+# any tick, then run one tick and read it again. See
+# validation/<engine>/turning/applied-next-tick.test.ts.
+validation = { script = "turning/applied-next-tick.test.ts", outputs = [
+  { id = "turn", name = "A buffered turn applied on the next tick", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-up-from-horizontal"
+title = "Turning up while travelling horizontally"
+description = "Travelling right, an up request sets dir to up on the next tick and the head advances one cell up."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right with clear board above it,
+# request up, run one tick, and read dir and the head cell. See
+# validation/<engine>/turning/turn-up-from-horizontal.test.ts.
+validation = { script = "turning/turn-up-from-horizontal.test.ts", outputs = [
+  { id = "up", name = "A turn up from a horizontal run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-down-from-horizontal"
+title = "Turning down while travelling horizontally"
+description = "Travelling right, a down request sets dir to down on the next tick and the head advances one cell down."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right with clear board below it,
+# request down, run one tick, and read dir and the head cell. See
+# validation/<engine>/turning/turn-down-from-horizontal.test.ts.
+validation = { script = "turning/turn-down-from-horizontal.test.ts", outputs = [
+  { id = "down", name = "A turn down from a horizontal run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-left-from-vertical"
+title = "Turning left while travelling vertically"
+description = "Travelling up, a left request sets dir to left on the next tick and the head advances one cell left."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing up with clear board to its left,
+# request left, run one tick, and read dir and the head cell. See
+# validation/<engine>/turning/turn-left-from-vertical.test.ts.
+validation = { script = "turning/turn-left-from-vertical.test.ts", outputs = [
+  { id = "left", name = "A turn left from a vertical run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-right-from-vertical"
+title = "Turning right while travelling vertically"
+description = "Travelling up, a right request sets dir to right on the next tick and the head advances one cell right."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing up with clear board to its right,
+# request right, run one tick, and read dir and the head cell. See
+# validation/<engine>/turning/turn-right-from-vertical.test.ts.
+validation = { script = "turning/turn-right-from-vertical.test.ts", outputs = [
+  { id = "right", name = "A turn right from a vertical run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "same-direction-discarded"
+title = "A request repeating the heading is discarded"
+description = "A request naming the direction the snake already travels in is discarded at step 1: dir is unchanged, the head advances the way it was going, and the request is gone from turns."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the chain facing right, request right, run one
+# tick, and confirm dir, the head's travel and an emptied buffer. See
+# validation/<engine>/turning/same-direction-discarded.test.ts.
+validation = { script = "turning/same-direction-discarded.test.ts", outputs = [
+  { id = "repeat", name = "A repeated heading discarded", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "reversal-discarded"
+title = "A reversal into the neck is discarded"
+description = "A request naming the opposite of the current direction is discarded at step 1: dir is unchanged and the head advances the way it was going, so the snake never reverses into its own neck."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right, request left, run one tick,
+# and confirm dir and the head's travel are unchanged. See
+# validation/<engine>/turning/reversal-discarded.test.ts.
+validation = { script = "turning/reversal-discarded.test.ts", outputs = [
+  { id = "reversal", name = "A reversal discarded", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "one-turn-per-tick"
+title = "At most one turn resolves per tick"
+description = "Travelling right, a down request followed by a left request inside one tick turns the snake down on the next tick and left on the tick after, so the chain never folds onto itself."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right, buffer down and then left,
+# and read dir after each of the next two ticks. See
+# validation/<engine>/turning/one-turn-per-tick.test.ts.
+validation = { script = "turning/one-turn-per-tick.test.ts", outputs = [
+  { id = "double", name = "A double press resolving one turn per tick", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "buffer-capped"
+title = "The turn buffer holds at most two requests"
+description = "turns never holds more than TURN_QUEUE_MAX (2) requests: a third request arriving before a tick resolves is discarded and never turns the snake."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: buffer three distinct requests inside one tick, read the
+# buffer's length, then run ticks and confirm the third one never took effect.
+# See validation/<engine>/turning/buffer-capped.test.ts.
+validation = { script = "turning/buffer-capped.test.ts", outputs = [
+  { id = "full", name = "A third request discarded at a full buffer", kind = "replay" },
+] }
+
+# --- Growth & Pellets ---------------------------------------------------------
+# What an eat does to the chain, and where the next pellet may land. The valid
+# set of specs/board.md is checked one rule at a time, and the crowded board is
+# its own point because the rule that decides it is the one a build is most
+# likely to get wrong.
+[[review.categories]]
+id = "growth"
+title = "Growth & Pellets"
+[[review.categories.items]]
+id = "grows-by-one"
+title = "Eating grows the snake by exactly one cell"
+description = "The tick that eats a pellet keeps the tail, so the chain is exactly one cell longer than it was and the tail cell is unchanged."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: place a pellet one cell ahead of the head, run the tick
+# that eats it, and compare the chain's length and its tail cell against the
+# tick before. See validation/<engine>/growth/grows-by-one.test.ts.
+validation = { script = "growth/grows-by-one.test.ts", outputs = [
+  { id = "grow", name = "The snake growing by one on an eat", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "length-constant-on-normal-tick"
+title = "A tick that eats nothing leaves the length unchanged"
+description = "On a tick eating no pellet the chain's length is unchanged: one cell joins at the head and the tail cell is dropped."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: clear the pellet, run several ticks over open board, and
+# confirm the chain's length never moves and the old tail cell is released each
+# tick. See validation/<engine>/growth/length-constant-on-normal-tick.test.ts.
+validation = { script = "growth/length-constant-on-normal-tick.test.ts", outputs = [
+  { id = "steady", name = "The chain holding its length over open board", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-on-eat"
+title = "An eaten pellet is replaced at once"
+description = "The tick that eats a pellet places the next one on the same tick, so exactly one live pellet is on the board when the tick has resolved."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: place a pellet ahead of the head, run the tick that eats
+# it, and read the snapshot's pellet back. See
+# validation/<engine>/growth/respawn-on-eat.test.ts.
+validation = { script = "growth/respawn-on-eat.test.ts", outputs = [
+  { id = "respawn", name = "A pellet replaced on the tick it was eaten", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-interior"
+title = "A respawned pellet is always an interior cell"
+description = "A wall cell posed as the next pellet is discarded at the spawn, so the pellet an eat places sits inside the interior specs/board.md fixes: col in [1, 28] and row in [1, 16]."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a cell of each of the four walls as the next pellet
+# in turn, drive an eat for each, and test the cell every placed pellet landed on
+# against the interior bounds. See
+# validation/<engine>/growth/respawn-interior.test.ts.
+validation = { script = "growth/respawn-interior.test.ts", outputs = [
+  { id = "interior", name = "Pellets respawning inside the interior", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-off-snake"
+title = "A respawned pellet never lands on the snake"
+description = "A cell the chain holds posed as the next pellet is discarded at the spawn, so the pellet an eat places occupies no cell of the chain."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a deliberately long chain, pose a cell deep in its
+# body as the next pellet, drive one eat, and test the placed pellet against the
+# chain's cells. See validation/<engine>/growth/respawn-off-snake.test.ts.
+validation = { script = "growth/respawn-off-snake.test.ts", outputs = [
+  { id = "clear", name = "Pellets respawning clear of a long chain", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-varies"
+title = "The respawn cell is drawn, not fixed"
+description = "Across twenty calls of drawPelletCell on one board with nothing posed, the cells answered occupy more than one distinct cell, so the spawn's draw moves over the valid set rather than always answering the same cell."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose one board with nothing posed for the spawn, perform
+# the draw twenty times through drawPelletCell, and count the distinct cells
+# answered. See validation/<engine>/growth/respawn-varies.test.ts.
+validation = { script = "growth/respawn-varies.test.ts", outputs = [
+  { id = "varied", name = "The board the draws were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "first-pellet-off-start-chain"
+title = "The first pellet of a round is valid"
+description = "The first pellet of a fresh round sits on an interior cell holding none of the three starting cells of specs/board.md, so it is placed after the snake is laid."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose the chain away from its starting cells, pose the
+# starting head cell as the next pellet, open a round from the title, and read
+# that the first pellet is an interior cell clear of the starting chain, so the
+# pose was discarded against the chain as laid. See
+# validation/<engine>/growth/first-pellet-off-start-chain.test.ts.
+validation = { script = "growth/first-pellet-off-start-chain.test.ts", outputs = [
+  { id = "first", name = "A valid first pellet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "first-pellet-ignores-the-previous-round"
+title = "A fresh round draws its first pellet from the whole board"
+description = "The board carries no pellet when a round is laid out, so the cell the round before left its pellet on is in the set the first draw is made from like any other."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: place a pellet on a cell, pose that same cell as the
+# next pellet, open a round from the title, and read that the first pellet is
+# that cell. A build carrying the old pellet across holds the cell out of its
+# valid set and discards the pose. See
+# validation/<engine>/growth/first-pellet-ignores-the-previous-round.test.ts.
+validation = { script = "growth/first-pellet-ignores-the-previous-round.test.ts", outputs = [
+  { id = "reopened", name = "A round reopened on the cell the last one left a pellet on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-last-valid-cell"
+title = "The last valid cell is still found"
+description = "With the chain posed so that exactly one cell of the valid set specs/board.md defines is left, the next eat places the pellet on that one cell rather than failing or ending the round."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: clear the obstacle course, pose a chain covering every
+# interior cell but one, eat the live pellet, and read where the next one landed.
+# The course comes off first because a chain has to be one the game could have
+# grown into, and a course laid across the interior leaves no contiguous path
+# through every remaining cell; clearing it makes those cells ordinary, so the
+# valid set the point turns on is the whole interior under either mode. The suite
+# reads the obstacle list back rather than assuming it emptied. See
+# validation/<engine>/growth/respawn-last-valid-cell.test.ts.
+validation = { script = "growth/respawn-last-valid-cell.test.ts", outputs = [
+  { id = "last", name = "The pellet placed on the last valid cell", kind = "image" },
+] }
+
+# --- Collision ----------------------------------------------------------------
+# Step 3 tests the new head cell alone. Each of the four walls is its own point,
+# so a build that seals three sides and leaks on the fourth fails exactly there,
+# and the tail rule is checked in both directions because the two halves are the
+# subtlety the game turns on.
+[[review.categories]]
+id = "collision"
+title = "Collision"
+[[review.categories.items]]
+id = "wall-top-fatal"
+title = "The top wall is fatal"
+description = "The head advancing into row 0 ends the round immediately as a death."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the head on row 1 facing up with the pellet
+# cleared, run one tick, and read the screen back. See
+# validation/<engine>/collision/wall-top-fatal.test.ts.
+validation = { script = "collision/wall-top-fatal.test.ts", outputs = [
+  { id = "top", name = "A fatal hit on the top wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-bottom-fatal"
+title = "The bottom wall is fatal"
+description = "The head advancing into row GRID_ROWS - 1 (17) ends the round immediately as a death."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the head on row 16 facing down with the pellet
+# cleared, run one tick, and read the screen back. See
+# validation/<engine>/collision/wall-bottom-fatal.test.ts.
+validation = { script = "collision/wall-bottom-fatal.test.ts", outputs = [
+  { id = "bottom", name = "A fatal hit on the bottom wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-left-fatal"
+title = "The left wall is fatal"
+description = "The head advancing into column 0 ends the round immediately as a death."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the head on column 1 facing left with the pellet
+# cleared, run one tick, and read the screen back. See
+# validation/<engine>/collision/wall-left-fatal.test.ts.
+validation = { script = "collision/wall-left-fatal.test.ts", outputs = [
+  { id = "left", name = "A fatal hit on the left wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-right-fatal"
+title = "The right wall is fatal"
+description = "The head advancing into column GRID_COLS - 1 (29) ends the round immediately as a death."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the head on column 28 facing right with the pellet
+# cleared, run one tick, and read the screen back. See
+# validation/<engine>/collision/wall-right-fatal.test.ts.
+validation = { script = "collision/wall-right-fatal.test.ts", outputs = [
+  { id = "right", name = "A fatal hit on the right wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "body-fatal"
+title = "Entering a body segment is fatal"
+description = "The head advancing into a solid body cell, one that is neither the head nor a tail vacating this tick, ends the round immediately as a death."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a coiled chain whose next head cell is one of its
+# own middle segments, run one tick, and read the screen back. See
+# validation/<engine>/collision/body-fatal.test.ts.
+validation = { script = "collision/body-fatal.test.ts", outputs = [
+  { id = "self", name = "A fatal self collision", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "tail-follow-safe"
+title = "Chasing the vacating tail is safe"
+description = "On a tick that eats nothing the head may enter the cell the tail is vacating: the round carries on and the chain holds its length, so a snake can chase its own tail."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a closed loop of a chain with the pellet cleared so
+# the head's next cell is the current tail, run one tick, and confirm the round
+# is still playing. See validation/<engine>/collision/tail-follow-safe.test.ts.
+validation = { script = "collision/tail-follow-safe.test.ts", outputs = [
+  { id = "tail", name = "The head safely chasing the vacating tail", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "growth-tail-fatal"
+title = "Entering the tail on a growth tick is fatal"
+description = "On a tick that eats a pellet the tail does not retract, so the tail cell is solid and the head entering it ends the round as a death."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a chain whose next head cell is its own tail and
+# place the pellet on that same cell, run one tick, and read the screen back.
+# See validation/<engine>/collision/growth-tail-fatal.test.ts.
+validation = { script = "collision/growth-tail-fatal.test.ts", outputs = [
+  { id = "growthtail", name = "A fatal tail entry on a growth tick", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-halts-the-tick"
+title = "A fatal tick runs no further steps"
+description = "On the tick the head enters a fatal cell, steps 4 to 6 do not run: the chain is exactly as it was, the score is unchanged, and the combo window has not drained."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a live combo window and a head one cell from a
+# wall, run the fatal tick, and compare the chain, the score and the window
+# against the values before it. See
+# validation/<engine>/collision/death-halts-the-tick.test.ts.
+validation = { script = "collision/death-halts-the-tick.test.ts", outputs = [
+  { id = "halted", name = "The tick the round ended on", kind = "replay" },
+] }
+
+# --- Combo --------------------------------------------------------------------
+# The multiplier, its cap, and the window that governs it. The window is a
+# budget of 28 ticks, so its two edges are two points, still open at 27 and
+# lapsed at 28, and the closed-window path is checked both at the opening of a
+# round and after a lapse.
+[[review.categories]]
+id = "combo"
+title = "Combo"
+[[review.categories.items]]
+id = "first-eat-scores-single"
+title = "The first pellet of a round meets a closed window"
+description = "The first pellet eaten in a fresh round resolves at an M of 1, because a round opens with the combo window closed."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: open a fresh round, place a pellet ahead of the head,
+# eat it, and read the multiplier and the score. See
+# validation/<engine>/combo/first-eat-scores-single.test.ts.
+validation = { script = "combo/first-eat-scores-single.test.ts", outputs = [
+  { id = "first", name = "The first eat of a round", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "rises-on-open-window"
+title = "The multiplier rises on an eat inside the window"
+description = "An eat resolved while the combo window is open raises M by exactly one."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose M at 2 with a part-spent window, place a pellet
+# ahead of the head, eat it, and read the multiplier. See
+# validation/<engine>/combo/rises-on-open-window.test.ts.
+validation = { script = "combo/rises-on-open-window.test.ts", outputs = [
+  { id = "rise", name = "The multiplier climbing on an eat", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "caps-at-max"
+title = "The multiplier caps at COMBO_MAX"
+description = "An eat resolved at COMBO_MAX (5) with an open window leaves M at 5 rather than raising it further."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose M at COMBO_MAX with an open window, eat a pellet,
+# and read the multiplier. See validation/<engine>/combo/caps-at-max.test.ts.
+validation = { script = "combo/caps-at-max.test.ts", outputs = [
+  { id = "cap", name = "The multiplier held at its cap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "window-reopens-on-eat"
+title = "An eat reopens the window in full"
+description = "An eat reopens the combo window at a full COMBO_WINDOW (3.5 seconds) at step 5 of the tick, whatever was left on it, and step 6 of that same tick then draws one TICK_SECONDS off it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a nearly spent window, eat a pellet, and read the
+# seconds left on the window. See
+# validation/<engine>/combo/window-reopens-on-eat.test.ts.
+validation = { script = "combo/window-reopens-on-eat.test.ts", outputs = [
+  { id = "reopen", name = "The window reopening on an eat", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "window-drains-per-tick"
+title = "The window drains a tick's worth each tick"
+description = "Step 6 draws TICK_SECONDS (0.125 s) off the combo window on every tick, so a window posed at 2.0 seconds reads 1.5 after four ticks."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a known window with the snake held still, run a
+# counted number of ticks, and read the seconds left. See
+# validation/<engine>/combo/window-drains-per-tick.test.ts.
+validation = { script = "combo/window-drains-per-tick.test.ts", outputs = [
+  { id = "drain", name = "The window draining tick by tick", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "window-open-at-27-ticks"
+title = "The window is still open after 27 ticks"
+description = "27 ticks after an eat the window is still open, so a pellet eaten on that tick raises M rather than resetting it."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a full window at a known multiplier, run 27 ticks
+# with the snake held still, then eat and read the multiplier. See
+# validation/<engine>/combo/window-open-at-27-ticks.test.ts.
+validation = { script = "combo/window-open-at-27-ticks.test.ts", outputs = [
+  { id = "open", name = "The window still open at 27 ticks", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "window-lapses-at-28-ticks"
+title = "The window lapses after 28 ticks"
+description = "28 ticks after an eat the window has run out and M has returned to 1 on the tick it lapsed."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a full window at a raised multiplier, run 28 ticks
+# with the snake held still, and read the multiplier and the window. See
+# validation/<engine>/combo/window-lapses-at-28-ticks.test.ts.
+validation = { script = "combo/window-lapses-at-28-ticks.test.ts", outputs = [
+  { id = "lapse", name = "The multiplier lapsing back to one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "window-drains-while-held"
+title = "The window drains while the snake is held"
+description = "The window drains by TICK_SECONDS on every tick that resolves, whether or not the snake travels or steers, so a round spent turning nothing still lapses on schedule."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a full window with travel and steering off, run the
+# ticks the window is worth, and read it back. See
+# validation/<engine>/combo/window-drains-while-held.test.ts.
+validation = { script = "combo/window-drains-while-held.test.ts", outputs = [
+  { id = "held", name = "The window draining with the snake held still", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "eat-after-lapse-scores-single"
+title = "An eat after the lapse resolves at one"
+description = "A pellet eaten once the window has lapsed resolves at an M of 1 and awards PELLET_POINTS, rather than resuming from the multiplier the round had reached."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: raise the multiplier, let the window lapse with the
+# snake held still, then eat and read the multiplier and the points awarded. See
+# validation/<engine>/combo/eat-after-lapse-scores-single.test.ts.
+validation = { script = "combo/eat-after-lapse-scores-single.test.ts", outputs = [
+  { id = "after", name = "An eat after the window lapsed", kind = "replay" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+# What an eat is worth, and the best score of the session. The best is checked
+# live during play, across a round boundary, and across a session, because
+# specs/scoring.md fixes a different rule for each.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "pellet-awards-ten"
+title = "A pellet at one awards ten points"
+description = "An eat resolving at an M of 1 raises the score by exactly PELLET_POINTS (10)."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a known score with a closed window, eat a pellet,
+# and read the score. See validation/<engine>/scoring/pellet-awards-ten.test.ts.
+validation = { script = "scoring/pellet-awards-ten.test.ts", outputs = [
+  { id = "award", name = "A pellet awarding ten points", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "awards-updated-multiplier"
+title = "A pellet scores at the multiplier after the eat"
+description = "An eat resolved at an M of 3 with an open window raises M to 4 and awards 40 points, PELLET_POINTS multiplied by the multiplier in force after the eat."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose M at 3 with an open window and a known score, eat a
+# pellet, and read the multiplier and the points awarded. See
+# validation/<engine>/scoring/awards-updated-multiplier.test.ts.
+validation = { script = "scoring/awards-updated-multiplier.test.ts", outputs = [
+  { id = "award", name = "A pellet scored at the updated multiplier", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "round-starts-at-zero-from-title"
+title = "A round begun from the title opens at zero"
+description = "Confirming the mode entry on the title opens the round at a score of 0, whatever the previous round scored."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: play a round to a score, return to the title, start
+# another from the mode entry, and read the score. See
+# validation/<engine>/scoring/round-starts-at-zero-from-title.test.ts.
+validation = { script = "scoring/round-starts-at-zero-from-title.test.ts", outputs = [
+  { id = "fresh", name = "A round begun from the title at a score of zero", kind = "image" },
+] }
+[[review.categories.items]]
+id = "round-starts-at-zero-from-gameover"
+title = "A round begun from game over opens at zero"
+description = "Confirming PLAY AGAIN on the game-over screen opens the round at a score of 0, whatever the round that just ended scored."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: play a round to a score, die, confirm PLAY AGAIN, and
+# read the score. See
+# validation/<engine>/scoring/round-starts-at-zero-from-gameover.test.ts.
+validation = { script = "scoring/round-starts-at-zero-from-gameover.test.ts", outputs = [
+  { id = "fresh", name = "A round begun from game over at a score of zero", kind = "image" },
+] }
+[[review.categories.items]]
+id = "best-rises-live"
+title = "BEST rises the instant the score passes it"
+description = "During play, the tick on which the score passes the session best raises the best to the score, rather than waiting for the round to end."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a best below the score a single eat will reach,
+# eat, and read the best on that same tick. See
+# validation/<engine>/scoring/best-rises-live.test.ts.
+validation = { script = "scoring/best-rises-live.test.ts", outputs = [
+  { id = "best", name = "BEST rising live as the score passes it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "best-carries-between-rounds"
+title = "BEST carries from one round to the next"
+description = "A best earned in one round is still the best when the next round of the same session opens, while the score returns to 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach a best, end the round, start another, and read the
+# best and the score. See
+# validation/<engine>/scoring/best-carries-between-rounds.test.ts.
+validation = { script = "scoring/best-carries-between-rounds.test.ts", outputs = [
+  { id = "carried", name = "The best carried into a fresh round", kind = "image" },
+] }
+[[review.categories.items]]
+id = "session-starts-fresh"
+title = "A fresh session starts at a best of zero"
+description = "A newly loaded game opens with a best of 0: nothing about a previous session is carried across, since nothing persists between sessions."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach a best in one session, then load the build again
+# as a new session and read the best on the title screen. See
+# validation/<engine>/scoring/session-starts-fresh.test.ts.
+validation = { script = "scoring/session-starts-fresh.test.ts", outputs = [
+  { id = "fresh", name = "A new session opening at a best of zero", kind = "image" },
+] }
+
+# --- Game States --------------------------------------------------------------
+# The screens specs/ui.md fixes and the moves between them. Each transition is
+# its own point, in one direction, so a build that can reach a screen but not
+# leave it fails exactly there. What each screen DRAWS is the Screens category
+# below; this one is about where the game is.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "opens-on-title"
+title = "The game opens on the title screen"
+description = "A freshly loaded game is on the title screen with menuIndex at 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: load the build and read the screen and the highlight
+# before any input. See validation/<engine>/states/opens-on-title.test.ts.
+validation = { script = "states/opens-on-title.test.ts", outputs = [
+  { id = "title", name = "The screen the game opens on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "start-round"
+title = "Confirming the mode entry starts a round"
+description = "confirm on the first item of the title menu sets screen to playing."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: open the title, highlight the mode entry, dispatch
+# confirm, and read the screen. See
+# validation/<engine>/states/start-round.test.ts.
+validation = { script = "states/start-round.test.ts", outputs = [
+  { id = "playing", name = "A round begun from the title", kind = "image" },
+] }
+[[review.categories.items]]
+id = "round-lays-out-the-board"
+title = "A round opens on the board specs/board.md lays out"
+description = "A round begun from the title opens with the chain at the three starting cells head first, dir right, one live pellet on the board, a score of 0, and M at 1 with a closed window."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: start a round from the title and read the chain, the
+# direction, the pellet, the score and the combo back. See
+# validation/<engine>/states/round-lays-out-the-board.test.ts.
+validation = { script = "states/round-lays-out-the-board.test.ts", outputs = [
+  { id = "laid", name = "The board a round opens on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-reachable"
+title = "How to play is reachable from the title"
+description = "confirm on HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: open the title, highlight HOW TO PLAY, dispatch confirm,
+# and read the screen. See validation/<engine>/states/howto-reachable.test.ts.
+validation = { script = "states/howto-reachable.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-to-title"
+title = "How to play returns to the title"
+description = "back on the howto screen sets screen to title."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: reach the howto screen, dispatch back, and read the
+# screen. See validation/<engine>/states/howto-back-to-title.test.ts.
+validation = { script = "states/howto-back-to-title.test.ts", outputs = [
+  { id = "title", name = "The title returned to from how to play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-reachable"
+title = "A live round pauses"
+description = "back pressed on the playing screen sets screen to paused, with the board still behind it."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: start a round, dispatch back, and read the screen. See
+# validation/<engine>/states/pause-reachable.test.ts.
+validation = { script = "states/pause-reachable.test.ts", outputs = [
+  { id = "paused", name = "A live round paused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-tick"
+title = "The tick freezes while paused"
+description = "While paused, no tick resolves however much game time passes: ticks, the chain and the combo window are unchanged."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a live round with a live combo window, advance far
+# more game time than the window is worth, and compare every field against the
+# pause. See validation/<engine>/states/pause-freezes-tick.test.ts.
+validation = { script = "states/pause-freezes-tick.test.ts", outputs = [
+  { id = "frozen", name = "The round frozen while paused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "resume-untouched"
+title = "Resuming returns the round untouched"
+description = "confirm on RESUME sets screen back to playing with the chain, the direction, the score and the combo window exactly as they stood at the pause."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pause a round mid-play, resume, and compare every field
+# against the values at the pause. See
+# validation/<engine>/states/resume-untouched.test.ts.
+validation = { script = "states/resume-untouched.test.ts", outputs = [
+  { id = "resumed", name = "A round resumed where it stood", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-restart"
+title = "Restarting from the pause menu opens a fresh round"
+description = "confirm on RESTART sets screen to playing with the starting chain, a score of 0, and M at 1."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pause a round that has scored and grown, confirm
+# RESTART, and read the chain, the score and the multiplier. See
+# validation/<engine>/states/pause-restart.test.ts.
+validation = { script = "states/pause-restart.test.ts", outputs = [
+  { id = "restarted", name = "A fresh round from the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit-to-title"
+title = "Quitting from the pause menu returns to the title"
+description = "confirm on MENU sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pause a round, highlight MENU, confirm, and read the
+# screen. See validation/<engine>/states/pause-quit-to-title.test.ts.
+validation = { script = "states/pause-quit-to-title.test.ts", outputs = [
+  { id = "title", name = "The title returned to from the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "death-ends-on-gameover"
+title = "A death ends the round on the game-over screen"
+description = "The tick on which the head enters a fatal cell sets screen to gameover, with the score the round ended on."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: drive a real fatal collision and read the screen and the
+# score. See validation/<engine>/states/death-ends-on-gameover.test.ts.
+validation = { script = "states/death-ends-on-gameover.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen a death ended on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-play-again"
+title = "Playing again from game over opens a fresh round"
+description = "confirm on PLAY AGAIN sets screen to playing with the starting chain and a score of 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach the game-over screen, confirm PLAY AGAIN, and read
+# the chain and the score. See
+# validation/<engine>/states/gameover-play-again.test.ts.
+validation = { script = "states/gameover-play-again.test.ts", outputs = [
+  { id = "again", name = "A fresh round from the game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu"
+title = "Leaving game over returns to the title"
+description = "confirm on MENU from the game-over screen sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach the game-over screen, highlight MENU, confirm, and
+# read the screen. See validation/<engine>/states/gameover-menu.test.ts.
+validation = { script = "states/gameover-menu.test.ts", outputs = [
+  { id = "title", name = "The title returned to from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-back-to-title"
+title = "back on the game-over screen returns to the title"
+description = "back on the game-over screen sets screen to title, the second route off that screen specs/ui.md gives."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach the game-over screen, dispatch back, and read the
+# screen. See validation/<engine>/states/gameover-back-to-title.test.ts.
+validation = { script = "states/gameover-back-to-title.test.ts", outputs = [
+  { id = "title", name = "The title reached with back from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cleared-reachable"
+title = "Clearing the board ends the round on cleared"
+description = "A round in which step 5 finds no valid cell for the next pellet ends on the cleared screen rather than crashing or placing a pellet on an occupied cell."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a chain filling every interior cell but the
+# pellet's, eat that pellet, and read the screen. See
+# validation/<engine>/states/cleared-reachable.test.ts.
+validation = { script = "states/cleared-reachable.test.ts", outputs = [
+  { id = "cleared", name = "The board-cleared screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cleared-leaves-no-pellet"
+title = "A cleared board carries no pellet"
+description = "The round that ends on the cleared screen leaves pellet at null, because no valid cell was found for the next one."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive the board-cleared ending and read the snapshot's
+# pellet. See validation/<engine>/states/cleared-leaves-no-pellet.test.ts.
+validation = { script = "states/cleared-leaves-no-pellet.test.ts", outputs = [
+  { id = "empty", name = "The cleared board, with no pellet on it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-tick-on-title"
+title = "Nothing advances on the title screen"
+description = "On the title screen no tick resolves however much game time passes: ticks and simTime are unchanged and the chain has not moved."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: sit on the title screen, advance several seconds of game
+# time, and read ticks, simTime and the chain. See
+# validation/<engine>/states/no-tick-on-title.test.ts.
+validation = { script = "states/no-tick-on-title.test.ts", outputs = [
+  { id = "still", name = "The title screen advancing nothing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-tick-after-round-ends"
+title = "Nothing advances once the round has ended"
+description = "On the game-over screen no tick resolves however much game time passes: ticks and the chain are unchanged."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a death, advance several seconds of game time, and
+# read ticks and the chain. See
+# validation/<engine>/states/no-tick-after-round-ends.test.ts.
+validation = { script = "states/no-tick-after-round-ends.test.ts", outputs = [
+  { id = "still", name = "The game-over screen advancing nothing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ended-round-banks-no-time"
+title = "A round that has ended banks no time"
+description = "The elapsed time an update was carrying past the tick that ended the round is spent rather than held back, so the simulation advances from an empty accumulator the next time it is asked to."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: end a round on a single update carrying far more than one
+# tick, put the game back on playing, hand it a microsecond, and read ticks and
+# the chain. See
+# validation/<engine>/states/ended-round-banks-no-time.test.ts.
+validation = { script = "states/ended-round-banks-no-time.test.ts", outputs = [
+  { id = "resumed", name = "The first update after a round that ended mid-frame", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "playing-resumes-after-a-round-ended"
+title = "A game put back on playing plays on"
+description = "After a round has ended, setting the screen back to playing resolves ticks over the board as it stands and never returns the game to the screen the round ended on."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: drive a real death, pose a safe chain through the
+# surface, set the screen back to playing, run one tick, and read the screen, the
+# tick count and the head. See
+# validation/<engine>/states/playing-resumes-after-a-round-ended.test.ts.
+validation = { script = "states/playing-resumes-after-a-round-ended.test.ts", outputs = [
+  { id = "playing-on", name = "A round played on after an ending", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "menu-index-resets"
+title = "A screen reached forward highlights its first item"
+description = "Arriving at howto, paused, gameover or cleared sets menuIndex to 0, whatever the highlight was on the screen left behind."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: open the title, move the highlight off the first item,
+# confirm into HOW TO PLAY, and read the highlight on arrival. See
+# validation/<engine>/states/menu-index-resets.test.ts.
+validation = { script = "states/menu-index-resets.test.ts", outputs = [
+  { id = "reset", name = "A menu screen arrived at on its first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-index-records-the-confirmed-entry"
+title = "The title remembers the entry it was left from"
+description = "Confirming HOW TO PLAY on the title sets titleIndex to 1, the index of the item confirmed."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: open the title, highlight HOW TO PLAY, confirm, and read
+# titleIndex off the snapshot. See
+# validation/<engine>/states/title-index-records-the-confirmed-entry.test.ts.
+validation = { script = "states/title-index-records-the-confirmed-entry.test.ts", outputs = [
+  { id = "remembered", name = "The screen opened from the remembered entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-returns-to-the-entry-left-from"
+title = "Returning to the title selects the entry left from"
+description = "Leaving the how-to screen with back returns to the title with menuIndex at 1, the HOW TO PLAY entry that opened it, rather than at 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: confirm HOW TO PLAY from the title, dispatch back, and
+# read the screen and the highlight. See
+# validation/<engine>/states/title-returns-to-the-entry-left-from.test.ts.
+validation = { script = "states/title-returns-to-the-entry-left-from.test.ts", outputs = [
+  { id = "returned", name = "The title returned to on the entry left from", kind = "image" },
+] }
+
+# --- Screens ------------------------------------------------------------------
+# What each screen draws, read from the text the build itself painted. The copy
+# is fixed by specs/ui.md and named there by constant; how it is set and where
+# it sits is the build's, and is rated through the domains rather than here.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-heading"
+title = "The title screen draws its title"
+description = "The title frame draws TITLE_TEXT (COIL)."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws for the
+# title, and capture it. See validation/<engine>/screens/title-heading.test.ts.
+validation = { script = "screens/title-heading.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-tagline"
+title = "The title screen draws its tagline"
+description = "The title frame draws TAGLINE_TEXT (GRID SERPENT)."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws for the
+# tagline, and capture it. See validation/<engine>/screens/title-tagline.test.ts.
+validation = { script = "screens/title-tagline.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-best-readout"
+title = "The title screen draws the best score"
+description = "The title frame draws BEST_LABEL (BEST) above the session's best score."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose a best score, reset to the title, and read the
+# frame's text draws for the label and the figure. See
+# validation/<engine>/screens/title-best-readout.test.ts.
+validation = { script = "screens/title-best-readout.test.ts", outputs = [
+  { id = "title", name = "The title screen showing the best score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-howto-entry"
+title = "The title menu draws its how-to entry"
+description = "The title frame draws HOW TO PLAY, the second item of TITLE_ITEMS."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws for the
+# menu entry, and capture it. See
+# validation/<engine>/screens/title-howto-entry.test.ts.
+validation = { script = "screens/title-howto-entry.test.ts", outputs = [
+  { id = "title", name = "The title menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-names-keys"
+title = "How to play names the keys"
+description = "The howto frame draws text naming the keys bound to steering, so a player reads the controls off the screen."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reach the howto screen, read the frame's text draws for
+# the direction key names, and capture it. See
+# validation/<engine>/screens/howto-names-keys.test.ts.
+validation = { script = "screens/howto-names-keys.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-items"
+title = "The pause screen draws its menu"
+description = "The paused frame draws every item of PAUSE_ITEMS: RESUME, RESTART and MENU."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pause a live round, read the frame's text draws, and
+# capture the pause menu. See validation/<engine>/screens/pause-items.test.ts.
+validation = { script = "screens/pause-items.test.ts", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-heading"
+title = "The game-over screen draws its heading"
+description = "The gameover frame draws GAMEOVER_TEXT (GAME OVER)."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive a death, read the frame's text draws for the
+# heading, and capture the screen. See
+# validation/<engine>/screens/gameover-heading.test.ts.
+validation = { script = "screens/gameover-heading.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-score-readout"
+title = "The game-over screen draws the final score"
+description = "The gameover frame draws SCORE_LABEL (SCORE) above the score the round ended on."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive a death from a known score, read the frame's text
+# draws for the label and the figure, and capture the screen. See
+# validation/<engine>/screens/gameover-score-readout.test.ts.
+validation = { script = "screens/gameover-score-readout.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen showing the final score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-best-readout"
+title = "The game-over screen draws the best score"
+description = "The gameover frame draws BEST_LABEL (BEST) above the session's best score."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose a best score, drive a death, and read the frame's
+# text draws for the label and the figure. See
+# validation/<engine>/screens/gameover-best-readout.test.ts.
+validation = { script = "screens/gameover-best-readout.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen showing the best score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu-items"
+title = "The game-over screen draws its menu"
+description = "The gameover frame draws every item of OVER_ITEMS: PLAY AGAIN and MENU."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive a death, read the frame's text draws for both menu
+# items, and capture the screen. See
+# validation/<engine>/screens/gameover-menu-items.test.ts.
+validation = { script = "screens/gameover-menu-items.test.ts", outputs = [
+  { id = "gameover", name = "The game-over menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cleared-copy"
+title = "The cleared screen draws its heading"
+description = "The cleared frame draws CLEARED_TEXT (BOARD CLEARED) in place of GAMEOVER_TEXT, with the same score, best and menu beneath it."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive the board-cleared ending, read the frame's text
+# draws, and capture the screen. See
+# validation/<engine>/screens/cleared-copy.test.ts.
+validation = { script = "screens/cleared-copy.test.ts", outputs = [
+  { id = "cleared", name = "The board-cleared screen", kind = "image" },
+] }
+
+# --- HUD ----------------------------------------------------------------------
+# The band above the board. Each readout is read from what the build drew, and
+# the two readouts that change with the game, the combo and the mute indicator,
+# are checked by comparing the frame in one state against the frame in the
+# other, so a readout that never changes fails whatever it looks like.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "score-drawn"
+title = "The score is drawn"
+description = "After a score is posed, a frame of the live round draws that figure and the SCORE label above it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a distinctive score, render a live frame, and find
+# the text draw. See validation/<engine>/hud/score-drawn.test.ts.
+validation = { script = "hud/score-drawn.test.ts", outputs = [
+  { id = "score", name = "The HUD showing the posed score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "best-drawn"
+title = "The best score is drawn"
+description = "After a best is posed, a frame of the live round draws that figure and the BEST label above it."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose a distinctive best above the live score, render a
+# live frame, and find the text draw. See
+# validation/<engine>/hud/best-drawn.test.ts.
+validation = { script = "hud/best-drawn.test.ts", outputs = [
+  { id = "best", name = "The HUD showing the posed best", kind = "image" },
+] }
+[[review.categories.items]]
+id = "combo-hidden-at-one"
+title = "The combo readout is empty at one"
+description = "At an M of 1 the HUD draws no multiplier readout: no text of the form x2 through x5 appears anywhere in the frame."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose M at 1 with a closed window, render a live frame,
+# and confirm no multiplier text was drawn. See
+# validation/<engine>/hud/combo-hidden-at-one.test.ts.
+validation = { script = "hud/combo-hidden-at-one.test.ts", outputs = [
+  { id = "empty", name = "The combo area at a multiplier of one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "combo-shown-from-two"
+title = "The multiplier is drawn from two upward"
+description = "At an M of 3 with an open window the HUD draws the multiplier as x3."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose M at 3 with an open window, render a live frame,
+# and find the multiplier text draw. See
+# validation/<engine>/hud/combo-shown-from-two.test.ts.
+validation = { script = "hud/combo-shown-from-two.test.ts", outputs = [
+  { id = "shown", name = "The combo readout at a multiplier of three", kind = "image" },
+] }
+[[review.categories.items]]
+id = "combo-bar-drains"
+title = "The combo bar tracks the window"
+description = "The HUD band drawn at the same multiplier with a full COMBO_WINDOW differs from the one drawn with the window nearly spent, so the bar follows the window rather than sitting still."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render one frame at a raised multiplier with a full
+# window and one with a nearly spent window over the same board, and compare the
+# two HUD bands. See validation/<engine>/hud/combo-bar-drains.test.ts.
+validation = { script = "hud/combo-bar-drains.test.ts", outputs = [
+  { id = "full", name = "The combo bar at a full window", kind = "image" },
+  { id = "spent", name = "The combo bar at a nearly spent window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-indicator-changes"
+title = "The mute indicator tells the two states apart"
+description = "The HUD drawn while muted differs from the HUD drawn while unmuted on the same board, so a player reads the sound state off the screen."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render the same posed board unmuted and muted and
+# compare what the HUD band drew in each. See
+# validation/<engine>/hud/mute-indicator-changes.test.ts.
+validation = { script = "hud/mute-indicator-changes.test.ts", outputs = [
+  { id = "unmuted", name = "The HUD with sound on", kind = "image" },
+  { id = "muted", name = "The same HUD after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-clear-of-the-board"
+title = "The HUD stays clear of the play area"
+description = "On the playing screen every HUD readout is drawn inside the band above the board, y in [0, BOARD_Y), so nothing the HUD draws crosses the play area."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render a live frame with every readout showing and
+# confirm each HUD draw sits above BOARD_Y. See
+# validation/<engine>/hud/hud-clear-of-the-board.test.ts.
+validation = { script = "hud/hud-clear-of-the-board.test.ts", outputs = [
+  { id = "band", name = "The HUD band above the board", kind = "image" },
+] }
+
+# --- Controls -----------------------------------------------------------------
+# Every binding specs/controls.md fixes, one key at a time, dispatched as a real
+# key event rather than reached through the debug surface. The second set bound
+# to each direction is its own point, because losing it leaves the game fully
+# playable on the first.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "arrow-up-steers"
+title = "ArrowUp steers up"
+description = "ArrowUp on the playing screen requests a turn to up, which the next tick applies from a horizontal heading."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right, dispatch ArrowUp, run one
+# tick, and read dir. See validation/<engine>/controls/arrow-up-steers.test.ts.
+validation = { script = "controls/arrow-up-steers.test.ts", outputs = [
+  { id = "up", name = "Steering up with ArrowUp", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-down-steers"
+title = "ArrowDown steers down"
+description = "ArrowDown on the playing screen requests a turn to down, which the next tick applies from a horizontal heading."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing right, dispatch ArrowDown, run one
+# tick, and read dir. See
+# validation/<engine>/controls/arrow-down-steers.test.ts.
+validation = { script = "controls/arrow-down-steers.test.ts", outputs = [
+  { id = "down", name = "Steering down with ArrowDown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-left-steers"
+title = "ArrowLeft steers left"
+description = "ArrowLeft on the playing screen requests a turn to left, which the next tick applies from a vertical heading."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing up, dispatch ArrowLeft, run one
+# tick, and read dir. See
+# validation/<engine>/controls/arrow-left-steers.test.ts.
+validation = { script = "controls/arrow-left-steers.test.ts", outputs = [
+  { id = "left", name = "Steering left with ArrowLeft", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-right-steers"
+title = "ArrowRight steers right"
+description = "ArrowRight on the playing screen requests a turn to right, which the next tick applies from a vertical heading."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose the chain facing up, dispatch ArrowRight, run one
+# tick, and read dir. See
+# validation/<engine>/controls/arrow-right-steers.test.ts.
+validation = { script = "controls/arrow-right-steers.test.ts", outputs = [
+  { id = "right", name = "Steering right with ArrowRight", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-up-steers"
+title = "KeyW steers up"
+description = "KeyW does exactly what ArrowUp does on the playing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pose the chain facing right, dispatch KeyW, run one
+# tick, and read dir. See validation/<engine>/controls/wasd-up-steers.test.ts.
+validation = { script = "controls/wasd-up-steers.test.ts", outputs = [
+  { id = "up", name = "Steering up with KeyW", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-down-steers"
+title = "KeyS steers down"
+description = "KeyS does exactly what ArrowDown does on the playing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pose the chain facing right, dispatch KeyS, run one
+# tick, and read dir. See validation/<engine>/controls/wasd-down-steers.test.ts.
+validation = { script = "controls/wasd-down-steers.test.ts", outputs = [
+  { id = "down", name = "Steering down with KeyS", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-left-steers"
+title = "KeyA steers left"
+description = "KeyA does exactly what ArrowLeft does on the playing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pose the chain facing up, dispatch KeyA, run one tick,
+# and read dir. See validation/<engine>/controls/wasd-left-steers.test.ts.
+validation = { script = "controls/wasd-left-steers.test.ts", outputs = [
+  { id = "left", name = "Steering left with KeyA", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-right-steers"
+title = "KeyD steers right"
+description = "KeyD does exactly what ArrowRight does on the playing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pose the chain facing up, dispatch KeyD, run one tick,
+# and read dir. See validation/<engine>/controls/wasd-right-steers.test.ts.
+validation = { script = "controls/wasd-right-steers.test.ts", outputs = [
+  { id = "right", name = "Steering right with KeyD", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "confirm-enter"
+title = "Enter accepts the highlighted item"
+description = "Enter on a menu-bearing screen accepts the highlighted item, so Enter on the title's mode entry starts a round."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: open the title with the mode entry highlighted, dispatch
+# Enter, and read the screen. See
+# validation/<engine>/controls/confirm-enter.test.ts.
+validation = { script = "controls/confirm-enter.test.ts", outputs = [
+  { id = "enter", name = "A menu item accepted with Enter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-space"
+title = "Space accepts the highlighted item"
+description = "Space does exactly what Enter does on a menu-bearing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: open the title with the mode entry highlighted, dispatch
+# Space, and read the screen. See
+# validation/<engine>/controls/confirm-space.test.ts.
+validation = { script = "controls/confirm-space.test.ts", outputs = [
+  { id = "space", name = "A menu item accepted with Space", kind = "image" },
+] }
+[[review.categories.items]]
+id = "escape-pauses"
+title = "Escape pauses a live round"
+description = "Escape on the playing screen sets screen to paused."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: start a round, dispatch Escape, and read the screen. See
+# validation/<engine>/controls/escape-pauses.test.ts.
+validation = { script = "controls/escape-pauses.test.ts", outputs = [
+  { id = "paused", name = "A round paused with Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "escape-resumes"
+title = "Escape resumes from the pause screen"
+description = "Escape on the paused screen sets screen back to playing, exactly as RESUME does."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a round, dispatch Escape, and read the screen. See
+# validation/<engine>/controls/escape-resumes.test.ts.
+validation = { script = "controls/escape-resumes.test.ts", outputs = [
+  { id = "resumed", name = "A round resumed with Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "p-pauses"
+title = "KeyP pauses a live round"
+description = "KeyP on the playing screen sets screen to paused."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: start a round, dispatch KeyP, and read the screen. See
+# validation/<engine>/controls/p-pauses.test.ts.
+validation = { script = "controls/p-pauses.test.ts", outputs = [
+  { id = "paused", name = "A round paused with KeyP", kind = "image" },
+] }
+[[review.categories.items]]
+id = "p-resumes"
+title = "KeyP resumes from the pause screen"
+description = "KeyP on the paused screen sets screen back to playing."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: pause a round, dispatch KeyP, and read the screen. See
+# validation/<engine>/controls/p-resumes.test.ts.
+validation = { script = "controls/p-resumes.test.ts", outputs = [
+  { id = "resumed", name = "A round resumed with KeyP", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-toggles-on-playing"
+title = "KeyM toggles the sound during a round"
+description = "KeyM on the playing screen flips muted."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: start a round, read muted, dispatch KeyM, and read it
+# again. See validation/<engine>/controls/mute-toggles-on-playing.test.ts.
+validation = { script = "controls/mute-toggles-on-playing.test.ts", outputs = [
+  { id = "muted", name = "The board after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-toggles-on-title"
+title = "KeyM toggles the sound on the title"
+description = "KeyM on the title screen flips muted, because mute is read on every screen."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reset to the title, read muted, dispatch KeyM, and read
+# it again. See validation/<engine>/controls/mute-toggles-on-title.test.ts.
+validation = { script = "controls/mute-toggles-on-title.test.ts", outputs = [
+  { id = "muted", name = "The title after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-moves"
+title = "The highlight moves down the menu"
+description = "down on a menu-bearing screen moves menuIndex on by one item."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: open the title on its first item, dispatch down, and
+# read the highlight. See
+# validation/<engine>/controls/menu-highlight-moves.test.ts.
+validation = { script = "controls/menu-highlight-moves.test.ts", outputs = [
+  { id = "moved", name = "The highlight moved down a menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-moves-up"
+title = "The highlight moves up the menu"
+description = "up on a menu-bearing screen moves menuIndex back by one item."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a round to reach the three-item pause menu,
+# highlight its last item, dispatch up, and read the highlight. See
+# validation/<engine>/controls/menu-highlight-moves-up.test.ts.
+validation = { script = "controls/menu-highlight-moves-up.test.ts", outputs = [
+  { id = "moved", name = "The highlight moved up a menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-wraps-down"
+title = "The highlight wraps past the last item"
+description = "down on the last item of a menu returns the highlight to the first."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: highlight the last item of a menu, dispatch down, and
+# read the highlight. See
+# validation/<engine>/controls/menu-highlight-wraps-down.test.ts.
+validation = { script = "controls/menu-highlight-wraps-down.test.ts", outputs = [
+  { id = "wrapped", name = "The highlight wrapping past the last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-wraps-up"
+title = "The highlight wraps back from the first item"
+description = "up on the first item of a menu moves the highlight to the last."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: highlight the first item of a menu, dispatch up, and
+# read the highlight. See
+# validation/<engine>/controls/menu-highlight-wraps-up.test.ts.
+validation = { script = "controls/menu-highlight-wraps-up.test.ts", outputs = [
+  { id = "wrapped", name = "The highlight wrapping back from the first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-left-inert"
+title = "Left does nothing on a menu"
+description = "left on a menu-bearing screen leaves menuIndex and the screen unchanged."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: open a menu, dispatch left, and read the highlight and
+# the screen. See validation/<engine>/controls/menu-left-inert.test.ts.
+validation = { script = "controls/menu-left-inert.test.ts", outputs = [
+  { id = "inert", name = "A menu unmoved by left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-right-inert"
+title = "Right does nothing on a menu"
+description = "right on a menu-bearing screen leaves menuIndex and the screen unchanged."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: open a menu, dispatch right, and read the highlight and
+# the screen. See validation/<engine>/controls/menu-right-inert.test.ts.
+validation = { script = "controls/menu-right-inert.test.ts", outputs = [
+  { id = "inert", name = "A menu unmoved by right", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md gives every menu-bearing screen a mouse as well as the keyboard,
+# and specs/instrumentation.md fixes no menu geometry, so each point below asks
+# the build where it put the item, through menuItemRect, and drives the real
+# pointer at the middle of the region it reported: any layout passes, and a build
+# that reports a region it does not answer on fails. The three points are the
+# three behaviors specs/ui.md gives the pointer — a move selects, a press and its
+# release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing. Each is graded on the title menu, where the
+# entries confirm to screens a check reads straight off `screen`. The keyboard's
+# own edges are the `controls` category's points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 1, with screen still title."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: read the region the build reports for the second title
+# item, move the real pointer to its middle, and read the highlight and the
+# screen. See validation/<engine>/pointer/hover-selects.test.ts.
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press and release the real pointer inside the region the
+# build reports for the second title item, with no key pressed, and read the
+# screen it confirmed to. See validation/<engine>/pointer/click-confirms.test.ts.
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside the mode entry's leaves screen at title, confirming neither item."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press inside one reported region, release inside the
+# other, and confirm the screen never left the title. See
+# validation/<engine>/pointer/slide-off-cancels.test.ts.
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu-bearing screen a finger as well as the keyboard
+# and the mouse, and a finger is not a small mouse: it never hovers, so the first
+# the build hears of it is the contact LANDING, and the landing is what selects.
+# Each point drives one real touch contact — carrying the device a finger carries
+# — at the middle of the region the build reports through menuItemRect, so any
+# layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 1."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: land a real touch contact in the region the build
+# reports for the second title item, leave it down so no lift can confirm, and
+# read menuIndex back. See validation/<engine>/touch/landing-selects.test.ts.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: land and lift a real touch contact inside the second
+# title item's reported region, with no key pressed, and read the screen it
+# confirmed to. See validation/<engine>/touch/tap-confirms.test.ts.
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside the mode entry's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 1."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: slide one real touch contact from the first title item
+# to the second and lift it there — the screen must stay on the title, and the
+# selection must have followed the finger, which is what says the contact was
+# read at all. See validation/<engine>/touch/drag-cancels.test.ts.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
+
+# --- Visibility ---------------------------------------------------------------
+# Each piece on the board is drawn rather than left as the ground under it. The
+# points read presence alone: whether the build painted the cell the piece sits
+# on. What the piece looks like is the build's and is rated through the domains.
+[[review.categories]]
+id = "visibility"
+title = "Visibility"
+[[review.categories.items]]
+id = "pellet-apart-from-board"
+title = "The pellet is drawn on the cell it occupies"
+description = "The pixel at the pellet cell's center changes when the pellet is taken off the board, so the build draws the pellet rather than leaving its cell as the empty field."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: place the pellet on a known cell, render, sample its
+# center, clear the pellet, render again, and sample the same point. See
+# validation/<engine>/visibility/pellet-apart-from-board.test.ts.
+validation = { script = "visibility/pellet-apart-from-board.test.ts", outputs = [
+  { id = "scene", name = "The posed board the pixels were sampled from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wall-apart-from-interior"
+title = "The wall border is drawn around the interior"
+description = "The pixel at a wall cell's center differs from the stage outside the board, so the border a player must not touch is drawn rather than left as bare ground."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render a live board and sample a wall cell against a
+# point outside the board's own rectangle. See
+# validation/<engine>/visibility/wall-apart-from-interior.test.ts.
+validation = { script = "visibility/wall-apart-from-interior.test.ts", outputs = [
+  { id = "scene", name = "The posed board the pixels were sampled from", kind = "image" },
+] }
+
+# --- Presentation -------------------------------------------------------------
+# The produced sprite set, and whether the build actually draws it. Two halves:
+# the files on disk are read and measured, so that a sprite is the size
+# specs/assets.md fixes, carries paint, and is not a copy of another, and the
+# frame the build drew is read back for the image draws that put them on the
+# board. Nothing here asks a reviewer to judge how the art looks; that is what
+# the presentation domain's aesthetic rating is for.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the canvas is sized to the window at its pixel ratio and one posed scene is drawn at the same uniform scale, centered in that surface. The fit is read on the first frame before any input."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: build the game over several differently shaped surfaces,
+# read the backing store it sized before any input reaches it, and read where the
+# same posed scene's own draws landed in it. Under an engine the fit is the
+# engine's, so this is the engineless build's point alone. See
+# validation/none/presentation/window-fit.test.ts.
+validation = { script = "presentation/window-fit.test.ts", engines = ["none"], outputs = [
+  { id = "fit", name = "The stage fitted and centered in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "head-frames-produced"
+title = "The head sheet ships four frames"
+description = "assets/snake/head/0.png through 3.png all exist, are each CELL x CELL (32 x 32), and each carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the four head PNGs off the built workspace, check
+# their dimensions from the image header, and count their opaque pixels. See
+# validation/<engine>/presentation/head-frames-produced.test.ts.
+validation = { script = "presentation/head-frames-produced.test.ts", outputs = [
+  { id = "sheet", name = "The four frames of the produced head sheet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "head-frames-distinct"
+title = "The head frames differ from one another"
+description = "The head sheet is a set of poses rather than one frame repeated: every pair of its four frames differs on at least one pixel, apart from the opening and closing frames a symmetric bite draws at one aperture."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: decode the four head PNGs and compare the five pairs the
+# spec fixes, pixel for pixel. See
+# validation/<engine>/presentation/head-frames-distinct.test.ts.
+validation = { script = "presentation/head-frames-distinct.test.ts", outputs = [
+  { id = "sheet", name = "The four frames of the produced head sheet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-sprite-produced"
+title = "The straight body sprite is produced"
+description = "assets/snake/body.png exists, is CELL x CELL (32 x 32), and carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the body PNG off the built workspace, check its
+# dimensions, and count its opaque pixels. See
+# validation/<engine>/presentation/body-sprite-produced.test.ts.
+validation = { script = "presentation/body-sprite-produced.test.ts", outputs = [
+  { id = "sprite", name = "The produced body sprite", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corner-sprite-produced"
+title = "The corner sprite is produced"
+description = "assets/snake/corner.png exists, is CELL x CELL (32 x 32), and carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the corner PNG off the built workspace, check its
+# dimensions, and count its opaque pixels. See
+# validation/<engine>/presentation/corner-sprite-produced.test.ts.
+validation = { script = "presentation/corner-sprite-produced.test.ts", outputs = [
+  { id = "sprite", name = "The produced corner sprite", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tail-sprite-produced"
+title = "The tail sprite is produced"
+description = "assets/snake/tail.png exists, is CELL x CELL (32 x 32), and carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the tail PNG off the built workspace, check its
+# dimensions, and count its opaque pixels. See
+# validation/<engine>/presentation/tail-sprite-produced.test.ts.
+validation = { script = "presentation/tail-sprite-produced.test.ts", outputs = [
+  { id = "sprite", name = "The produced tail sprite", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tail-sprite-faces-its-neighbor"
+title = "The tail sprite is authored joining on its right edge"
+description = "assets/snake/tail.png carries paint on its right edge, where its one neighbor lies, so the two cells join without a gap."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: decode the produced file and read whether its right edge
+# column carries paint. The picture on the board cannot answer this: a sprite
+# authored backwards and a renderer that turns it backwards compose to the right
+# frame. See
+# validation/<engine>/presentation/tail-sprite-faces-its-neighbor.test.ts.
+validation = { script = "presentation/tail-sprite-faces-its-neighbor.test.ts", outputs = [
+  { id = "authored", name = "The tail sprite as it was authored", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tail-turned-toward-its-neighbor"
+title = "The tail is turned toward the segment it joins"
+description = "The last cell of the chain is drawn with the tail sprite under the quarter turn that carries its authored right edge onto its one neighbor, so a tail whose neighbor lies to its right is drawn under no turn."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose a chain laid east along a row and read the quarter
+# turn the blit on its last cell was drawn under. The rendered picture cannot
+# answer this; the transform at the blit can. See
+# validation/<engine>/presentation/tail-turned-toward-its-neighbor.test.ts.
+validation = { script = "presentation/tail-turned-toward-its-neighbor.test.ts", outputs = [
+  { id = "turned", name = "The tail drawn on the last cell of a chain laid east", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprites-distinct"
+title = "The body, corner and tail sprites differ"
+description = "The straight, corner and tail sprites are three different images: each pair differs on at least one pixel, so one sprite has not been shipped three times."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: decode the three body PNGs and compare every pair pixel
+# for pixel. See validation/<engine>/presentation/sprites-distinct.test.ts.
+validation = { script = "presentation/sprites-distinct.test.ts", outputs = [
+  { id = "sprites", name = "The three produced body sprites", kind = "image" },
+] }
+[[review.categories.items]]
+id = "head-drawn-from-sprite"
+title = "The head is drawn from a sprite"
+description = "A live frame paints the head cell with an image draw rather than a shape drawn in code."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose the snake on known cells, render a frame, and
+# confirm an image draw covers the head cell. See
+# validation/<engine>/presentation/head-drawn-from-sprite.test.ts.
+validation = { script = "presentation/head-drawn-from-sprite.test.ts", outputs = [
+  { id = "head", name = "The head cell painted from a sprite", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-drawn-from-sprite"
+title = "The body is drawn from a sprite"
+description = "A live frame paints a straight body cell with an image draw rather than a shape drawn in code."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a chain with a straight run, render a frame, and
+# confirm an image draw covers a middle body cell. See
+# validation/<engine>/presentation/body-drawn-from-sprite.test.ts.
+validation = { script = "presentation/body-drawn-from-sprite.test.ts", outputs = [
+  { id = "body", name = "A body cell painted from a sprite", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corner-at-a-bend"
+title = "A bend is drawn with the corner sprite"
+description = "In a chain holding both a straight run and a bend, the image painted on the bend cell is not the image painted on the straight cell."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose a chain that runs straight and then turns, render a
+# frame, and compare the image painted on the bend against the one painted on
+# the straight run. See
+# validation/<engine>/presentation/corner-at-a-bend.test.ts.
+validation = { script = "presentation/corner-at-a-bend.test.ts", outputs = [
+  { id = "bend", name = "A turning snake, corner and straight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tail-at-the-last-cell"
+title = "The last cell is drawn with the tail sprite"
+description = "In a chain holding a straight run, the image painted on the last cell of the chain is not the image painted on a middle cell of that run."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose a straight chain, render a frame, and compare the
+# image painted on the last cell against the one painted on a middle cell. See
+# validation/<engine>/presentation/tail-at-the-last-cell.test.ts.
+validation = { script = "presentation/tail-at-the-last-cell.test.ts", outputs = [
+  { id = "tail", name = "The last cell of the chain", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bite-starts-on-eat"
+title = "The head bites when the snake eats"
+description = "On the ticks after a pellet is eaten the head cell is painted with an image other than the resting frame, so the bite plays."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: record the image painted on the head cell over the ticks
+# around an eat and compare it against the resting frame. See
+# validation/<engine>/presentation/bite-starts-on-eat.test.ts.
+validation = { script = "presentation/bite-starts-on-eat.test.ts", outputs = [
+  { id = "bite", name = "The bite playing on an eat", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bite-returns-to-rest"
+title = "The bite returns the head to rest"
+description = "BITE_SECONDS (0.25 s) after the eat the head cell is painted with the resting frame again, and stays on it until the next eat."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: record the image painted on the head cell across
+# BITE_SECONDS after an eat and on for several ticks beyond it. See
+# validation/<engine>/presentation/bite-returns-to-rest.test.ts.
+validation = { script = "presentation/bite-returns-to-rest.test.ts", outputs = [
+  { id = "rest", name = "The head returning to its resting frame", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bite-freezes-while-paused"
+title = "The bite holds its frame while the game is paused"
+description = "The head's bite runs on the round's own time, so the cell keeps the frame the pause caught it on however much real time passes behind the pause menu."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: start a bite with an eat, read the image on the head
+# cell, pause, advance well past BITE_SECONDS, and read the head cell again. See
+# validation/<engine>/presentation/bite-freezes-while-paused.test.ts.
+validation = { script = "presentation/bite-freezes-while-paused.test.ts", outputs = [
+  { id = "frozen", name = "A bite held behind the pause menu", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sprites-sampled-crisp"
+title = "The sprites are sampled without smoothing"
+description = "The sprites are painted with image smoothing off, so the produced pixel art stays sharp at every scale the stage is fitted to."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render a live frame and read the smoothing state in
+# force at each image draw that paints a snake cell. See
+# validation/<engine>/presentation/sprites-sampled-crisp.test.ts.
+validation = { script = "presentation/sprites-sampled-crisp.test.ts", outputs = [
+  { id = "crisp", name = "The snake painted without smoothing", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# Two halves again. The produced files are read off the workspace and measured
+# against the figures specs/assets.md fixes, and each cue is confirmed to be
+# asked for on the tick its event resolves and on no tick before it. What the
+# sounds actually sound like is rated through the presentation domain.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "eat-file-produced"
+title = "The eat cue ships a produced sound"
+description = "assets/audio/eat.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the WAV off the built workspace, parse its header,
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still of the round the cue belongs to rather than a
+# recording of a drive it never makes. See
+# validation/<engine>/audio/eat-file-produced.test.ts.
+validation = { script = "audio/eat-file-produced.test.ts", outputs = [
+  { id = "eat", name = "The round the produced eat cue plays in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "combo-up-file-produced"
+title = "The combo cue ships a produced sound"
+description = "assets/audio/combo-up.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the WAV off the built workspace, parse its header,
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
+# validation/<engine>/audio/combo-up-file-produced.test.ts.
+validation = { script = "audio/combo-up-file-produced.test.ts", outputs = [
+  { id = "combo", name = "The round the produced combo cue plays in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "death-file-produced"
+title = "The death cue ships a produced sound"
+description = "assets/audio/death.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the WAV off the built workspace, parse its header,
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
+# validation/<engine>/audio/death-file-produced.test.ts.
+validation = { script = "audio/death-file-produced.test.ts", outputs = [
+  { id = "death", name = "The round the produced death cue plays in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "music-file-produced"
+title = "The music bed ships a produced track"
+description = "assets/audio/music.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the WAV off the built workspace, parse its header,
+# and measure its peak amplitude. The check reads a file and drives nothing, so
+# its evidence is a still. See
+# validation/<engine>/audio/music-file-produced.test.ts.
+validation = { script = "audio/music-file-produced.test.ts", outputs = [
+  { id = "music", name = "The round the produced music bed plays under", kind = "image" },
+] }
+[[review.categories.items]]
+id = "eat-shorter-than-a-tick"
+title = "The eat cue is shorter than a tick"
+description = "assets/audio/eat.wav is shorter than TICK_SECONDS (0.125 s), so eight of them in a second stay distinct rather than smearing into one tone."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: read the WAV's header and compute its duration from its
+# sample count and rate. The check reads a file and drives nothing, so its
+# evidence is a still. See
+# validation/<engine>/audio/eat-shorter-than-a-tick.test.ts.
+validation = { script = "audio/eat-shorter-than-a-tick.test.ts", outputs = [
+  { id = "eat", name = "The round the produced eat cue plays in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "death-is-the-longest-cue"
+title = "The death cue is the heaviest of the three"
+description = "assets/audio/death.wav is longer than both eat.wav and combo-up.wav, so the end of a round is the one heavy sound in the game."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: read the three WAV headers and compare their durations.
+# The check reads files and drives nothing, so its evidence is a still. See
+# validation/<engine>/audio/death-is-the-longest-cue.test.ts.
+validation = { script = "audio/death-is-the-longest-cue.test.ts", outputs = [
+  { id = "death", name = "The round the produced death cue plays in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "eat-cue-plays"
+title = "The eat cue plays on the eat"
+description = "The eat cue is played exactly once on the tick a pellet is eaten, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: watch the cues asked for while driving a real eat and
+# confirm eat arrived once, on that tick. See
+# validation/<engine>/audio/eat-cue-plays.test.ts.
+validation = { script = "audio/eat-cue-plays.test.ts", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "combo-up-cue-plays"
+title = "The combo cue plays on the rise"
+description = "The combo-up cue is played exactly once on the tick the multiplier rises, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: watch the cues asked for while driving a real eat inside
+# an open window and confirm combo-up arrived once, on that tick. See
+# validation/<engine>/audio/combo-up-cue-plays.test.ts.
+validation = { script = "audio/combo-up-cue-plays.test.ts", outputs = [
+  { id = "combo", name = "The combo rise whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-cue-plays"
+title = "The death cue plays on the death"
+description = "The death cue is played exactly once on the tick the head enters a fatal cell, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: watch the cues asked for while driving a real fatal
+# collision and confirm death arrived once, on that tick. See
+# validation/<engine>/audio/death-cue-plays.test.ts.
+validation = { script = "audio/death-cue-plays.test.ts", outputs = [
+  { id = "death", name = "The death whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-cue-plays"
+title = "The music bed plays under a round"
+description = "The music cue is played when a round begins, and on no frame before the round begins."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: watch the cues asked for from the title screen through
+# the start of a round and confirm music arrived at the start and not before.
+# See validation/<engine>/audio/music-cue-plays.test.ts.
+validation = { script = "audio/music-cue-plays.test.ts", outputs = [
+  { id = "music", name = "The music bed starting under a round", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-restarts-on-pause-restart"
+title = "The bed sounds under a round restarted from the pause menu"
+description = "confirm on RESTART begins a fresh round, and the music bed is sounding under that round."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: start a round from the title, pause it, confirm RESTART,
+# and read whether the bed is sounding under the fresh round. See
+# validation/<engine>/audio/music-restarts-on-pause-restart.test.ts.
+validation = { script = "audio/music-restarts-on-pause-restart.test.ts", outputs = [
+  { id = "restart", name = "The bed under a restarted round", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-restarts-on-play-again"
+title = "The bed sounds under a round played again from the game over"
+description = "confirm on PLAY AGAIN begins a fresh round, and the music bed is sounding under that round."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: drive a real death, confirm PLAY AGAIN, and read whether
+# the bed is sounding under the fresh round. See
+# validation/<engine>/audio/music-restarts-on-play-again.test.ts.
+validation = { script = "audio/music-restarts-on-play-again.test.ts", outputs = [
+  { id = "again", name = "The bed under a round played again", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-stops-when-the-round-ends"
+title = "The music bed stops when the round ends"
+description = "The music bed is stopped once the round it was under has ended, so no bed runs on under the game over screen."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: start a round from the title, let the chain run into the
+# wall, and read whether the bed is still looping a few ticks past the ending.
+# See validation/<engine>/audio/music-stops-when-the-round-ends.test.ts.
+validation = { script = "audio/music-stops-when-the-round-ends.test.ts", outputs = [
+  { id = "ended", name = "The bed going quiet as the round ends", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-not-played-by-a-posed-screen"
+title = "A posed playing screen sounds no music"
+description = "Setting the screen to playing runs the tick over the board as it stands rather than laying out a fresh round, so no music cue is asked for."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose an isolated board through the surface, set the
+# screen to playing, run several ticks, and read the cues. See
+# validation/<engine>/audio/music-not-played-by-a-posed-screen.test.ts.
+validation = { script = "audio/music-not-played-by-a-posed-screen.test.ts", outputs = [
+  { id = "silent", name = "A posed round running with the bed silent", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "eat-and-combo-on-one-tick"
+title = "An eat that raises the combo plays both cues"
+description = "A tick that both eats a pellet and raises the multiplier plays eat once and combo-up once."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose an open window at a raised multiplier, drive one
+# eat, and count each cue asked for on that tick. See
+# validation/<engine>/audio/eat-and-combo-on-one-tick.test.ts.
+validation = { script = "audio/eat-and-combo-on-one-tick.test.ts", outputs = [
+  { id = "both", name = "The tick that eats and raises the combo", kind = "replay" },
+] }
+
+# --- Showcase -----------------------------------------------------------------
+# specs/showcase.md makes the showcase a deliverable of the build, so the case
+# carries ONE point for it and that point checks only that it is there: that the
+# description and the carousel are present at the root of the produced repository
+# and that the carousel names a file present beside them. Not a dimension, not a
+# byte of a picture, not a word of the prose. What the showcase says and how well
+# it presents the game are the reviewer's, through the domains, exactly like the
+# rest of the build's presentation, and no other point asserts anything about the
+# media.
+#
+# It carries a WEIGHT above the one every other point here carries, because a
+# build that ships no showcase at all has skipped a whole deliverable rather than
+# missed one rule. Its cap is `great`: a missing showcase leaves the game itself
+# entirely playable.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and every file the carousel names is present in showcase/."
+weight = 3
+domains = ["gameplay", "presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm every file the carousel names is present
+# beside them; the still handed back is a `.png` copied out of the showcase
+# itself. Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

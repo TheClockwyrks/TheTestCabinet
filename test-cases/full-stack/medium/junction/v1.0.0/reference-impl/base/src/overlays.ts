@@ -17,14 +17,24 @@ import type { Game } from "./sim";
 import type { Overlay } from "./types";
 import { idx } from "./grid";
 
-export function drawOverlay(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, overlay: Overlay): void {
+export function drawOverlay(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  cam: Camera,
+  overlay: Overlay,
+): void {
   if (overlay === "none") return;
   const w = game.world;
   const { c0, r0, c1, r1 } = cam.visibleTileRange();
   for (let row = r0; row <= r1; row++) {
     for (let col = c0; col <= c1; col++) {
       const i = idx(col, row);
-      const fill = overlay === "traffic" ? trafficColor(w.load[i]!, w.cap[i]!) : overlay === "utility" ? utilityColor(w, i) : landColor(w.land[i]!, w.zone[i]! !== 0);
+      const fill =
+        overlay === "traffic"
+          ? trafficColor(w.load[i]!, w.cap[i]!)
+          : overlay === "utility"
+            ? utilityColor(w, i)
+            : landColor(w.land[i]!, w.zone[i]! !== 0);
       if (!fill) continue;
       ctx.fillStyle = fill;
       ctx.fillRect(col * TILE, row * TILE, TILE + 0.6, TILE + 0.6);
@@ -39,7 +49,8 @@ function trafficColor(load: number, cap: number): string | null {
   const r = load / cap;
   if (r < 0.15) return hexA(COL.text3, 0.16); // the link itself, so the network reads
   if (r < 0.9) return hexA(mix(COL.money, COL.congest, r / 0.9), 0.3);
-  if (r <= 1.4) return hexA(COL.congest, 0.45 + 0.15 * Math.min(1, (r - 0.9) / 0.5));
+  if (r <= 1.4)
+    return hexA(COL.congest, 0.45 + 0.15 * Math.min(1, (r - 0.9) / 0.5));
   return hexA(COL.alert, 0.62);
 }
 
@@ -57,7 +68,10 @@ function utilityColor(w: Game["world"], i: number): string | null {
 
 // Land value: a red(low)→amber(mid)→green(high) ramp; zoned tiles tint stronger.
 function landColor(v: number, zoned: boolean): string | null {
-  const c = v < 0.5 ? mix(COL.alert, COL.ind, v / 0.5) : mix(COL.ind, COL.money, (v - 0.5) / 0.5);
+  const c =
+    v < 0.5
+      ? mix(COL.alert, COL.ind, v / 0.5)
+      : mix(COL.ind, COL.money, (v - 0.5) / 0.5);
   return hexA(c, zoned ? 0.4 : 0.28);
 }
 

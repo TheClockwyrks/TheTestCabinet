@@ -57,7 +57,9 @@ interface LocalRunsOptions {
 // contract. Older on-disk records (pre-`checks` validation schema, or pre-
 // `environment` block) are skipped so a stale record never crashes a page that
 // reads a field it lacks — they reappear once the run is regenerated.
-function isCurrentRecord(value: unknown): value is { id: string; links: Record<string, unknown> } {
+function isCurrentRecord(
+  value: unknown,
+): value is { id: string; links: Record<string, unknown> } {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   const validation = record.validation as Record<string, unknown> | undefined;
@@ -155,11 +157,7 @@ function rewriteIndexHtml(html: string, basePath: string): string {
   );
 }
 
-function serveBuild(
-  runsDir: string,
-  rest: string,
-  res: ServerResponse,
-): void {
+function serveBuild(runsDir: string, rest: string, res: ServerResponse): void {
   const slashIndex = rest.indexOf("/");
   const id = decodeURIComponent(
     slashIndex === -1 ? rest : rest.slice(0, slashIndex),
@@ -206,11 +204,18 @@ function serveBuild(
     return;
   }
 
-  res.setHeader("Content-Type", MIME[extname(filePath)] ?? "application/octet-stream");
+  res.setHeader(
+    "Content-Type",
+    MIME[extname(filePath)] ?? "application/octet-stream",
+  );
   createReadStream(filePath).pipe(res);
 }
 
-function serveIndexHtml(buildDir: string, id: string, res: ServerResponse): void {
+function serveIndexHtml(
+  buildDir: string,
+  id: string,
+  res: ServerResponse,
+): void {
   const html = readFileSync(join(buildDir, "index.html"), "utf8");
   const basePath = `${PREFIX}/builds/${encodeURIComponent(id)}/`;
   res.setHeader("Content-Type", CONTENT_HTML);

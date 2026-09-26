@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Installs the npm workspace and builds the front ends: the gallery (apps/site),
-# the operator web console (apps/web), and the developer docs (apps/docs). The
-# unit tests are `web-test.sh`, a job of its own.
+# Builds the front ends: the gallery (apps/site), the operator web console
+# (apps/web), and the developer docs (apps/docs), against a workspace
+# scripts/ci/npm-install.sh has installed. The unit tests are `web-test.sh`, a
+# step of its own in the same job.
 #
 # Each `build` script runs `tsc -b` (type-checking) before `vite build`, so this
 # both type-checks and produces the static bundle in one step (the docs are an
 # Astro Starlight build that type-checks as it builds).
 #
 # The gallery is built through the root `build:site` script rather than
-# `-w @test-cabinet/site`, because the site does not build on its own: it and the
-# `@test-cabinet/ui` library it consumes from source import several workspace
+# `-w @clockwyrks/site`, because the site does not build on its own: it and the
+# `@clockwyrks/ui` library it consumes from source import several workspace
 # runtime packages that publish their types only from a built `dist/`, so those
 # have to be built first, in dependency order. That order is the root script's job
 # to know — see `apps/docs/src/content/docs/development/releasing.md`, which names
@@ -24,19 +25,16 @@
 # empty-published-dataset path a fresh deployment takes. That is not merely
 # tolerated, it is the point: it is the only place that path is exercised.
 #
-# This is the critical front-end validation that both Azure DevOps and GitHub run.
+# This is the critical front-end validation the Azure pipeline runs.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-log "npm ci"
-npm ci
-
-log "build @test-cabinet/site (and the runtime packages it depends on)"
+log "build @clockwyrks/site (and the runtime packages it depends on)"
 npm run build:site
 
-log "build @test-cabinet/web"
-npm run build -w @test-cabinet/web
+log "build @clockwyrks/web"
+npm run build -w @clockwyrks/web
 
-log "build @test-cabinet/docs"
-npm run build -w @test-cabinet/docs
+log "build @clockwyrks/docs"
+npm run build -w @clockwyrks/docs

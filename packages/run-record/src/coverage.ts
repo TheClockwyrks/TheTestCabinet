@@ -10,9 +10,10 @@
 import type { HarnessSlug } from "./index";
 
 /**
- * One test case in a plan or a case group, pinned to an exact version (and
- * variant). Coverage is counted against exactly this version; the matrix flags it
- * when a newer version has since been ingested.
+ * One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
+ * and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
+ * against exactly this pin; the matrix flags it when a newer version has since been
+ * ingested.
  */
 export type ReviewPlanCase = {
   /**
@@ -27,26 +28,73 @@ export type ReviewPlanCase = {
    * The variant to cover (e.g. `base`).
    */
   variant: string;
+  /**
+   * The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the
+   * engineless run every case supports, and exactly what a plan scheduled before the
+   * pin carried an engine asked for.
+   *
+   * The engine is in the pin because a result is only comparable with another result
+   * on the same engine: a model handed a runtime and a documented API is doing
+   * different work from the same model starting from nothing, so one case at one
+   * version and variant on two engines is two pinned cases and two sets of cells.
+   *
+   * A pin naming an engine the version does not declare support for is accepted here
+   * and reported by the run, exactly as an uningested version is. The catalogue moves
+   * under a standing plan, so the check belongs where a run executes.
+   */
+  engine?: string;
 };
 
 /**
- * One harness+model combination in a plan or a combo group. The optional provider
- * mirrors the new-run form's per-combination provider for provider-routed
- * harnesses.
+ * One **combination** in a plan, a ladder, or a combo group: what a cell's runs are
+ * executed by.
+ *
+ * One type carrying two shapes, exactly as
+ * [`ComparisonArm`](test_cabinet_core::comparison::ComparisonArm) already does. A
+ * member naming a [`gg_config_id`](Self::gg_config_id) is a **gg combination** — a
+ * saved [gg configuration](https://docs.testcabinet.ai/gg/configurations/) plus a model
+ * for each launch slot it declares — and one without it is a **harness combination**:
+ * a harness, the model it runs, and a provider for a provider-routed harness. They are
+ * unioned into one list rather than split across two, so a plan crossing both against
+ * its cases needs no second axis.
  */
 export type ReviewPlanCombo = {
   /**
-   * The agent harness to drive.
+   * The agent harness to drive — `gg` on a gg member.
    */
   harness: HarnessSlug;
   /**
-   * The opaque model id passed to the harness.
+   * The opaque model id passed to the harness. Empty in storage on a gg member,
+   * which binds a model per agent instead; a read fills it with the model the bound
+   * set's root agent runs on, so a client with no configuration in hand still has
+   * something to show.
    */
   model: string;
   /**
    * The provider for a provider-routed harness, or null.
    */
   provider?: string;
+  /**
+   * The launcher's key for the gg configuration this member runs (`saved:<id>`), or
+   * null on a harness member. This is what makes a member a gg member.
+   */
+  ggConfigId?: string;
+  /**
+   * A model per [launch slot](https://docs.testcabinet.ai/gg/configurations/) the
+   * configuration declares, keyed by slot name. Empty on a harness member.
+   *
+   * Ordered (a `BTreeMap`) because it is compared and keyed, not merely read: two
+   * members binding the same slots must produce the same
+   * [`combination_key`] whatever order they arrived in.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * The configuration's current display name, filled on read and **never stored**.
+   *
+   * A configuration is renamed in one place, and a member that had stored the name it
+   * bore at the time would go on showing the old one forever.
+   */
+  ggConfigName?: string;
 };
 
 /**
@@ -111,6 +159,25 @@ export type CoverageGroupInput = {
 };
 
 /**
+ * How deep a plan's or ladder's review buffer may go: the most runs the requesting
+ * account may have outstanding (in flight, or finished and unreviewed by them)
+ * before a top-up stops emitting — or no bound at all.
+ *
+ * The unbounded shape is its own variant rather than a large bound so that it is
+ * stored, reported, and shown as the instruction it is, and so that no bound the
+ * reviewer types can be mistaken for it.
+ */
+export type BufferTarget =
+  | {
+      kind: "bounded";
+      /**
+       * The most runs the requester may have outstanding before a top-up stops.
+       */
+      runs: number;
+    }
+  | { kind: "unbounded" };
+
+/**
  * Which axis a coverage plan's cell loop nests on — and therefore the order its
  * runs execute in, since a top-up emits cells in this order, `job.queue_seq` is
  * monotonic, and the dispatcher claims in ascending order.
@@ -147,10 +214,11 @@ export type CoverageSchedule = {
   autoTopUp: boolean;
   /**
    * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions —
+   * "no opinion", "never top up", and "top up everything" — which is why this is
+   * nullable rather than defaulted, and a shape rather than a number.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -252,10 +320,11 @@ export type CoveragePlanOut = {
   autoTopUp: boolean;
   /**
    * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions —
+   * "no opinion", "never top up", and "top up everything" — which is why this is
+   * nullable rather than defaulted, and a shape rather than a number.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -269,6 +338,8 @@ export type CoveragePlanInput = {
   name: string;
   /**
    * The target number of runs desired for each `case × combination` cell.
+   * Rejected outside `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL` rather than corrected
+   * into range.
    */
   runsPerCell: number;
   /**
@@ -362,17 +433,47 @@ export type CoverageCell = {
    */
   variant: string;
   /**
-   * The harness.
+   * The engine this cell counts against, resolved: `none` where the pin names none.
+   * Always concrete, because a run recorded with no engine is a `none` run and the
+   * two must land in one cell.
+   */
+  engine: string;
+  /**
+   * The harness — `gg` on a gg cell.
    */
   harness: HarnessSlug;
   /**
-   * The model id.
+   * The model id: the one a harness cell's runs are launched with, and on a gg cell the
+   * one its bound set's root agent runs.
    */
   model: string;
   /**
    * The provider for a provider-routed harness, or null.
    */
   provider?: string;
+  /**
+   * The gg configuration this cell's runs are launched from, as the member names it, or
+   * null on a harness cell.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name — what the cell is labelled by, and the
+   * first gg segment of its [identity](crate::db::CellKey). Null on a harness cell, and
+   * on a gg cell whose configuration no longer exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness cell.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why a top-up cannot launch this cell, or null when it can.
+   *
+   * A cell whose member cannot be resolved is still counted and still reported — it keeps
+   * its place in the matrix carrying the reason — because a plan that silently got
+   * smaller is a plan whose missing runs nobody can explain.
+   */
+  unlaunchable?: string;
   /**
    * The target run count (the plan's `runs_per_cell`).
    */
@@ -463,9 +564,10 @@ export type CoverageMatrix = {
   runsOutstanding: number;
   /**
    * The buffer target in force for this plan (its own override, else the
-   * account's setting, else the backend default).
+   * account's setting, else the backend default). When it is `unbounded`,
+   * `runsOutstanding` never stops a top-up.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
 };
 
 /**
@@ -477,9 +579,11 @@ export type CoverageMatrix = {
 export type CoverageSettings = {
   /**
    * The account's default review-buffer target: how many runs a top-up may leave
-   * outstanding (in flight, or finished and unreviewed) before it stops.
+   * outstanding (in flight, or finished and unreviewed) before it stops, or
+   * `unbounded` for a reviewer who wants every plan to run through everything
+   * unless it says otherwise.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
   /**
    * Whether [`Self::buffer_target`] is the account's own choice or the backend's
    * compiled-in default because they have never chosen one. A `PUT` always makes
@@ -493,10 +597,11 @@ export type CoverageSettings = {
  */
 export type CoverageSettingsInput = {
   /**
-   * The review-buffer target to store, clamped to `MAX_BUFFER_TARGET`. `0` is a
-   * legitimate value — "never top me up automatically" — and is stored as such.
+   * The review-buffer target to store. A bound is clamped to `MAX_BUFFER_TARGET`;
+   * a bound of `0` is a legitimate value — "never top me up automatically" — and
+   * is stored as such, and `unbounded` is stored as itself.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
 };
 
 /**
@@ -530,6 +635,11 @@ export type TopUpLaunch = {
    */
   variant: string;
   /**
+   * The engine the enqueued runs are built on, resolved: `none` where the cell's pin
+   * names none.
+   */
+  engine: string;
+  /**
    * The harness.
    */
   harness: HarnessSlug;
@@ -543,6 +653,22 @@ export type TopUpLaunch = {
    */
   provider?: string;
   /**
+   * The gg configuration the launched member names, or null on a harness member.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name, when it still exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness member.
+   *
+   * Reported for the same reason the blocked list reports it: `gg` and a root model are not
+   * a name — two configurations, or two arms of one, read identically without it, and a
+   * report of what a top-up just launched that cannot tell them apart is not a report.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
    * How many runs were enqueued for this cell — always the cell's whole shortfall,
    * never a partial cell.
    */
@@ -552,6 +678,67 @@ export type TopUpLaunch = {
    * into its in-progress list.
    */
   jobIds: Array<string>;
+};
+
+/**
+ * One cell a top-up **could not** launch, and why.
+ *
+ * Reported per cell rather than per member, and beside the launches rather than instead of
+ * them, because the two answer different halves of "why is this plan idle": a top-up that
+ * enqueued four cells and skipped two broken ones is working, and a reviewer needs to see
+ * both numbers to know that.
+ */
+export type TopUpBlocked = {
+  /**
+   * The ladder rung this cell belongs to, or null for a coverage plan.
+   */
+  rungId?: string;
+  /**
+   * The test-case slug.
+   */
+  slug: string;
+  /**
+   * The pinned version.
+   */
+  version: string;
+  /**
+   * The variant.
+   */
+  variant: string;
+  /**
+   * The engine the cell would have launched on, resolved: `none` where the pin names
+   * none.
+   */
+  engine: string;
+  /**
+   * The harness — `gg` on a gg member.
+   */
+  harness: HarnessSlug;
+  /**
+   * The combination's model id, empty when the member could not be resolved far enough
+   * to have one.
+   */
+  model: string;
+  /**
+   * The provider for a provider-routed harness, or null.
+   */
+  provider?: string;
+  /**
+   * The gg configuration the member names, or null on a harness member.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name, when it still exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness member.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why the cell could not be launched, in the words a reviewer has to act on.
+   */
+  reason: string;
 };
 
 /**
@@ -570,7 +757,7 @@ export type TopUpResult = {
    * The buffer target in force (the plan's override, else the account's setting,
    * else the backend default).
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
   /**
    * The requester's buffer occupancy as the scheduler saw it, or null when it
    * never ran.
@@ -585,6 +772,15 @@ export type TopUpResult = {
    * order they will execute and therefore be reviewed in.
    */
   cells: Array<TopUpLaunch>;
+  /**
+   * The cells the top-up wanted to launch and could not, each with its reason — a
+   * configuration that has been deleted, a launch slot nothing is bound to, or a model
+   * the catalog can resolve no context window for.
+   *
+   * One broken member never stops the rest of the plan being fed, so this list and
+   * [`Self::cells`] are routinely both non-empty.
+   */
+  unlaunchable: Array<TopUpBlocked>;
 };
 
 /**
@@ -613,6 +809,10 @@ export type CoverageQueueEntry = {
    */
   variant: string;
   /**
+   * The engine the run was built on, resolved: `none` where the cell's pin names none.
+   */
+  engine: string;
+  /**
    * The harness.
    */
   harness: HarnessSlug;
@@ -620,6 +820,24 @@ export type CoverageQueueEntry = {
    * The model id the run was launched with.
    */
   model: string;
+  /**
+   * The gg configuration the run's cell names, or null on a harness cell.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness cell.
+   *
+   * The queue carries the member's whole identity rather than the run's harness and model,
+   * because on a gg cell those two are `gg` and a root model — the same two values for every
+   * configuration the plan crosses and for every arm of each. A worklist whose rows cannot
+   * be told apart is a worklist a reviewer cannot open in an informed order, and telling
+   * exactly those arms apart is what the plan was built for.
+   */
+  ggSlotModels?: { [key in string]: string };
   /**
    * RFC 3339 of when the run finished.
    */

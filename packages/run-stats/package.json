@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/run-stats",
+  "name": "@clockwyrks/run-stats",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -30,10 +30,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@test-cabinet/run-record": "*"
+    "@clockwyrks/run-record": "*"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "vitest": "^3"
+    "typescript": "^6",
+    "vitest": "^5"
   }
 }

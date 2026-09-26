@@ -126,20 +126,32 @@ fn run_summary_lifts_the_runs_display_identity() {
         test_case_slug: "carom".to_string(),
         test_case_version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine_slug: Some("none".to_string()),
         harness_slug: "claude-code".to_string(),
         harness_version: None,
         model_id: "claude-opus-4".to_string(),
+        gg_preset: None,
+        gg_config_id: None,
+        gg_models: None,
         test_type: "end-to-end".to_string(),
         run_state: "completed".to_string(),
         run_time_seconds: 12.0,
         total_tokens: 100,
         cost_comparable: None,
         rating: Some("great".to_string()),
+
+        aesthetic: None,
+
+        validator_rated: false,
         review_count: 1,
         loaded: true,
         published: false,
         record_json: "{}".to_string(),
+        record_readable: true,
+        record_format: 1,
         events_json: None,
+        code_analyzer_version: None,
+        updated_at: "2026-06-27T00:30:00Z".to_string(),
     };
 
     let summary = run_summary(&run);

@@ -1,10 +1,17 @@
 import { Link } from "react-router";
-import { Avatar, GradeBadge, RatingBadge } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  Avatar,
+  GradeBadge,
+  RatingBadge,
+} from "@clockwyrks/ui";
 import {
   formatPoints,
   overallGradeOf,
+  reviewAesthetic,
   scoreChecklist,
   worstRating,
+  type AestheticRating,
   type GradeStatus,
   type Rating,
   type Score,
@@ -21,15 +28,21 @@ import styles from "./ReviewList.module.scss";
 // form) and its read-only published view.
 //
 // Scoring uses the case's declared `items`; pass an empty list when the scoring
-// model is unavailable and the per-review score is simply omitted.
+// model is unavailable and the per-review score is simply omitted. On a
+// validator-rated run a review's checklist holds only the reviewer's verdict
+// OVERRIDES (not a scoreable checklist of its own), so the card's badge is the
+// reviewer's run-wide aesthetic tier and the per-card score is omitted — the
+// review's effective figures live on its own page.
 export function ReviewList({
   reviews,
   items,
   runId,
+  validatorRated = false,
 }: {
   reviews: StoredReview[];
   items: readonly WeightedItem[];
   runId: string;
+  validatorRated?: boolean;
 }) {
   // A game jam's card badge is the reviewer's whole-game overall grade (its
   // categories are graded, and it has no scoring domains), in place of the
@@ -41,9 +54,14 @@ export function ReviewList({
         const overall = jam
           ? null
           : worstRating(review.ratings.map((r) => r.rating));
+        // The review's run-wide aesthetic tier (a legacy stored row's per-domain
+        // entries collapse to their worst).
+        const aesthetic = reviewAesthetic(review);
         const grade = jam ? overallGradeOf(review.checklist) : null;
         const score =
-          items.length > 0 ? scoreChecklist(items, review.checklist) : null;
+          items.length > 0 && !validatorRated
+            ? scoreChecklist(items, review.checklist)
+            : null;
         // The leading lines of the writeup as a preview, clamped to a few lines
         // with an ellipsis; the full prose lives on the review's own page.
         const snippet = review.writeup.trim();
@@ -58,6 +76,7 @@ export function ReviewList({
                   reviewer={review.reviewer}
                   reviewerPictureUrl={review.reviewerPictureUrl}
                   rating={overall}
+                  aesthetic={aesthetic}
                   grade={grade}
                   reviewedAt={review.reviewedAt}
                   editedAt={review.editedAt}
@@ -84,6 +103,7 @@ export function ReviewHeader({
   reviewer,
   reviewerPictureUrl,
   rating,
+  aesthetic,
   grade,
   reviewedAt,
   editedAt,
@@ -94,6 +114,10 @@ export function ReviewHeader({
   // absent or the picture 404s (the reviewer has no picture).
   reviewerPictureUrl?: string | null;
   rating: Rating | null;
+  // The reviewer's run-wide AESTHETIC tier, shown beside the functional
+  // `rating` (or in place of it where none applies). Null/absent for a legacy
+  // run's review, which has no aesthetic channel.
+  aesthetic?: AestheticRating | null;
   // A game-jam review's whole-game overall grade, shown as the badge in place of
   // the per-domain `rating` a jam does not carry. Null/absent for a domain-scored
   // review.
@@ -116,11 +140,14 @@ export function ReviewHeader({
           />
           {reviewer}
         </span>
-        {grade ? (
-          <GradeBadge status={grade} />
-        ) : (
-          rating && <RatingBadge rating={rating} />
-        )}
+        <span className={styles.reviewBadges}>
+          {grade ? (
+            <GradeBadge status={grade} />
+          ) : (
+            rating && <RatingBadge rating={rating} />
+          )}
+          {aesthetic && <AestheticBadge rating={aesthetic} />}
+        </span>
       </div>
       {(reviewedAt || score) && (
         <div className={styles.reviewHeaderRow}>

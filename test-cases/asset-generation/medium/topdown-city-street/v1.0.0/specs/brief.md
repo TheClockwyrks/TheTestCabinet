@@ -6,7 +6,7 @@ this image into its nine cells and repeats them to build street maps — roads,
 sidewalks, crossings, and lots. The whole set must read as **one cohesive city**: the
 same overhead viewpoint, the same palette, the same flat lighting across every tile.
 
-The two things that make it a *tileset* rather than nine loose pictures:
+The two things that make it a _tileset_ rather than nine loose pictures:
 
 - **Strictly top-down.** Every tile is seen from straight overhead — flat markings
   painted on flat ground. No perspective, no height, no side faces, no isometric skew,
@@ -31,17 +31,17 @@ The two things that make it a *tileset* rather than nine loose pictures:
 
 Place these tiles in exactly these cells (row by row, left to right):
 
-| Cell | x range | y range | Tile |
-| --- | --- | --- | --- |
-| Top-left | 0–31 | 0–31 | **Plain asphalt road** |
-| Top-center | 32–63 | 0–31 | **Road with dashed center line** |
-| Top-right | 64–95 | 0–31 | **Zebra crosswalk** |
-| Mid-left | 0–31 | 32–63 | **Concrete sidewalk** |
-| Mid-center | 32–63 | 32–63 | **Grass verge** |
-| Mid-right | 64–95 | 32–63 | **Rooftop with AC unit** |
-| Bottom-left | 0–31 | 64–95 | **Parking-lot patch with stall line** |
-| Bottom-center | 32–63 | 64–95 | **Manhole-cover road tile** |
-| Bottom-right | 64–95 | 64–95 | **Curb / sidewalk-to-road transition** |
+| Cell          | x range | y range | Tile                                   |
+| ------------- | ------- | ------- | -------------------------------------- |
+| Top-left      | 0–31    | 0–31    | **Plain asphalt road**                 |
+| Top-center    | 32–63   | 0–31    | **Road with dashed center line**       |
+| Top-right     | 64–95   | 0–31    | **Zebra crosswalk**                    |
+| Mid-left      | 0–31    | 32–63   | **Concrete sidewalk**                  |
+| Mid-center    | 32–63   | 32–63   | **Grass verge**                        |
+| Mid-right     | 64–95   | 32–63   | **Rooftop with AC unit**               |
+| Bottom-left   | 0–31    | 64–95   | **Parking-lot patch with stall line**  |
+| Bottom-center | 32–63   | 64–95   | **Manhole-cover road tile**            |
+| Bottom-right  | 64–95   | 64–95   | **Curb / sidewalk-to-road transition** |
 
 **1. Plain asphalt road.** Fill the cell with the asphalt grey. Scatter a light,
 subtle speckle of the darker asphalt tone for aggregate texture. Uniform enough that
@@ -93,18 +93,18 @@ road on the right/bottom) so a game can butt sidewalk tiles against road tiles a
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Asphalt (road surface) | `#4a4d52` |
+| Role                               | Hex       |
+| ---------------------------------- | --------- |
+| Asphalt (road surface)             | `#4a4d52` |
 | Asphalt speckle (darker aggregate) | `#3d4045` |
-| Sidewalk / concrete (light grey) | `#b9b7ae` |
-| Curb (mid grey) | `#8b8a82` |
-| Lane yellow | `#e6c23c` |
-| Lane white | `#e9e7dd` |
-| Grass (green) | `#5b8a39` |
-| Grass shadow (dark green) | `#3f6127` |
-| Rooftop (tan) | `#c3a877` |
-| Shadow / seam | `#2b2d31` |
+| Sidewalk / concrete (light grey)   | `#b9b7ae` |
+| Curb (mid grey)                    | `#8b8a82` |
+| Lane yellow                        | `#e6c23c` |
+| Lane white                         | `#e9e7dd` |
+| Grass (green)                      | `#5b8a39` |
+| Grass shadow (dark green)          | `#3f6127` |
+| Rooftop (tan)                      | `#c3a877` |
+| Shadow / seam                      | `#2b2d31` |
 
 Every tile is painted from this set — the AC unit is curb grey with a shadow vent, the
 manhole is the darker asphalt tone ringed in curb grey, and so on. No other colors.

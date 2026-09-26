@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 @use "../styles/surfaces" as s;
 
 .embed {
@@ -51,13 +52,14 @@
   padding: t.$space-lg;
 }
 
+// The caveat sits beneath the launch action it qualifies.
 .notice {
-  margin: 0;
+  margin: t.$space-lg 0 0;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 .launch {
-  margin-top: t.$space-lg;
   padding: t.$space-sm t.$space-lg;
   font-size: t.$font-md;
   color: t.$color-bg;

@@ -2,7 +2,7 @@
 # as the backend (its own SQLite accounts database is single-writer), plus a
 # ClusterIP Service. Point TCAB_AUTH_DATABASE_URL at a postgres:// instance to run
 # it as a plain stateless Deployment instead. It renders nothing, so its image
-# (deployments/images/auth.Dockerfile) ships no browser.
+# (deployments/images/services.Dockerfile, `--target auth`) ships no browser.
 apiVersion: v1
 kind: Service
 metadata:
@@ -36,14 +36,16 @@ spec:
     spec:
       containers:
         - name: auth
-          image: REPLACE_REGISTRY/tcab-auth-service:latest # CI publishes ghcr.io/<owner>/tcab-auth-service; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-auth-service:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-auth-service:<git-sha>
           resources:
-          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
+            # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an
             # unbounded container is worse still, because it makes the sum of a node's
             # limits unknowable and so removes the only guarantee that a run pod cannot
-            # be killed to satisfy someone else's growth. See the `TCAB_K8S_RUN_MEMORY_*`
-            # commentary in base/dispatcher.yaml for the full argument.
+            # be killed to satisfy someone else's growth. See the dispatcher
+            # container's own `resources` commentary in base/dispatcher.yaml for the
+            # always-on argument; the RUN pods (driver + sandbox) deliberately take the
+            # opposite shape — a request and NO limit — for the reasons given there.
             #
             # Sized from prod, 2026-08-18: each container's cgroup high-water mark
             # (`memory.peak`) over the pods' then ~4-day lifetime, cross-checked against

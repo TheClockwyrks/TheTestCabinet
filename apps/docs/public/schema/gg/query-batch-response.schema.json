@@ -1,0 +1,17 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/gg/query-batch-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The response to `POST /gg/query/batch`.",
+  "properties": {
+    "results": {
+      "default": [],
+      "description": "One result per requested query, **in request order** — the only binding\nbetween a panel and its answer, so the list is never filtered or reordered.",
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/gg/query-response.schema.json"
+      },
+      "type": "array"
+    }
+  },
+  "title": "GgQueryBatchResponse",
+  "type": "object"
+}

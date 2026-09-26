@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useBackend } from "../../client/context";
 import type { TestCase, VersionInfo } from "../../client/types";
+import { DEFAULT_ENGINE_SLUG } from "../data/engines";
 
 // An initial test case / version / variant to select once the catalog (and the
 // version's variants) load, used when the new-run form is reached from a test
@@ -99,7 +100,10 @@ export function useCatalog(preselect?: CatalogPreselect): CatalogSelection {
     setLoading(true);
     setError(null);
     client
-      .resolveVersion(slug, version)
+      // The new-run form reads the version's structure (variants, engines, the
+      // runtime ceiling), not its rendered prompt, so the engineless rendering is
+      // what it asks for.
+      .resolveVersion(slug, version, DEFAULT_ENGINE_SLUG)
       .then((info) => {
         if (!active) return;
         setVersionInfo(info);

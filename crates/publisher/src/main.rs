@@ -63,7 +63,7 @@ async fn main() -> ExitCode {
                 run_id = %config.run_id,
                 source_repo = ?links.source_repo,
                 playable_build = ?links.playable_build,
-                "release succeeded; reporting the terminal result"
+                "release succeeded"
             );
             let result = PublishResult {
                 state: PublishState::Succeeded,
@@ -81,7 +81,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(detail) => {
-            tracing::warn!(run_id = %config.run_id, %detail, "release failed; reporting failure");
+            tracing::warn!(run_id = %config.run_id, %detail, "release failed");
             let result = PublishResult {
                 state: PublishState::Failed,
                 source_repo: None,
@@ -128,9 +128,9 @@ async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks
         tracing::warn!(
             run_id = %config.run_id,
             publish_job_id = %config.publish_job_id,
-            "run is already published; skipping the release rather than deploying it again"
+            "run is already published"
         );
-        progress(client, "run is already published — skipping the release").await;
+        progress(client, "run is already published").await;
         return Ok(ReleasedLinks {
             source_repo: published.source_repo,
             playable_build: published.playable_build,

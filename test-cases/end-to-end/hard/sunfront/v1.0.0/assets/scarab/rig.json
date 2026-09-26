@@ -2,101 +2,57 @@
   "parts": [
     {
       "name": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "leg_fl_femur",
       "parent": "body",
-      "pivot": [
-        5,
-        6,
-        21
-      ]
+      "pivot": [5, 6, 21]
     },
     {
       "name": "leg_fl_tibia",
       "parent": "leg_fl_femur",
-      "pivot": [
-        1,
-        4,
-        21
-      ]
+      "pivot": [1, 4, 21]
     },
     {
       "name": "leg_fr_femur",
       "parent": "body",
-      "pivot": [
-        20,
-        6,
-        21
-      ]
+      "pivot": [20, 6, 21]
     },
     {
       "name": "leg_fr_tibia",
       "parent": "leg_fr_femur",
-      "pivot": [
-        24,
-        4,
-        21
-      ]
+      "pivot": [24, 4, 21]
     },
     {
       "name": "leg_bl_femur",
       "parent": "body",
-      "pivot": [
-        5,
-        6,
-        9
-      ]
+      "pivot": [5, 6, 9]
     },
     {
       "name": "leg_bl_tibia",
       "parent": "leg_bl_femur",
-      "pivot": [
-        1,
-        4,
-        9
-      ]
+      "pivot": [1, 4, 9]
     },
     {
       "name": "leg_br_femur",
       "parent": "body",
-      "pivot": [
-        20,
-        6,
-        9
-      ]
+      "pivot": [20, 6, 9]
     },
     {
       "name": "leg_br_tibia",
       "parent": "leg_br_femur",
-      "pivot": [
-        24,
-        4,
-        9
-      ]
+      "pivot": [24, 4, 9]
     },
     {
       "name": "mandible_l",
       "parent": "body",
-      "pivot": [
-        10,
-        6,
-        25
-      ]
+      "pivot": [10, 6, 25]
     },
     {
       "name": "mandible_r",
       "parent": "body",
-      "pivot": [
-        15,
-        6,
-        25
-      ]
+      "pivot": [15, 6, 25]
     }
   ],
   "joints": [
@@ -105,11 +61,7 @@
       "part": "leg_fl_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        6,
-        21
-      ],
+      "pivot": [5, 6, 21],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -120,11 +72,7 @@
       "part": "leg_fr_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        6,
-        21
-      ],
+      "pivot": [20, 6, 21],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -135,11 +83,7 @@
       "part": "leg_bl_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        6,
-        9
-      ],
+      "pivot": [5, 6, 9],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -150,11 +94,7 @@
       "part": "leg_br_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        6,
-        9
-      ],
+      "pivot": [20, 6, 9],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -165,11 +105,7 @@
       "part": "leg_fl_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        1,
-        4,
-        21
-      ],
+      "pivot": [1, 4, 21],
       "min": -0.3,
       "max": 1.2,
       "rest": 0.0,
@@ -180,11 +116,7 @@
       "part": "leg_fr_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        24,
-        4,
-        21
-      ],
+      "pivot": [24, 4, 21],
       "min": -0.3,
       "max": 1.2,
       "rest": 0.0,
@@ -195,11 +127,7 @@
       "part": "leg_bl_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        1,
-        4,
-        9
-      ],
+      "pivot": [1, 4, 9],
       "min": -0.3,
       "max": 1.2,
       "rest": 0.0,
@@ -210,11 +138,7 @@
       "part": "leg_br_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        24,
-        4,
-        9
-      ],
+      "pivot": [24, 4, 9],
       "min": -0.3,
       "max": 1.2,
       "rest": 0.0,
@@ -225,11 +149,7 @@
       "part": "mandible_l",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        10,
-        6,
-        25
-      ],
+      "pivot": [10, 6, 25],
       "min": -1.0,
       "max": 0.15,
       "rest": 0.0,
@@ -240,11 +160,7 @@
       "part": "mandible_r",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        15,
-        6,
-        25
-      ],
+      "pivot": [15, 6, 25],
       "min": -0.15,
       "max": 1.0,
       "rest": 0.0,

@@ -1,0 +1,225 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 256,
+    "height": 256
+  },
+  "durationMs": 760,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "core",
+      "shape": "point",
+      "position": [128.0, 128.0, 0.0],
+      "extent": {
+        "radius": 1.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 8,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 190.0,
+      "lifetimeSpread": 40.0,
+      "speed": 26.0,
+      "speedSpread": 12.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 180.0,
+      "seed": 3301,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 17.0,
+          "to": 2.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffd58a",
+            "at": 0.5
+          },
+          {
+            "color": "#ff8a2e",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "embers",
+      "shape": "point",
+      "position": [128.0, 128.0, 0.0],
+      "extent": {
+        "radius": 1.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 3,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 220.0,
+      "lifetimeSpread": 80.0,
+      "speed": 62.0,
+      "speedSpread": 26.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 180.0,
+      "seed": 8123,
+      "forces": {
+        "gravity": -160.0,
+        "drag": 2.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "linear",
+          "from": 2.2,
+          "to": 0.3
+        },
+        "opacityCurve": {
+          "interp": "linear",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffd27a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff6a22",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "shrapnel",
+      "shape": "disc",
+      "position": [128.0, 128.0, 0.0],
+      "extent": {
+        "radius": 5.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 68,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 160.0,
+      "speed": 258.0,
+      "speedSpread": 84.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 180.0,
+      "seed": 4409,
+      "forces": {
+        "gravity": -215.0,
+        "drag": 0.9
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 7.0,
+          "to": 0.8
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ff9a3c",
+            "at": 0.35
+          },
+          {
+            "color": "#e0431c",
+            "at": 0.75
+          },
+          {
+            "color": "#5c1408",
+            "at": 1.0
+          }
+        ],
+        "rotation": 300.0,
+        "stretch": 0.2
+      }
+    },
+    {
+      "name": "smoke",
+      "shape": "disc",
+      "position": [128.0, 128.0, 0.0],
+      "extent": {
+        "radius": 8.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 10,
+        "atMs": 40.0
+      },
+      "lifetimeMs": 700.0,
+      "lifetimeSpread": 160.0,
+      "speed": 52.0,
+      "speedSpread": 24.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 180.0,
+      "seed": 6620,
+      "forces": {
+        "gravity": 70.0,
+        "drag": 2.6,
+        "turbulence": {
+          "amplitude": 30.0,
+          "scale": 0.05
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 6.0,
+          "to": 19.0
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 0.26,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#7a5540",
+            "at": 0.0
+          },
+          {
+            "color": "#1c1310",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": [
+    {
+      "parent": "shrapnel",
+      "on": "death",
+      "emitter": "embers"
+    }
+  ]
+}

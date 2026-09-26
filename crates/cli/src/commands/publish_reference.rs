@@ -6,31 +6,31 @@
 //! `run.links.playableBuild`. Unlike a run's build it is **never seeded** into a
 //! run (the model must not see the answer); it is authored under the version
 //! folder, declared by the variant manifest's optional `reference_implementation`
-//! key (resolved onto [`Variant::reference_impl`]), built with the case's own
-//! `[build]` commands, and hosted out-of-band. This command is that out-of-band
-//! hosting step:
+//! key (resolved onto the variant's reference implementations, one per engine),
+//! built with the case's own `[build]` commands, and hosted out-of-band. This
+//! command is that out-of-band hosting step:
 //!
 //! 1. Resolve the case at the requested version (newest when omitted) from the
-//!    local catalog and select the targeted variants.
-//! 2. For each targeted variant that declares a `reference_impl`, run the case's
-//!    `[build]` *install* then *build* commands **from the reference-impl
-//!    directory** (not a seeded run repo), so the static site lands in the same
-//!    `dist/`|`build/`|`out/` a run's build uses. Then synthesize the variant's
-//!    committed **baseline** validation media from that build — driving the case's
-//!    debug scripts against the reference implementation once and writing each
-//!    output under `<version>/validation-baseline/<variant>/`. The baseline is a
-//!    fixed property of the case version, so a run's validation only ever produces
-//!    the *actual* media and never re-drives the reference implementation. Pass
+//!    local catalog and select the targeted variant/engine pairs.
+//! 2. For each target, run the case's `[build]` *install* then *build* commands
+//!    **from the reference-impl directory** (not a seeded run repo), so the static
+//!    site lands in the same `dist/`|`build/`|`out/` a run's build uses. Then
+//!    synthesize the variant's committed **baseline** validation media from that
+//!    build, driving the case's debug scripts against the reference implementation
+//!    once and writing each output under the version's baseline directory in the
+//!    cold-storage submodule, in `<engine>/<variant>/`. The baseline is a fixed property
+//!    of the case version, so a run's validation only ever produces the *actual*
+//!    media and never re-drives the reference implementation. Pass
 //!    `--skip-baselines` when the committed media is already current to deploy
 //!    without re-capturing it; to capture the media *without* deploying (the
 //!    common authoring loop, needing no Cloudflare credentials) use the dedicated
 //!    [`tcab capture-baselines`](super::capture_baselines) command instead.
 //! 3. Deploy that static output to the reference Cloudflare Pages project for the
 //!    required `--env` (prod's `test-cabinet-references` or staging's
-//!    `test-cabinet-references-staging`) under a per-variant branch alias,
-//!    scrubbing any leaked secret from the built tree first and reading the served
-//!    URL back out of `wrangler`'s output — never constructing it — via the shared
-//!    [`deploy_pages_build`].
+//!    `test-cabinet-references-staging`) under a per-variant, per-engine branch
+//!    alias, scrubbing any leaked secret from the built tree first and reading the
+//!    served URL back out of `wrangler`'s output, never constructing it, via the
+//!    shared [`deploy_pages_build`].
 //! 4. Record each deployed URL in the committed reference-builds lockfile
 //!    (`test-cases/reference-builds.lock.json`), under the `--env` key. This is the
 //!    **pull** model: the backend is private (VPN-only) and cannot be pushed to, so
@@ -45,13 +45,14 @@
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType, Variant, deploy_pages_build,
+    ColdStorage, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType,
+    deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
 use super::capture_baselines::{
-    baseline_dir, build_reference, capture_variant_baseline, catalog_root, reference_dir,
-    resolve_version, select_targets,
+    Target, baseline_dir, build_reference, capture_variant_baseline, catalog_root,
+    ensure_cold_storage, resolve_version, select_targets,
 };
 use crate::cli::{DeployEnv, PublishReferenceArgs};
 
@@ -81,6 +82,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // Resolve the case at the requested version — or its newest version when the
     // positional `<version>` is omitted — from the local catalog.
     let catalog = TestCaseCatalog::new(catalog_root());
+    let cold = ColdStorage::for_catalog(catalog.root());
     let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
     let test_case = catalog
         .resolve(&args.slug, &version)
@@ -90,7 +92,12 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // reference implementation. A `--variant` naming one that has no reference is
     // an explicit error; `--all-variants`/the default over a case with none is
     // likewise an error (there is nothing to publish).
-    let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
+    let targets = select_targets(
+        &test_case,
+        args.variant.as_deref(),
+        args.engine.as_deref(),
+        args.all_variants,
+    )?;
 
     // An asset-generation reference is a script that draws a sheet, not a static
     // site: it is regenerated on the spot and its frames are uploaded to the object
@@ -98,7 +105,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // back, and no lockfile. That is a different enough shape to be its own path.
     if test_case.test_type == TestType::AssetGeneration {
         println!(
-            "tcab publish-reference: {}@{} -> object store ({} variant(s))",
+            "tcab publish-reference: {}@{} -> object store ({} reference build(s))",
             test_case.slug,
             test_case.version,
             targets.len(),
@@ -111,7 +118,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     let project = references_pages_project(args.env);
 
     println!(
-        "tcab publish-reference: {}@{} -> {} ({} variant(s))",
+        "tcab publish-reference: {}@{} -> {} ({} reference build(s))",
         test_case.slug,
         test_case.version,
         project,
@@ -127,20 +134,25 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             args.env.as_str(),
             lock_path.display()
         );
-        for variant in &targets {
-            println!("  {} ", variant.slug);
-            println!("    reference: {}", reference_dir(variant).display());
+        for target in &targets {
+            println!("  {} ", target.label());
+            println!("    reference: {}", target.dir.display());
             if args.skip_baselines {
                 println!("    baseline:  (skipped: --skip-baselines)");
             } else {
                 println!(
                     "    baseline:  {}",
-                    baseline_dir(&test_case, &variant.slug).display()
+                    baseline_dir(&cold, &test_case, target.engine, &target.variant.slug)?.display()
                 );
             }
             println!(
                 "    branch:    {}",
-                deploy_branch(&test_case.slug, &test_case.version, &variant.slug)
+                deploy_branch(
+                    &test_case.slug,
+                    &test_case.version,
+                    &target.variant.slug,
+                    target.engine
+                )
             );
         }
         return Ok(());
@@ -149,34 +161,42 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // The build commands come from the case's `[build]` table — the same install +
     // build a run's validator uses. A case without one (an asset-generation case,
     // say) cannot have a buildable reference implementation, so this is a hard error.
-    let build = test_case.build.as_ref().context(
-        "this case declares no [build] table, so its reference implementation cannot be built \
-         (only end-to-end and full-stack cases have buildable references)",
-    )?;
+    let build = test_case
+        .build
+        .as_ref()
+        .context("this case declares no [build] table")?;
 
+    // Where each target's baselines are captured, or `None` under
+    // `--skip-baselines`.
+    let baselines = if args.skip_baselines {
+        None
+    } else {
+        ensure_cold_storage(&cold)?;
+        Some(&cold)
+    };
     let runner = SystemCommandRunner;
 
     // Deploy each targeted variant in turn, collecting the `(variant, served URL)` of
     // each success. One variant's failure is reported and counted but does not abort
     // the rest, so a multi-variant sweep still makes progress; the command exits
     // non-zero if any failed.
-    let mut deployed: Vec<(String, String)> = Vec::new();
+    let mut deployed: Vec<(String, String, String)> = Vec::new();
     let mut failures = 0usize;
-    for variant in &targets {
+    for target in &targets {
         match publish_one(
             &runner,
+            baselines,
             &test_case,
-            variant,
+            *target,
             project,
             &build.install,
             &build.build,
-            args.skip_baselines,
         )
         .await
         {
-            Ok(url) => deployed.push((variant.slug.clone(), url)),
+            Ok(url) => deployed.push((target.variant.slug.clone(), target.engine.to_string(), url)),
             Err(err) => {
-                eprintln!("  {} — failed: {err:#}", variant.slug);
+                eprintln!("  {} — failed: {err:#}", target.label());
                 failures += 1;
             }
         }
@@ -191,14 +211,21 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
         let mut lock = ReferenceLock::load(&lock_path)
             .with_context(|| format!("reading {}", lock_path.display()))?
             .unwrap_or_default();
-        for (variant, url) in &deployed {
-            lock.set(env, &test_case.slug, &test_case.version, variant, url);
+        for (variant, engine, url) in &deployed {
+            lock.set(
+                env,
+                &test_case.slug,
+                &test_case.version,
+                variant,
+                engine,
+                url,
+            );
         }
         lock.save(&lock_path)
             .with_context(|| format!("writing {}", lock_path.display()))?;
 
         println!(
-            "\nwrote {} ({} variant(s) under env `{env}`)",
+            "\nwrote {} ({} reference build(s) under env `{env}`)",
             lock_path.display(),
             deployed.len(),
         );
@@ -216,7 +243,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
 }
 
 /// Build a single variant's reference implementation, refresh its committed
-/// **baseline** validation media (unless `skip_baselines`), and deploy the build to
+/// **baseline** validation media into `baselines` (skipped when `None`), and deploy the build to
 /// Cloudflare Pages — returning the served URL to record in the lockfile.
 ///
 /// The build is the shared [`build_reference`], so this command and
@@ -227,60 +254,63 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
 /// shared [`deploy_pages_build`].
 async fn publish_one(
     runner: &SystemCommandRunner,
+    baselines: Option<&ColdStorage>,
     test_case: &TestCaseVersion,
-    variant: &Variant,
+    target: Target<'_>,
     project: &str,
     install: &str,
     build: &str,
-    skip_baselines: bool,
 ) -> Result<String> {
-    let out = build_reference(runner, variant, install, build).await?;
+    let out = build_reference(runner, target, install, build).await?;
 
     // Refresh the committed baseline validation media from the built reference
     // implementation — the *baseline* side of each debug script's proof media, a
     // fixed property of the case version, so a run's validation never re-drives the
     // reference implementation. `--skip-baselines` is the operator asserting the
     // committed media is already current for this build.
-    if skip_baselines {
-        println!(
+    match baselines {
+        Some(cold) => capture_variant_baseline(cold, test_case, target, &out)?,
+        None => println!(
             "  {} — skipping baseline capture (--skip-baselines)",
-            variant.slug
-        );
-    } else {
-        capture_variant_baseline(test_case, variant, &out)?;
+            target.label()
+        ),
     }
 
     // Deploy to Cloudflare Pages under this variant's branch alias and read the
     // served URL back from wrangler (Cloudflare truncates long subdomains, so the
     // literal host is not constructible up front).
-    let branch = deploy_branch(&test_case.slug, &test_case.version, &variant.slug);
-    println!("  {} — deploying (branch {branch})", variant.slug);
+    let branch = deploy_branch(
+        &test_case.slug,
+        &test_case.version,
+        &target.variant.slug,
+        target.engine,
+    );
+    println!("  {} — deploying (branch {branch})", target.label());
     let url = deploy_pages_build(runner, &out, project, &branch)
         .await
-        .with_context(|| {
-            format!(
-                "deploying the reference build for variant `{}`",
-                variant.slug
-            )
-        })?;
+        .with_context(|| format!("deploying the reference build for `{}`", target.label()))?;
 
-    println!("  {} — deployed", variant.slug);
+    println!("  {} — deployed", target.label());
     println!("    reference build: {url}");
     Ok(url)
 }
 
 /// The Cloudflare Pages branch alias a variant's reference build deploys under:
-/// `<slug>-<version-with-dots-as-dashes>-<variant>` (for example,
-/// `carom-v1-0-1-base`).
+/// `<slug>-<version-with-dots-as-dashes>-<variant>-<engine>` (for example,
+/// `carom-v3-0-0-base-simple-2d`).
+///
+/// The engine is part of the alias because a variant has one reference build per
+/// engine and each is deployed separately; sharing an alias would have the second
+/// deploy replace the first at the URL the lockfile already recorded.
 ///
 /// Dots are replaced with dashes because a Pages branch alias becomes a DNS
 /// subdomain label, where dots would split it into multiple labels. The alias is
 /// only how the deploy is *addressed*; the served URL is always read back from
 /// wrangler's output rather than derived from this string (Cloudflare
 /// sanitizes/truncates long aliases).
-fn deploy_branch(slug: &str, version: &str, variant: &str) -> String {
+fn deploy_branch(slug: &str, version: &str, variant: &str, engine: &str) -> String {
     let version = version.replace('.', "-");
-    format!("{slug}-{version}-{variant}")
+    format!("{slug}-{version}-{variant}-{engine}")
 }
 
 #[cfg(test)]

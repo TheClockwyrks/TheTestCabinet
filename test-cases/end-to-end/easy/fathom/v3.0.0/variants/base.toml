@@ -1,0 +1,112 @@
+# The default Fathom variant: the Standard dive — a remembered fog of war,
+# line-of-sight passive light, and a corridor-flooding sonar pulse, with nothing
+# masking how much of the explored maze is drawn. Listed first in the case
+# manifest's `variants`, so it is the default. Every path here resolves against
+# the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "A remembered fog of war, line-of-sight passive light, and a corridor-flooding sonar pulse, with the whole explored maze drawn."
+
+# The sensing model that varies between the two dives lives in the common `.hbs`
+# specs, which branch on this variant's slug when rendered: base gets the fog of
+# war with the whole explored map drawn, the amber lights carrying at any
+# distance, and no second circle (`specs/sensing.md.hbs`), the STANDARD dive
+# label on the HUD (`specs/ui.md.hbs`), a snapshot with no `windowRadius`
+# (`specs/state.md.hbs`) and a `setBrightness` that recomputes only `V` and the
+# two light detection ranges (`specs/instrumentation.md.hbs`). So base declares no
+# `spec` of its own.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/base"
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's `links.playableBuild`. It names a directory (resolved against the
+# version folder) holding a buildable web project; it is built out-of-band with
+# this case's `[build]` install/build commands run from that directory (its static
+# output landing in `dist/`, exactly like a run's build) and deployed like a
+# published run build via `tcab publish-reference`, then shown on the case's
+# "Reference" tab. It is **never seeded into a run** — handing a model the finished
+# game would defeat the test — so it takes no part in this variant's seed set.
+#
+# The key is a table keyed by engine slug, because the build a reference
+# demonstrates differs under each: `references/none/base` carries its own runtime,
+# `references/simple-2d/base` hands the same game to the engine package resolved
+# from the repository's `packages/simple-2d`, and `references/structured-2d/base`
+# builds it inside the framework of the engine package resolved from
+# `packages/structured-2d`. The game every one implements is identical, which is
+# what makes a run on one engine comparable with a run on another. The table must
+# name every engine the case supports and nothing else.
+#
+# This is also what `tcab capture-baselines` drives to produce the baseline half of
+# this variant's validation media: the same vitest validator suites that decide a
+# run's points, run against the authored answer. The validators are written from
+# the specs, never from the reference; the reference only demonstrates them passing.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# The Standard dive's own points, in the categories grammar (`format` is inherited
+# from the case manifest, `[review] format = 2`). These are the two claims the two
+# dives genuinely disagree on, so neither can be stated commonly: in the Standard
+# dive the whole explored map stays drawn and the amber lights carry at any
+# distance, while in Kindle both are clipped to the vision circle. The common fog,
+# brightness, sonar, ink and predator points live in the case manifest. Both carry
+# `domains` and `failure_cap` on the scale the case manifest sets out above its
+# `[review]` table: the explored map staying drawn IS this dive, so losing it is a
+# rule noticeably wrong (`scuffed`), while how far an amber mote carries is a
+# tolerance on a secondary reading (`passable`).
+[[review.categories]]
+id = "standard"
+title = "Standard sensing"
+[[review.categories.items]]
+id = "fog-remembered"
+title = "The whole explored map stays drawn"
+description = "There is no vision-circle mask: a tile revealed earlier and reporting visibility r is still drawn once the forager has swum far beyond any light radius from it — sampled at its center it is drawn as something other than unrevealed fog, in whatever palette and however dim — however far across the grid it lies."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: reveal a tile, swim the forager to the far side of the
+# board, and sample the rendered pixel at that tile against an unrevealed one. See
+# validation/<engine>/standard/fog-remembered.test.ts.
+validation = { script = "standard/fog-remembered.test.ts", outputs = [
+  { id = "remembered", name = "Explored ground still drawn far from the forager", kind = "image" },
+] }
+[[review.categories.items]]
+id = "amber-any-distance"
+title = "The amber lights show at any distance"
+description = "A bonus drifter posed on unrevealed ground far across the board from the forager still draws its mote: a light is drawn within 12 units of its reported center, standing off the surrounding fog, with no distance at which it is clipped away."
+domains = ["sensing"]
+failure_cap = "passable"
+# What color the mote is drawn in is the look and the reviewer reads it off the
+# still.
+# Automated validation: spawn a drifter far from the forager, out of every light,
+# and search its neighborhood for the mote. See
+# validation/<engine>/standard/amber-any-distance.test.ts.
+validation = { script = "standard/amber-any-distance.test.ts", outputs = [
+  { id = "amber", name = "A distant amber light still drawn", kind = "image" },
+] }
+
+# One addition to the case's COMMON `hud` category rather than a category of this
+# variant's own: the category id matches, so this item folds into it and its
+# verdict is recorded as `hud.dive-label` beside the five common HUD points. The
+# dive label is the one element on screen the two dives disagree about, so it is
+# the one HUD point that cannot be stated commonly.
+[[review.categories]]
+id = "hud"
+title = "The HUD"
+[[review.categories.items]]
+id = "dive-label"
+title = "The dive label reads STANDARD"
+description = "While a maze is on screen a small, dim label reading STANDARD is drawn in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
+domains = ["progression", "presentation"]
+failure_cap = "great"
+# The cap is `great` where the other five HUD points are `passable`, and the
+# difference is real: the score, the lives, the depth and the two gauges each
+# carry a figure a player steers by, while the dive label carries none — it names
+# the dive and nothing more, so a build that omitted it plays exactly as well.
+# Automated validation: open a dive and read the drawn text and where it landed
+# off the recorder, sampling it against the strip behind it. See
+# validation/<engine>/hud/dive-label-standard.test.ts.
+validation = { script = "hud/dive-label-standard.test.ts", outputs = [
+  { id = "hud", name = "The dive label on the HUD", kind = "image" },
+] }

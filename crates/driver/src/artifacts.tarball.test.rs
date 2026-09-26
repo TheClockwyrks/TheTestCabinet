@@ -1,10 +1,10 @@
 //! Tests for the produced run tree's tarball and its upload (`tar_run_dir`,
 //! `upload_run_tree`).
 //!
-//! These pin the property that decides whether a driver can be given a memory
-//! ceiling at all: the archive is assembled on **disk** and read back a chunk at a
-//! time, so peak driver memory is a property of the driver rather than of the
-//! heaviest run tree it might have to ship. The upload runs after the harness
+//! These pin the property that makes a driver's memory request sizeable at all:
+//! the archive is assembled on **disk** and read back a chunk at a time, so peak
+//! driver memory is a property of the driver rather than of the heaviest run tree
+//! it might have to ship. The upload runs after the harness
 //! session has finished and before terminal status is posted, so a driver killed
 //! here loses a run that has already paid for every one of its API calls — which
 //! makes the framing details below (a complete archive, read from byte zero,

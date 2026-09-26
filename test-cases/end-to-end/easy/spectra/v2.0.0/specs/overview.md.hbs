@@ -1,0 +1,376 @@
+# Spectra
+
+## Overview
+
+Spectra is a fixed-position formation shooter for the browser. A resonator-fighter
+holds a lane along the bottom of a starfield while a swarm of drones flies in from
+above, assembles into a slowly swaying formation, and peels off one at a time to
+dive at the ship.
+
+Spectra's defining idea is polarity. Everything that can be shot or can shoot is
+tuned to one of two spectral bands, cyan or magenta, and the ship holds one band at
+a time. That band is the only band its shots destroy, and it is also the band its
+hull absorbs, so the tuning that lets the player kill what is in front of them is
+the tuning that decides what can kill them. A formation always holds both bands,
+and the flip between them costs a beat of fire, so clearing a wave is a run of timed
+band changes rather than a stream of shots. The three drones each press on that
+differently: a Shard holds one band, a Flux oscillates between them on a telegraphed
+rhythm, and a Prism wears two layers at once and swaps the whole field's bands if it
+reaches the bottom.
+
+Spectra has its own name, look, and rules, and its assets, branding, and design are
+original to it.
+
+The specification spans several files under `specs/`. `specs/field.md` gives the
+stage's geometry; `specs/simulation.md` how a frame advances and how contacts are
+decided; `specs/bands.md` the two bands and everything a band decides;
+`specs/ship.md` the ship and its cannon; `specs/resonance.md` the meter and the
+discharge; `specs/swarm.md` how any drone enters, holds formation, dives and fires;
+`specs/drones.md` the three drone kinds; `specs/stages.md` the stage sequence and
+the challenge stage; `specs/progression.md` the lives and the run;
+`specs/scoring.md` every score figure; `specs/mode.md` the playable mode;
+`specs/controls.md` the keys; `specs/ui.md` the screens, the HUD and the audio;
+`specs/assets.md` the seeded art; `specs/state.md` what the game's state carries;
+`specs/instrumentation.md` the debug and automation surface; and
+`specs/showcase.md` the showcase the finished build ships. Read all of them and
+build the game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the frame
+loop and the delta time it measures, the canvas fit, keyboard input, the pointer and
+touch input `specs/ui.md` drives the menus with, audio cues, loading the seeded art,
+and the debug overlay. Where this specification speaks of the runtime it means that
+layer, and it states only what Spectra needs from it. How the layer is structured is
+yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and the
+delta time the game is given, the input actions the ship and the menus are driven
+by, audio cues, asset loading, the canvas fit, and the debug overlay. Read its
+documentation before you start. This specification states only what is specific to
+Spectra.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework as
+much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that drive
+them, and the engine constructs, ticks, and renders them in a fixed order. It owns
+the frame loop and the delta time the game is given, rendering and the camera, the
+canvas fit, the input actions the ship and the menus are driven by, audio cues,
+asset loading, and the debug overlay. Read its documentation before you start. This
+specification states only what is specific to Spectra.
+
+The logical design field handed to the engine is the stage, and the game leaves the
+camera at rest, so world units and the stage's logical units coincide and every
+position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its `README.md`
+describes it. It is a TypeScript project built with Vite, tested with Vitest,
+linted with ESLint, and formatted with Prettier. That toolchain is fixed and
+supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where your
+build starts. Beyond that the structure is yours: the frame loop and the canvas
+fit, keyboard, pointer and touch input, audio, the debug overlay, the debug and
+automation surface, the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry, and
+`specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `assets/`, the seeded art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the stage is fitted into.
+- `.vendor/`, holding the vendored particle runtime that `package.json` resolves the
+  dependency from.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay as
+they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does
+not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of frames, so
+it needs no browser, and `@napi-rs/canvas` is installed for a test that wants a real
+2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<SpectraState, SpectraDebugApi>`: `initialize`
+builds the state and the debug surface once and returns them together as
+`[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<SpectraState>`) and returns the next state, advanced against the
+frame's delta time in seconds, and `render` is handed that next state, read-only
+again, and draws it. The engine holds the state by value and replaces it with what
+each `update` returns, so a frame builds the next state from the current one rather
+than writing into it, and nothing but `update` and the debug surface's poses
+advances the game. All three functions throw `"not implemented"` as they stand.
+Implement them.
+
+`src/game.ts` also declares and exports `SpectraState` and the types it is built
+from, exactly as `specs/state.md` states them, and `SpectraDebugApi`, the debug and
+automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage background.
+`src/main.ts` hands it to the engine as the color the canvas is cleared to each
+frame, so the letterbox bars around the stage match the field itself. The seeded
+stub exports a placeholder; replace it with the color your field uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `assets/`, the seeded art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine and packages that `package.json` resolves
+  its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay as
+they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything this
+specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does not
+exist yet, and `src/main.ts` imports it, so the project does not compile until you
+create it.
+
+`src/game.ts` exports `game`, a `GameDefinition<SpectraDebugApi>`: the game instance
+class, a level registry holding the single level the game runs in, and `startLevel`
+naming it. The game opens that one level and never opens another; every screen is a
+value of the state's `screen` field, so the world and its game state live for the
+whole session. The instance's `initialize` registers the actions, defines the cues,
+and returns the debug surface. The level's game mode runs the screens and the
+rules, and it adds a single player in its `beginPlay`, possessing nothing; that
+player's controller is where the actions are read. The mode's `gameStateClass` is
+`SpectraState`, so the world's game state is the state `specs/state.md` declares.
+The actors, components, and controllers you write draw that state and drive it.
+
+`src/game.ts` also declares and exports `SpectraState` and the types it is built
+from, exactly as `specs/state.md` states them, and `SpectraDebugApi`, the debug and
+automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage background.
+`src/main.ts` hands it to the engine as the color the canvas is cleared to each
+frame, so the letterbox bars around the stage match the field itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `assets/`, the seeded art. `specs/assets.md` is its contract.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine and packages that `package.json` resolves
+  its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+  `vite.config.ts` serves `assets/` in development and copies the same tree into
+  `dist/` when the site is built.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay as
+they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything this
+specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames with
+`engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into `dist/`
+at the repository root, with an `index.html` at the root of that directory as the
+entry point. That directory runs correctly when served as-is from any static file
+server, at any base path. The scripts that do this are already in `package.json`.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing: tense, readable, and fast.
+
+The build ships the whole run: the two bands and the flip between them, the ship and
+its cannon, the resonance meter and the discharge, the three drones and their waves,
+the challenge stages, the seven screens, and the HUD. Every other spec file states
+one part of it.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard, pointer and touch input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the input
+  actions, audio, asset loading, and the debug overlay from it, and writing the game
+  inside its framework of game modes, actors, components, and controllers.
+{{/if}}
+- Render real graphics on the canvas. The ship and the three drones are drawn from
+  the seeded art under `assets/` and a destroyed drone pops with the seeded
+  particle system, as `specs/assets.md` states; everything else is drawn in code.
+- Run in the browser with no backend. Everything needed to play is self-contained,
+  and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `SpectraState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `SpectraState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Expose the debug and automation surface `specs/instrumentation.md` specifies, and
+  the read-only debug overlay it describes, backed by the render-free core that
+  file requires. This is a required part of the build.
+- Ship the showcase `specs/showcase.md` describes, at the root of this repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions, sizes, speeds, and ranges in this specification are given in the
+game's own logical units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`,
+16:9). The origin `(0, 0)` is the top-left; `x` increases to the right and `y`
+increases downward.
+
+An entity's position is its center. Wherever the ship, a drone, a bullet, or a
+drone-burst is given, taken, or reported as an `(x, y)` pair, that pair is the
+center of the entity rather than the top-left corner of its sprite. Every extent
+this specification states as a half-extent is measured from that center.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the browser
+  window is the runtime's work: the uniform scale that preserves the aspect ratio,
+  the letterboxed centering, and the device pixel ratio. The complete stage is
+  therefore on screen at every window size, on load and at any pixel density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
+
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the runtime hands each update. `specs/simulation.md`
+states how a frame is divided and in what order a division resolves;
+`specs/field.md` states the geometry every position above is placed in.
+
+## The screens the build has
+
+The build carries seven screens, and the game is on exactly one of them at a time:
+`title`, `howto`, `stageIntro`, `inWave`, `paused`, `stageCleared`, and `gameOver`.
+The `inWave` screen runs in two sub-phases, `live` and `ready`. `specs/ui.md`
+defines what each screen shows and where each one leads, and
+`specs/progression.md` defines the phases.
+
+## What the field shows
+
+While a wave is being played, the play field carries every drone standing on it in
+its own band, every bullet in flight, every drone-burst playing, the discharge wave
+while it lasts, and the ship inside its lane. The starfield sits behind all of it.
+The HUD strip above the field carries the score and the stage; the strip below
+carries the lives, the resonance meter, and the polarity indicator.
+`specs/field.md` gives the extent of each region and `specs/ui.md` the readouts.
+
+## Visual design
+
+The field is dark. Choose the colors and the typography, decide how the ship, a
+drone, a bullet, the discharge, and the inversion are drawn, and decide what the
+field and its HUD strips look like behind them.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| The two bands | A cyan thing and a magenta thing are told apart at a glance, and each is told apart from the field behind it. |
+| One palette for both | The band colors are the two the seeded art carries. Everything the build draws in code that carries a band uses those same two colors, so a drone and a bullet of one band read as the same band. A bullet, the polarity indicator, and a band-carrying effect are all included. |
+| Band by more than color | Each band carries a distinct shape accent, the ring for cyan and the diamond for magenta, used consistently everywhere a band appears, so the bands stay legible to a colorblind player. |
+| The ship | The ship reads apart from the drones, and its current band is readable on the ship itself. |
+| The three drones | A Shard, a Flux, and a Prism are told apart from one another. |
+| A Flux's shimmer | A shimmering Flux is visibly different from a Flux holding a band. |
+| A Prism's layers | A Prism with its shell intact and one with only its core left are told apart. |
+| A bullet in flight | A bullet reads apart from the field along the lane it is traveling. |
+| The inversion | While a spectral inversion is active the field carries an unmistakable, field-wide mark that is absent otherwise. |
+| The starfield | The starfield sits behind the play field and never reads as bright as a drone of either band, so nothing on it is mistaken for something to shoot. |
+| Text | Every readout and every screen's text is legible against its background at the logical stage size. |
+
+The palette, the type, the glow, and every other aspect of the look are yours.

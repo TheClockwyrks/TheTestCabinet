@@ -17,3 +17,17 @@
     0 0 0.4rem t.$color-bg,
     0 0 0.25rem t.$color-bg;
 }
+
+// The accent glow backed by the readability halo, for accent-colored text out on
+// the backdrop: an active tab label, a header's comment line, a highlighted
+// value. `var(--ttc-glow)` is a warm glow in the accent, and the backdrop's own
+// sun and grid are warm too, so the glow alone leaves such text with no edge
+// where the two meet. One declaration, because a second `text-shadow` replaces
+// the first rather than adding to it.
+@mixin halo-glow {
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg,
+    var(--ttc-glow);
+}

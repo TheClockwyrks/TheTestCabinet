@@ -31,9 +31,14 @@ function detail(r: MatchResult): string {
 }
 
 function main(): void {
-  const detailArg = process.argv.find((a) => a.startsWith("--detail="))?.split("=")[1];
+  const detailArg = process.argv
+    .find((a) => a.startsWith("--detail="))
+    ?.split("=")[1];
   const funded = process.argv.includes("--funded");
-  if (funded) console.log("[funded mode: unlimited energy — isolates mechanics from economy]");
+  if (funded)
+    console.log(
+      "[funded mode: unlimited energy — isolates mechanics from economy]",
+    );
 
   const results: MatchResult[] = [];
   for (const c of controllerSet()) {
@@ -41,7 +46,8 @@ function main(): void {
     results.push(r);
     console.log(`\n### ${c.name}${c.note ? `  — ${c.note}` : ""}`);
     console.log(`    ${summarize(r)}`);
-    if (detailArg && (detailArg === c.name || detailArg === "all")) console.log(detail(r));
+    if (detailArg && (detailArg === c.name || detailArg === "all"))
+      console.log(detail(r));
   }
 
   console.log("\n=== goal check ===");

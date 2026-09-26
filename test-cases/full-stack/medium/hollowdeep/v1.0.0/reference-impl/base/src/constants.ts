@@ -176,5 +176,11 @@ export function isBuilt(k: TileKind): boolean {
 
 // A machine/farm tile (built, occupies a tile, driven by power.ts/economy.ts).
 export function isMachine(k: TileKind): boolean {
-  return k === "generator" || k === "diffuser" || k === "pump" || k === "refinery" || k === "farm";
+  return (
+    k === "generator" ||
+    k === "diffuser" ||
+    k === "pump" ||
+    k === "refinery" ||
+    k === "farm"
+  );
 }

@@ -1,6 +1,6 @@
 // Midway — the produced particle systems, played LIVE (specs/assets.md, ASSETS.md §3).
 //
-// Each effect is simulated live through @test-cabinet/particle-runtime's canvas binding —
+// Each effect is simulated live through @clockwyrks/particle-runtime's canvas binding —
 // never a flat flash or baked frames. ONE-SHOTS (fireworks over the park, a janitor's
 // cleanup puff) run once and are pruned; LOOPS (a steam vent over a serving food/drink
 // stall, a sparkle over a running ride) are held by a key while the stall/ride is active
@@ -8,8 +8,8 @@
 // 128x128 field canvas and composited over the park at the event's world position; being
 // simulated, each play varies.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system
@@ -48,7 +48,9 @@ export class Particles {
   private oneShots: OneShot[] = [];
   private loops = new Map<string, LiveFx>();
 
-  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
+  constructor(
+    private readonly systems: Record<FxKind, ParticleSystem | undefined>,
+  ) {}
 
   private make(kind: FxKind, x: number, y: number): LiveFx | null {
     const system = this.systems[kind];
@@ -59,7 +61,10 @@ export class Particles {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     const composite = COMPOSITE[kind];
-    const player = new ParticleCanvasPlayer(system, ctx, { composite, clear: true });
+    const player = new ParticleCanvasPlayer(system, ctx, {
+      composite,
+      clear: true,
+    });
     return { kind, player, canvas, x, y, size: FOOTPRINT[kind], composite };
   }
 
@@ -95,7 +100,9 @@ export class Particles {
       b.age += dt * 1000;
     }
     // Keep a one-shot until its timeline is done AND its last particles have decayed.
-    this.oneShots = this.oneShots.filter((b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0);
+    this.oneShots = this.oneShots.filter(
+      (b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0,
+    );
     for (const b of this.loops.values()) b.player.update(dt);
   }
 

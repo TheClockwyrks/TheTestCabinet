@@ -8,7 +8,12 @@ import { familyOf } from "../../data/families";
 import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
+  isGgOrchestrator,
 } from "../../data/orchestrators";
+import { engineName } from "../../data/engines";
+import { useEngineChoice } from "../../data/useEngineChoice";
+import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
+import { useGgConfigs } from "./gg/useGgConfigs";
 import {
   OPENROUTER_PROVIDER,
   PROVIDERS,
@@ -16,16 +21,18 @@ import {
   resolveLaunchModel,
 } from "../../data/providers";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
+import { useCaseCategory } from "../../runtime/useCaseCategory";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { useTestCases } from "../../data/useTestCases";
+import { GG_HARNESS_SLUG } from "../../data/runLinks";
 import {
   CATALOG_CATEGORIES,
-  categoryOf,
   type CatalogCategory,
 } from "../../data/testCaseTabs";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -35,11 +42,25 @@ import styles from "./RunExec.module.scss";
 // variant, orchestrator, max runtime) is shared across all combinations; each
 // combination varies the harness and model (and, for provider-routed harnesses,
 // the provider) so a single form submission can fan out across many runs.
+//
+// A gg run varies the same way, except the configuration stands where the harness
+// does: `ggConfig` names the saved (or built-in) capability set the row launches,
+// and the row supplies a model for each *model slot* that configuration declares —
+// so the same fan-out spans configurations × models, which is exactly the sweep a study
+// comparing two configurations runs. A role the configuration pinned to a model itself is
+// not asked about here.
 interface Combination {
   /** A stable client-side key so React and per-row edits track the right row. */
   id: string;
   harness: string;
+  /** The picked gg configuration's key (see `useGgConfigs`); gg runs only. */
+  ggConfig: string;
   modelId: string;
+  /**
+   * The model bound to each of the gg configuration's declared model slots, keyed by
+   * slot name; gg runs only. Seeded from each slot's declared default.
+   */
+  slotModels: Record<string, string>;
   provider: string;
 }
 
@@ -48,7 +69,10 @@ interface Combination {
 // norm — one combination failing must not abort the rest.
 interface LaunchOutcome {
   key: string;
-  harness: string;
+  /** How the row read: the harness's display name, or the gg configuration's. */
+  label: string;
+  /** Where the launched run is watched — the conventional monitor, or gg's. */
+  monitorPath?: string;
   modelId: string;
   // 1-based repeat index within the combination (shown only when runCount > 1).
   runIndex: number;
@@ -72,7 +96,9 @@ function makeCombination(id: string): Combination {
   return {
     id,
     harness: harnesses[0]?.slug ?? "",
+    ggConfig: "",
     modelId: "",
+    slotModels: {},
     provider: OPENROUTER_PROVIDER,
   };
 }
@@ -88,9 +114,10 @@ export function NewRunPage() {
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const runtime = useRunsRuntime();
-  // A test case's Run button links here with `?slug=…&version=…&variant=…` so the
-  // form opens with that case pre-selected; absent the params the catalog leads
-  // with its first case as before.
+  // A test case's Run button links here with `?slug=…&version=…&variant=…`
+  // (plus `?engine=…` for a non-default engine) so the form opens with that
+  // whole coordinate pre-selected; absent the params the catalog leads with its
+  // first case as before.
   const [params] = useSearchParams();
   // The case (if any) the form was navigated to with — a case's or jam's Run
   // button links here with `?slug=…`. Its presence is what distinguishes
@@ -103,30 +130,49 @@ export function NewRunPage() {
     variant: params.get("variant"),
   });
   const testCaseName = useTestCaseName();
-  // The richer catalog (with each case's test type / asset kind) so the type
-  // selector can bucket cases; `useCatalog` above only carries slugs + versions.
-  const { testCases: summaries } = useTestCases();
-  const summaryBySlug = useMemo(
-    () => new Map(summaries.map((s) => [s.slug, s])),
-    [summaries],
-  );
-  const slugCategory = (slug: string): CatalogCategory | null => {
-    const summary = summaryBySlug.get(slug);
-    return summary ? categoryOf(summary) : null;
-  };
-
-  // The selected test-case type, once the user has picked one. Until then it is
-  // derived from the selected case (so arriving with a case pre-selected — e.g.
-  // via a case's or jam's Run button — opens on that case's type).
-  const [category, setCategory] = useState<CatalogCategory | null>(null);
+  // The test type → test case split: the type selector over `useCatalog`'s case
+  // picker, scoping the case dropdown to the chosen type and opening on the
+  // navigated-to case's type when there is one.
+  const {
+    category: activeCategory,
+    setCategory: onCategoryChange,
+    cases: sortedCases,
+  } = useCaseCategory(sel, { navSlug });
 
   const [models, setModels] = useState<Model[]>([]);
-  // The orchestrator that conducts the harness sessions. Selectable only for the
-  // end-to-end test type (the selector below is hidden otherwise); every other
-  // test type always submits the default `one-shot`. Built-in slugs only — the
-  // worker has no access to a submitter's local orchestrator directory.
+  // The orchestrator that conducts the harness sessions — and, since it is where an
+  // operator says *how* a run is conducted, also where gg (The Test Cabinet's own
+  // run mode) is chosen. Built-in slugs only — the worker has no access to a
+  // submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
-  const [maxRuntime, setMaxRuntime] = useState("");
+  // The gg configurations this operator can launch: the shared read-only built-ins
+  // plus the ones registered on their account (the account section's gg Configs
+  // tab). Only consulted when gg is the chosen run mode.
+  const { options: ggOptions } = useGgConfigs();
+  const isGg = isGgOrchestrator(orchestrator);
+  // The engine the produced build is written against. It is a run dimension the
+  // *case* gates: a version declares the engines it supports and a run naming one
+  // outside that set is refused, so the picker offers the resolved version's set
+  // and the selection is held to it rather than trusted. Seeded from `?engine=`
+  // — a case detail page's Run action carries its whole anchored coordinate, so
+  // the form opens on exactly the rendering that was being viewed, and an engine
+  // the resolved version does not offer is held to the set like any other pick.
+  const {
+    options: engineOptions,
+    engine,
+    setEngine,
+  } = useEngineChoice(sel.versionInfo?.engines, params.get("engine"));
+  // The per-run timeout override. Optional: empty is the answer "use the case's own
+  // ceiling", so it is the one field here an empty entry may be launched on. Typing
+  // that names no usable number still blocks the launch rather than reaching the
+  // request as a NaN. See components/NumberField.
+  const maxRuntimeField = useNumberFieldState("", {
+    label: "Max runtime",
+    min: 1,
+    integer: true,
+    optional: true,
+  });
+  const maxRuntime = maxRuntimeField.value;
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.
   const [combinations, setCombinations] = useState<Combination[]>(() => [
@@ -136,11 +182,27 @@ export function NewRunPage() {
   // How many runs to launch per combination. Multiplies the fan-out (total launches
   // = combinations × runCount). Defaults to 1 so behavior is unchanged when
   // untouched.
-  const [runCount, setRunCount] = useState(1);
+  //
+  // Held as the text the operator typed rather than as a number, so the field can
+  // be cleared and retyped — see `components/NumberField`. An unusable entry is not
+  // corrected under the caret; it blocks the launch instead.
+  const runCountField = useNumberFieldState(1, {
+    label: "Run count",
+    min: 1,
+    max: RUN_COUNT_MAX,
+    integer: true,
+  });
+  const runCount = runCountField.value ?? 1;
   // Automatic retries applied to every launched run (a run-level setting, threaded
   // into each fan-out launch). Defaults to 1 so a run auto-retries once on an infra
   // error or catastrophic build; 0 disables retries.
-  const [retryCount, setRetryCount] = useState(DEFAULT_RETRY_COUNT);
+  const retryCountField = useNumberFieldState(DEFAULT_RETRY_COUNT, {
+    label: "Retry count",
+    min: 0,
+    max: RETRY_COUNT_MAX,
+    integer: true,
+  });
+  const retryCount = retryCountField.value ?? DEFAULT_RETRY_COUNT;
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [results, setResults] = useState<LaunchOutcome[] | null>(null);
@@ -160,20 +222,69 @@ export function NewRunPage() {
       });
   }, [backend]);
 
+  // The gg configuration a row launches, and the launch inputs it asks for — its own
+  // configuration slots, then the passthrough slots of its agents. Memoized per
+  // configuration key so the per-row rendering does not re-derive them every keystroke.
+  const ggOptionFor = (key: string) => ggOptions.find((o) => o.key === key);
+  const ggSlotsByKey = useMemo(
+    () =>
+      new Map(
+        ggOptions.map(
+          (o) => [o.key, launchModelSlots(o.capabilitySet)] as const,
+        ),
+      ),
+    [ggOptions],
+  );
+  const ggSlotsFor = (key: string) => ggSlotsByKey.get(key) ?? [];
+  // A row's models seeded from the configuration's declared defaults, so picking a
+  // configuration that names its models opens ready to launch.
+  const defaultSlotModels = (key: string): Record<string, string> =>
+    Object.fromEntries(
+      ggSlotsFor(key).map((slot) => [slot.name, slot.defaultModelId ?? ""]),
+    );
+
   function updateCombination(id: string, patch: Partial<Combination>) {
     setCombinations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     );
   }
+  // Switching a row's configuration re-seeds its models: the launch inputs a
+  // configuration asks for are its own, so carrying the previous one's picks over would
+  // bind models to inputs that no longer exist (and silently drop the ones that do).
+  function setGgConfig(id: string, key: string) {
+    updateCombination(id, {
+      ggConfig: key,
+      slotModels: defaultSlotModels(key),
+    });
+  }
+  function setSlotModel(id: string, slot: string, modelId: string) {
+    setCombinations((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, slotModels: { ...c.slotModels, [slot]: modelId } }
+          : c,
+      ),
+    );
+  }
   function addCombination() {
     setCombinations((prev) => {
       const next = makeCombination(`c${nextComboId.current++}`);
-      // Seed the new row with the last row's harness — fanning out across models
-      // for one harness is the common case, so carry it forward rather than
-      // resetting to the first harness (the model still starts empty to force an
-      // explicit pick).
+      // Seed the new row with the last row's harness (or gg configuration) —
+      // fanning out across models for one of them is the common case, so carry it
+      // forward rather than resetting to the first (the model still starts empty to
+      // force an explicit pick).
       const last = prev[prev.length - 1];
-      return [...prev, last ? { ...next, harness: last.harness } : next];
+      return [
+        ...prev,
+        last
+          ? {
+              ...next,
+              harness: last.harness,
+              ggConfig: last.ggConfig,
+              slotModels: defaultSlotModels(last.ggConfig),
+            }
+          : next,
+      ];
     });
   }
   function removeCombination(id: string) {
@@ -185,109 +296,64 @@ export function NewRunPage() {
 
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
+  // What a row reads as in the launch summary: its gg configuration when the run
+  // mode is gg, otherwise its harness.
+  const comboLabel = (combo: Combination) =>
+    isGg
+      ? (ggOptionFor(combo.ggConfig)?.name ?? "gg")
+      : harnessName(combo.harness);
+  // How a gg row's models read in the launch summary: the first input's model, plus a
+  // count of the other inputs it bound (a multi-model row is not one model id).
+  const ggModelLabel = (combo: Combination) => {
+    const slots = ggSlotsFor(combo.ggConfig);
+    const head =
+      slots.map((s) => combo.slotModels[s.name]).find(Boolean) || "—";
+    return slots.length > 1 ? `${head} +${slots.length - 1}` : head;
+  };
 
-  // The category actually in effect: the user's pick once made, otherwise the
-  // navigated-to case's category, falling back to the first tab (E2E). Note this
-  // derives from `navSlug`, not the auto-selected `sel.slug` — cold from the Runs
-  // page there is no nav case, so it defaults to E2E rather than adopting whatever
-  // category the catalog's first case happens to sit in.
-  const activeCategory: CatalogCategory =
-    category ??
-    (navSlug ? slugCategory(navSlug) : null) ??
-    CATALOG_CATEGORIES[0]!.value;
-
-  // Choose the initial type + case once the catalog metadata resolves, before the
-  // user picks. Reached from a case's (or jam's) Run button, open on that case's
-  // type. Reached cold from the Runs page, default to E2E and lead with its first
-  // case — rather than adopting the category of whatever case the catalog happens
-  // to list first.
-  const initialized = useRef(false);
+  // Seed each row's gg configuration once gg is chosen (and the configurations have
+  // loaded), so the picker opens on the launchable default instead of a blank row —
+  // with that configuration's declared model defaults already filled in.
   useEffect(() => {
-    if (initialized.current || category !== null || !sel.slug) return;
-    const currentCategory = slugCategory(sel.slug);
-    // Wait until the selected case's catalog metadata has loaded to resolve it.
-    if (currentCategory === null) return;
-    initialized.current = true;
-    if (navSlug) {
-      setCategory(currentCategory);
-      return;
-    }
-    const target = CATALOG_CATEGORIES[0]!.value;
-    setCategory(target);
-    // The auto-selected first case may not be in the default category; move the
-    // selection to that category's first case so the case dropdown and the type
-    // agree.
-    if (currentCategory !== target) {
-      const first = [...sel.cases]
-        .filter((c) => slugCategory(c.slug) === target)
-        .sort((a, b) =>
-          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-        )[0];
-      if (first) sel.setSlug(first.slug);
-    }
-    // slugCategory/testCaseName close over the catalog; re-run as it resolves.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
-
-  // Switching the type moves the case selection into the chosen category (unless
-  // the current case already belongs to it) so the version and variant re-resolve
-  // for a case the dropdown actually shows.
-  function onCategoryChange(next: CatalogCategory) {
-    setCategory(next);
-    if (slugCategory(sel.slug) === next) return;
-    const first = [...sel.cases]
-      .filter((c) => slugCategory(c.slug) === next)
-      .sort((a, b) =>
-        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-      )[0];
-    if (first) sel.setSlug(first.slug);
-  }
-
-  // The catalog arrives in slug order, but the dropdown labels each option with
-  // the display name — so sort by resolved display name to keep the list
-  // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
-  // Scoped to the selected type so the list only offers cases of that category.
-  const sortedCases = useMemo(
-    () =>
-      [...sel.cases]
-        .filter((c) => slugCategory(c.slug) === activeCategory)
-        .sort((a, b) =>
-          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-        ),
-    // slugCategory closes over summaryBySlug; list depends on it and the category.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sel.cases, testCaseName, summaryBySlug, activeCategory],
-  );
+    if (!isGg || ggOptions.length === 0) return;
+    const first = ggOptions[0]!;
+    const seeded = Object.fromEntries(
+      launchModelSlots(first.capabilitySet).map((slot) => [
+        slot.name,
+        slot.defaultModelId ?? "",
+      ]),
+    );
+    setCombinations((prev) =>
+      prev.some((c) => !c.ggConfig)
+        ? prev.map((c) =>
+            c.ggConfig
+              ? c
+              : { ...c, ggConfig: first.key, slotModels: { ...seeded } },
+          )
+        : prev,
+    );
+  }, [isGg, ggOptions]);
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = [
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
   ].reverse();
-  // Orchestrator selection is limited to the program-building test types — the
-  // end-to-end and full-stack game builds, whose multi-session harness runs can
-  // be conducted by a non-default orchestrator (e.g. ralph). Every other type
-  // always runs one-shot, so the selector is hidden and one-shot is submitted.
-  const buildsProgram =
-    sel.versionInfo?.testType === "end-to-end" ||
-    sel.versionInfo?.testType === "full-stack";
-  // Whatever the picker holds, only a program-building case may carry a
-  // non-default orchestrator — otherwise the run is one-shot no matter what was
-  // last chosen.
-  const submittedOrchestrator = buildsProgram
-    ? orchestrator
-    : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
-  // A remote (service-driven) worker enqueues on the backend's `POST /jobs`,
-  // which is gated on the launching account — so a sign-in is required before a
-  // run can be submitted. The built-in local (Tauri) worker runs in-process and
-  // needs no token.
-  const needsAuth = Boolean(worker && !worker.local);
-  const signedOut = needsAuth && !token;
-  // Every combination must name a harness and a model; a partially-filled row
-  // would otherwise be silently skipped.
+  // A run is enqueued on the backend's `POST /jobs`, which is gated on the
+  // launching account — so a sign-in is required before a run can be submitted.
+  const signedOut = Boolean(worker) && !token;
+  // Every combination must name a harness and a model — or, in the gg run mode, a
+  // configuration plus a model for every slot that configuration asks for. A
+  // partially-filled row would otherwise be silently skipped (or, for gg, rejected by
+  // the backend after the operator had left the form).
+  const ggRowReady = (combo: Combination) =>
+    Boolean(combo.ggConfig) &&
+    ggSlotsFor(combo.ggConfig).every((slot) =>
+      (combo.slotModels[slot.name] ?? "").trim(),
+    );
   const combosValid =
     combinations.length > 0 &&
-    combinations.every((c) => c.harness && c.modelId);
+    combinations.every((c) => (isGg ? ggRowReady(c) : c.harness && c.modelId));
   const totalLaunches = combinations.length * runCount;
   const canLaunch = Boolean(
     worker &&
@@ -296,9 +362,110 @@ export function NewRunPage() {
     sel.slug &&
     sel.version &&
     sel.variant &&
+    // A case or version switch leaves the previous version's variants and engines
+    // on screen until the new one resolves, so launching mid-resolution enqueues
+    // the case that is selected against a variant and an engine the case it
+    // replaced supported. Both are gated by the resolved version, so neither can
+    // be trusted while one is in flight.
+    !sel.loading &&
     combosValid &&
+    // Both counts decide what is enqueued, so neither may be launched on while it
+    // is empty or out of range. The fields say why, immediately beneath themselves.
+    runCountField.valid &&
+    retryCountField.valid &&
+    maxRuntimeField.valid &&
     !launching,
   );
+
+  // Enqueue the fan-out as **gg** runs. gg is its own run mode with its own
+  // request shape (a capability set rather than a harness/model/orchestrator
+  // tuple), so it has no batch endpoint: each launch is its own `POST /gg/runs`,
+  // isolated so one failure never aborts the rest. The row's configuration supplies
+  // the capability set and the row's model binds its primary slot.
+  async function launchGgRuns(
+    meta: { combo: Combination; runIndex: number }[],
+  ): Promise<LaunchOutcome[]> {
+    const outcomes: LaunchOutcome[] = [];
+    for (const { combo, runIndex } of meta) {
+      const option = ggOptionFor(combo.ggConfig);
+      const base: Omit<LaunchOutcome, "runId" | "error"> = {
+        key: `${combo.id}#${runIndex}`,
+        label: comboLabel(combo),
+        modelId: ggModelLabel(combo),
+        runIndex,
+      };
+      if (!option) {
+        outcomes.push({ ...base, error: "that gg configuration is gone" });
+        continue;
+      }
+      try {
+        // The set that actually runs: every deferred agent bound to the model its
+        // slot collected. Its root (`agents[0]`) carries the run's representative
+        // model — the same one the backend lifts into the job's launch identity —
+        // so what is tracked below matches what a reload re-seeds from `/jobs/active`.
+        const capabilitySet = bindModelSlots(
+          option.capabilitySet,
+          combo.slotModels,
+        );
+        const ack = await worker!.client.launchGgRun(
+          {
+            testCase: sel.slug,
+            version: sel.version,
+            variant: sel.variant,
+            capabilitySet,
+            // A gg run seeds and builds a workspace like any other run, so it
+            // carries the engine dimension on the same terms.
+            engine,
+            // Omit the override entirely when blank so the case's default runtime
+            // applies (the field is optional, not nullable).
+            ...(maxRuntime === undefined
+              ? {}
+              : { maxRuntimeSeconds: maxRuntime }),
+            retryCount,
+          },
+          token ?? "",
+        );
+        // Register the enqueued run with the runs runtime exactly as `launchBatch`
+        // does for a harness run: gg has no batch endpoint, so it does not travel
+        // through that shared path and has to track its own. Without this a gg run
+        // is missing from the Runs page's in-progress list for its whole life —
+        // and, since the reconcile backstop only polls while something is tracked,
+        // nothing recovers it until the page is reloaded and the list re-seeds from
+        // the backend's active jobs.
+        runtime.track({
+          testCaseSlug: sel.slug,
+          testCaseVersion: sel.version,
+          variant: sel.variant,
+          harnessSlug: GG_HARNESS_SLUG,
+          modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+          // The engine this run was launched on, so a listing narrowed to one
+          // coverage cell keeps the live row with the runs it will join.
+          engine,
+          // Read off the set that was actually sent rather than the picker option,
+          // so the configuration name the row shows now is byte-identical to the one
+          // the backend will lift back out of the job's stored capability set when
+          // the reconcile re-seeds this row from `/jobs/active`.
+          ggPreset: capabilitySet.preset ?? null,
+          runId: ack.jobId,
+          // Just enqueued: `queued` on the backend, advanced by the reconcile as it
+          // reports each transition.
+          state: "queued",
+        });
+        // A gg run is watched on its own monitor, keyed by the enqueued job id.
+        outcomes.push({
+          ...base,
+          runId: ack.jobId,
+          monitorPath: routes.ggMonitor(ack.jobId),
+        });
+      } catch (e) {
+        outcomes.push({
+          ...base,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    return outcomes;
+  }
 
   async function onLaunch() {
     if (!worker) return;
@@ -312,6 +479,12 @@ export function NewRunPage() {
     const meta = combinations.flatMap((combo) =>
       Array.from({ length: runCount }, (_, i) => ({ combo, runIndex: i + 1 })),
     );
+    if (isGg) {
+      const ggOutcomes = await launchGgRuns(meta);
+      setLaunching(false);
+      finishLaunch(ggOutcomes);
+      return;
+    }
     const items: LaunchItem[] = meta.map(({ combo }) => ({
       config: {
         testCase: sel.slug,
@@ -323,8 +496,9 @@ export function NewRunPage() {
           combo.provider,
           combo.modelId,
         ),
-        orchestrator: submittedOrchestrator,
-        maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+        orchestrator,
+        engine,
+        maxRuntimeOverride: maxRuntime ?? null,
         retryCount,
       },
       track: {
@@ -333,6 +507,7 @@ export function NewRunPage() {
         variant: sel.variant,
         harnessSlug: combo.harness,
         modelId: combo.modelId,
+        engine,
       },
     }));
     const launched = await launchBatch(worker, token, runtime.track, items);
@@ -340,28 +515,35 @@ export function NewRunPage() {
       const result = launched[i];
       return {
         key: `${m.combo.id}#${m.runIndex}`,
-        harness: m.combo.harness,
+        label: comboLabel(m.combo),
         modelId: m.combo.modelId,
         runIndex: m.runIndex,
         runId: result?.runId,
+        monitorPath: result?.runId
+          ? routes.runMonitor(result.runId)
+          : undefined,
         error: result?.error,
       };
     });
     setLaunching(false);
+    finishLaunch(outcomes);
+  }
 
-    // Single-launch path is unchanged in feel: on success jump straight to the
-    // live monitor; on failure surface the error inline as before.
+  // What to do once every launch has been attempted, shared by both run modes: a
+  // single launch is unchanged in feel — jump straight to the live monitor (gg's
+  // own, for a gg run) on success, surface the error inline on failure — while a
+  // batch keeps the operator here with a per-combination summary so partial
+  // failures stay visible.
+  function finishLaunch(outcomes: LaunchOutcome[]) {
     const only = outcomes.length === 1 ? outcomes[0] : undefined;
     if (only) {
-      if (only.runId) {
-        navigate(routes.runMonitor(only.runId));
+      if (only.monitorPath) {
+        navigate(only.monitorPath);
         return;
       }
       setLaunchError(only.error ?? "Launch failed.");
       return;
     }
-    // Batch path: keep the user here with a per-combination summary linking to
-    // each launched run (and the runs list), so partial failures stay visible.
     setResults(outcomes);
   }
 
@@ -374,7 +556,7 @@ export function NewRunPage() {
 
       {!worker && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — open the connections drawer (the gear in the top
+          No worker connected. Open the connections drawer (the gear in the top
           bar) to add a worker server to run on.
         </p>
       )}
@@ -387,18 +569,27 @@ export function NewRunPage() {
       )}
       {sel.noBackend && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          No backend configured — the test-case catalog comes from the backend.
+          No backend configured, and the test-case catalog comes from the
+          backend.
         </p>
       )}
       {signedOut && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          Sign in to launch a run — the backend attributes each enqueued run to
+          Sign in to launch a run. The backend attributes each enqueued run to
           your account. Use the account control in the top bar to register or
           log in, then launch.
         </p>
       )}
 
-      <div className={styles.fields}>
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Test
+      </p>
+      {/* What is being tested. The type, case, and version are universal, so they
+          fill the first row; the variant and the engine are what the resolved
+          version decides, so they share the second. The engine sits after the
+          variant and the grid's columns are fixed, so a case that offers a choice
+          of engine adds a field beside the variant rather than moving it. */}
+      <div className={`${styles.fields} ${styles.testFields}`}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Test case type</span>
           <select
@@ -458,34 +649,63 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
-        {buildsProgram && (
+        {/* Offered only where there is something to choose. A version supporting a
+            single engine has already decided it, and `engine` resolves to that one
+            whether or not the field is on screen. */}
+        {engineOptions.length > 1 && (
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Orchestrator</span>
+            <span className={styles.fieldLabel}>Engine</span>
             <select
               className={styles.select}
-              value={orchestrator}
-              onChange={(e) => setOrchestrator(e.target.value)}
-              title={
-                BUILT_IN_ORCHESTRATORS.find((o) => o.slug === orchestrator)
-                  ?.description
-              }
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              title="The runtime the produced build is written against. A result is only comparable with another result on the same engine."
             >
-              {BUILT_IN_ORCHESTRATORS.map((o) => (
-                <option key={o.slug} value={o.slug} title={o.description}>
-                  {o.displayName}
+              {engineOptions.map((slug) => (
+                <option key={slug} value={slug}>
+                  {engineName(slug)}
                 </option>
               ))}
             </select>
           </label>
         )}
+      </div>
+
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Run
+      </p>
+      {/* How the run is conducted, and how many of it to enqueue. None of this is
+          decided by the case, so it reflows on the shared auto-fit columns. */}
+      <div className={styles.fields}>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Orchestrator</span>
+          <select
+            className={styles.select}
+            value={orchestrator}
+            onChange={(e) => setOrchestrator(e.target.value)}
+            title={
+              BUILT_IN_ORCHESTRATORS.find((o) => o.slug === orchestrator)
+                ?.description
+            }
+          >
+            {/* Every built-in session strategy (today just `one-shot`) applies to
+                every test type, and gg is orthogonal to the session strategy, so
+                the picker offers the same options whatever the case builds. */}
+            {BUILT_IN_ORCHESTRATORS.map((o) => (
+              <option key={o.slug} value={o.slug} title={o.description}>
+                {o.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={1}
-            value={maxRuntime}
-            onChange={(e) => setMaxRuntime(e.target.value)}
+            problemClassName={styles.fieldProblem}
+            {...maxRuntimeField.bounds}
+            value={maxRuntimeField.raw}
+            onChange={maxRuntimeField.setRaw}
             placeholder={
               sel.versionInfo
                 ? `default ${sel.versionInfo.maxRuntimeSeconds}`
@@ -495,21 +715,12 @@ export function NewRunPage() {
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Run count</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={1}
-            max={RUN_COUNT_MAX}
-            step={1}
-            value={runCount}
-            onChange={(e) => {
-              // Clamp to a sane integer range so an accidental keystroke can't
-              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
-              const n = Math.floor(Number(e.target.value));
-              setRunCount(
-                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
-              );
-            }}
+            problemClassName={styles.fieldProblem}
+            {...runCountField.bounds}
+            value={runCountField.raw}
+            onChange={runCountField.setRaw}
           />
         </label>
         <label
@@ -517,85 +728,22 @@ export function NewRunPage() {
           title="Auto-retries on infra error or catastrophic failure (not on a timeout or a completed run)."
         >
           <span className={styles.fieldLabel}>Retry count</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={0}
-            max={RETRY_COUNT_MAX}
-            step={1}
-            value={retryCount}
-            onChange={(e) => {
-              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
-              // entry falls back to the default of one retry.
-              const n = Math.floor(Number(e.target.value));
-              setRetryCount(
-                Number.isFinite(n) && n >= 0
-                  ? Math.min(n, RETRY_COUNT_MAX)
-                  : DEFAULT_RETRY_COUNT,
-              );
-            }}
+            problemClassName={styles.fieldProblem}
+            {...retryCountField.bounds}
+            value={retryCountField.raw}
+            onChange={retryCountField.setRaw}
           />
         </label>
       </div>
 
       <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
-        Harness / model combinations
+        {isGg ? "gg configuration" : "Harness / model combinations"}
       </p>
       <div className={styles.comboList}>
-        {combinations.map((combo) => (
-          <div key={combo.id} className={styles.comboRow}>
-            <label className={`${styles.field} ${styles.comboField}`}>
-              <span className={styles.fieldLabel}>Harness</span>
-              <select
-                className={styles.select}
-                value={combo.harness}
-                onChange={(e) =>
-                  // A model slug is family-specific, so switching harness clears
-                  // the selection — the operator must explicitly pick a model the
-                  // new harness can launch rather than inherit a silent default.
-                  updateCombination(combo.id, {
-                    harness: e.target.value,
-                    modelId: "",
-                  })
-                }
-              >
-                {harnesses.map((h) => (
-                  <option key={h.slug} value={h.slug}>
-                    {h.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={`${styles.field} ${styles.comboFieldWide}`}>
-              <span className={styles.fieldLabel}>Model</span>
-              <ModelCombobox
-                value={combo.modelId}
-                onChange={(v) => updateCombination(combo.id, { modelId: v })}
-                models={models}
-                harnessFamily={familyOf(combo.harness)}
-                inputClassName={styles.input}
-                placeholder="model id (e.g. claude-opus-4-8)"
-              />
-            </label>
-            {harnessUsesProvider(combo.harness) && (
-              <label className={`${styles.field} ${styles.comboField}`}>
-                <span className={styles.fieldLabel}>Provider</span>
-                <select
-                  className={styles.select}
-                  value={combo.provider}
-                  onChange={(e) =>
-                    updateCombination(combo.id, { provider: e.target.value })
-                  }
-                  title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+        {combinations.map((combo) => {
+          const remove = (
             <button
               type="button"
               className={styles.comboRemove}
@@ -606,9 +754,126 @@ export function NewRunPage() {
             >
               ✕
             </button>
-          </div>
-        ))}
+          );
+
+          // A gg row is a stack rather than a line. A configuration declares one model
+          // slot per agent profile it does not pin itself, so the row holds an unbounded
+          // number of pickers — laid out beside the configuration they squeeze every one of
+          // them below the width a model id is legible in, and the row reflows differently
+          // for every configuration. So the configuration leads its own line, and each slot
+          // gets a row to itself beneath it.
+          if (isGg) {
+            return (
+              <div
+                key={combo.id}
+                className={`${styles.comboRow} ${styles.comboRowStacked}`}
+              >
+                <div className={styles.comboHead}>
+                  <label className={`${styles.field} ${styles.comboField}`}>
+                    <span className={styles.fieldLabel}>gg configuration</span>
+                    <select
+                      className={styles.select}
+                      value={combo.ggConfig}
+                      onChange={(e) => setGgConfig(combo.id, e.target.value)}
+                      title={ggOptionFor(combo.ggConfig)?.description}
+                    >
+                      {ggOptions.length === 0 && (
+                        <option value="">(loading…)</option>
+                      )}
+                      {ggOptions.map((o) => (
+                        <option key={o.key} value={o.key} title={o.description}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {remove}
+                </div>
+                {/* One picker per launch input the chosen configuration asks for, in
+                    declaration order, pre-filled with that input's default. gg reaches
+                    every model through OpenRouter, so each picker is scoped to
+                    that family and commits the OpenRouter slug. */}
+                {ggSlotsFor(combo.ggConfig).map((slot) => (
+                  <label
+                    key={slot.name}
+                    className={`${styles.field} ${styles.comboSlotField}`}
+                  >
+                    <span className={styles.fieldLabel}>{slot.name}</span>
+                    <ModelCombobox
+                      value={combo.slotModels[slot.name] ?? ""}
+                      onChange={(v) => setSlotModel(combo.id, slot.name, v)}
+                      models={models}
+                      harnessFamily={familyOf("gg")}
+                      inputClassName={styles.input}
+                      placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                    />
+                  </label>
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <div key={combo.id} className={styles.comboRow}>
+              <label className={`${styles.field} ${styles.comboField}`}>
+                <span className={styles.fieldLabel}>Harness</span>
+                <select
+                  className={styles.select}
+                  value={combo.harness}
+                  onChange={(e) =>
+                    // A model slug is family-specific, so switching harness clears
+                    // the selection — the operator must explicitly pick a model the
+                    // new harness can launch rather than inherit a silent default.
+                    updateCombination(combo.id, {
+                      harness: e.target.value,
+                      modelId: "",
+                    })
+                  }
+                >
+                  {harnesses.map((h) => (
+                    <option key={h.slug} value={h.slug}>
+                      {h.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={`${styles.field} ${styles.comboFieldWide}`}>
+                <span className={styles.fieldLabel}>Model</span>
+                <ModelCombobox
+                  value={combo.modelId}
+                  onChange={(v) => updateCombination(combo.id, { modelId: v })}
+                  models={models}
+                  harnessFamily={familyOf(combo.harness)}
+                  inputClassName={styles.input}
+                  placeholder="model id (e.g. claude-opus-4-8)"
+                />
+              </label>
+              {harnessUsesProvider(combo.harness) && (
+                <label className={`${styles.field} ${styles.comboField}`}>
+                  <span className={styles.fieldLabel}>Provider</span>
+                  <select
+                    className={styles.select}
+                    value={combo.provider}
+                    onChange={(e) =>
+                      updateCombination(combo.id, { provider: e.target.value })
+                    }
+                    title="How this harness reaches the model. The model id is launched with this provider's routing prefix."
+                  >
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {remove}
+            </div>
+          );
+        })}
       </div>
+      <SubmitNotice message={launchError ?? sel.error} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -651,14 +916,11 @@ export function NewRunPage() {
                 }`}
               >
                 <span className={styles.resultLabel}>
-                  {harnessName(o.harness)} · {o.modelId}
+                  {o.label} · {o.modelId}
                   {runCount > 1 ? ` · #${o.runIndex}` : ""}
                 </span>
-                {o.runId ? (
-                  <Link
-                    className={styles.resultLink}
-                    to={routes.runMonitor(o.runId)}
-                  >
+                {o.monitorPath ? (
+                  <Link className={styles.resultLink} to={o.monitorPath}>
                     view run →
                   </Link>
                 ) : (
@@ -671,12 +933,6 @@ export function NewRunPage() {
             Go to runs list →
           </Link>
         </div>
-      )}
-
-      {(launchError || sel.error) && (
-        <p className={`${styles.notice} ${styles.error}`}>
-          {launchError ?? sel.error}
-        </p>
       )}
     </PageLayout>
   );

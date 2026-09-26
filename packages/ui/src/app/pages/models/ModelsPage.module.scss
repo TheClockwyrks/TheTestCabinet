@@ -7,40 +7,6 @@
   font-family: var(--ttc-font);
 }
 
-// The page header row: the prompt header on the left, the gated "+ Add model"
-// action pinned to the right on the same line, wrapping under the header on a
-// narrow viewport. Mirrors the Runs page's header/action layout.
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-// An outlined accent action, brightening on hover — the same neon-affordance
-// treatment the run controls use, sized to sit on the prompt line.
-.addButton {
-  flex: 0 0 auto;
-  align-self: center;
-  padding: t.$space-sm t.$space-lg;
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  border-radius: t.$radius-md;
-  background: transparent;
-  @include h.halo;
-
-  &:hover,
-  &:focus-visible {
-    text-decoration: none;
-    background: color-mix(in srgb, t.$color-accent 14%, transparent);
-    box-shadow: var(--ttc-glow);
-  }
-}
-
 // Positioning context for the column-picker trigger, hung off the panel's
 // top-right corner outside the scroll region so it never scrolls away.
 .wrap {
@@ -100,7 +66,8 @@ a.row {
   &:hover {
     text-decoration: none;
     background: color-mix(in srgb, t.$color-accent 16%, transparent);
-    box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
+    box-shadow: inset 0 0 1.5rem
+      color-mix(in srgb, t.$color-accent 18%, transparent);
   }
 }
 
@@ -124,7 +91,7 @@ a.row {
 
   a.row:hover & {
     opacity: 1;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -155,8 +122,7 @@ a.row {
 }
 
 a.row:hover .logo {
-  filter:
-    drop-shadow(0 0 0.5rem t.$color-accent)
+  filter: drop-shadow(0 0 0.5rem t.$color-accent)
     drop-shadow(0 0 1.2rem color-mix(in srgb, t.$color-accent 60%, transparent));
 }
 
@@ -165,7 +131,7 @@ a.row:hover .logo {
   font-weight: 700;
   color: t.$color-accent;
   text-overflow: ellipsis;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .provider {
@@ -193,6 +159,15 @@ a.row:hover .logo {
 .empty {
   color: t.$color-text-muted;
   @include h.halo;
+}
+
+// The stale-data line above a catalog whose latest read failed. The rows below
+// it are real (just possibly out of date), so this reads as a warning over the
+// table rather than replacing it.
+.stale {
+  color: t.$color-accent-2;
+  margin-bottom: t.$space-sm;
+  @include h.halo-glow;
 }
 
 // --- Mobile: stack each row into a card ------------------------------------

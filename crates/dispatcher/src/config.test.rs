@@ -53,10 +53,11 @@ const ALL_VARS: &[&str] = &[
 ];
 
 fn clear_all() {
-    for var in ALL_VARS
-        .iter()
-        .chain(test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS.iter())
-    {
+    for var in ALL_VARS.iter().copied().chain(
+        test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS
+            .iter()
+            .map(String::as_str),
+    ) {
         unsafe { std::env::remove_var(var) };
     }
 }
@@ -80,7 +81,10 @@ fn set(key: &str, value: &str) {
 fn set_required() {
     set("TCAB_BACKEND_URL", "http://backend:8787/");
     set("TCAB_BACKEND_SERVICE_TOKEN", "svc-tok");
-    set("TCAB_DRIVER_IMAGE", "ghcr.io/example/tcab-driver:1.0");
+    set(
+        "TCAB_DRIVER_IMAGE",
+        "registry.example.com/example/tcab-driver:1.0",
+    );
 }
 
 #[test]
@@ -92,7 +96,10 @@ fn resolves_with_required_and_defaults() {
         // Trailing slash trimmed.
         assert_eq!(config.backend_url, "http://backend:8787");
         assert_eq!(config.service_token, "svc-tok");
-        assert_eq!(config.driver_image, "ghcr.io/example/tcab-driver:1.0");
+        assert_eq!(
+            config.driver_image,
+            "registry.example.com/example/tcab-driver:1.0"
+        );
         // Defaults.
         assert_eq!(config.max_inflight, 8);
         assert_eq!(config.poll_interval.as_secs(), 2);
@@ -117,7 +124,10 @@ fn resolves_with_required_and_defaults() {
 fn publisher_config_parses_when_set() {
     with_env(|| {
         set_required();
-        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set(
+            "TCAB_PUBLISHER_IMAGE",
+            "registry.example.com/example/tcab-publisher:1.0",
+        );
         set(
             "TCAB_DISPATCHER_PUBLISHER_SECRETS",
             "tcab-publisher-secrets, tcab-cf ",
@@ -128,7 +138,7 @@ fn publisher_config_parses_when_set() {
 
         assert_eq!(
             config.publisher_image.as_deref(),
-            Some("ghcr.io/example/tcab-publisher:1.0")
+            Some("registry.example.com/example/tcab-publisher:1.0")
         );
         // A configured image enables the publish path.
         assert!(config.publishing_enabled());
@@ -156,7 +166,10 @@ fn publisher_config_parses_when_set() {
 fn artifacts_url_is_forwarded_into_publish_jobs() {
     with_env(|| {
         set_required();
-        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set(
+            "TCAB_PUBLISHER_IMAGE",
+            "registry.example.com/example/tcab-publisher:1.0",
+        );
         set("TCAB_ARTIFACTS_URL", "http://tcab-artifacts:8790");
         let config = Config::from_env().expect("config should resolve");
         // The artifact-service URL is forwarded into both driver and publish Jobs:
@@ -315,11 +328,11 @@ fn artifacts_url_is_passed_through() {
 fn container_image_vars_are_passed_through() {
     with_env(|| {
         set_required();
-        set("TCAB_CONTAINER_REGISTRY", "ghcr.io/theclockwyrks");
+        set("TCAB_CONTAINER_REGISTRY", "testcabinet.azurecr.io");
         set("TCAB_CONTAINER_TAG", "deadbeef");
         set(
             "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
-            "ghcr.io/example/custom-adversarial:1.0",
+            "registry.example.com/example/custom-adversarial:1.0",
         );
 
         let config = Config::from_env().expect("config should resolve");
@@ -328,7 +341,7 @@ fn container_image_vars_are_passed_through() {
         // the deployment chose, instead of the compiled `:latest` default.
         assert!(config.passthrough_k8s_env.contains(&(
             "TCAB_CONTAINER_REGISTRY".to_string(),
-            "ghcr.io/theclockwyrks".to_string()
+            "testcabinet.azurecr.io".to_string()
         )));
         assert!(
             config
@@ -338,7 +351,7 @@ fn container_image_vars_are_passed_through() {
         // Per-image full-ref overrides ride the same passthrough.
         assert!(config.passthrough_k8s_env.contains(&(
             "TCAB_CONTAINER_IMAGE_ADVERSARIAL".to_string(),
-            "ghcr.io/example/custom-adversarial:1.0".to_string()
+            "registry.example.com/example/custom-adversarial:1.0".to_string()
         )));
         // The unset per-image overrides are not forwarded ("forward only if set").
         assert_eq!(config.passthrough_k8s_env.len(), 3);
@@ -407,20 +420,23 @@ fn driver_resource_requests_default_so_the_pod_is_never_best_effort() {
             config.driver_resources.memory_request.as_deref(),
             Some(DEFAULT_DRIVER_MEMORY_REQUEST)
         );
-        // The memory limit defaults too, and to the SAME value as the request: that
-        // equality is what makes a node reserve exactly what a driver may use, so
-        // nothing on the node can be killed to satisfy the driver's growth. The CPU
-        // limit stays absent — over-limit CPU is throttled, not killed.
+        // The memory LIMIT does NOT default. A memory limit is a cgroup ceiling the
+        // kernel enforces by SIGKILL, and a driver OOM-killed mid-run destroys a run
+        // that has already paid for its API calls — so a run pod carries a request
+        // (the node's reservation) and no ceiling. See `DEFAULT_DRIVER_MEMORY_REQUEST`.
         assert_eq!(
-            config.driver_resources.memory_limit.as_deref(),
-            Some(DEFAULT_DRIVER_MEMORY_LIMIT)
+            config.driver_resources.memory_limit, None,
+            "a default driver memory limit is an OOM kill waiting for the first run \
+             that outgrows it; the driver must carry a request and no limit"
         );
+        // The CPU limit defaults, and that is what keeps the driver's memory footprint
+        // steady across node sizes: the post-run toolchain sizes its worker pools from
+        // the CPU this container may use, so an unbounded driver on a large node would
+        // fan out across the whole machine. Over-limit CPU throttles rather than kills.
         assert_eq!(
-            config.driver_resources.memory_request, config.driver_resources.memory_limit,
-            "the driver's memory request and limit must default to one value; a gap \
-             between them is memory the scheduler has promised twice"
+            config.driver_resources.cpu_limit.as_deref(),
+            Some(DEFAULT_DRIVER_CPU_LIMIT)
         );
-        assert!(config.driver_resources.cpu_limit.is_none());
         assert!(!config.driver_resources.is_empty());
     });
 }
@@ -431,7 +447,7 @@ fn driver_resources_are_overridable() {
         set_required();
         set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "250m");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "1Gi");
-        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "2");
+        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "4");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "4Gi");
         let config = Config::from_env().expect("config should resolve");
 
@@ -440,7 +456,7 @@ fn driver_resources_are_overridable() {
             config.driver_resources.memory_request.as_deref(),
             Some("1Gi")
         );
-        assert_eq!(config.driver_resources.cpu_limit.as_deref(), Some("2"));
+        assert_eq!(config.driver_resources.cpu_limit.as_deref(), Some("4"));
         assert_eq!(config.driver_resources.memory_limit.as_deref(), Some("4Gi"));
     });
 }
@@ -453,29 +469,30 @@ fn blanking_a_driver_request_omits_it_rather_than_defaulting() {
         set_required();
         set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "   ");
-        // The memory LIMIT now defaults as well, so it has to be blanked too for the
-        // container to carry no `resources` at all — the state `is_empty` names.
-        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "");
+        // The CPU limit defaults as well, so it has to be blanked too for the
+        // container to carry no `resources` at all — the state `is_empty` names. The
+        // memory limit never defaults, so leaving it unset is already "omit".
+        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "");
         let config = Config::from_env().expect("config should resolve");
 
         assert!(config.driver_resources.cpu_request.is_none());
         assert!(config.driver_resources.memory_request.is_none());
         assert!(config.driver_resources.memory_limit.is_none());
+        assert!(config.driver_resources.cpu_limit.is_none());
         assert!(config.driver_resources.is_empty());
     });
 }
 
 #[test]
-fn blanking_the_driver_memory_limit_leaves_the_container_unbounded() {
-    // The documented escape hatch for an operator managing driver QoS elsewhere (a
-    // `LimitRange`). It must stay reachable, but it is the one opt-out that gives up
-    // the "sum of a node's limits is knowable" property, so it is asserted explicitly
-    // rather than left to follow from the blanking rule.
+fn a_driver_memory_limit_is_an_explicit_opt_in_only() {
+    // The one way a driver container gets a memory ceiling is an operator setting the
+    // variable — for a namespace `LimitRange` or quota that insists on one. Unset AND
+    // blank must both mean "no limit": collapsing either into a default would put the
+    // OOM kill this removal exists to prevent straight back on every driver.
     with_env(|| {
         set_required();
-        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "");
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "   ");
         let config = Config::from_env().expect("config should resolve");
-
         assert!(config.driver_resources.memory_limit.is_none());
         // The request survives, so the pod is still not `BestEffort`.
         assert_eq!(
@@ -483,6 +500,12 @@ fn blanking_the_driver_memory_limit_leaves_the_container_unbounded() {
             Some(DEFAULT_DRIVER_MEMORY_REQUEST)
         );
         assert!(!config.driver_resources.is_empty());
+    });
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "3Gi");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.driver_resources.memory_limit.as_deref(), Some("3Gi"));
     });
 }
 

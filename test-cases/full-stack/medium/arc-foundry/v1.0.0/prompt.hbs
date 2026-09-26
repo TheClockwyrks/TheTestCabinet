@@ -8,7 +8,7 @@ Your project root is `{{workspace}}`. Create the game there.
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that pins
 **Playwright** as a dev dependency and depends on the
-**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
+**`@clockwyrks/particle-runtime`** library (below). Its dependencies have already
 been installed for you: `node_modules/` is populated and Playwright's headless
 **Chromium** is downloaded, so you can build right away (see "Playwright and Chromium"
 below for what they are there for). Build on this project rather than replacing it:
@@ -67,7 +67,7 @@ restating, because the served build and the produced assets depend on them:
   `assets/`, and states how each is wired into the build, including that the
   **electrical effects** (the arcs, chain-lightning, spark showers, and discharges
   that are the headline of this build) are `particle-2d` systems played live through
-  the **`@test-cabinet/particle-runtime`** library already installed as a dependency
+  the **`@clockwyrks/particle-runtime`** library already installed as a dependency
   of your project (import it like any other dependency; do not fetch or reimplement
   it). Load every produced file with page-relative URLs so it resolves from the served
   sub-path.

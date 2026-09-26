@@ -20,11 +20,15 @@ namespace: tcab-local
 
 # Compose from the shared base directory, exactly as the staging/prod overlays do
 # (the base lives in a sibling `base/` dir, not a parent, so kustomize does not
-# flag an overlay→ancestor cycle). The base's Namespace object is renamed to
-# `tcab-local` by the `namespace:` directive above (the same way staging renames it
-# to `tcab-staging`), so the overlay needs no namespace.yaml of its own.
+# flag an overlay→ancestor cycle). The shared Namespace object from ../../cluster is
+# renamed to `tcab-local` by the `namespace:` directive above, so the overlay needs
+# no namespace.yaml of its own.
 resources:
   - ../../base
+  # The Namespace and the observability stack's node-metrics grant are cluster-scoped,
+  # so they live under ../../cluster rather than in the base and its components.
+  - ../../cluster/namespace
+  - ../../cluster/observability
 
 # Stand the in-cluster Grafana LGTM stack up alongside the run topology (it replaces
 # the LGTM the devcontainer's docker-compose used to ship). The patch-*.yaml files
@@ -74,7 +78,9 @@ images:
 # `local-up`), so no API key or token is ever written to disk:
 #   - tcab-backend-secrets / tcab-dispatcher-secrets — the shared
 #     TCAB_BACKEND_SERVICE_TOKEN (a fixed dev default, overridable via $SERVICE_TOKEN),
-#     so the dispatcher can claim jobs.
+#     so the dispatcher can claim jobs; the backend's copy also carries
+#     TCAB_OPENROUTER_API_KEY (from $OPENROUTER_API_KEY, when set) so model
+#     probes work locally.
 #   - tcab-driver-secrets — the harness provider API key(s) read from
 #     $ANTHROPIC_API_KEY / $OPENAI_API_KEY / $OPENROUTER_API_KEY.
 # The manifests reference these by fixed name; the Makefile creates them with those

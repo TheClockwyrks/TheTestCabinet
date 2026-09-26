@@ -1,0 +1,530 @@
+# Cascade — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Cascade carries a debugging and automation surface, `window.__cascade`, so the
+game can be driven and inspected from code without moving a real pointer or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__cascade` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read of the game's state, a pose of one field of it, a move
+of the clock, one of the game's own events, or one of the game's own draws. A
+pose arranges the table, and the game's own move rules, turning, win test, and
+cascade run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Cascade carries a debugging and automation surface so the game can be driven and
+inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `CascadeState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<CascadeState>`,
+and returns the next `CascadeState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setScreen(s, "playing"))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+table, and the game's own move rules, turning, win test, and cascade run from
+there exactly as they do in play, so a scenario driven from code behaves exactly
+like one played by hand. `src/game.ts` declares and exports its type,
+`CascadeDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Cascade carries a debugging and automation surface so the game can be driven and
+inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its row names, arranges the running game through the same
+systems play uses, and returns nothing unless its row states a return value; a
+reading returns plain data built at the call and changes nothing. A pose arranges
+the table, and the game's own move rules, turning, win test, and cascade run from
+there exactly as they do in play, so a scenario driven from code behaves exactly
+like one played by hand. `src/game.ts` declares and exports its type,
+`CascadeDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A render-free core
+
+Game state advances from the elapsed simulation time the game is handed,
+independent of a canvas, of the frame loop that measured it, and of wall-clock
+time. The dependency runs one way: the simulation reads nothing from the
+renderer. Every rate is per second and integrated against the delta the frame
+supplies, so an interval of game time covered as one frame and as sixty frames
+advances `simTime` by the same amount and carries a flyer the same distance
+along `x` at a constant `vx`. A step means the same thing whatever the frame
+rate.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The overlay belongs to the runtime layer beneath the game, and the surface
+carries no operation for it. That layer draws the overlay and toggles it from the
+key `specs/controls.md` names.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+
+Muting is the other. The runtime layer holds the mute bit, so `setMuted` below
+sets it directly, and the HUD's `SOUND` control toggles that same bit.
+{{else}}
+The clock, the audio bus, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame and can take it off real time, it owns muting, and it draws
+and toggles the debug overlay.
+
+There is therefore no operation that sets muting: mute is reached the way a
+player reaches it, through the HUD's `SOUND` control, and the snapshot reports
+the result.
+{{/if}}
+
+What the overlay shows is Cascade's, under Diagnostics below.
+
+The surface's pointer operations do not stand in for the player's pointer. They
+feed the same input path it feeds, so a posed press and a player's press are the
+same event to the game, and nothing is bypassed: the hit test, the grab rule, the
+drop rule, and the double-click rule all run exactly as they do for a player.
+
+## Identity
+
+Every card and every flyer carries an `id`: a number, distinct among the entities
+live at any moment, reported by `snapshot` and taken by every per-entity
+operation. Two rules make an id findable without an assignment scheme:
+
+- An entity added through this surface is appended to its pile or to the flyer
+  list, so it is the last entry and its id is read from there.
+- A card keeps its id for as long as it is on the table, across every move, turn,
+  flip, and recycle, and a card that launches keeps it as a flyer.
+
+## Addressing a pile
+
+Every card operation names a pile with two scalars, `pile` and `index`:
+
+| `pile` | `index` |
+| --- | --- |
+| `"stock"` | `0` |
+| `"waste"` | `0` |
+| `"foundation"` | `0` to `3` |
+| `"tableau"` | `0` to `6` |
+
+A pile is reported as an array ordered from its bottom card to its top card, so
+the last element is the card on top. In a tableau column the last element is the
+card drawn lowest on the table, which is the one a run is stacked onto.
+
+## The operations
+
+The surface carries `version` (`CASCADE_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans, and every
+`x` and `y` the surface takes or reports is a card's top-left in the stage's
+logical units, matching the anchors `specs/table.md` fixes.
+
+An operation applies its effect every time it is called. It is the route a
+driver has instead of a player, so what a player would have had to do first is
+not its condition: which screen is showing, where the pointer has been, and
+whether a control is drawn are how a hand reaches an effect, and this surface
+reaches it from wherever the game stands. A pose reaches the value it names
+whatever the game's own rules would have allowed, so a card is added to a pile
+the deal would never have put it on and a flyer is put in flight on a table
+nobody has won. A card operation carries out its own transaction from wherever
+the game stands, and that transaction's own rules are the effect rather than a
+gate on it: `deal()` deals from the title screen, `turnStock()` turns whatever
+is on screen, and `move` and `autoMove` still report what the move rules
+decided, because deciding that is what they are for.
+
+What an operation never does is refuse quietly. A call the game has nothing to
+act on — a `pile` and `index` naming no pile, a `count` that is not a whole
+number, an `id` no card or flyer on the table carries — fails loudly rather
+than returning with the state unchanged. A caller reads what changed from
+`snapshot()`.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation takes the current state, `DeepReadonly<CascadeState>`, as its
+first parameter. A pose returns the next `CascadeState`, built from the one it
+was handed, which it leaves as it was; a reading returns what it read. The
+signatures below name the parameters that follow the state, so `setScreen(screen)`
+below is `setScreen(state, screen)` on the surface and `snapshot()` is
+`snapshot(state)`. `move` and `autoMove` both pose and report, so each returns the
+pair `[nextState, verdict]` rather than a state alone.
+{{else if (eq engine.slug "structured-2d")}}
+
+Each operation takes only the parameters its signature names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it
+read and changes nothing. `move` and `autoMove` are the exception: each acts on
+the live game and returns the verdict its row states.
+{{/if}}
+
+### The core
+
+| Operation | Effect |
+| --- | --- |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
+| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the surface reports into agreement with the table as it stands, advancing nothing. |
+| `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. It changes nothing. |
+
+`reset` restores `screen` to `"title"`; sets `menuIndex` and `titleIndex` to `0`;
+empties all thirteen piles and the waste's set memory; clears the run in hand,
+the drop target, and the last press; puts the pointer at `(0, 0)` and up; turns
+`autoFlip`, `winDetect`, `launching`, and `trailPainting` back on; sets
+`launchClock` to `0`, `launched` to `0`, and `cascadeDone` to `false`; removes
+every flyer; clears the painted layer and sets `trailStamps` to `0`; and sets
+`simTime` to `0`.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer selects
+that item from, as `specs/controls.md` states. It returns `null` on `won`, which
+shows no menu, and when `index` names no item of the menu the current screen
+shows.
+
+`reset` takes no parameters. `muted` is left exactly as it stands, because
+muting is a player preference the runtime owns.
+
+`reconcile()` brings every value this surface reports into agreement with the
+table as it now stands, without advancing anything. `wasteVisibleCount` follows
+from the waste's set memory, a card's `color` from its suit, and `dropTarget`
+from the run in hand and the pile it is held over, so after a pose they answer
+for the table as it is now rather than as it was before.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of, through the same rule the game's own path uses.
+
+It moves no clock and runs no system: `simTime` and `launchClock` are untouched,
+no flyer moves, bounces, paints or retires, no card turns, no win is detected,
+no cue is raised, and no draw is taken. It changes no screen, deals nothing, and
+turns nothing. It moves nothing to make a reading agree: a flyer posed off the
+stage stays where it was posed and reads as it is, and a run in hand is left in
+hand whatever the pile beneath it now holds. `launched` and `trailStamps` are
+figures the game has counted up rather than readings of the table as it stands,
+so they are the cascade's and this call leaves them where it found them. Calling
+it twice leaves the same state as calling it once.
+
+It is never an error. It may be called on any screen, whether or not the game is
+stepping itself, and before or after a `reset`.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `CascadeState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### The clock
+
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(seconds, frames)` | Runs whole frames of game time immediately. |
+
+`setAutoStep(false)` stops the frame loop advancing the game from the wall clock,
+so the game changes only when `advance` says so. `setAutoStep(true)` returns it
+to running itself, which is how a build starts and how it is played. Drawing is
+unaffected either way: the loop keeps rendering, so the canvas shows the state
+the most recent frame left. It changes no game state.
+
+`advance(seconds, frames)` runs `frames` whole frames covering `seconds` of game
+time, each worth `seconds / frames`, immediately and in order. `frames` defaults
+to `1`. Each is a real frame, the same update the loop runs followed by a render,
+so the game's own rules produce the result and the canvas reflects it.
+
+### Muting
+
+| Operation | Effect |
+| --- | --- |
+| `setMuted(muted)` | Sets whether sound is muted. |
+
+It sets the runtime's mute bit, the same bit the HUD's `SOUND` control toggles
+and the same bit `snapshot` reports as `muted`. It plays no cue and changes no
+other field.
+
+{{/if}}
+### The screen and the menus
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `"title"`, `"howto"`, `"playing"`, or `"won"`. |
+| `setMenuIndex(index)` | Sets the selected item on the menu the current screen shows. |
+| `setTitleIndex(index)` | Sets `titleIndex`, the title entry a return to the title restores. |
+
+Each sets its own field alone. `setScreen` changes no other field, so a screen
+posed this way leaves the table and the selection exactly as they stand, and the
+screen it sets then behaves exactly as `specs/screens.md` states for it. Neither
+`setMenuIndex` nor `setTitleIndex` touches the other's field, and neither
+activates anything.
+
+### The cards
+
+A table is built one card at a time, so no operation takes a layout.
+
+| Operation | Effect |
+| --- | --- |
+| `addCard(pile, index, suit, rank, faceUp)` | Adds one card of `suit` and `rank` to the top of the named pile, face-up or face-down as `faceUp` says. |
+| `removeCard(id)` | Removes the card with that id from whichever pile holds it. |
+| `setCardFaceUp(id, faceUp)` | Sets one card's face. |
+| `clearPile(pile, index)` | Removes every card from the named pile. |
+| `clearTable()` | Removes every card from all thirteen piles. |
+
+`addCard` takes a `suit` of `"spades"`, `"hearts"`, `"diamonds"`, or `"clubs"`
+and a `rank` from `1` for the Ace to `13` for the King. The card is appended, so
+it is the pile's last entry, and it takes a fresh id the caller reads from the
+snapshot. It touches no other pile and no other field, the waste's set memory
+included.
+
+`removeCard` leaves the rest of that pile in its order. Removing a card that is
+on the waste takes it off the newest set that holds any, and a set left holding
+nothing leaves the memory, which is the rule play itself follows.
+
+`clearPile` leaves the other twelve piles standing. On the waste it also empties
+the waste's set memory. It names a pile and touches nothing else, so it leaves
+the run in hand and the drop target as they stand. `clearTable` empties all
+thirteen piles and the waste's set memory, and it clears the run in hand and the
+drop target with them, because a held run holds cards the clear has taken off the
+table. It leaves the flyers, the painted layer, and every gate alone.
+
+### The waste's sets
+
+| Operation | Effect |
+| --- | --- |
+| `addWasteSet(count)` | Appends one set of `count` cards to the newest end of the waste's set memory. |
+| `clearWasteSets()` | Empties the waste's set memory, leaving the cards on the waste standing. |
+
+The set memory is the list `specs/stock.md` defines, and the cards on the waste
+belong to those sets from the bottom up, so the oldest set holds the bottom-most
+cards. `wasteVisibleCount` is the newest set's count, and `0` when the memory is
+empty.
+
+### The game's own events
+
+Four operations are the game's own events rather than poses. Each routes through
+exactly the code a player's gesture routes through and reports what the game's
+own rules decided.
+
+| Operation | Effect |
+| --- | --- |
+| `deal()` | Deals a fresh game, as `specs/deal.md` states. |
+| `turnStock()` | Turns the stock, as `specs/stock.md` states. |
+| `move(fromPile, fromIndex, fromRow, toPile, toIndex)` | Attempts a move and returns whether the rules accepted it. |
+| `autoMove(pile, index)` | Sends the named pile's playable card home, and returns whether it went. |
+
+`deal()` shuffles a full deck uniformly at random and deals it, as
+`specs/deal.md` states. It replaces the contents of all thirteen piles, empties
+the waste's set memory, sets `launched` to `0`, and clears the painted layer,
+which is what a new deal does. It changes no other field, the screen included.
+
+`turnStock()` turns the deal mode's turn count of cards from the stock onto the
+waste, or recycles the whole waste back into the stock when the stock is empty.
+
+`move` names its source with three scalars and its target with two. `fromRow` is
+the index of the grabbed card within its pile, counted from the bottom, so `0` is
+the pile's bottom-most card. The grabbed card and every card the pile holds after
+it move together as a run, so in a column that is the grabbed card and every card
+fanned below it on the table, and on a squared pile a `fromRow` naming the top
+card takes that card alone. It returns `true` when the game's own rules accepted
+the move and `false` when they refused it. An accepted move applies through the
+same path a released drop uses, so a newly exposed column card turns and a
+completed board wins. A refused move leaves the board unchanged.
+
+`autoMove` sends the named pile's playable card to the foundation it belongs on
+when that is legal, and does nothing otherwise. The playable card is the waste's
+top card, or a column's lowest face-up card. A pile that holds no playable card
+sends nothing, which covers an empty pile, a column whose lowest card is
+face-down, and a foundation. It returns `true` when the card went home and
+`false` when nothing moved.
+
+### The pointer
+
+| Operation | Effect |
+| --- | --- |
+| `pointerDown(x, y)` | Reports a press at a logical stage point. |
+| `pointerMove(x, y)` | Reports a move to a logical stage point. |
+| `pointerUp(x, y)` | Reports a release at a logical stage point. |
+
+Each takes effect immediately, when it is called, rather than being sampled once
+per frame. The press, the move, or the release is resolved before the call
+returns rather than deferred, so a whole gesture can be driven from code without
+advancing the game at all.
+
+### The faculty gates
+
+Four faculties are gated. Each gates one faculty and nothing else, each is on by
+default and restored to on by `reset`, and each is reported by `snapshot`.
+
+| Operation | Gates |
+| --- | --- |
+| `setAutoFlip(enabled)` | The turning face-up of a column's newly exposed lowest card. Off, a move that empties the face-up cards above a face-down card leaves that card face-down. |
+| `setWinDetect(enabled)` | The check that all fifty-two cards are home and the move to the `won` screen. Off, a board completed to fifty-two stays on `playing`. |
+| `setLaunching(enabled)` | The cascade's launch clock and the launching of the next card. Off, no further card leaves the foundations. Every card already in flight keeps flying, bouncing, painting, and retiring. |
+| `setTrailPainting(enabled)` | The stamping of a card in flight onto the painted layer. Off, the layer takes no new stamp and `trailStamps` stops rising. The cards still fly and are still drawn at their positions. |
+
+### The cascade
+
+| Operation | Effect |
+| --- | --- |
+| `addFlyer(suit, rank, x, y, vx, vy)` | Adds one card in flight, its top-left at a logical stage position, with that velocity in logical units per second. |
+| `setFlyerPosition(id, x, y)` | Sets that flyer's top-left. |
+| `setFlyerVelocity(id, vx, vy)` | Sets that flyer's velocity. |
+| `removeFlyer(id)` | Removes the flyer with that id. |
+| `clearFlyers()` | Removes every flyer in flight. |
+| `setLaunchClock(seconds)` | Sets the seconds accumulated toward the next launch. |
+| `clearTrail()` | Clears the painted layer and sets `trailStamps` to `0`, leaving the flyers standing. |
+| `drawLaunchVx()` | Performs one launch's `vx` draw and returns the signed value drawn. |
+
+A flyer added by `addFlyer` is appended to the flight and takes a fresh id, and
+it then flies, bounces, paints, and retires through the game's own cascade rules,
+as `specs/victory.md` states.
+
+`drawLaunchVx` performs exactly the draw a launch performs, as the launch table
+in `specs/victory.md` states it: a magnitude drawn uniformly from
+`[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` with a sign chosen with equal probability. It
+returns that signed speed, in logical units per second, and does nothing else:
+no card launches, no flyer is added, and no declared field changes. Each call is
+a fresh draw, independent of every other call and of every launch.
+
+## Snapshot shape
+
+`snapshot` returns exactly this object. Every field an operation can set is
+present, so every operation is verifiable by setting a value and reading it back.
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "won",
+  menuIndex: <number>,         // the selected item on the current screen's menu
+  titleIndex: <number>,        // the title menu's remembered selection
+  dealMode: <string>,          // this build's DEAL_MODE
+  turnCount: <number>,         // this build's TURN_COUNT
+  dealModeLabel: <string>,     // this build's DEAL_MODE_LABEL
+  muted: <boolean>,            // the game's copy of the runtime's mute bit
+
+  // The four faculty gates.
+  autoFlip: <boolean>,
+  winDetect: <boolean>,
+  launching: <boolean>,
+  trailPainting: <boolean>,
+
+  // The thirteen piles, each ordered bottom to top, so the last entry is the
+  // card on top. A card is { id, suit, rank, color: "red" | "black", faceUp }.
+  stock: [ <card>, ... ],
+  waste: [ <card>, ... ],
+  wasteSets: [ <number>, ... ],   // cards on each turned set, oldest first
+  wasteVisibleCount: <number>,    // cards on the set the waste is showing
+  foundations: [ <pile>, <pile>, <pile>, <pile> ],
+  tableau: [ <pile>, <pile>, <pile>, <pile>, <pile>, <pile>, <pile> ],
+
+  // The run currently in hand, or null when nothing is held.
+  drag: null | {
+    cards: [ <card>, ... ],       // cards[0] is the grabbed card
+    fromPile: "waste" | "foundation" | "tableau",
+    fromIndex: <number>,
+    x: <number>, y: <number>,     // the top-left of cards[0]
+  },
+  // The pile a release would land the held run on, or null.
+  dropTarget: null | { pile: "foundation" | "tableau", index: <number> },
+
+  pointer: { x: <number>, y: <number>, down: <boolean> },
+  // The most recent press, which the double-click rule is measured against.
+  lastPress: null | { x: <number>, y: <number>, at: <number> },
+
+  // The victory cascade.
+  launchClock: <number>,        // seconds accumulated toward the next launch
+  launched: <number>,           // cards the cascade has launched, 0 to 52
+  flyers: [
+    { id: <number>, suit: <string>, rank: <number>,
+      x: <number>, y: <number>, vx: <number>, vy: <number> },
+  ],
+  cascadeDone: <boolean>,       // the cascade's own end flag
+  trailStamps: <number>,        // stamps on the painted layer since it was cleared
+
+  simTime: <number>,            // accumulated game time, in seconds
+}
+```
+
+Every field is read straight off the game's state, so what the snapshot reports
+is what the game holds. Six entries are derived rather than read off a field of
+their own:
+
+| Field | Derived from |
+| --- | --- |
+| `dealMode`, `turnCount`, `dealModeLabel` | The deal-mode figures `specs/stock.md` fixes |
+| A card's `color` | Its suit, as `specs/deal.md` states |
+| `wasteVisibleCount` | The newest entry of `wasteSets`, and `0` when `wasteSets` is empty |
+| `dropTarget` | The run in hand, where it is held, and whether that pile accepts it |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose.
+
+Five more need a note:
+
+- `muted` is the game's copy of the runtime's mute bit, refreshed in every
+  update, so the snapshot reports the bit the runtime holds.
+{{#if (eq engine.slug "none")}}
+  `setMuted` sets that bit, and so does the HUD's `SOUND` control.
+{{else}}
+  No operation sets it; the HUD's `SOUND` control does.
+{{/if}}
+- `launched` is counted up by the cascade as it launches cards. It is not fifty-two
+  less the cards on the foundations, so a posed flyer on a cleared table leaves it
+  where it stands.
+- `cascadeDone` is the flag the cascade's own end test sets when every card has
+  launched and none is in flight. Posed flyers retiring on a cleared table do not
+  set it.
+- `lastPress` is written by the pointer path rather than posed, and it is
+  reported here so the double-click rule is observable. `reset` clears it.
+- `simTime` accumulates every update's delta, whatever the screen.
+
+`screen` being `"won"` is the whole of the fact that the game is won, and the
+snapshot reports no second field for it.
+
+## Diagnostics
+
+The debug overlay is read-only and shows the values the game registers with it as
+diagnostic sources. Register at least:
+
+- the current `screen` and the deal mode;
+- how many cards are in the stock, on the waste, and on each of the four
+  foundations;
+- how many cards are in each of the seven columns;
+- whether a run is in hand and how many cards it holds;
+- while a cascade runs, how many cards have launched and how many are in flight.
+
+Keep each one short enough to read on a line, and keep every source a pure read,
+so watching the overlay leaves the game exactly as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+values, it is shown and hidden by the key `specs/controls.md` names, it is off
+when the game starts, and it reads the game without changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Cascade's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<CascadeState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Cascade's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and toggling it are the engine's.
+{{/if}}

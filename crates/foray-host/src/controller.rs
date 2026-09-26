@@ -34,8 +34,8 @@ use crate::SandboxLimits;
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum InvokeError {
     /// The controller exhausted its per-tick fuel ceiling.
-    #[error("controller exhausted its fuel ceiling")]
-    OutOfFuel,
+    #[error("controller exhausted its {limit}-fuel per-tick ceiling")]
+    OutOfFuel { limit: u64 },
     /// The controller's linear memory grew past the cap.
     #[error("controller exceeded its {limit}-byte memory cap (used {used} bytes)")]
     OutOfMemory { used: usize, limit: usize },
@@ -71,7 +71,7 @@ pub struct Controller {
     total_fuel: u64,
 }
 
-/// Per-store host state. wasmtime calls back into [`ResourceLimiter`] before each
+/// Per-store host state. wasmtime calls back into [`ResourceLimiter`](wasmtime::ResourceLimiter) before each
 /// memory growth, so the cap is enforced at the point of `memory.grow` rather than
 /// observed after the fact.
 struct StoreState {
@@ -264,7 +264,9 @@ impl Controller {
         if err.downcast_ref::<wasmtime::Trap>() == Some(&wasmtime::Trap::OutOfFuel)
             || self.store.get_fuel().map(|f| f == 0).unwrap_or(false)
         {
-            return InvokeError::OutOfFuel;
+            return InvokeError::OutOfFuel {
+                limit: self.limits.fuel_per_tick,
+            };
         }
         let used = self.memory.data_size(&self.store);
         if used >= self.limits.max_memory_bytes {

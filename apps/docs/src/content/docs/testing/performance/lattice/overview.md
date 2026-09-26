@@ -2,107 +2,89 @@
 title: "Lattice — overview"
 ---
 
-**Lattice** is the first [performance](/testing/performance/overview/) test case.
-It asks a model to write a **deterministic factory simulation engine** — belts,
-splitters, inserters, assemblers, and the test fixtures that feed and drain them —
-and then scores that engine on how little **work** it does to simulate a factory
-correctly. This page documents the **rules of the simulation**; the reference
-engine, the contract the model implements, and the fixed-point/replay machinery are
-covered in
-[Engine & contract](/testing/performance/lattice/architecture/), and
-what the model is handed to build against in
-[Reference material](/testing/performance/lattice/references/).
+Lattice is a [performance](/testing/performance/overview/) test case. It asks a
+model to write a deterministic factory simulation engine (belts, splitters,
+inserters, assemblers, and the fixtures that feed and drain them) and scores that
+engine on how little work it does to simulate a factory correctly.
 
-For the test-type-level framing — the wasm sandbox, fuel metering, and the
-correctness-then-fuel scoring order — read the
-[performance overview](/testing/performance/overview/) first; this page only adds
-what is specific to Lattice.
+This page documents the rules of the simulation. The reference engine, the
+contract the model implements, and the canonical-state machinery are covered in
+[Engine and contract](/testing/performance/lattice/architecture/), and what the
+model is handed to build against in
+[Reference material](/testing/performance/lattice/references/). The wasm sandbox,
+fuel metering, and the correctness-then-fuel scoring order are covered in the
+[performance overview](/testing/performance/overview/).
 
-:::note[Provenance]
-Lattice descends from **Factorio**'s belt-and-machine logistics simulation, the
-canonical example of a game built around a **fully deterministic** fixed-point
-simulation — the same property that lets Factorio run multiplayer in **lockstep**,
-with every client simulating independently and staying bit-for-bit identical. That
-determinism is exactly what makes it a good performance case: a factory's behaviour
-is a pure function of its layout and a tick count, so a reference engine can produce
-an unambiguous **expected output** for any scenario, and a submission is correct iff
-it reproduces that output exactly.
-
-The belt mechanics below — two-lane belts, item compaction, and the transport-line
-representation that the efficient solution exploits — follow Factorio's own design
-as documented in its *Friday Facts* dev blog:
-[FFF #176 (transport-line optimization)](https://www.factorio.com/blog/post/fff-176),
-[FFF #231 (belt compression)](https://www.factorio.com/blog/post/fff-231), and
-[FFF #276 (belt item spacing)](https://www.factorio.com/blog/post/fff-276).
-
-The on-disk slug is `lattice`, matching the in-fiction title **Lattice**.
-Lattice does not try to reproduce the full breadth
-of Factorio — it fixes a small, precisely-specified subset of entities and rules
-and asks for them to be simulated *fast*.
-:::
+Lattice takes its belt-and-machine logistics from Factorio, a game built around a
+fully deterministic fixed-point simulation. That determinism is what makes it a
+good performance case: a factory's behaviour is a pure function of its layout and
+a tick count, so a reference engine produces an unambiguous expected output for
+any scenario, and a submission is correct exactly when it reproduces that output.
+The belt mechanics below follow Factorio's own design as documented in
+[FFF #176](https://www.factorio.com/blog/post/fff-176),
+[FFF #231](https://www.factorio.com/blog/post/fff-231), and
+[FFF #276](https://www.factorio.com/blog/post/fff-276). Lattice fixes a small,
+precisely specified subset of entities and rules and asks for them to be
+simulated fast. The on-disk slug is `lattice`.
 
 ## The world
 
-A scenario plays out on a fixed **tile grid**. Each tile holds at most one
-**entity**, entities are **placed once** at tick 0 from the scenario's blueprint
-and never change afterward (the layout is static; only the items moving through it
-change), and the simulation advances by a **fixed timestep** for a scenario-declared
-number of **ticks**. There is no player and no in-flight construction: a scenario is
-a factory layout plus "run it for *N* ticks," and the question is what state the
-factory is in at the end.
+A scenario plays out on a fixed tile grid. Each tile holds at most one entity,
+entities are placed once at tick 0 from the scenario's blueprint and never change
+afterward, and the simulation advances by a fixed timestep for a
+scenario-declared number of ticks. A scenario is a factory layout plus a tick
+count, and the question is what state the factory is in at the end.
 
-Everything is **integer / fixed-point** (see
-[Determinism](/testing/performance/lattice/architecture/#determinism-and-the-canonical-state)).
-There are no floating-point positions anywhere in the model: item positions, belt
-speeds, swing timers, and craft progress are all integers, so "the state after *N*
-ticks" is a single well-defined value that every correct engine must agree on to the
-bit. This is the linchpin of the whole case — it is what turns "simulate a factory"
-into a problem with one right answer.
+Everything is integer and fixed-point. Item positions, belt speeds, swing timers,
+and craft progress are all integers, so the state after _N_ ticks is a single
+well-defined value every correct engine agrees on to the bit. That is what turns
+"simulate a factory" into a problem with one right answer.
 
-The base entity set is six pieces:
+The entity set is six pieces:
 
-- **Belts** — move items in a direction, with **two independent lanes**.
-- **Splitters** — balance items across two belts in and two belts out.
-- **Inserters** — swing a single item from one tile onto an adjacent tile.
-- **Assemblers** — consume input items and craft an output to a recipe.
-- **Sources** — test fixtures that emit a fixed item onto a belt at a fixed cadence.
-- **Sinks** — test fixtures that consume and count whatever reaches them.
+- Belts move items in a direction, with two independent lanes.
+- Splitters balance items across two belts in and two belts out.
+- Inserters swing a single item from one tile onto an adjacent tile.
+- Assemblers consume input items and craft an output to a recipe.
+- Sources are fixtures that emit a fixed item onto a belt at a fixed cadence.
+- Sinks are fixtures that consume and count whatever reaches them.
 
-Sources and sinks are the **measurement fixtures** — the deterministic way a
-scenario gets items into the factory and the place their throughput is observed —
-analogous to how a hardware test rig drives known inputs in and reads outputs back.
+Sources and sinks are the measurement fixtures: the deterministic way a scenario
+gets items into the factory and the place their throughput is observed.
 
 ## Belts and the two-lane model
 
-A belt occupies one tile, faces one of **N / S / E / W**, and carries items in that
-direction. Crucially, every belt tile has **two lanes** — a **left** and a **right**
-lane relative to the direction of travel — and the two lanes are **fully
-independent** 1-D tracks. An item lives on exactly one lane and never changes lanes
-on a straight belt. The two-lane design is deliberate: it is where careful
-bookkeeping is required, because a belt can have one lane saturated and the other
-empty, and feeding logic (below) acts on a single lane at a time.
+A belt occupies one tile, faces north, south, east, or west, and carries items in
+that direction. Every belt tile has two lanes, left and right relative to the
+direction of travel, and the two lanes are fully independent 1-D tracks. An item
+lives on exactly one lane and never changes lanes on a straight belt.
+
+The two-lane design is where careful bookkeeping is required: a belt can have one
+lane saturated and the other empty, and feeding logic acts on a single lane at a
+time.
 
 ### The fixed-point item model
 
-Within a lane, an item's position is a single integer: its distance, in **position
-units**, from the lane's **output end** (the downstream edge of the tile, in the
-direction of travel). One tile of lane length is **`TILE` units** (a
-power-of-two constant — representatively `256`), and two constants govern movement:
+Within a lane, an item's position is a single integer: its distance, in position
+units, from the lane's output end, the downstream edge of the tile. One tile of
+lane length is `TILE` units, and two constants govern movement:
 
-- **`SPACING`** — the minimum centre-to-centre distance between two items on the
-  same lane (representatively `TILE / 4` = `64` units, i.e. four items per tile per
-  lane). Two items may never be closer than `SPACING`.
-- **`SPEED`** — how many units an unobstructed item advances per tick. Every belt
-  runs the same `SPEED` (a belt's `tier` is cosmetic), and the inserter `SWING` is
-  tied to it so an item moves at the same speed on a belt or in a claw.
+- `SPACING`, the minimum centre-to-centre distance between two items on the same
+  lane. Two items may never be closer than `SPACING`.
+- `SPEED`, how many units an unobstructed item advances per tick. A belt's `tier`
+  sets it: `slow`, `fast`, and `express` run at one, two, and three times the
+  reference speed, so a higher tier is genuinely more throughput rather than a
+  recolour. Speed is a property of the tile, so a mixed-tier line moves at mixed
+  rates. The inserter `SWING` is tied to the `fast` reference speed, so an item
+  moves at the same rate on a `fast` belt or in a claw.
 
-The authoritative constants live in the case's specs and prototype table, not here;
-what matters is that they are **integers**, so the arithmetic below is exact.
+The values live in the case's prototype table. They are integers, so the
+arithmetic below is exact.
 
 ### Movement and compaction
 
-Each tick, each lane is advanced by walking its items **from the output end
-backward** and moving each one as far forward as it can go:
+Each tick, each lane is advanced by walking its items from the output end
+backward and moving each one as far forward as it can go:
 
 ```
 new_pos = min(pos + SPEED,            // its own speed, and …
@@ -110,187 +92,191 @@ new_pos = min(pos + SPEED,            // its own speed, and …
               lane_head_limit)        // never past a blocked downstream end
 ```
 
-(`pos` is measured from the output end, so "forward" *decreases* it; the formulae
-read most naturally with that sign convention in mind — the engine's job is the
-clamp, not the algebra.) Two consequences fall straight out of this rule, and they
-are the entire compaction story:
+`pos` is measured from the output end, so moving forward decreases it. Two
+consequences fall out of this rule, and they are the whole compaction story:
 
-- A gap **larger** than `SPACING` shrinks by up to `SPEED` each tick as the trailing
-  item rolls forward, until it closes to exactly `SPACING`. Belt movement therefore
-  **compresses** a stream toward the standard spacing on its own.
-- Belt movement **can never create** a gap smaller than `SPACING`, and once a run of
-  items is packed at `SPACING` it moves forward as a rigid block. Crucially, a "run"
-  here is a whole **line of collinear belts**, not one tile: a straight line of same-
-  facing belts is advanced as **one long lane**, so a packed line reads as *frozen*
-  (its positions are constant tick to tick) and, when its front is consumed, the whole
-  line shifts one slot in a single tick — the freed space appears only at the very
-  back, never as a hole crawling backward tile by tile. This is Factorio's "**once a
-  belt compresses, it stays that way**"
-  ([FFF #176](https://www.factorio.com/blog/post/fff-176)) — and it is exactly the
-  property the efficient engine exploits (see
-  [the transport-line representation](/testing/performance/lattice/architecture/#why-this-is-a-performance-case)).
+- A gap larger than `SPACING` shrinks by up to `SPEED` each tick as the trailing
+  item rolls forward, until it closes to exactly `SPACING`. Belt movement
+  compresses a stream toward the standard spacing on its own.
+- Belt movement never creates a gap smaller than `SPACING`, and once a run of
+  items is packed at `SPACING` it moves forward as a rigid block. A run here is a
+  whole line of belts rather than one tile: a line of belts that end-feed one
+  another advances as one long lane, so a packed line's positions are constant
+  tick to tick, and when its front is consumed the whole line shifts one slot in
+  a single tick. The freed space appears at the very back. This is Factorio's
+  property that a compressed belt stays compressed, and it is what the efficient
+  engine exploits.
 
-A gap **smaller** than `SPACING` can only ever appear when something **forces** an
-item in — an inserter dropping onto the belt, a source emitting, or a belt
-**side-loading** onto another belt. Per
-[FFF #231](https://www.factorio.com/blog/post/fff-231), an item may be forced into
-any gap of **at least** `SPACING`; it may land closer than standard spacing to its
-new neighbours, and the next time the belt moves the gap re-expands to the standard
-size. A gap **smaller** than `SPACING` cannot accept a forced item at all — the
-inserter or source **stalls** and holds its item until room opens. This single rule
-— *forcing is allowed into a standard-or-larger gap and may squash temporarily; belt
-motion never makes a sub-standard gap and always relaxes back to standard* — is the
-compaction contract the model must get exactly right.
+A gap smaller than `SPACING` appears only when something forces an item in: an
+inserter dropping onto the belt, a source emitting, or a belt side-loading onto
+another belt. An item may be forced into any gap of at least `SPACING`. It may
+land closer than standard spacing to its new neighbours, and the next belt
+movement re-expands the gap to the standard size. A gap smaller than `SPACING`
+accepts no forced item, and the inserter or source stalls and holds its item
+until room opens.
 
-The bound is inclusive for a reason: the standard entry coordinate is
-`TILE - SPACING`, which on a compacted lane sits exactly `SPACING` behind the item
-ahead. An exclusive bound would refuse every such force, leaving the last slot of
-each tile permanently empty and capping a "full" belt at three items per tile.
+The bound is inclusive because the standard entry coordinate is `TILE - SPACING`,
+which on a compacted lane sits exactly `SPACING` behind the item ahead. An
+exclusive bound would refuse every such force, leaving the last slot of each tile
+permanently empty and capping a full belt at three items per tile.
 
 ### Belt-to-belt feeding
 
-How one belt hands items to the next is where the two-lane model earns its keep:
+- End-feeding, where a belt points straight into the next belt's input edge, is
+  not a hand-off. The two belts are the same run and move as one lane, so an item
+  crosses the seam by an ordinary `SPEED` step. Each lane flows into the same lane
+  of the downstream belt, so left feeds left and right feeds right.
+- Side-loading, where a belt points into the side of another belt, forces the
+  incoming items onto the single lane nearest the source of the target belt,
+  merging into that lane's flow under the forcing rule. The target belt's other
+  lane is untouched. This is the canonical way one lane of a belt is filled while
+  the other keeps flowing, and the place a naive engine most often gets compaction
+  wrong.
+- Curves, where a belt bends 90° into the belt ahead of it, are part of the run
+  rather than a hand-off, as long as that bend's only feed is the belt before it.
+  Such a pure curve carries both lanes through the turn by an ordinary `SPEED`
+  step, exactly like a straight belt, and the lane is preserved: left stays left
+  and right stays right, so the physical outer/inner side is carried across the
+  turn. The base ruleset treats the two lanes as equal length through the curve. A
+  bend that also has its own straight feed, or a second thing pointing into it, is
+  a side-load rather than a curve.
 
-- **End-feeding** (a belt pointing straight into the next belt's input edge): the two
-  belts are the same **run** and move as one lane — an item crosses the seam by an
-  ordinary `SPEED`-step, no hand-off. Each lane flows into the **same lane** of the
-  downstream belt. Left feeds left, right feeds right; the two streams stay separate.
-- **Side-loading** (a belt pointing into the *side* of another belt): the incoming
-  belt forces its items onto the **single lane nearest the source** of the target
-  belt, merging into that lane's flow under the forcing rule above. The target belt's
-  other lane is untouched. Side-loading is the canonical way one lane of a belt is
-  filled while the other keeps flowing — and the place a naive engine most often
-  gets compaction wrong.
-- **Curves** (a belt whose sole input comes from a perpendicular neighbour) remap the
-  incoming lanes onto this tile's lanes as the stream turns. In the **base** variant
-  the two lanes are treated as equal-length through the curve; Factorio's realistic
-  **inner-lane-shorter** curve geometry is a planned harder
-  [variant](#variants).
+A side-load is a cross-run forcing, and it moves the feeder's lead item only once
+it has reached that belt's output end, at most one item per tick. Otherwise it
+stays put, and the run behind it stays blocked.
 
 ## Splitters
 
-A splitter spans **two tiles** across the flow: two belt lanes-pairs in, two out. It
-exists to **balance** throughput, and in the base ruleset it does so the simple way:
+A splitter spans two tiles across the flow: up to two input belts behind it and
+two output belts ahead of it, all sharing its facing. It balances throughput:
 
-- **Every input lane with an item at its edge is moved on the same tick** — both
-  lanes of both input belts — so items arriving side by side move together rather than
-  one lane this tick and the other the next.
-- **The input lane is preserved**: an item moves across *belts*, never across *lanes*
-  — a left-lane item stays on a left lane, a right-lane item on a right lane.
-- **The output belt alternates per item type** (the Factorio splitter): each type
-  remembers which output belt its next item prefers and flips after routing one. So
-  two full input belts of different items — iron on top, copper on bottom — split so
-  **each output belt gets one iron and one copper**, not one belt all iron and the
-  other all copper.
+- Every input lane with an item at its output edge moves on the same tick, across
+  both lanes of both input belts, so items arriving side by side move together.
+- The input lane is preserved. An item moves across belts, never across lanes, so
+  a left-lane item stays on a left lane. Which output belt it goes to is the only
+  choice the splitter makes.
+- Each lane alternates its output belt, ignoring item type. The splitter keeps no
+  per-type state: per lane it remembers which output belt that lane's next item
+  prefers, whatever that item is, and flips the preference after routing one. The
+  two lanes carry independent cursors, so a lane is balanced only against the
+  corresponding lane of the other output belt, never against the other lane of its
+  own belt. The balance is by count rather than by type: two full input belts of
+  different items are split so that each output belt gets an equal share of the
+  total flow over time, though a single tick may hand one belt a row of iron and
+  the other a row of copper.
+- The two input belts are tried in an alternating order that flips every tick, so
+  neither is starved when both compete for one output lane.
 
-A splitter **breaks a transport line** — the long compressed run of belts on either
-side cannot be merged across it — which matters to the efficient representation, not
-to the rules. **Priority** and **filter** splitter modes are a planned
-[variant](#variants); the base splitter is a plain balancer.
+A base splitter holds no items between ticks. Its retained state is the per-lane
+output preference and the input-order cursor. A missing output belt is an
+unavailable destination rather than back pressure, while an output belt that
+exists and is full stalls and backs the inputs up.
+
+A splitter breaks a transport line, so the compressed runs of belt on either side
+cannot be merged across it. That matters to the efficient representation rather
+than to the rules.
 
 ## Inserters
 
-An inserter sits on a tile and moves items between the tile **behind** it (its
-**pickup**) and the tile **in front** (its **drop**), set by its facing. It is a
-**swing**, not an instant transfer, and runs as a small state machine on an integer
-timer:
+An inserter sits on a tile. Its facing sets the tile it drops onto, one step
+ahead, and the tile it picks up from, one step behind. There is one kind of
+inserter, so every inserter swings at the same rate and carries one item per
+swing. It runs as a small state machine on an integer timer:
 
-- It **picks up** one item from the pickup tile — from a belt it takes from a
-  defined lane order (the far lane first, then the near), from an assembler's output
-  buffer, or from a source — but **only when its drop target can accept that item
-  right now**. Otherwise it waits with empty claws rather than grabbing an item it
-  could not deposit, so it never hovers over a full target holding an item (except in
-  a two-inserter race for one buffer).
-- It then **swings** for a fixed `SWING` ticks, holding the item. There is one kind
-  of inserter, so this is a single constant: every inserter swings at the same rate,
-  wherever it sits and whatever belts it touches.
-- It **drops** the item onto the drop tile — onto a belt it **forces** the item onto
-  a defined lane under the compaction rule (stalling if there is no large-enough gap),
-  into an assembler's input buffer, or into a sink.
-- It then **swings back empty** over another `SWING` ticks (the `return` phase)
-  before it is idle and can grab again. The empty return costs the same time as the
-  loaded swing — the arm actually travels back rather than teleporting — so a full
-  pick-and-place cycle is `SWING` out and `SWING` back.
+- Idle. It grabs an item only when the drop target can accept that item right
+  now, so it never hovers over a full target holding an item. From a belt it takes
+  the lead item of the far lane first, then the near lane; the lanes are named
+  relative to the inserter's facing, and because it picks from the tile behind
+  itself, that far lane is the one physically closer to it, so it reaches for the
+  closer item first. From an assembler it takes one item from the output buffer;
+  from a source it takes the source's item.
+- Swing. It holds the item for `SWING` ticks and then drops it. Onto a belt it
+  forces the item onto the near lane at the standard entry coordinate, and stalls
+  if the gap is too small. Into an assembler it adds one to the input buffer when
+  the recipe consumes that item and the buffer has room. Into a sink the drop
+  always lands.
+- Return. It swings back empty over another `SWING` ticks before it is idle again,
+  so a full pick-and-place cycle is `SWING` out and `SWING` back.
 
-A base inserter carries **one item per swing** (stack inserters that grab several are
-a planned [variant](#variants)). Because the drop onto a belt is a *forced*
-insertion, inserters are one of the three things (with sources and side-loading) that
-can squash a belt — tying the inserter cadence directly to the compaction rules
-above.
+Because the drop onto a belt is a forced insertion, inserters are one of the
+three things, with sources and side-loading, that can squash a belt.
 
 ## Assemblers
 
-An assembler occupies a **3×3 block of tiles** (as in Factorio), anchored at its
-scenario `(x, y)`; inserters interact with it from any tile adjacent to that
-footprint. It crafts to a **recipe** — a set of input items with counts, one output
-item with a count, and a `CRAFT` tick cost:
+An assembler occupies a 3×3 block of tiles anchored at its scenario position, and
+inserters interact with it from any tile adjacent to that footprint. It crafts to
+a recipe: a set of input items with counts, an output item with a count, and a
+`CRAFT` tick cost.
 
-- It holds a bounded **input buffer** and **output buffer**. Inserters feed the input
-  buffer and remove from the output buffer.
-- When the input buffer holds a full set of recipe inputs **and** the output buffer
-  has room, the assembler consumes one set, counts up `CRAFT` ticks, and then deposits
-  one output set. If the output buffer is full it **pauses** rather than overflowing
-  (so a backed-up assembler stops consuming inputs, exactly as a real one does).
+It holds a bounded input buffer and output buffer, both per-item count maps.
+Inserters feed the input buffer and remove from the output buffer. When the input
+buffer holds a full set of recipe inputs and the output buffer has room for the
+output set, the assembler consumes one input set immediately, counts up `CRAFT`
+ticks, and then deposits one output set. A full output buffer pauses the
+assembler rather than overflowing it, so a backed-up assembler stops consuming
+inputs.
 
-Recipes are declared in the case's prototype table; a scenario names a recipe per
-assembler. Multi-output recipes and crafting speed modules are out of scope for the
-base case.
+Recipes are declared in the case's prototype table, and a scenario names a recipe
+per assembler.
 
 ## Sources and sinks
 
-These are the **test fixtures**, not Factorio entities — they exist so a scenario is
-self-contained and its result is observable:
+A source emits its configured item onto its configured lanes of the belt one tile
+downstream, once every configured period of ticks, and only when the target gap
+can accept a forced item. It has infinite supply and does not queue: a backed-up
+source's emission for that tick is simply not produced.
 
-- A **source** emits a configured **item** onto its output, on a configured **lane**,
-  once every configured **period** of ticks — but only when the target gap can accept
-  a forced item (it respects compaction; a backed-up source stalls and its emissions
-  are simply not produced). A source has infinite supply and is the deterministic way
-  items enter a factory.
-- A **sink** consumes **every** item that reaches it — flowed in by belt or dropped in
-  by an inserter — and **counts** it per item type. Consumed items leave the world, so
-  a sink is a perfect drain as well as the natural place to read a layout's
-  throughput.
+A sink consumes every item that reaches it, flowed in by belt or dropped in by an
+inserter, and counts it per item type. Consumed items leave the world, so a sink
+is a perfect drain and the natural place to read a layout's throughput.
 
-Because sources and sinks are deterministic and infinite, a scenario needs nothing
-outside its own blueprint to run, and "how many of item X did sink Y consume by tick
-N" is a fully-defined number — though, as below, correctness is checked on far more
-than just the sink totals.
+Because sources and sinks are deterministic and infinite, a scenario needs
+nothing outside its own blueprint to run.
 
-## What "correct" means
+## The deterministic tick order
 
-Lattice has no winner and no score *within* a scenario — it has a **right answer**.
-At each **snapshot tick** the scenario declares, the engine must produce the
-**complete canonical state** of the factory: every item's lane and position on every
-belt, every inserter's phase and held item, every assembler's buffers and craft
-progress, and every sink's running counts — all in the fixed-point, fully-specified
-[canonical form](/testing/performance/lattice/architecture/#determinism-and-the-canonical-state).
-A submission is **correct** on a scenario iff its canonical state matches the
-reference engine's at **every** snapshot, bit for bit (in practice compared by the
-state **checksum**, Factorio's own desync-detection model). A single divergent item
-position anywhere fails the scenario — there is no partial credit on correctness,
+Each tick runs six phases in this exact sequence, and within each phase entities
+are visited in scenario placement order:
+
+1. Sources emit.
+2. Inserters advance their swing state machine.
+3. Belts advance: first compact every run as one lane, carrying its pure curves
+   through with it, then force the perpendicular side-load merges across runs.
+4. Splitters balance.
+5. Assemblers craft.
+6. Sinks consume.
+
+The tick counter then increments. The simulation starts at tick 0 with an empty
+world, and a scenario's first snapshot is taken after the requested number of
+ticks have run. An engine may advance the world however efficiently it likes, as
+long as it lands on exactly the state this order produces.
+
+## The correctness criterion
+
+Lattice has one right answer per scenario. At each snapshot tick the scenario
+declares, the engine must produce the complete canonical state of the factory:
+every item's lane and position on every belt, every inserter's phase and held
+item, every assembler's buffers and craft progress, and every sink's running
+counts, all in the
+[canonical
+form](/testing/performance/lattice/architecture/#determinism-and-the-canonical-state).
+
+A submission is correct on a scenario exactly when its canonical state matches
+the reference engine's at every snapshot, compared by checksum. A single
+divergent item position anywhere fails the scenario. There is no partial credit,
 because a simulation that is subtly wrong is not the same simulation.
 
-Only once an engine is correct does its **fuel** — how much work it did to get there —
-become its result. The whole point of the case is that there is an enormous gap
-between a correct-but-naive engine and a correct-and-efficient one; that gap, and why
-it exists, is the subject of
-[Engine & contract](/testing/performance/lattice/architecture/#why-this-is-a-performance-case),
-and how fuel becomes a result is the shared
-[performance evaluation](/testing/performance/evaluation/).
+Only once an engine is correct does its fuel become its result. The gap between a
+correct-but-naive engine and a correct-and-efficient one is the subject of
+[Engine and
+contract](/testing/performance/lattice/architecture/#the-efficiency-spread),
+and how fuel becomes a result is covered in
+[Evaluation](/testing/performance/evaluation/).
 
 ## Variants
 
-As with every test type, a Lattice case offers one or more
-[variants](/testing/performance/manifests/) and exactly one runs per run — here a
-different factory **scale** or an added **rule**. Planned directions, each layered on
-the base ruleset above:
-
-- **Scale.** The same ruleset against a much larger grid and tick count, where the
-  efficiency gap between a naive and a transport-line engine is decisive rather than
-  merely visible.
-- **Realistic curves.** Factorio's inner-lane-shorter curve geometry, so a turning
-  belt's two lanes advance at different rates.
-- **Underground belts** and **long-handed inserters** — gap-spanning entities that
-  complicate the transport-line merging.
-- **Priority / filter splitters** and **stack inserters** — richer routing and
-  throughput behaviour on the existing entities.
+Exactly one [variant](/testing/performance/manifests/) runs per run. The shipped
+base variant is the ruleset above, scored against the held-out set. Further
+variants layer a different factory scale or an added rule on that ruleset:
+Factorio's inner-lane-shorter curve geometry, underground belts and long-handed
+inserters, and priority or filter splitters and stack inserters.

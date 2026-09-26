@@ -1,7 +1,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TopUpResult } from "@test-cabinet/run-record/coverage";
+import type {
+  TopUpBlocked,
+  TopUpResult,
+} from "@clockwyrks/run-record/coverage";
 import type {
   LadderCell,
   LadderClimber,
@@ -10,8 +13,8 @@ import type {
   LadderProgressRung,
   LadderRungOutcome,
   RungTally,
-} from "@test-cabinet/run-record/ladders";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record/ladders";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { BackendClient } from "../../../client/clients";
 import {
   sectionReturnTo,
@@ -24,6 +27,7 @@ import {
 import {
   ClimberRow,
   buildRungViews,
+  climberCombo,
   climberStatusLabel,
   describeLadderHalt,
   describeLadderTopUp,
@@ -162,6 +166,22 @@ function climber(over: Partial<LadderClimber> = {}): LadderClimber {
   } as LadderClimber;
 }
 
+// A gg climber: the same ladder, climbed by a saved configuration with a model bound
+// to each launch slot rather than by a harness and a model id. Its key names both,
+// because two climbers of one configuration on different models are the two arms a
+// ladder exists to separate.
+function ggClimber(over: Partial<LadderClimber> = {}): LadderClimber {
+  return climber({
+    key: "gg|saved:cfg-1|critic=haiku,primary=opus",
+    harness: "gg",
+    model: "opus",
+    ggConfigId: "saved:cfg-1",
+    ggConfigName: "reviewer",
+    ggSlotModels: { primary: "opus", critic: "haiku" },
+    ...over,
+  });
+}
+
 function progress(over: Partial<LadderProgress> = {}): LadderProgress {
   return {
     ladderId: "l1",
@@ -173,7 +193,7 @@ function progress(over: Partial<LadderProgress> = {}): LadderProgress {
     runsMissing: 4,
     runsUnreviewed: 1,
     runsOutstanding: 3,
-    bufferTarget: 10,
+    bufferTarget: { kind: "bounded", runs: 10 },
     ...over,
   };
 }
@@ -215,7 +235,7 @@ describe("climberStatusLabel", () => {
         climber({ status: "toppedOut", currentRung: undefined }),
         3,
       ),
-    ).toBe("Topped out — all 3 rungs cleared");
+    ).toBe("Topped out: all 3 rungs cleared");
   });
 });
 
@@ -272,12 +292,46 @@ describe("describeTally", () => {
   });
 });
 
+// Steering and overrides address a climber by the combination itself, so the fields
+// that make a gg climber a gg climber have to survive the round trip — otherwise a
+// hold lands on whichever climber happened to share the root model, or on none.
+describe("climberCombo", () => {
+  it("keeps a harness climber's combination to the three fields it has", () => {
+    expect(climberCombo(climber({ provider: "openrouter" }))).toEqual({
+      harness: "claude",
+      model: "opus",
+      provider: "openrouter",
+    });
+  });
+
+  it("carries a gg climber's configuration and slot models through", () => {
+    expect(climberCombo(ggClimber())).toEqual({
+      harness: "gg",
+      model: "opus",
+      ggConfigId: "saved:cfg-1",
+      ggConfigName: "reviewer",
+      ggSlotModels: { primary: "opus", critic: "haiku" },
+    });
+  });
+
+  it("leaves the gg fields off a harness climber entirely", () => {
+    expect(climberCombo(climber())).not.toHaveProperty("ggConfigId");
+    expect(climberCombo(climber())).not.toHaveProperty("ggSlotModels");
+  });
+});
+
 // Every top-up outcome has to read differently, and a ladder has one a plan does not:
 // nothing to enqueue because every climber has stopped, which is an answer rather than
 // a satisfied target.
 describe("describeLadderTopUp", () => {
   function result(over: Partial<TopUpResult> = {}): TopUpResult {
-    return { bufferTarget: 5, enqueued: 0, cells: [], ...over };
+    return {
+      bufferTarget: { kind: "bounded", runs: 5 },
+      enqueued: 0,
+      cells: [],
+      unlaunchable: [],
+      ...over,
+    };
   }
 
   it("names a disabled ladder as disabled rather than as idle", () => {
@@ -306,11 +360,48 @@ describe("describeLadderTopUp", () => {
 
   it("tells a full buffer apart from a ladder that has finished climbing", () => {
     expect(
-      describeLadderTopUp(result({ outstanding: 5, bufferTarget: 5 })),
+      describeLadderTopUp(
+        result({ outstanding: 5, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
     ).toMatch(/buffer is full/i);
     expect(
-      describeLadderTopUp(result({ outstanding: 1, bufferTarget: 5 })),
+      describeLadderTopUp(
+        result({ outstanding: 900, bufferTarget: { kind: "unbounded" } }),
+      ),
+    ).not.toMatch(/buffer is full/i);
+    expect(
+      describeLadderTopUp(
+        result({ outstanding: 1, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
     ).toMatch(/walled, held, or topped out/i);
+  });
+
+  it("reports the climbers it could not launch beside the ones it did", () => {
+    const message = describeLadderTopUp(
+      result({
+        enqueued: 3,
+        cells: [{ runs: 3 }] as TopUpResult["cells"],
+        unlaunchable: [
+          { reason: "gg configuration `reviewer` no longer exists" },
+        ] as TopUpBlocked[],
+      }),
+    );
+    expect(message).toMatch(/Enqueued 3 runs/);
+    expect(message).toMatch(/1 cell could not be launched/);
+  });
+
+  it("does not call a ladder finished when its shortfall is unlaunchable", () => {
+    const message = describeLadderTopUp(
+      result({
+        outstanding: 1,
+        bufferTarget: { kind: "bounded", runs: 5 },
+        unlaunchable: [
+          { reason: "launch slot `critic` is unbound" },
+        ] as TopUpBlocked[],
+      }),
+    );
+    expect(message).not.toMatch(/walled, held, or topped out/i);
+    expect(message).toMatch(/unlaunchable/i);
   });
 });
 
@@ -319,10 +410,10 @@ describe("describeLadderTopUp", () => {
 describe("describeLadderHalt", () => {
   it("reports the count and the scope", () => {
     expect(describeLadderHalt({ canceled: 4, includedActive: false })).toMatch(
-      /canceled 4 jobs that had not started/,
+      /canceled 4 jobs that had not started/i,
     );
     expect(describeLadderHalt({ canceled: 1, includedActive: true })).toMatch(
-      /canceled 1 job including runs already executing/,
+      /canceled 1 job including runs already executing/i,
     );
   });
 
@@ -333,15 +424,10 @@ describe("describeLadderHalt", () => {
   });
 });
 
-// An idle ladder is either disabled, waiting on the reviewer, or finished — and the
-// last of those is a result, not a fault.
+// An idle ladder is either waiting on the reviewer or finished — and the last of
+// those is a result, not a fault. Being disabled is the Enabled switch's to show,
+// and the note never repeats it.
 describe("ladderStatusNote", () => {
-  it("explains being disabled before anything else", () => {
-    const note = ladderStatusNote(progress(), true);
-    expect(note).toMatch(/disabled/i);
-    expect(note).toMatch(/already queued is untouched/i);
-  });
-
   it("reads a board with nobody climbing as an answer, not a stall", () => {
     const note = ladderStatusNote(
       progress({
@@ -352,7 +438,6 @@ describe("ladderStatusNote", () => {
         climbersWalled: 1,
         climbersToppedOut: 1,
       }),
-      false,
     );
     expect(note).toMatch(/nobody is climbing/i);
     expect(note).toMatch(/answered its question/i);
@@ -360,15 +445,59 @@ describe("ladderStatusNote", () => {
 
   it("explains a full review buffer as waiting on you", () => {
     const note = ladderStatusNote(
-      progress({ runsOutstanding: 5, bufferTarget: 5 }),
-      false,
+      progress({
+        runsOutstanding: 5,
+        bufferTarget: { kind: "bounded", runs: 5 },
+      }),
     );
     expect(note).toMatch(/5 of 5/);
     expect(note).toMatch(/your review/i);
   });
 
+  it("never says an unbounded ladder is waiting on you", () => {
+    const note = ladderStatusNote(
+      progress({ runsOutstanding: 50, bufferTarget: { kind: "unbounded" } }),
+    );
+    expect(note ?? "").not.toMatch(/waiting on you/i);
+  });
+
   it("stays quiet when the ladder is simply climbing", () => {
-    expect(ladderStatusNote(progress(), false)).toBeNull();
+    expect(ladderStatusNote(progress())).toBeNull();
+  });
+
+  // A climber whose configuration was deleted keeps its rung and its "climbing"
+  // status for as long as anybody leaves it there — nothing about the ladder's own
+  // counts ever changes — so the board is silent about the one arm that will never
+  // move again unless the note says so.
+  it("counts the climbers nothing can launch on an otherwise busy ladder", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          climber(),
+          ggClimber({
+            key: "gg|saved:gone|primary=opus",
+            unlaunchable: "that gg configuration is no longer on your account",
+          }),
+        ],
+      }),
+    );
+    expect(note).toMatch(/1 climber cannot be launched at all/);
+    expect(note).toMatch(/reason is on each row/i);
+  });
+
+  it("adds the blocked count to whatever else the ladder is doing, never instead of it", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          ggClimber({ unlaunchable: "launch slot `critic` is unbound" }),
+          ggClimber({
+            key: "gg|saved:cfg-2|primary=opus",
+            unlaunchable: "launch slot `critic` is unbound",
+          }),
+        ],
+      }),
+    );
+    expect(note).toMatch(/2 climbers cannot be launched at all/);
   });
 });
 
@@ -408,6 +537,54 @@ describe("ClimberRow", () => {
     expect(screen.queryByText(/1 of 2 judged/)).toBeNull();
   });
 
+  it("heads a gg climber with its configuration and the models it binds", () => {
+    renderRow(ggClimber());
+    // Not "gg · opus": two climbers of two configurations can share a root model, and
+    // the board exists to tell them apart at a glance.
+    expect(screen.getByText("reviewer · haiku, opus")).toBeTruthy();
+    // The steering controls name the same thing, so a screen reader is never offered
+    // two identical buttons.
+    expect(
+      screen.getByRole("button", { name: /^Watch reviewer · haiku, opus$/ }),
+    ).toBeTruthy();
+  });
+
+  // The state this row is worst at showing: a climber that cannot enqueue looks
+  // exactly like one waiting on capacity, and it will keep looking like one forever.
+  it("says why a blocked climber will never move, without being expanded", () => {
+    renderRow(
+      ggClimber({
+        unlaunchable: "that gg configuration is no longer on your account",
+      }),
+    );
+    // The status is still "climbing" — which is why the treatment is keyed off the
+    // reason and not off the status.
+    expect(screen.getByText("Blocked")).toBeTruthy();
+    expect(
+      screen.getByText("that gg configuration is no longer on your account"),
+    ).toBeTruthy();
+  });
+
+  it("keeps the reason on a climber that has no current rung to hang it on", () => {
+    renderRow(
+      ggClimber({
+        status: "toppedOut",
+        currentRung: undefined,
+        unlaunchable: "launch slot `critic` is unbound",
+      }),
+    );
+    expect(screen.getByText("Blocked")).toBeTruthy();
+    expect(screen.getByText("launch slot `critic` is unbound")).toBeTruthy();
+    // And the state it is actually in is still said, because being blocked is a
+    // fault in the membership rather than a sixth thing the climb can be doing.
+    expect(screen.getByText(/Topped out/)).toBeTruthy();
+  });
+
+  it("says nothing about blocking on a climber that can launch", () => {
+    renderRow();
+    expect(screen.queryByText("Blocked")).toBeNull();
+  });
+
   it("expands to the per-rung verdicts and their evidence", () => {
     renderRow();
     fireEvent.click(screen.getByRole("button", { expanded: false }));
@@ -417,6 +594,18 @@ describe("ClimberRow", () => {
     // A rung above the climber is still listed — the rungs ahead are what the climb
     // is for.
     expect(screen.getByText("not reached")).toBeTruthy();
+  });
+
+  it("names a rung's engine, so one case climbed on two is two rows", () => {
+    renderRow({}, [
+      rung(0, { engine: "simple-2d" }),
+      rung(1, { slug: "case-0" }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Case 0 · base · v1.0.0 · Simple 2D")).toBeTruthy();
+    // The engineless rung reads exactly as it always did: every pin has an engine, so
+    // naming `none` would add a word to every rung and distinguish nothing.
+    expect(screen.getByText("Case 0 · base · v1.0.0")).toBeTruthy();
   });
 
   it("lists a reached rung's own runs inline, for that combination at the pinned version", async () => {
@@ -446,6 +635,48 @@ describe("ClimberRow", () => {
       expect(
         screen.getByRole("link", { name: /run-1|Case 0|opus/i }),
       ).toBeTruthy(),
+    );
+  });
+
+  it("narrows a gg climber's rung runs to its configuration", () => {
+    // Harness and model alone say nothing here: every gg climber on this model runs
+    // the `gg` harness, so a rung listing without the configuration would show the
+    // runs of every arm and disagree with the verdict printed above it.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow(ggClimber(), undefined, query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        harness: "gg",
+        // The bare id the run records, not the picker's `saved:` spelling.
+        ggConfigId: "cfg-1",
+      }),
+    );
+  });
+
+  it("narrows a rung's runs to the rung's own engine", () => {
+    // Two rungs of one case on two engines are two cells, and the gate counts its
+    // evidence through the engine segment. A listing without it shows the other
+    // rung's runs as the argument behind this rung's verdict.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow({}, [rung(0, { engine: "simple-2d" }), rung(1)], query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "simple-2d" }),
+    );
+  });
+
+  it("asks for the engineless runs of a rung that pins no engine", () => {
+    // Absent and `none` are one pin, so the listing names the engineless run rather
+    // than leaving the filter off and picking up every engine's runs.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow({}, undefined, query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "none" }),
     );
   });
 
@@ -531,7 +762,9 @@ describe("ClimberRow", () => {
 
   it("toggles the focus flag from the star", () => {
     const { onSteer } = renderRow();
-    fireEvent.click(screen.getByRole("button", { name: /^Watch opus$/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Watch claude · opus$/ }),
+    );
     expect(onSteer).toHaveBeenCalledWith(expect.anything(), { focused: true });
   });
 
@@ -616,7 +849,12 @@ describe("topUpLaddersAfterReview", () => {
       listLadders: async () => ladders,
       topUpLadder: async (id: string) => {
         topUp(id);
-        return { bufferTarget: 5, enqueued: 2, cells: [] } as TopUpResult;
+        return {
+          bufferTarget: { kind: "bounded", runs: 5 },
+          enqueued: 2,
+          cells: [],
+          unlaunchable: [],
+        } as TopUpResult;
       },
     } as unknown as BackendClient;
   }

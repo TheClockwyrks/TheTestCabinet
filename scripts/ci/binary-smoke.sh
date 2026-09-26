@@ -1,48 +1,35 @@
 #!/usr/bin/env bash
-# Builds the `tcab` CLI in release mode — the exact profile shipped to users —
-# runs its tests, and smoke-checks the produced binary. This is the gate that
-# keeps a release from ever publishing a binary that fails to build, link, or
-# even start.
+# Smoke-checks the release `tcab` binary scripts/ci/release-build.sh produced: the
+# last step of the pipeline's binary jobs, on Linux and Windows, and the one that
+# keeps a release from ever publishing a binary that fails to start. On a release
+# tag the pipeline publishes this very binary, so CI and release validate it
+# identically.
 #
-# It runs on every target platform so a platform-specific break is caught before
-# release: Azure DevOps runs it on Linux and Windows; GitHub runs it on macOS
-# (Azure has no macOS agents). The checks are deliberately dependency-free — no
-# container runtime, run-container image, or API keys — so they validate the binary
-# itself, reliably, on any agent. The cross-platform runtime surface
-# (`host_path`, work-dir resolution, runtime detection) is covered by the unit
-# tests this also runs on each platform.
+# The checks are deliberately dependency-free (no container runtime, run-container
+# image or API keys), so they validate the binary itself, reliably, on any agent.
 #
 # Critical validation: a failure here means the shipping binary is broken.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-# Release-mode test + build in one compile. Tests run optimized (the shipped
-# profile) and the build then produces the binary from the same artifacts. Tests
-# run with cargo-nextest (the repo's runner; see .config/nextest.toml), installed
-# by scripts/ci/install-nextest.sh; doctests, which nextest does not run, follow
-# on `cargo test --doc`.
-log "cargo nextest run --release (core + CLI)"
-cargo nextest run --release --locked -p test-cabinet-core -p test-cabinet-cli
-
-log "cargo test --release --doc (core + CLI)"
-cargo test --release --locked -p test-cabinet-core -p test-cabinet-cli --doc
-
-log "cargo build --release (tcab)"
-cargo build --release --locked -p test-cabinet-cli
-
-# Resolve the produced binary; it carries a .exe suffix on Windows.
-bin="target/release/tcab"
+# Resolve the produced binary. Cargo writes it under the *configured* target
+# directory, which is `target/` on the CI agents but is redirected by
+# `CARGO_TARGET_DIR` in the devcontainer (a shared, cached volume outside the
+# workspace), so hardcoding `target/` would make this gate unrunnable in the very
+# environment a developer would reach for to reproduce a CI failure.
+# `scripts/build-gg-static.sh` resolves its artifact the same way. The binary
+# carries a .exe suffix on Windows.
+target_dir="${CARGO_TARGET_DIR:-target}"
+bin="$target_dir/release/tcab"
 if [[ ! -x "$bin" && -x "$bin.exe" ]]; then
 	bin="$bin.exe"
 fi
 if [[ ! -x "$bin" ]]; then
-	echo "expected a tcab binary under target/release/ but found none" >&2
+	echo "expected a tcab binary under $target_dir/release/ but found none; run scripts/ci/release-build.sh first" >&2
 	exit 1
 fi
 
-# Run the shared smoke check — the same one the release pipeline runs on each
-# shipped artifact — so CI and release validate the binary identically.
 log "smoke: $bin"
 ./scripts/ci/smoke-binary.sh "$bin"
 

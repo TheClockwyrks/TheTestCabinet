@@ -81,7 +81,14 @@ type GoalTest = (x: number, y: number) => boolean;
 
 // Core A*. `goal` decides which tile ends the search; (gx, gy) anchors the heuristic (the
 // nominal target). Returns the step sequence after `from`, or null if no goal is reachable.
-function astar(world: World, from: PathNode, goal: GoalTest, gx: number, gy: number, forRaider: boolean): PathNode[] | null {
+function astar(
+  world: World,
+  from: PathNode,
+  goal: GoalTest,
+  gx: number,
+  gy: number,
+  forRaider: boolean,
+): PathNode[] | null {
   const start = from.ty * COLS + from.tx;
   if (goal(from.tx, from.ty)) return [];
   const came = new Map<number, number>();
@@ -104,7 +111,13 @@ function astar(world: World, from: PathNode, goal: GoalTest, gx: number, gy: num
       const ny = cy + dy;
       if (!world.passable(nx, ny, forRaider)) continue;
       // no corner-cutting: a diagonal step needs both flanking orthogonal tiles open
-      if (dx !== 0 && dy !== 0 && (!world.passable(cx + dx, cy, forRaider) || !world.passable(cx, cy + dy, forRaider))) continue;
+      if (
+        dx !== 0 &&
+        dy !== 0 &&
+        (!world.passable(cx + dx, cy, forRaider) ||
+          !world.passable(cx, cy + dy, forRaider))
+      )
+        continue;
       const nid = ny * COLS + nx;
       if (closed.has(nid)) continue;
       const ng = cg + cost;
@@ -131,24 +144,50 @@ function reconstruct(came: Map<number, number>, goal: number): PathNode[] {
 }
 
 // Path to a specific walkable tile (the tile itself must be passable). Steps after `from`.
-export function findPath(world: World, from: PathNode, to: PathNode, forRaider = false): PathNode[] | null {
+export function findPath(
+  world: World,
+  from: PathNode,
+  to: PathNode,
+  forRaider = false,
+): PathNode[] | null {
   if (!world.passable(to.tx, to.ty, forRaider)) return null;
-  return astar(world, from, (x, y) => x === to.tx && y === to.ty, to.tx, to.ty, forRaider);
+  return astar(
+    world,
+    from,
+    (x, y) => x === to.tx && y === to.ty,
+    to.tx,
+    to.ty,
+    forRaider,
+  );
 }
 
 // Path to the nearest reachable tile adjacent to (or on) a work tile — the walk target for a
 // chop/mine/build/cook/farm/tend that the settler cannot stand ON (a node/wall blocks it).
 // If the work tile is itself walkable (a drop pile, a floor ghost), standing on it counts.
-export function reachableAdjacent(world: World, from: PathNode, work: PathNode, forRaider = false): PathNode[] | null {
+export function reachableAdjacent(
+  world: World,
+  from: PathNode,
+  work: PathNode,
+  forRaider = false,
+): PathNode[] | null {
   const onWork = world.passable(work.tx, work.ty, forRaider);
   const goal: GoalTest = (x, y) => {
     if (x === work.tx && y === work.ty) return onWork;
-    return Math.abs(x - work.tx) <= 1 && Math.abs(y - work.ty) <= 1 && world.passable(x, y, forRaider);
+    return (
+      Math.abs(x - work.tx) <= 1 &&
+      Math.abs(y - work.ty) <= 1 &&
+      world.passable(x, y, forRaider)
+    );
   };
   return astar(world, from, goal, work.tx, work.ty, forRaider);
 }
 
-export function isReachable(world: World, from: PathNode, to: PathNode, forRaider = false): boolean {
+export function isReachable(
+  world: World,
+  from: PathNode,
+  to: PathNode,
+  forRaider = false,
+): boolean {
   return findPath(world, from, to, forRaider) !== null;
 }
 

@@ -6,12 +6,12 @@ import type {
   BackendStatus,
   WorkerHandle,
   WorkersContextValue,
-} from "@test-cabinet/ui/client";
+} from "@clockwyrks/ui/client";
 import {
   createBackendExec,
   createHttpBackend,
   fetchArtifactsUrl,
-} from "@test-cabinet/ui/transport";
+} from "@clockwyrks/ui/transport";
 
 const BACKEND_KEY = "tcab.web.backendUrl";
 
@@ -143,10 +143,6 @@ export function useExecConnection(
       id: "backend",
       label: "Backend",
       url: backendUrl,
-      // Not the desktop's in-process local core — this drives runs over HTTP — so
-      // the editor offers the split push/review/publish web flow (push is a no-op
-      // here; the driver already pushed the record).
-      local: false,
       client: createBackendExec(backendUrl, authUrl, {
         current: artifactsUrl,
         settled: artifactsSettled,

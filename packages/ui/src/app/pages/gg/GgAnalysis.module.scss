@@ -1,0 +1,189 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+@use "../../styles/surfaces" as s;
+
+// The gg analysis section's styles: the aggregate query builder's panels and
+// clause rows, its results table, and the dashboard's stat tiles. Everything else
+// reuses the shared run-execution field/select/input/button styles
+// (`../runs/RunExec.module.scss`) and the shared widget primitives.
+
+// One builder section (query / facet filters / metric filters / group-by /
+// metrics) as its own panel, stacked down the page.
+.builderPanel {
+  margin-bottom: t.$space-md;
+}
+
+.builderHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.builderTitle {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// One clause of the builder — a facet/metric picker, an operator, a value, and a
+// remove control — laid out inline and wrapping when cramped.
+.clauseRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+  padding: t.$space-xs 0;
+
+  select,
+  input {
+    flex: 0 1 auto;
+    min-width: 7rem;
+  }
+}
+
+.clauseValueMuted {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  font-style: italic;
+}
+
+.clauseRemove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  font-size: t.$font-md;
+  line-height: 1;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+
+  &:hover {
+    color: t.$color-negative;
+  }
+}
+
+// The results page's controls row (the link back to the builder).
+.resultsNav {
+  margin-bottom: t.$space-md;
+}
+
+// The matched-runs/bucket-count line, sitting in its own panel above the figures.
+.resultsSummary {
+  margin-bottom: t.$space-lg;
+}
+
+.resultsTotal {
+  margin: 0;
+  color: t.$color-text;
+}
+
+// A page's widgets stack one per row so each chart gets the full content width.
+.widgets {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.totalRuns {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin-bottom: t.$space-md;
+}
+
+// The bucket table scrolls horizontally inside its own container so a wide result
+// (many group-by columns + metrics) never forces the page body to scroll.
+.tableWrap {
+  overflow-x: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+
+  th,
+  td {
+    padding: t.$space-xs t.$space-sm;
+    text-align: left;
+    border-bottom: t.$border-hairline solid t.$color-border;
+    white-space: nowrap;
+  }
+
+  thead th {
+    color: t.$color-text-muted;
+    font-weight: 600;
+    background: t.$color-surface-2;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+// Numeric columns right-align so magnitudes line up.
+.numCol {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+// An absent facet value or metric — dimmed so it never reads as a real 0.
+.absent {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// The "k of n contributed" note beside a partially-populated metric.
+.contrib {
+  color: t.$color-text-muted;
+  font-size: 0.85em;
+}
+
+.stateCell {
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// --- Dashboard ------------------------------------------------------------------
+
+// The headline figures as a responsive grid of tiles: each is one aggregated
+// number over every recorded session, big enough to read at a glance with its
+// name underneath.
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+.statTile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+.statValue {
+  color: t.$color-accent;
+  font-family: var(--ttc-display);
+  font-size: t.$font-xl;
+  @include h.halo-glow;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}

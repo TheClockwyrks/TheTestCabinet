@@ -1,0 +1,3549 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// Shared styling for the gg monitor's Phase-1 panels (context / tasks / skills /
+// memories). These are Stage-1 stubs — a tidy list/meter each — so the styling is
+// deliberately restrained; the richer visuals (the stacked context graph, the
+// blocked-by DAG) land in later stages. Everything reads the shared `--tcab-*`
+// token contract so it is theme-aware (the console has light and dark).
+
+// A generic vertical stack used inside a panel: a caption over a list.
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.caption {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+// The tidy empty state shown when a capability produced no events.
+.empty {
+  padding: t.$space-lg;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
+// --- Context breakdown -------------------------------------------------------
+
+// The window's fullness — the signal compaction acts on — now reads on the agent's
+// Overview as a ring folded into the identity header (see `ContextUsageRing` in
+// GgOverviewWidgets), so this panel keeps only the composition story below.
+
+.sourceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.sourceRow {
+  display: grid;
+  grid-template-columns: 0.9rem 1fr auto 3rem;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs 0;
+}
+
+// The eleven fixed context sources get a stable categorical color, keyed to the
+// band's POSITION in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
+// later stacked graph so a source reads as the same hue everywhere. Accessible,
+// spaced-out hues that hold up in both themes.
+//
+// This map is keyed by index and nothing type-checks it against the band list, so
+// it is the one table in the context panels that fails SILENTLY: a band inserted
+// anywhere but the end shifts every later index and every later swatch quietly
+// takes its neighbour's hue. Whenever `GgContextSource::ALL` gains a variant, walk
+// this whole map against `CONTEXT_SOURCE_COLORS` in the same commit — do not append.
+// (Index 5, `text_view`, arrived that way, shifting the bands below it down one;
+// indices 4 and 5, the two responses-as-code error bands, arrived together and
+// shifted the six bands from `file_view` on down by two; the `board` band left when
+// the board went tools-only and shifted `history` up one.)
+// 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 compiler_error ·
+// 5 runtime_error · 6 file_view · 7 text_view · 8 docs_view · 9 search_results ·
+// 10 skill · 11 memory · 12 task_list · 13 history
+// (`docs_view` split out of `skill` and shifted the five bands from `skill` on down by one.)
+$context-palette: (
+  0: #6ea8fe,
+  1: #ffca3a,
+  2: #8ac926,
+  3: #ff924c,
+  4: #765a72,
+  5: #ba04b5,
+  6: #4cc9c0,
+  7: #4361ee,
+  8: #5c8c00,
+  9: #bc0848,
+  10: #c77dff,
+  11: #ff6b9d,
+  12: #b5e48c,
+  13: #9aa5b1,
+);
+
+.swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: t.$radius-sm;
+  display: inline-block;
+
+  @each $i, $color in $context-palette {
+    &[data-source-index="#{$i}"] {
+      background: $color;
+    }
+  }
+}
+
+.sourceName {
+  color: t.$color-text;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourceTokens {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.sourcePct {
+  color: t.$color-text-muted;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Compaction boundaries ---------------------------------------------------
+
+// The list of compaction boundaries beneath the context graph: each a summarize-
+// and-drop of the window, with the pinned state it carried across verbatim. Keyed
+// to the graph's vertical markers (same accent) so the marker and its explanation
+// read as one.
+.boundaryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.boundaryRow {
+  display: flex;
+  align-items: stretch;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+// A short vertical rule echoing the graph's dashed compaction marker (same accent).
+.boundaryTick {
+  flex: 0 0 auto;
+  width: 2px;
+  border-radius: 1px;
+  background: t.$color-accent-2;
+}
+
+.boundaryText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.boundaryHead {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.boundaryRetained {
+  color: t.$color-text-muted;
+}
+
+// The reassurance line on the Tasks / Knowledge tabs: the retention contract kept
+// this state across a compaction, so it never blanked out.
+.retainedNote {
+  margin: t.$space-2xs 0 t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border-left: 2px solid t.$color-accent-2;
+  padding-left: t.$space-sm;
+}
+
+// --- Compaction view (per-agent) ---------------------------------------------
+//
+// The per-agent Compaction file: one card per boundary detailing what a
+// summarize-and-restart did — the strategy that produced it, the reclaim, the
+// before/after per-source composition, and the summary text itself — so the
+// strategies can be compared by reading what each retained.
+.compactionList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.compactionCard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-left: 2px solid t.$color-accent-2;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.compactionHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.compactionTurn {
+  font-weight: 700;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+// The strategy pill: which summarizer produced this boundary. Keyed to its own
+// fixed hue so it reads as a labelled mode, not a status.
+.strategyBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem t.$space-xs;
+  border-radius: 9999px;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-accent 18%, transparent);
+}
+
+.compactionTrigger {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.compactionReclaim {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.compactionReclaimPct {
+  color: t.$color-text-muted;
+}
+
+.compactionRetained {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The before/after composition: two labelled horizontal stacked bars, so the
+// ephemeral bands collapsing into the summary reads at a glance.
+.compBars {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.compBarRow {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.compBarLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.compBar {
+  display: flex;
+  height: 0.6rem;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: color-mix(in srgb, t.$color-border 40%, transparent);
+}
+
+.compBarSeg {
+  height: 100%;
+
+  &:first-child {
+    border-top-left-radius: 9999px;
+    border-bottom-left-radius: 9999px;
+  }
+  &:last-child {
+    border-top-right-radius: 9999px;
+    border-bottom-right-radius: 9999px;
+  }
+}
+
+// The summary text the strategy produced — the heart of the view, wrapped and
+// scrollable so a long recap never blows out the card. `pre-wrap` keeps the
+// structured strategy's section line breaks.
+.summaryLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.summaryText {
+  margin: 0;
+  padding: t.$space-sm;
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, t.$color-border 18%, transparent);
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  max-height: 24rem;
+}
+
+// The warning shown when a summarization call failed and the summary degraded to
+// gg's fixed fallback note — a real gap in the retained state, not a recap.
+.summaryFallback {
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+  font-weight: 600;
+}
+
+// --- Tasks -------------------------------------------------------------------
+
+// The blocked-by DAG is shown as a dependency-aware grouping: tasks bucketed by
+// their live state (in progress / ready / blocked / done), each bucket a titled
+// section over its list.
+.taskGroups {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.taskGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.taskGroupHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin: 0;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.taskGroupCount {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: 9999px;
+  padding: 0 t.$space-xs;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.taskList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.taskRow {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: t.$space-sm;
+  align-items: start;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.taskBadge {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  // The one being worked now stands out as a filled accent chip; the rest are
+  // outline chips tinted by state.
+  &[data-task-state="active"] {
+    color: t.$color-bg;
+    background: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+  &[data-task-state="ready"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+  &[data-task-state="blocked"] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+  &[data-task-state="done"] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+  // A terminally failed issue — its assigned agent exhausted its retries — reads in
+  // the negative tone so it is distinct from an in-flight or blocked one.
+  &[data-task-state="failed"] {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+}
+
+.taskBody {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.taskHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.taskTitle {
+  color: t.$color-text;
+  word-break: break-word;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+}
+
+.taskId {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
+.taskDesc {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+// The blocked-by edges of a task, as a label over named blocker chips.
+.taskBlockers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+}
+
+.taskBlockersLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.taskBlockerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+// One blocker edge: an outstanding blocker reads warm (the reason a task waits); a
+// satisfied one reads muted with its check.
+.taskBlocker {
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent-2 60%, transparent);
+  color: t.$color-accent-2;
+  word-break: break-word;
+
+  &[data-done] {
+    border-color: color-mix(in srgb, t.$color-border 60%, transparent);
+    color: t.$color-text-muted;
+  }
+}
+
+// --- Board (epics / issues) --------------------------------------------------
+
+// The epic/issue board: the heavyweight work tier above the tasks list. Epics are
+// titled sections, each over its issues; the issues reuse the tasks palette (the
+// readiness chip and blocked-by edges) so the two work tiers read consistently,
+// and add a status badge and an expandable structured brief.
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.epic {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.epicHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  margin: 0;
+}
+
+.epicTitle {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+// The epic's done/total issue tally — its progress read from the issues under it,
+// since an epic carries no status of its own.
+.epicCount {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: 9999px;
+  padding: 0 t.$space-xs;
+}
+
+.epicDesc {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+.epicEmpty {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One issue: a readiness-chip column beside the issue body, mirroring `.taskRow`.
+.issueRow {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: t.$space-sm;
+  align-items: start;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.issueBody {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.issueHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.issueTitle {
+  color: t.$color-text;
+  font-weight: 600;
+  word-break: break-word;
+  margin-right: auto;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+}
+
+// The badge an issue shows — the ONE badge, since its state folds its status together
+// with whether its blockers are clear (see `IssueViews`). Not-yet-started reads muted
+// (blocked warm, since a blocker is the reason it cannot start), work in flight reads
+// accent, an accepted issue positive, and a failed one negative.
+.statusBadge {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-issue-state="blocked"] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+  &[data-issue-state="in_progress"],
+  &[data-issue-state="in_review"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+  &[data-issue-state="approved"] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+  &[data-issue-state="failed"] {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+}
+
+.issueId {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
+// An epic's or issue's description. The board's prose is the model's own Markdown, so it
+// is rendered through the shared <Markdown> primitive — which owns the text color, and
+// carries this class alongside its own, so only the size and wrapping are set here.
+.issueDesc {
+  font-size: t.$font-sm;
+  word-break: break-word;
+}
+
+// The actionable items a review round's `changes_requested` returned — what the issue's
+// own agent must address before re-review. A warm rule reads them as the gate's
+// remaining work, in the same tone the tree's changes-requested dot carries.
+.reviewItems {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  margin-top: t.$space-2xs;
+  border-left: 2px solid t.$color-accent-2;
+  padding-left: t.$space-sm;
+}
+
+.reviewItemsLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent-2;
+}
+
+.reviewItemList {
+  list-style: disc;
+  margin: 0;
+  padding-left: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reviewItem {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+// The structured brief in a collapsed disclosure: scope boundaries and completion
+// criteria, available on demand so the board stays scannable.
+.brief {
+  margin-top: t.$space-2xs;
+  font-size: t.$font-sm;
+}
+
+.briefSummary {
+  cursor: pointer;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  width: fit-content;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.briefGrid {
+  margin: t.$space-xs 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.briefField {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.briefLabel {
+  margin: 0;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+// The body of one brief field. No `white-space: pre-wrap`: the body is rendered as
+// Markdown, so the renderer decides what a line break means, not the CSS.
+.briefText {
+  margin: 0;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+// --- Project explorer (the run-global board detail pane) ---------------------
+
+// The detail pane content for one selected epic or issue: a stack of the header, an
+// optional description, its meta rows, blockers, review items, and the brief.
+.projDetail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.projDetailHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.projDetailTitle {
+  margin: 0;
+  margin-right: auto;
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+  word-break: break-word;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+  &[data-status="failed"] {
+    color: t.$color-negative;
+  }
+}
+
+// An epic's issue tally by status — a row of the same status badges the issue detail
+// carries, so the epic reads its progress in the same vocabulary.
+.projStatusSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+// The issue's meta rows (assigned agent, retries) as a compact label/value list.
+.projMeta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.projMetaRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+.projMetaLabel {
+  flex: 0 0 auto;
+  width: 8rem;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+// The wider label a review round's reviewer rows use: "Changes requested by" does not fit
+// the width an issue's one-word meta labels are sized to, and letting it wrap onto a
+// second line pulled the row apart.
+.projMetaLabelWide {
+  width: 11rem;
+  white-space: nowrap;
+}
+
+.projMetaValue {
+  margin: 0;
+  min-width: 0;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+// The assigned-agent link — a plain button that reads as a link into the Agents
+// explorer, so clicking an issue's agent jumps to that agent's files.
+.projAgentLink {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: monospace;
+  color: t.$color-accent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: t.$color-text;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// --- Skills / memories (Knowledge) -------------------------------------------
+
+// The memory budget meters: how close the model's self-curated notes are to gg's
+// caps (count and total length), warming as they fill so a near-full budget — the
+// point the model must revise or evict rather than accrue — reads at a glance.
+.capMeters {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.capMeter {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.capMeterHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.capMeterLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.capMeterValue {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.capMeterBar {
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+}
+
+.capMeterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+  transition: width 200ms ease;
+
+  &[data-level="mid"] {
+    background: t.$color-accent;
+  }
+  &[data-level="high"] {
+    background: t.$color-accent-2;
+  }
+}
+
+.knowledgeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.knowledgeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.knowledgeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.knowledgeName {
+  color: t.$color-text;
+  font-weight: 600;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.knowledgeBadge {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+
+  // Skills use the badge as a read/unread cue; `data-read` marks the read state.
+  &[data-read] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+
+  // Memories use the badge for len/cap; `data-over` warns when a note is at its
+  // per-memory cap and must be trimmed.
+  &[data-over] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+}
+
+.knowledgeDesc {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+// --- Memories: the revision record -------------------------------------------
+//
+// The size treemap above it is the shared `Treemap` primitive, so its styling lives with
+// the primitive (`primitives/plot/Treemap.module.scss`) rather than here.
+//
+// The now/peak figures are the shared module figure row (`.modStats` below, via
+// `ModuleStats`) rather than tiles of their own: a memory store's totals are the same
+// class of fact as a window's turns or an archive's entries, and three shapes for one
+// class of fact read as three classes.
+
+// A deleted memory's row is dimmed but never hidden — it is part of the record of
+// what the model did, and the reason this panel exists at all.
+.knowledgeRow[data-deleted] {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.memoryDeletedTag {
+  margin-left: t.$space-xs;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+  font-weight: 500;
+}
+
+// A memory this agent holds but did not write — only possible on a linked instance,
+// and the reason such a row carries no revision history of its own.
+.memoryForeignTag {
+  margin-left: t.$space-xs;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid var(--ttc-event-orchestration);
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--ttc-event-orchestration);
+  font-weight: 500;
+}
+
+// How this agent holds its memory instance, when it holds it with anyone else: the
+// scope it bound under, and — for a read-only inherited handle — that it may not write.
+// Absent entirely for an isolated instance, which is what memory has always been.
+.memoryScope {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-2xs t.$space-xs;
+}
+
+.memoryScopeBadge {
+  padding: 0 t.$space-2xs;
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: t.$color-text-muted;
+
+  &[data-readonly] {
+    border-color: t.$color-warning;
+    color: t.$color-warning;
+  }
+}
+
+.memoryScopeNote {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The per-memory revision history, collapsed by default.
+.memoryHistory {
+  margin-top: t.$space-2xs;
+}
+
+.memoryHistorySummary {
+  cursor: pointer;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  list-style-position: outside;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.memoryRevisions {
+  list-style: none;
+  margin: t.$space-xs 0 0;
+  padding: 0 0 0 t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  border-left: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 45%, transparent);
+}
+
+.memoryRevision {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memoryRevisionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.memoryRevisionTag {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+
+  &[data-change="written"] {
+    color: t.$color-positive;
+  }
+  &[data-change="deleted"] {
+    color: t.$color-accent-2;
+  }
+}
+
+.memoryRevisionSize {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.memoryRevisionBody {
+  margin: 0;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 18%, transparent);
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+// --- Agents (identity card + the run's process structure) --------------------
+
+// A captioned block used on an agent's Overview file: the per-slot usage breakdown,
+// or the FSM path strip, each a caption over its content.
+.agentSection {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// One agent's identity card. A left rule keyed to its status (running/waiting/done/failed)
+// makes the run's shape — who is active, who is blocked — legible at a glance.
+// The identity card is borderless — the status pill carries the agent's lifecycle,
+// so a boxed card around it read as redundant chrome. A waiting agent keeps a faint
+// warm wash (the one state worth spotting at a glance); every other state is left to
+// the pill.
+.agentRow {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding: t.$space-xs 0;
+
+  &[data-status="blocked"] {
+    padding-inline: t.$space-sm;
+    border-radius: t.$radius-md;
+    background: color-mix(in srgb, t.$color-accent-2 7%, #{s.$panel-bg});
+  }
+}
+
+.agentHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-sm;
+  min-width: 0;
+}
+
+// The agent's name + model line, beneath the status/id head row. A plain text pair
+// (name, a separator dot, then the model muted) rather than a boxed chip — it reads
+// as the card's subtitle.
+.agentNameRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.agentName {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The status pill leads each row — a boxed, tinted chip (not a bare label) so the
+// agent's lifecycle reads as a deliberate, glanceable element. Its dot carries the
+// color too; running pulses so an active agent reads as live, waiting is warm and
+// distinct, done/failed take the positive/negative cue.
+.agentStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  background: color-mix(in srgb, t.$color-text-muted 6%, transparent);
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+
+  &[data-status="running"] {
+    color: t.$color-accent;
+    border-color: color-mix(in srgb, t.$color-accent 45%, transparent);
+    background: color-mix(in srgb, t.$color-accent 10%, transparent);
+  }
+  &[data-status="blocked"] {
+    color: t.$color-accent-2;
+    border-color: color-mix(in srgb, t.$color-accent-2 45%, transparent);
+    background: color-mix(in srgb, t.$color-accent-2 10%, transparent);
+  }
+  &[data-status="done"] {
+    color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 45%, transparent);
+    background: color-mix(in srgb, t.$color-positive 10%, transparent);
+  }
+  &[data-status="failed"] {
+    color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 45%, transparent);
+    background: color-mix(in srgb, t.$color-negative 10%, transparent);
+  }
+}
+
+.agentStatusDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+  background: currentColor;
+
+  .agentStatus[data-status="running"] & {
+    box-shadow: 0 0 0 0 currentColor;
+    animation: agentPulse 1.6s ease-in-out infinite;
+  }
+  // A waiting agent's dot is hollow — it has released its slot and is not itself
+  // executing — so it reads apart from a running one.
+  .agentStatus[data-status="blocked"] & {
+    background: transparent;
+    border: 2px solid currentColor;
+  }
+}
+
+@keyframes agentPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 0.28rem transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.agentId {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The resolved model, shown muted after the agent's name on the name line.
+.agentModel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.agentDepth {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// A dot between two adjacent meta figures (depth · turns), so they read as one
+// grouped pair rather than two loose chips.
+.agentMetaSep {
+  color: t.$color-text-muted;
+  user-select: none;
+}
+
+// How many turns the agent took, beside the depth on its Overview identity.
+.agentTurns {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// The worktree indicator: the isolated branch the agent ran in, plus its
+// reconciliation outcome once known (merged / discarded / conflict). Merged reads
+// positive, a conflict warns (the main tree was left unchanged), discarded is
+// muted.
+.agentWorktree {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline dashed
+    color-mix(in srgb, t.$color-border 70%, transparent);
+  color: t.$color-text-muted;
+  font-family: monospace;
+}
+
+.agentWorktreeOutcome {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  font-family: var(--ttc-font);
+
+  .agentWorktree[data-outcome="merged"] & {
+    color: t.$color-positive;
+  }
+  .agentWorktree[data-outcome="conflict"] & {
+    color: t.$color-negative;
+  }
+  .agentWorktree[data-outcome="discarded"] & {
+    color: t.$color-text-muted;
+  }
+}
+
+// The caption on the identity card's labeled lines (waiting on / cwd) — the same
+// small, uppercase key the return line uses, so the card reads as one set of fields.
+.agentFieldLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  margin-right: t.$space-xs;
+}
+
+// The lineage line on an identity card: which instance this one continued (or was
+// forked from), which state it entered, and what each module did on the way. It is the
+// difference between an agent carrying on under a new profile and a fresh agent that
+// happens to run next, which two ids alone can never say.
+.agentArrival {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.agentArrivalFrom {
+  font-family: monospace;
+  color: t.$color-text;
+}
+
+.agentArrivalState strong {
+  color: var(--ttc-event-orchestration);
+}
+
+// What the succession carried, dropped and started fresh — the module fate, in the
+// same words the feed row uses.
+.agentArrivalModules {
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 70%, transparent);
+}
+
+// What a blocked agent is waiting on. Takes the warm "waiting" cue the status pill
+// does, so the condition reads as part of that state rather than as another note.
+.agentWaiting {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+  word-break: break-word;
+}
+
+// The directory the agent's tools are rooted at. Monospace and truncated to one line
+// (full path on hover) — a deep worktree path would otherwise wrap the card.
+.agentCwd {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.agentCwdPath {
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+// The brief the subagent was dispatched with, truncated to one line (full text on
+// hover) so a long brief never blows out the row.
+.agentBrief {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+// The value the agent returned to its parent, once it returned.
+.agentReturn {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+.agentReturnLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: t.$color-positive;
+  margin-right: t.$space-xs;
+}
+
+// --- Workflow strip ----------------------------------------------------------
+
+.workflowStages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// One workflow stage as a chip: an in-flight ("started") stage reads accent, a
+// finished one reads positive/filled, so the sequence's progress is legible.
+.workflowStage {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text-muted;
+
+  &[data-phase="started"] {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &[data-phase="finished"] {
+    border-color: t.$color-positive;
+    color: t.$color-positive;
+  }
+
+  // A connector between consecutive stages, cueing the sequencing.
+  & + & {
+    position: relative;
+    margin-left: t.$space-sm;
+
+    &::before {
+      content: "→";
+      position: absolute;
+      left: calc(-1 * #{t.$space-sm} - 0.1rem);
+      color: t.$color-text-muted;
+    }
+  }
+}
+
+.workflowStageName {
+  font-weight: 600;
+}
+
+.workflowStageItems {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+// --- Module instances (the `modules` folder's files) -------------------------
+//
+// One module instance read from one of its holders: the identity strip — which store
+// this is, who else holds it, how this holder came by it, whether its prompt carries it,
+// what it costs the windows it is in — over the contents in the shape that kind is read
+// in. The strip is deliberately dense and unboxed: it is a *header*, and framing it as a
+// card would set it up as a peer of the contents below rather than as their preamble.
+
+// The whole file: the strip, then the contents, with the strip's own rule separating them.
+.moduleFile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+}
+
+.moduleHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding-bottom: t.$space-sm;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  min-width: 0;
+}
+
+// The identity line: the store's id and kind, then the badges that change how everything
+// under them reads (shared, dropped).
+.moduleIdentity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.moduleIcon {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: t.$color-text-muted;
+}
+
+// The id reads as the identifier it is — monospaced, so `memories-2` and `memories-12`
+// line up when a reader is comparing two files.
+.moduleId {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.moduleKind {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.moduleBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: t.$color-text-muted;
+
+  &[data-shared] {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &[data-dropped] {
+    border-color: t.$color-negative;
+    color: t.$color-negative;
+  }
+  // A hand-off is NOT sharing, so it deliberately does not borrow the shared badge's
+  // accent: it is a neutral fact about a succession, and tinting it the same colour would
+  // reintroduce by eye the very confusion the two badges exist to separate.
+  &[data-carried] {
+    border-style: dashed;
+  }
+}
+
+.moduleBadgeIcon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.moduleLine,
+.moduleLifetime,
+.moduleCost,
+
+// One row of the header strip: the fact on the left, its counterpart pushed to the
+// pane's far edge (what the store costs, beside how this holder came by it; who else is
+// in it, beside what has happened to it). The strip is read in a wide pane, and stacking
+// every line at the left margin left half of it empty while pushing the contents down.
+// It wraps when the pane is too narrow to hold both, where the trailing half simply
+// leads its own line — the `auto` margin then costs nothing.
+.moduleFacts {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-lg;
+  min-width: 0;
+
+  > :last-child:not(:first-child) {
+    margin-left: auto;
+    text-align: right;
+  }
+}
+
+// The store's life, oldest first. The verbs are tinted by what happened: a copy made a
+// second store, a link did not, and a drop ended one.
+.moduleLifetime {
+  [data-lifetime="copied"],
+  [data-lifetime="linked"] {
+    color: t.$color-accent;
+  }
+  [data-lifetime="dropped"] {
+    color: t.$color-negative;
+  }
+}
+
+.moduleCost strong {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.moduleSep {
+  color: t.$color-border;
+}
+
+// Who else is in this store. Chips rather than a list: the answer is usually two or
+// three ids, and a list of three one-word rows wastes the height the contents need.
+.moduleHolders {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.moduleHoldersLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.moduleHolderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: 0 t.$space-xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+// The holder's own lifecycle, on its chip: "who is reading this right now" is half the
+// question a shared store raises, and it is one dot away.
+.moduleHolderDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-status="running"] {
+    background: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    background: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    background: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    background: t.$color-negative;
+  }
+}
+
+.moduleHolderSelf {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A module file's contents when they are a stack of prose, meters and links rather than
+// one of the rich lists (memories, tasks, skills) that bring their own layout.
+.moduleStack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.moduleLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+}
+
+// The archive's entries: what left the window, newest ordinal last. Metadata and a
+// bounded preview only — the archive exists so this material is *out* of the request,
+// and a second copy of the thread would serve nobody.
+.archiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.archiveRow {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+.archiveSeq {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.archiveTags {
+  display: inline-flex;
+  gap: t.$space-2xs;
+}
+
+.archivePreview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.archiveLen {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The Modules tab ---------------------------------------------------------
+//
+// A module instance read as a store rather than as one agent's property: a kind's
+// whole-run overview (how many stores exist, how widely they are shared, what they cost)
+// and one instance's detail (its holders, its lifetime, its cost, its contents). Both
+// reuse the module header strip and the per-kind content views above, so a store reads
+// the same here as it does inside the agent holding it — only the *questions* differ.
+
+// The figure row every module surface states its numbers in — a kind's whole-run
+// overview here, and each kind's own contents (a window's turns, a store's totals, an
+// archive's reclaim) through `ModuleStats`. The Dashboard's own stat grid, so a
+// capability's numbers read the way a run's do. `auto-fit` rather than a fixed column
+// count: these panes are narrower than the window and the same five figures have to
+// survive being halved.
+.modStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: t.$space-md;
+}
+
+// The distribution list: every store of one kind, side by side. It is a table in
+// everything but markup — one grid so the columns line up down the list, which is what
+// makes "one shared store or twelve private ones" readable at a glance instead of
+// assembled from twelve visits.
+.modDist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modDistRow {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+// The id doubles as the way in: selecting it opens that store's own detail.
+.modDistId {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modDistWhose {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The holders themselves, elided when there are more than the row can hold: the detail
+// pane one click away lists them in full with their origins, so the row's job is only to
+// say *how many and roughly who*.
+.modDistHolders {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modDistContents,
+.modDistCost {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.modDistCost {
+  color: t.$color-text-muted;
+}
+
+// The holder list on an instance's detail — who is in this store and on what terms.
+// Wraps rather than scrolls: the origin phrases are prose ("bound Reviewer's store") and
+// truncating them would lose exactly the part that answers the question.
+.modHolders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modHolderRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+// Both names are links out, and they are deliberately tinted differently: the agent id
+// leads to that *instance* (the Instances tab) and the profile to that *arm* of the
+// configuration (the Agents tab), which are two different follow-up questions.
+.modHolderId {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modHolderProfile {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modHolderOrigin {
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modHolderAccess {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+}
+
+// Pushed to the row's far edge so the rents line up down the list and can be compared,
+// which is the only reason a per-holder cost is on the row at all.
+.modHolderCost {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// The store's life, oldest first — the same direction the activity feed runs, so the two
+// read the same way round. A vertical list rather than a horizontal chain: a lineage
+// strip reads well for four states and badly for twelve events.
+.modLifetime {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modLifetimeRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.modLifetimeTime {
+  flex: 0 0 auto;
+  width: 6.5rem;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// A dot per event, tinted by what happened — a copy made a second store, a link did not,
+// and a drop ended one. The same three tints the header strip's one-line lifetime uses.
+.modLifetimeDot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-lifetime="copied"],
+  &[data-lifetime="linked"] {
+    background: t.$color-accent;
+  }
+  &[data-lifetime="dropped"] {
+    background: t.$color-negative;
+  }
+}
+
+.modLifetimeText {
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+
+  &[data-lifetime="dropped"] {
+    color: t.$color-negative;
+  }
+}
+
+// What the store costs each window it is in, per turn. Bars scale to the largest peak on
+// show rather than to the window: a module's band is a small share of a big window, and
+// scaling to the whole would leave every bar a sliver.
+.modCostList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modCostRow {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto auto;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.modCostWho {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modCostBar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  overflow: hidden;
+}
+
+// The peak sits *behind* the current figure rather than beside it, so a store that has
+// been curated down reads as a filled bar inside a ghost of what it once was.
+.modCostBarPeak {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, t.$color-accent 25%, transparent);
+}
+
+.modCostBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: t.$color-accent;
+}
+
+.modCostFigure,
+.modCostShare {
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.modCostFigure {
+  color: t.$color-text;
+}
+
+.modCostShare {
+  color: t.$color-text-muted;
+}
+
+// --- Panels grid + tab bar (used by the monitor page) ------------------------
+
+.subPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.subPanelLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// --- Per-request metric graphs ----------------------------------------------
+
+// The Metrics file's stack of over-time graphs: one card per per-request metric
+// (throughput, cost, cache-read share, reasoning share), each given the pane's full
+// width so a graph has the room to read rather than being halved into a grid. Sits
+// beside the Context graph as the request-level, value-over-time companion to the
+// window's composition.
+.metricsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: t.$space-lg;
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The card's header: the metric's name on the left, its latest value on the right,
+// so a glance reads both what the graph is and where it stands now.
+.metricCardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.metricCardLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.metricCardLatest {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+// The frame controls above a windowed graph (the per-turn timing bars): how many
+// entries are in frame, and where that frame sits over the run. Laid out as one row
+// with the slider taking the slack, so the two step buttons stay flanking it at any
+// pane width.
+.rangeControls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.rangeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  white-space: nowrap;
+}
+
+.rangeSelect {
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+// The frame's position over the run. Takes the row's slack so dragging is precise
+// even on a long run, where one pixel is several turns.
+.rangeSlider {
+  flex: 1 1 auto;
+  min-width: 4rem;
+  accent-color: t.$color-accent;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+// Step the frame a whole page earlier/later. Disabled (rather than hidden) at either
+// end, so the control row does not reflow as the reader moves through the run.
+.rangeStep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+
+  &:hover:not(:disabled) {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+}
+
+// A per-card empty state, shown when a metric has no data points yet (or the run
+// never recorded what it needs — e.g. throughput without call timing).
+.metricEmpty {
+  padding: t.$space-md 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
+// The panel body under the tab bar: fills the page (host is `PageLayout fill`)
+// and scrolls internally, like the feed.
+.panelBody {
+  flex: 1 1 auto;
+  min-height: 12rem;
+  overflow-y: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-md;
+}
+
+// The panels' own layout root: the tab selector and the panel it selects, laid out
+// as a column with one gap between them, filling the host so the Instances explorer can
+// grow to the bottom of the page. Owning the layout here (rather than leaning on the
+// host container's flex gap) is what makes the space below the selector identical on
+// the live monitor (a gapless `PageLayout fill` column) and a finished run's gg tab
+// (a `gap`ped section), which differ by exactly this gap.
+.panelsRoot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// A trailing spacer so the last widget never sits flush against the bottom of the page.
+// It has to be a box *inside* the column rather than padding on it: both hosts lay the
+// panels out in a viewport-height column, so a panel taller than the viewport (the
+// Dashboard, the Agents list) overflows the column — and the column's own bottom padding
+// then sits at the viewport edge, above the overflow, rather than after it. A flex item is
+// laid out after the panel and carries its own height into the scrollable region, so the
+// gap holds whether the content overflows or not. (The column's `gap` supplies the rest.)
+.panelsRoot::after {
+  content: "";
+  flex: 0 0 auto;
+  height: t.$space-md;
+}
+
+// The tab selector leads the view directly. The host above it (the run-detail tab
+// strip, or the live monitor's header) already provides the gap above, so the
+// selector carries none of its own on top — only a small space of its own added to
+// `.panelsRoot`'s gap down to the panel below.
+.tabBar {
+  margin: 0 0 t.$space-sm;
+}
+
+// --- Instances explorer (filesystem view) ---------------------------------------
+
+// The two-pane explorer: a directory-style sidebar of agents-as-folders on the
+// left, the selected file's view on the right. Fills the page like the panel body
+// it replaces (host is `PageLayout fill` / the run-detail column).
+.explorer {
+  flex: 1 1 auto;
+  min-height: 18rem;
+  display: flex;
+  gap: t.$space-md;
+  align-items: stretch;
+}
+
+.explorerSidebar {
+  flex: 0 0 auto;
+  width: 17rem;
+  max-width: 40%;
+  overflow: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-xs;
+}
+
+// The content column stacks its section label over the selected view, which itself
+// fills the remaining height (the feed and graphs scroll internally).
+.explorerContent {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The one place the tree's horizontal geometry is written down. `fsIndent` in
+// `ggFsTree.ts` gives a row at depth `d` a left padding of `$fs-indent-base + d *
+// $fs-indent-step`, and the caret slot that padding lands on is `$fs-caret-size` wide —
+// so those three numbers between them fix where every caret, icon, name and guideline
+// sits. They are shared by the caret, the caret-width spacer on file rows, and the
+// guideline's `left` below; keep them in step with `fsIndent`, which is the copy of the
+// first two that React actually applies.
+$fs-indent-base: 0.5rem;
+$fs-indent-step: 0.85rem;
+$fs-caret-size: 0.9rem;
+// The chevron drawn inside that slot. Smaller than the slot it is centred in, so the
+// caret reads as a light mark next to the row's icon rather than competing with it.
+$fs-caret-glyph: 0.75rem;
+
+// The tree: nested lists, each level indented by inline padding on the row (so the
+// whole clickable row — not just its text — carries the indent).
+.fsTree,
+.fsChildren {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+// A three-tier scale for the indent guidelines drawn by the rules below. `muted` is the
+// resting tint every guide takes; `related` is a stronger neutral for the lineage of the
+// row under the pointer; `active` is the accent, spent on exactly one guide at a time —
+// the folder the pointed-at row actually sits in.
+.fsTree {
+  --gg-guide-muted: color-mix(in srgb, #{t.$color-text} 12%, transparent);
+  --gg-guide-related: color-mix(in srgb, #{t.$color-text} 30%, transparent);
+  --gg-guide-active: #{t.$color-accent};
+}
+
+.fsNode {
+  min-width: 0;
+}
+
+// An open folder's children, with the guideline that makes the tree readable as a tree:
+// a hairline dropping from the folder's own caret down through everything it holds, so
+// which folder a row belongs to is legible without counting indents.
+.fsChildren {
+  position: relative;
+}
+
+.fsChildren::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  // The centre line of the owning folder's caret slot, written out as the arithmetic it
+  // is: the folder row's own left padding (`fsIndent`: base + its depth × step, with
+  // `--gg-guide-depth` set per list by `fsGuide`) puts the slot's left edge there, and
+  // half the slot's width steps in to its centre. At depth 0 that is 0.5 + 0.45 = 0.95rem;
+  // at depth 2, 0.5 + 1.7 + 0.45 = 2.65rem. The caret is an SVG that fills the slot and,
+  // rotated open, points straight down its centre line, so the rule descends from the tip
+  // of the arrow rather than beside it. Rows inside step a further 0.85rem in, well clear
+  // of the rule rather than sitting on it.
+  left: calc(
+    #{$fs-indent-base} + var(--gg-guide-depth, 0) * #{$fs-indent-step} +
+      #{$fs-caret-size} / 2
+  );
+  width: 1px;
+  background: var(--gg-guide-muted);
+  pointer-events: none;
+  // The guide is a pseudo of the list, so in tree order it paints *before* the rows nested
+  // inside it — a row's semi-transparent hover wash would otherwise dim it exactly where
+  // the eye is looking. Lift it above the row backgrounds so it stays crisp either way.
+  z-index: 1;
+}
+
+// Hovering a row paints its lineage across the guides in three tiers, so what holds what
+// is answerable at a glance without clicking anything.
+//
+// Tier 1 — ancestors. Every guide containing the hovered row (at any depth) lifts to the
+// `related` tint. The innermost of them is the folder the row actually sits in, which the
+// accent rules below override.
+.fsChildren:has(.fsRow:hover)::before {
+  background: var(--gg-guide-related);
+}
+
+// Tier 2 — descendants. Hovering a *folder* previews its whole subtree: every guide nested
+// inside its own lifts to `related` too. A file row has no child list, so this naturally
+// does nothing for one.
+.fsRow:hover + .fsChildren .fsChildren::before {
+  background: var(--gg-guide-related);
+}
+
+// Tier 3 — the single accent guide, in two mutually exclusive cases:
+//   - a hovered folder lights its *own* guide (the list right after its row); and
+//   - a hovered *file* lights the guide of the folder that directly holds it — the list
+//     whose own child row is that file. `.fsFile` is what keeps a hovered folder from also
+//     accenting its parent's guide (that stays `related`).
+// Written after the tiers above, which they tie or beat on specificity, so the accent
+// always wins where they overlap.
+.fsRow:hover + .fsChildren::before,
+.fsChildren:has(> li > .fsRow.fsFile:hover)::before {
+  background: var(--gg-guide-active);
+}
+
+// One row in the tree — a folder toggle or a file link. A full-width button so the
+// entire row is the hit target, laid out as an icon/name/meta line.
+.fsRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: t.$space-2xs t.$space-xs;
+  border: none;
+  background: none;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -1px;
+  }
+}
+
+// The selected file reads filled in the accent, so the current view is obvious.
+.fsRowActive {
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  color: t.$color-text;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 20%, transparent);
+  }
+}
+
+// A file row (as opposed to a folder toggle) has nothing to disclose, so it holds the
+// caret's slot open with an empty flex item of exactly the caret's width. A row's indent
+// is an inline style (see `fsIndent`), which would beat any `padding-left` written here,
+// so the room has to be made *inside* the row — and making it a pseudo-element rather
+// than a `<span>` at every file call site means a new file row cannot forget it and drift
+// half a caret out of line with its folder siblings.
+.fsFile::before {
+  content: "";
+  flex: 0 0 auto;
+  width: $fs-caret-size;
+}
+
+// The caret slot: a fixed-width box the chevron is centred in, so the mark's position is
+// the slot's geometry rather than whatever a glyph's font metrics happened to give it.
+// That is what lets `.fsChildren::before` above hang the indent guideline off the slot's
+// centre and have it land on the arrow.
+.fsCaret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: $fs-caret-size;
+  height: $fs-caret-size;
+  color: t.$color-text-muted;
+}
+
+.fsCaret svg {
+  width: $fs-caret-glyph;
+  height: $fs-caret-glyph;
+  transition: transform 120ms ease;
+}
+
+// Open: the chevron turns from pointing at the folder to pointing down into it — and
+// down the guideline that drops through its contents.
+.fsCaretOpen {
+  transform: rotate(90deg);
+}
+
+// The leading icon on a tree row — a folder for a grouping row, a line-art mark for a
+// file (an agent row spends the slot on its status dot instead). An SVG sized in CSS
+// (drawn in `currentColor`), so it takes the row's muted tone and the active row's
+// accent alike.
+.fsIcon {
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  color: t.$color-text-muted;
+}
+
+.fsName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// A trailing hint on a folder row — "main agent", a subagent's slot, a subagents
+// count — subordinate to the name it annotates.
+.fsMeta {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// The same hint, pushed to the row's far edge instead of trailing the name: on the
+// agent tree the annotations then line up in a column down the sidebar rather than
+// starting at a different offset on every row.
+.fsMetaTrailing {
+  margin-left: auto;
+}
+
+// How an instance arrived, when it arrived by a succession rather than by a spawn: the
+// state a machine entered, or the move (`exec`/`fork`) that produced it. Reads in the
+// orchestration hue the succession's feed row does, so the two say the same thing.
+.fsArrival {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  padding: 0 t.$space-2xs;
+  border-radius: t.$radius-sm;
+  background: color-mix(
+    in srgb,
+    var(--ttc-event-orchestration) 14%,
+    transparent
+  );
+  color: var(--ttc-event-orchestration);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+// The link glyph a module row carries when more than one agent instance holds the same
+// backing store. It is drawn in the tree, not only inside the file, because "is this
+// shared?" is the one thing about a module worth knowing before deciding to open it —
+// and a row that is shared reads differently from the first glance on.
+.fsShared {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  width: 0.8rem;
+  height: 0.8rem;
+  color: t.$color-accent;
+}
+
+// A small status dot tinted by the node's lifecycle status, so a tree reads who is
+// running vs done vs failed at a glance. The Project tree pushes it to the row's
+// trailing edge (`fsStatusDot`); the agent tree draws it in the leading icon slot,
+// where a folder glyph would otherwise sit (`fsAgentDot`).
+.fsStatusDot,
+.fsAgentDot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-status="running"] {
+    background: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    background: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    background: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    background: t.$color-negative;
+  }
+}
+
+.fsStatusDot {
+  margin-left: auto;
+}
+
+// Centered in the footprint a row icon takes (0.95rem), so an agent row whose glyph
+// is a dot keeps its name aligned with the icon-led rows around it.
+.fsAgentDot {
+  margin: 0 calc((0.95rem - 0.5rem) / 2);
+}
+
+// The content pane's Overview file: the agent's identity card, its context-usage
+// bar, its Tokens and Cost widgets (the Dashboard's, scoped to this agent), and —
+// for the root — the run's delegation structure, stacked.
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// The Overview's context row: the agent's current context-window gauge and, beside
+// it, its peak (high-water) fullness over the run. Two equal columns that stack when
+// the pane is too narrow to hold both rings side by side.
+.contextRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-lg;
+}
+
+// The gg activity view leads the explorer pane directly, with no panelBody padding
+// around it, so the shared feed header's top margin — sized to separate the header
+// from the fields above it on the full-page monitor and Events feeds — reads as dead
+// space at the pane's top edge here. Zero it for the gg activity header alone, layered
+// over `runExec.feedHeader` so every other feed that header serves keeps its spacing.
+// (The class is doubled purely to outweigh the shared rule regardless of stylesheet
+// order.)
+.activityHeader.activityHeader {
+  margin-top: 0;
+}
+
+// --- Requests view (the de-duplicated message log) ---------------------------
+
+// The itemized companion to the Context graph: a stack of collapsible turns, each
+// holding that turn's request (messages aligned into columns, colored by the same
+// context-source palette the graph uses) and its response.
+//
+// The turns sit directly on the view's backdrop rather than each in a card of its
+// own. A turn's contents are already surfaces — every message row is a filled,
+// band-tinted strip stepped up off that backdrop — so boxing them put a widget inside
+// a widget, and at the four or five turns a real run records, the stack of frames read
+// as the structure instead of the messages doing so. What separates one turn from the
+// next is a hairline rule, in the manner the activity feed's "gutter" layout separates
+// its events (see FeedView.module.scss); the list therefore carries no gap of its own,
+// each turn's own padding giving it its rhythm.
+.requests {
+  display: flex;
+  flex-direction: column;
+}
+
+// A disclosure caret that rotates when its `<details>` opens. Shared by the turn
+// entries and the message rows inside them.
+.reqCaret {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  color: t.$color-text-muted;
+  font-size: 0.7em;
+  transition: transform 0.12s ease;
+}
+
+details[open] > summary .reqCaret {
+  transform: rotate(90deg);
+}
+
+// One turn, a collapsible entry on the backdrop. Its only chrome is the hairline that
+// divides it from the turn above — drawn on the turn itself rather than through a
+// `+ &` sibling selector, so the rule belongs to the row and survives being reordered
+// or re-parented — and the first turn drops it, since a rule directly under the view's
+// leading edge reads as an underline of whatever sits above the list rather than as a
+// separator between two turns.
+.reqTurn {
+  border-top: t.$border-hairline solid t.$color-border;
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// The turn header. With no card edge to define the row it carries the vertical rhythm
+// itself, so the two axes moved in opposite directions when the box went away: the
+// vertical padding doubled to `$space-sm`, because nothing else now sets one turn's
+// header apart from the turn above; the horizontal padding halved to `$space-xs`,
+// because there is no longer a box inset to sit within and the header should read as
+// starting at the pane's own leading edge — kept off it only far enough that the hover
+// wash doesn't butt flush against the pane's padding. That is exactly the inset
+// `.reqTurnBody` uses, so a turn's label and its messages line up on one left edge.
+.reqTurnSummary {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-sm t.$space-xs;
+  cursor: pointer;
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  // The same faint text wash the message rows hover to, rather than a lift onto a
+  // surface token. Neither token is available to it: the header sits directly on the
+  // explorer pane, which is already `$panel-bg`, so lifting to that would be a no-op;
+  // and lifting to `$color-surface-2` would dress the header in the message rows' own
+  // fill, reading as the header turning into a message. A wash of the text color is
+  // the only lift that is both visible here and unlike anything else on the view.
+  &:hover {
+    background: color-mix(in srgb, t.$color-text 6%, transparent);
+  }
+}
+
+.reqTurnLabel {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The row of labeled figures (msgs / in / out / cost), taking the slack so the finish
+// pill sits at the trailing edge.
+.reqTurnStats {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.reqStat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-2xs;
+}
+
+.reqStatValue {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  font-size: t.$font-sm;
+}
+
+.reqStatLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The finish reason as a small pill, tinted by outcome.
+.reqFinish {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-finish="stop"] {
+    color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 40%, transparent);
+  }
+
+  &[data-finish="length"],
+  &[data-finish="content_filter"] {
+    color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 40%, transparent);
+  }
+}
+
+// --- Programs view (each reply as a program, with its verdict) -------------------
+// Built on the Requests view's turn rows: the same hairline-divided `.reqTurn`,
+// the same header and body insets, so the two files read as one list seen at two
+// depths. What the header carries differs: the program's first line in place of the
+// turn's figures, and a status pill in place of the finish reason.
+
+// The program's opening line, taking the slack so the status pill sits at the
+// trailing edge; monospaced, because it is code.
+.progPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: t.$color-text-muted;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// A shell row's trailing facts — the directory the command ran in when that is not the
+// agent's own root, and the command path that issued it. Muted and unshrinkable, so the
+// command's own preview is what gives way on a narrow row. The directory can be long
+// (an absolute path outside the workspace), so it alone is capped and ellipsized.
+.shellMeta {
+  flex: 0 1 auto;
+  max-width: 12rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The verdict as a small pill, tinted by status: green for a program that ran clean,
+// amber for one the compiler rejected (the model wrote something that never ran —
+// a cheaper mistake than a runtime one, and the one a reader triages first), red for
+// one that failed while running, and the plain muted pill for anything else.
+.progStatus {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  padding: 0.1rem t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-status="success"] {
+    color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 40%, transparent);
+  }
+
+  &[data-status="compile"] {
+    color: t.$color-warning;
+    border-color: color-mix(in srgb, t.$color-warning 40%, transparent);
+  }
+
+  &[data-status="runtime"],
+  &[data-status="other"] {
+    color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 40%, transparent);
+  }
+}
+
+// The error block under a failed program — `.reqContent`'s framing with its leading
+// edge tinted, so the diagnostics read as the verdict rather than as a second program.
+.progError {
+  border-left: 3px solid t.$color-negative;
+}
+
+// The opened turn's contents. This carried a `border-top` when the turn was a card —
+// the card's internal divider between its header and its body — which now has nothing
+// to divide *within*: the only rule left in the list is the one *between* turns, and a
+// second hairline a row below it would read as the turn having ended where it in fact
+// opened. The separation between the header and the body is carried by the section
+// captions instead. The trailing padding is the deeper one, so an open turn's last
+// message clears the next turn's rule.
+.reqTurnBody {
+  padding: t.$space-2xs t.$space-xs t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// The "Request" / "Response" section captions within a turn.
+.reqSectionLabel {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  margin-top: t.$space-xs;
+}
+
+.reqSectionCount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.reqMessages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// One message, tinted on its leading edge with its context-source band color so a
+// request reads as the itemization of the stacked graph.
+//
+// The fill is the opaque `$color-surface-2` every row-inside-a-panel on these views
+// uses (`.archiveRow`, `.modDistRow`), and emphatically *not* `$panel-bg`. It was
+// `$panel-bg` while a turn was a card, because the card's own opaque `$color-bg` sat
+// behind it and the two were a real step apart. With the card gone the only backdrop
+// left behind a message row is the explorer pane's `.panelBody`, which is itself
+// `$panel-bg` — and since that token is `color-mix(… 88%, transparent)`, stacking it
+// on itself lands at ~98.6% over ~98.4%, about one value step in 255. The `gap`
+// between rows then showed nothing, and a run of same-band rows (consecutive tool
+// outputs, the common case) fused into one undifferentiated block edged only by the
+// continuous color bar. An opaque surface a real step above the pane keeps every row
+// separable from its neighbours and from the backdrop, and leaves `.reqContent`'s
+// `$color-bg` block reading as recessed *within* a row rather than level with it.
+.reqMessage {
+  border-left: 3px solid t.$color-border;
+  border-radius: 0 t.$radius-sm t.$radius-sm 0;
+  background: t.$color-surface-2;
+}
+
+.reqMessageDetails {
+  width: 100%;
+}
+
+// The aligned columns every message row shares: caret · band tag · preview · tokens.
+// Fixed widths (not `auto`) so the columns line up across every row into a table.
+.reqRow {
+  display: grid;
+  grid-template-columns: 0.9rem 6.5rem 1fr 3.5rem;
+  align-items: baseline;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-xs;
+  cursor: pointer;
+  list-style: none;
+  font-size: t.$font-sm;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-text 6%, transparent);
+  }
+
+  // The Requests view's fifth column: where the message sat in the window. Only a row
+  // that has that fact passes it, so the ordinary four-column row is untouched.
+  &[data-context] {
+    grid-template-columns: 0.9rem 6.5rem 1fr 3.5rem 14rem;
+
+    @media (max-width: 60rem) {
+      grid-template-columns: 0.9rem 6.5rem 1fr 3.5rem 8rem;
+    }
+  }
+}
+
+// The Context cell: retention · turn · a paged file view's `path@offset+limit`, on one
+// line and ellipsized, with the whole of it in the row's `title` for the reader who
+// needs the rest of a long path.
+.reqContext {
+  min-width: 0;
+  text-align: right;
+  color: t.$color-text-muted;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The band label — the message's context-source category, in the band's own color,
+// on one line.
+.reqTag {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The one-line content gist, muted and truncated.
+.reqPreview {
+  min-width: 0;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reqTokens {
+  text-align: right;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.reqMissing {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// The expanded body sits at the entry's full width, symmetrically padded rather than
+// indented by the width of the caret and tag columns to begin under the
+// collapsed row's preview — a tidy alignment that would cost the better part of 7.5rem
+// on every line of what is the longest text on the view (a whole file view, a tool
+// result, a system prompt). The expansion is what a reader opened the row *for*, so
+// it gets the width; the row above it keeps the columns.
+.reqMessageBody {
+  padding: t.$space-2xs t.$space-xs t.$space-xs;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// The expanded body's one meta line — the call this message answers. The role and the
+// token cost are left off as restatements
+// of the band tag and token column in the row directly above; only a tool result has
+// anything to say here at all, so the line is absent from most messages. It carries no
+// `tabular-nums` for the same reason: that would be there to column-align the token figure,
+// and what is left is an opaque tool-call id, not a number to align down a column.
+.reqMeta {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The verbatim message text — a scrollable, wrapped code block so a large file view
+// never blows out the pane.
+.reqContent {
+  margin: 0;
+  padding: t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+// The same block, capped at half the height, for the Prompt view. A rendered opening
+// prompt is the longest single message a run holds — a whole system framing plus the
+// build prompt — so at `.reqContent`'s cap the two of them fill several screens and
+// the reader has to scroll past them to reach anything else on the file, including
+// the second message. Every prompt body carries the fullscreen affordance, and the
+// overlay is where a prompt is actually *read*; inline, it only has to be identifiable
+// and skimmable, which 12rem is comfortably enough for. This deliberately does not
+// touch `.reqContent` — the Requests view itemizes many short messages at once and
+// wants the taller inline read.
+//
+// Applied alongside `.reqContent` rather than replacing it, so it inherits the block's
+// framing and only overrides the cap; it must therefore stay *below* `.reqContent`
+// here, as two single-class selectors are settled by source order.
+.promptContent {
+  max-height: 12rem;
+}
+
+// --- Fullscreen message overlay ----------------------------------------------
+
+// The wrapper around a message `<pre>` that carries the expand affordance: it
+// positions the button over the pre's top-right corner. The button appears on hover
+// or keyboard focus so it doesn't clutter every message at rest, but stays reachable.
+.expandable {
+  position: relative;
+
+  &:hover .expandButton,
+  .expandButton:focus-visible {
+    opacity: 1;
+  }
+}
+
+.expandButton {
+  position: absolute;
+  top: t.$space-2xs;
+  right: t.$space-2xs;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: color-mix(in srgb, t.$color-bg 88%, transparent);
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease;
+
+  &:hover {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+// The fixed sheet behind the fullscreen message: a scrim that fills the viewport
+// and centers the panel. Portalled to `document.body`, so it escapes any panel
+// overflow/stacking. A click here (outside the panel) dismisses.
+//
+// The scrim is translucent and blurred rather than opaque so the overlay reads as
+// something layered over the run monitor rather than as a separate screen — you
+// can still see where you were, just softened past the point of competing for
+// attention. The tint is the theme's own background at the same 70% the
+// notifications sidebar's scrim uses (see NotificationsSidebar.module.scss), so
+// the two scrims match and the color follows the palette: it darkens under a dark
+// theme and washes out under a light one, which a hard-coded `rgba(0, 0, 0, …)`
+// could not do.
+.overlayBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-lg;
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  backdrop-filter: blur(0.75rem);
+  -webkit-backdrop-filter: blur(0.75rem);
+}
+
+// Without the blur the scrim alone is doing all of the separation, and at 70% the
+// run monitor still reads through at enough contrast to fight the prompt body —
+// so where `backdrop-filter` is unavailable the scrim goes back to the opaque dim
+// this overlay shipped with.
+@supports not (
+  (backdrop-filter: blur(0.75rem)) or (-webkit-backdrop-filter: blur(0.75rem))
+) {
+  .overlayBackdrop {
+    background: color-mix(in srgb, t.$color-bg 82%, #000);
+  }
+}
+
+// The panel keeps the shared translucent surface (88% — every card in the console
+// uses it) and its reading area below stays at 92%, which over the scrim leaves
+// the text sitting on an effectively opaque backing. That is the deliberate
+// trade-off: a whole system prompt gets read through this thing, so the layered
+// read is bought with the blurred scrim and the panel's edges, never by making
+// long-form prose fight the run monitor showing through behind it. The drop
+// shadow (the popovers' — see RunContextMenu.module.scss) does the rest of the
+// lifting off the page.
+.overlayPanel {
+  display: flex;
+  flex-direction: column;
+  width: min(72rem, 100%);
+  max-height: 100%;
+  border-radius: t.$radius-lg;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, #000 55%, transparent);
+  overflow: hidden;
+}
+
+.overlayHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.overlayLabel {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A bare glyph, not a button-shaped control: the head already has a rule under it
+// and a label opposite, so an outline here only adds a box to look at. Its hit area
+// comes from the padding rather than from anything drawn.
+.overlayClose {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-2xs t.$space-xs;
+  border: none;
+  background: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-md;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.overlayContent {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  padding: t.$space-md;
+  background: color-mix(in srgb, t.$color-bg 92%, transparent);
+  font-family: monospace;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
+// A reader who has asked for reduced transparency gets the same opaque treatment,
+// panel included: nothing shows through, and the layering is carried by the
+// panel's border and shadow alone. It has to sit *below* the three rules it
+// overrides — a media query adds no specificity, so between single-class selectors
+// of equal weight the later declaration is the one that wins.
+@media (prefers-reduced-transparency: reduce) {
+  .overlayBackdrop {
+    background: color-mix(in srgb, t.$color-bg 82%, #000);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .overlayPanel {
+    background: t.$color-surface;
+  }
+
+  .overlayContent {
+    background: t.$color-bg;
+  }
+}
+
+.reqToolCalls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.reqToolCall {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.reqToolName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+}
+
+.reqToolArgs {
+  margin: 0;
+  padding: t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.reqImages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+}
+
+.reqImage {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
+.reqImageMeta {
+  display: block;
+}
+
+.reqEmptyBody {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+.reqEmptyResponse {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// --- Prompt view (the instruction an agent was given) ------------------------
+// The brief a subagent's parent handed it, then the rendered opening prompt (system
+// framing + build/user prompt) the agent started its first turn from.
+
+.promptView {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.promptSection {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The brief reads as the delegation's own words — a quoted block, not a form field.
+.promptBrief {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid t.$color-accent-2;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent-2 7%, #{s.$panel-bg});
+  color: t.$color-text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// The rendered prompt's messages. Like the activity feed, this is a list of labeled
+// entries, and it is arranged by the same user preference: the container carries
+// `data-feed-style` and the three layout blocks below arrange it, mirroring the ones
+// at the bottom of FeedView.module.scss. The container itself is style-agnostic and
+// spacing-free — each layout gives its own entries their padding, and the ones that
+// rule between entries would double a gap into a moat around every rule.
+.promptMessages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// One prompt message, in whichever arrangement is active: a head (the band tag and the
+// role/token meta) and a body (the message text, or a note that it carried none). The
+// band's color arrives from PromptView as an inline `--band-color` — it comes from the
+// Context graph's per-source palette, not from the `--ttc-event-*` tokens the activity
+// feed's accents use — and each layout draws its accent from that one variable, on
+// whichever edge that layout puts it.
+//
+// The arrangement declared here is the *fallback*, not a fourth style: all three
+// layout blocks below override every property of it. It exists because
+// `data-feed-style` comes from a persisted app-wide setting (`ttc:settings`, written
+// by `appSettings.ts`, which carries no `version`/`migrate`), so a value written by an
+// older or a newer build reaches this list matching none of those blocks. While the
+// layout lived exclusively in them, such an entry rendered with no padding, no accent
+// and no separation at all — its head running the band tag straight into
+// "system · 10 tokens". The fallback is the "stacked" arrangement, which needs no
+// column sizing and so degrades gracefully at any pane width. "stacked" still declares
+// the same properties itself rather than leaning on this: each of the three blocks
+// stays a complete layout that can be read — and changed — without consulting the base.
+.promptMessage {
+  // A default for the custom property, for the same reason `.line` declares one: the
+  // accent must resolve to *something* if the entry is ever rendered without the
+  // inline property PromptView supplies.
+  --band-color: #{t.$color-border};
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid var(--band-color);
+  border-top: t.$border-hairline solid t.$color-border;
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// The head is a flex container in every layout; only its direction and spacing change
+// — a stacked column when it is a left gutter, a baseline-aligned row when it rides
+// above the body. The gap is declared here rather than only in the layout blocks so
+// that the tag never runs into its meta, whichever of them is (or is not) in force.
+.promptMessageHead {
+  display: flex;
+  min-width: 0;
+  gap: t.$space-sm;
+}
+
+.promptMessageMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// In the two gutter-column layouts the band tag shares a 7rem column with its meta, so
+// it wraps to a second line rather than ellipsing away half of "User prompt" — the tag
+// is the entry's label, and a label that cannot be read is worse than a taller row.
+// (In "stacked" the tag sits on a full-width header row and keeps `.reqTag`'s
+// single-line truncation.)
+.promptMessages[data-feed-style="gutter"] .promptMessageHead .reqTag,
+.promptMessages[data-feed-style="divider"] .promptMessageHead .reqTag {
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
+}
+
+// --- Prompt layout: "gutter" -------------------------------------------------
+// The band tag stacked over its role/tokens in a fixed left column, the message text
+// to its right, a 2px accent bar in the band's color on the leading edge, and a
+// hairline rule between entries — drawn per entry as FeedView does, with the leading
+// one dropped: this list sits directly on the pane rather than inside a bordered box,
+// so a rule at the very top would read as an underline of the section's caption.
+//
+// The text column is `minmax(0, 1fr)` rather than `1fr`: a grid track sized `1fr`
+// floors at its content's min-content width, and the body is a `<pre>` of unbroken
+// prompt text, which would push the column — and the pane — wider than its share.
+.promptMessages[data-feed-style="gutter"] {
+  .promptMessage {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--band-color);
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .promptMessage:first-child {
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+}
+
+// --- Prompt layout: "divider" ------------------------------------------------
+// The same two columns, but the band's accent becomes a 2px rule down the right of the
+// gutter column and the rules between entries are dropped — so the color reads as the
+// boundary between the label and what it labels. This is the one layout that wants
+// neither of the two borders the fallback arrangement declares, so it turns both off
+// explicitly rather than by omission; the accent it does want is on the head below.
+.promptMessages[data-feed-style="divider"] {
+  .promptMessage {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    border-left: none;
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding-right: t.$space-md;
+    border-right: 2px solid var(--band-color);
+  }
+}
+
+// --- Prompt layout: "stacked" ------------------------------------------------
+// The band tag and its role/tokens ride one header row above the text, so the message
+// gets the pane's full width — the layout to pick when the prompt is long or the
+// window is narrow. Each entry keeps the leading accent bar and the hairline rule, the
+// leading rule dropped as in "gutter".
+.promptMessages[data-feed-style="stacked"] {
+  .promptMessage {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--band-color);
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .promptMessage:first-child {
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: row;
+    align-items: baseline;
+    gap: t.$space-sm;
+  }
+}
+
+// --- Tools panel (an agent's per-tool usage) ---------------------------------
+// On an agent's Overview: every tool it called, most used first, with call counts and
+// each tool's result tokens as a share of all tokens that entered its window.
+
+// The caption row: the panel's label with the agent's call rate at its trailing edge. The
+// rate is a fact about the agent rather than about any one tool, so it reads on the header
+// line and leaves the list below it purely per-tool.
+.toolsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.toolsRate {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.toolList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.toolRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.toolName {
+  flex: 0 1 12rem;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A row on the API surface, which carries no token share: a responses-as-code turn produces
+// no tool-role messages, so there is nothing to attribute per function and the trailing bar
+// and figure are simply absent (see `AgentCallsPanel`). The name takes the width they leave
+// rather than the row trailing off into a gulf of nothing — and a namespaced `fs.readFile`
+// wants the room a bare `read_file` did not.
+.callRowBare .toolName {
+  flex: 1 1 auto;
+}
+
+.toolCalls {
+  flex: 0 0 auto;
+  min-width: 2.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolBar {
+  flex: 1 1 4rem;
+  height: 0.4rem;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 50%, transparent);
+  overflow: hidden;
+  min-width: 2rem;
+}
+
+.toolBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  // The tool-output band's hue on the Context graph, so a tool's result share reads
+  // as a slice of that same band.
+  background: #ff924c;
+}
+
+.toolTokens {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Offered surface (an instance's Tools / APIs file) ------------------------
+// What the instance was offered to call, over what it called. It is built out of the tools
+// panel's row above (`.toolRow`) and shares everything the two really have in common — the
+// row, the name, the figure's typography — and departs from it in exactly two places, both
+// because this file answers a different question. It puts the figure FIRST (see
+// `.toolCallCount`), and it carries the state a usage list has no need for: a row for
+// something offered and not used.
+//
+// Both files' rows read the same way *within* a file, which is the property that matters:
+// the Tools file and the APIs file are one component, so what an agent was offered reads
+// identically whether it was offered tools or API objects.
+
+// An offered row reads count-first — "12× read_file" — where a usage row reads name-first:
+// the usage panel lists only the tools an instance CALLED, so its names are the finding and
+// its counts qualify them, while every row here names something the instance was given and
+// the figure is the only thing that differs down the list. A leading, fixed, right-aligned
+// column is scannable straight down; a trailing one hangs off names of every length.
+//
+// The column is wide enough for four digits and a multiplication sign without the names
+// beside it stepping in and out as the counts grow, and it does not shrink: a row whose
+// count is squeezed out is a row that says nothing.
+.toolCallCount {
+  flex: 0 0 3.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// With the count leading, the name takes the row's spare width instead of the 12rem basis
+// the usage rows give it — there is no bar or token figure after it here, so a name clipped
+// at 12rem would be clipped with the rest of the row standing empty beside it. A namespaced
+// API function ("specifications.list") is exactly the length that costs.
+.surfaceRow .toolName {
+  flex: 1 1 auto;
+}
+
+// The file's sections stacked like the Overview's, so a section added here inherits the
+// same rhythm.
+.surfaceFile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// An object's functions inside its card, set off from the description above them.
+.surfaceFunctions {
+  margin-top: t.$space-2xs;
+}
+
+// Offered and not used — a real `0×`. Muted rather than dropped, and muted with the palette's own
+// secondary text token rather than by fading the row out: the contrast between this row and
+// the one above it is the whole reason the file exists, and it has to survive being read.
+// (An opacity on top of a muted colour is what would not — the two compound, and the row
+// lands around 3.5:1 against the panel. The colour alone is the same step every other
+// secondary reading on this page takes, and stays over 8:1.)
+//
+// It is the row's NAME that mutes, not the count: `0×` is already set in the secondary
+// colour on every row, and re-muting it would leave the one figure the row exists to state
+// as the faintest thing on it.
+.toolRow[data-uncalled] .toolName {
+  color: t.$color-text-muted;
+}

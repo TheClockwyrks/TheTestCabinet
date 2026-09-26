@@ -28,7 +28,11 @@ import { EffectsManager } from "./render/effects";
 import { OverlayManager } from "./render/overlays";
 import type { World as RenderWorld } from "./render/world";
 import {
-  PLAYER_BASE, ENEMY_BASE, PLAYER_RELIQUARY, ENEMY_RELIQUARY, TEAM_COLORS,
+  PLAYER_BASE,
+  ENEMY_BASE,
+  PLAYER_RELIQUARY,
+  ENEMY_RELIQUARY,
+  TEAM_COLORS,
 } from "./constants";
 import { facingYaw, advanceDir } from "./mathutil";
 import { gridCellCenter } from "./render/terrain";
@@ -42,7 +46,9 @@ const MARKER_GAP = 9;
 
 /** The Aegis's three turrets → the rig barrel part each fires from (specs/waves.md). */
 const AEGIS_TURRET_PART: Record<"main" | "left" | "right", string> = {
-  main: "cannon_barrel", left: "sgun_l", right: "sgun_r",
+  main: "cannon_barrel",
+  left: "sgun_l",
+  right: "sgun_r",
 };
 
 export class Match {
@@ -84,15 +90,19 @@ export class Match {
     this.effects = new EffectsManager(render.scene, assets.effects);
     this.overlays = new OverlayManager(render.scene);
     // F4 wireframe must also reach the generated muzzle-flash effects (specs/overview.md).
-    this.wireframeUnsub = render.registry.onWireframe((on) => this.effects.setWireframe(on));
+    this.wireframeUnsub = render.registry.onWireframe((on) =>
+      this.effects.setWireframe(on),
+    );
     this.placeFixed();
   }
 
   /** Tear down every scene subtree this match added and clear the renderer. */
   dispose(): void {
     for (const a of [
-      this.playerBaseActor, this.enemyBaseActor,
-      this.playerReliquaryActor, this.enemyReliquaryActor,
+      this.playerBaseActor,
+      this.enemyBaseActor,
+      this.playerReliquaryActor,
+      this.enemyReliquaryActor,
     ]) {
       a.dispose();
     }
@@ -112,14 +122,38 @@ export class Match {
     const reliquary = this.assets.structures.get("reliquary")!;
     const yawP = facingYaw(advanceDir("player"));
     const yawE = facingYaw(advanceDir("enemy"));
-    this.playerBaseActor = new SingletonActor(this.render.scene, base, "player", this.render.registry)
-      .place(PLAYER_BASE.x, PLAYER_BASE.z, yawP).setRole("idle");
-    this.enemyBaseActor = new SingletonActor(this.render.scene, base, "enemy", this.render.registry)
-      .place(ENEMY_BASE.x, ENEMY_BASE.z, yawE).setRole("idle");
-    this.playerReliquaryActor = new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
-      .place(PLAYER_RELIQUARY.x, PLAYER_RELIQUARY.z, yawP).setRole("idle");
-    this.enemyReliquaryActor = new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
-      .place(ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z, yawE).setRole("idle");
+    this.playerBaseActor = new SingletonActor(
+      this.render.scene,
+      base,
+      "player",
+      this.render.registry,
+    )
+      .place(PLAYER_BASE.x, PLAYER_BASE.z, yawP)
+      .setRole("idle");
+    this.enemyBaseActor = new SingletonActor(
+      this.render.scene,
+      base,
+      "enemy",
+      this.render.registry,
+    )
+      .place(ENEMY_BASE.x, ENEMY_BASE.z, yawE)
+      .setRole("idle");
+    this.playerReliquaryActor = new SingletonActor(
+      this.render.scene,
+      reliquary,
+      "neutral",
+      this.render.registry,
+    )
+      .place(PLAYER_RELIQUARY.x, PLAYER_RELIQUARY.z, yawP)
+      .setRole("idle");
+    this.enemyReliquaryActor = new SingletonActor(
+      this.render.scene,
+      reliquary,
+      "neutral",
+      this.render.registry,
+    )
+      .place(ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z, yawE)
+      .setRole("idle");
   }
 
   /** Step the AI + sim and push this frame's fog-gated render state to the world. */
@@ -146,7 +180,8 @@ export class Match {
     this.typeById.clear();
     const entities: RenderEntity[] = [];
     for (const u of this.world.units) {
-      if (u.team === "enemy" && !pointVisible(this.playerVision, u.x, u.z)) continue;
+      if (u.team === "enemy" && !pointVisible(this.playerVision, u.x, u.z))
+        continue;
       this.typeById.set(u.id, u.type);
       entities.push({
         id: u.id,
@@ -168,9 +203,16 @@ export class Match {
         if (dims) {
           const topY = u.altitude + dims[1] + MARKER_GAP;
           const width = Math.max(22, dims[0] * 0.9);
-          if (u.hp < u.maxHp) this.overlays.healthBar(u.x, topY, u.z, u.hp / u.maxHp, width);
+          if (u.hp < u.maxHp)
+            this.overlays.healthBar(u.x, topY, u.z, u.hp / u.maxHp, width);
           if (u.level > 1) {
-            this.overlays.pips(u.x, topY + 8, u.z, u.level, TEAM_COLORS[u.team].accent);
+            this.overlays.pips(
+              u.x,
+              topY + 8,
+              u.z,
+              u.level,
+              TEAM_COLORS[u.team].accent,
+            );
           }
         }
       }
@@ -194,28 +236,43 @@ export class Match {
   /** Play a firing unit's muzzle flash at its muzzle, on its firing cadence. */
   private flashUnitShot(u: SimUnit): void {
     // Fog: an enemy's flash only plays where the player can see the unit (no ghost cue).
-    if (u.team === "enemy" && !pointVisible(this.playerVision, u.x, u.z)) return;
+    if (u.team === "enemy" && !pointVisible(this.playerVision, u.x, u.z))
+      return;
     const tpl = this.assets.units.get(u.type);
     const mount = tpl?.muzzleMounts[0];
     if (!tpl || !mount) return; // melee/support units carry no muzzle
     const clip = tpl.clips.get(u.role) ?? tpl.clips.get("idle");
     this.effects.flash(
-      mount, tpl.rig, clip, undefined, u.animMs,
-      { x: u.x, z: u.z, altitude: u.altitude, yaw: u.yaw }, tpl.bounds,
+      mount,
+      tpl.rig,
+      clip,
+      undefined,
+      u.animMs,
+      { x: u.x, z: u.z, altitude: u.altitude, yaw: u.yaw },
+      tpl.bounds,
     );
   }
 
   /** Play the Aegis cannon flash at the specific turret that fired (specs/waves.md). */
-  private flashAegisTurret(a: SimAegis, turret: "main" | "left" | "right"): void {
-    if (a.team === "enemy" && !pointVisible(this.playerVision, a.x, a.z)) return;
+  private flashAegisTurret(
+    a: SimAegis,
+    turret: "main" | "left" | "right",
+  ): void {
+    if (a.team === "enemy" && !pointVisible(this.playerVision, a.x, a.z))
+      return;
     const tpl = this.assets.aegis;
     const part = AEGIS_TURRET_PART[turret];
     const mount = tpl.muzzleMounts.find((m) => m.part === part);
     if (!mount) return;
     const clip = tpl.clips.get("attack") ?? tpl.clips.get("move");
     this.effects.flash(
-      mount, tpl.rig, clip, aegisCaller(a), a.animMs,
-      { x: a.x, z: a.z, altitude: 0, yaw: a.yaw }, tpl.bounds,
+      mount,
+      tpl.rig,
+      clip,
+      aegisCaller(a),
+      a.animMs,
+      { x: a.x, z: a.z, altitude: 0, yaw: a.yaw },
+      tpl.bounds,
     );
   }
 
@@ -234,12 +291,19 @@ export class Match {
         this.structureActors.set(s.id, actor);
       }
       // Carry the structure level onto the build-grid model as pips (specs/economy.md).
-      const tpl = s.kind === "solar-extractor"
-        ? this.assets.structures.get("solar-extractor")
-        : this.assets.spawners.get(s.kind);
+      const tpl =
+        s.kind === "solar-extractor"
+          ? this.assets.structures.get("solar-extractor")
+          : this.assets.spawners.get(s.kind);
       if (tpl) {
         const c = gridCellCenter(s.team, s.col, s.row);
-        this.overlays.pips(c.x, tpl.dimensions[1] + MARKER_GAP, c.z, s.level, TEAM_COLORS[s.team].accent);
+        this.overlays.pips(
+          c.x,
+          tpl.dimensions[1] + MARKER_GAP,
+          c.z,
+          s.level,
+          TEAM_COLORS[s.team].accent,
+        );
       }
     }
     for (const [id, actor] of this.structureActors) {
@@ -251,13 +315,20 @@ export class Match {
   }
 
   private makeStructureActor(s: BuildStructure): SingletonActor {
-    const tpl = s.kind === "solar-extractor"
-      ? this.assets.structures.get("solar-extractor")!
-      : this.assets.spawners.get(s.kind)!;
+    const tpl =
+      s.kind === "solar-extractor"
+        ? this.assets.structures.get("solar-extractor")!
+        : this.assets.spawners.get(s.kind)!;
     const yaw = facingYaw(advanceDir(s.team));
     const c = gridCellCenter(s.team, s.col, s.row);
-    return new SingletonActor(this.render.scene, tpl, s.team, this.render.registry)
-      .place(c.x, c.z, yaw).setRole("idle");
+    return new SingletonActor(
+      this.render.scene,
+      tpl,
+      s.team,
+      this.render.registry,
+    )
+      .place(c.x, c.z, yaw)
+      .setRole("idle");
   }
 
   /** Create/place/drive/remove a `VoxelRig` singleton for each live Aegis. */
@@ -267,7 +338,12 @@ export class Match {
       live.add(a.id);
       let actor = this.aegisActors.get(a.id);
       if (!actor) {
-        actor = new SingletonActor(this.render.scene, this.assets.aegis, a.team, this.render.registry);
+        actor = new SingletonActor(
+          this.render.scene,
+          this.assets.aegis,
+          a.team,
+          this.render.registry,
+        );
         this.aegisActors.set(a.id, actor);
       }
       actor.place(a.x, a.z, a.yaw);
@@ -277,11 +353,18 @@ export class Match {
       // Destruction cue: flash the whole hull white a few times as it dies (specs/assets.md).
       actor.setFlash(a.dead ? flashAmount(a.deathMs) : 0);
       // Fog: a player Aegis is always shown; an enemy Aegis only while in vision.
-      const visible = a.team === "player" || pointVisible(this.playerVision, a.x, a.z);
+      const visible =
+        a.team === "player" || pointVisible(this.playerVision, a.x, a.z);
       actor.rig.root.visible = visible;
       if (visible && !a.dead && a.hp < a.maxHp) {
         const dims = this.assets.aegis.dimensions;
-        this.overlays.healthBar(a.x, dims[1] + MARKER_GAP, a.z, a.hp / a.maxHp, Math.max(60, dims[0] * 0.8));
+        this.overlays.healthBar(
+          a.x,
+          dims[1] + MARKER_GAP,
+          a.z,
+          a.hp / a.maxHp,
+          Math.max(60, dims[0] * 0.8),
+        );
       }
     }
     for (const [id, actor] of this.aegisActors) {
@@ -298,31 +381,50 @@ export class Match {
    * currently sees them (never as stale ghosts), and a razed Reliquary is hidden.
    */
   private syncFixed(dt: number): void {
-    for (const a of [this.playerBaseActor, this.enemyBaseActor, this.playerReliquaryActor, this.enemyReliquaryActor]) {
+    for (const a of [
+      this.playerBaseActor,
+      this.enemyBaseActor,
+      this.playerReliquaryActor,
+      this.enemyReliquaryActor,
+    ]) {
       a.update(dt);
     }
-    const enemyBaseVisible = pointVisible(this.playerVision, ENEMY_BASE.x, ENEMY_BASE.z);
+    const enemyBaseVisible = pointVisible(
+      this.playerVision,
+      ENEMY_BASE.x,
+      ENEMY_BASE.z,
+    );
     this.enemyBaseActor.rig.root.visible = enemyBaseVisible;
     const enemyRel = this.world.reliquaries.enemy;
     const enemyRelVisible =
-      !enemyRel.dead && enemyRel.hp > 0 && pointVisible(this.playerVision, ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z);
+      !enemyRel.dead &&
+      enemyRel.hp > 0 &&
+      pointVisible(this.playerVision, ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z);
     this.enemyReliquaryActor.rig.root.visible = enemyRelVisible;
 
     // Health bars over damaged bases / Reliquaries (specs/overview.md), fog-gated like the
     // models: the player's always draw when hurt; the enemy's only while currently in vision.
     const baseDims = this.assets.structures.get("base")?.dimensions;
     const relDims = this.assets.structures.get("reliquary")?.dimensions;
-    const pb = this.world.bases.player, eb = this.world.bases.enemy;
-    const pr = this.world.reliquaries.player, er = this.world.reliquaries.enemy;
+    const pb = this.world.bases.player,
+      eb = this.world.bases.enemy;
+    const pr = this.world.reliquaries.player,
+      er = this.world.reliquaries.enemy;
     if (baseDims) {
-      const w = Math.max(70, baseDims[0] * 0.8), top = baseDims[1] + MARKER_GAP;
-      if (pb.hp < pb.maxHp) this.overlays.healthBar(pb.x, top, pb.z, pb.hp / pb.maxHp, w);
-      if (enemyBaseVisible && eb.hp < eb.maxHp) this.overlays.healthBar(eb.x, top, eb.z, eb.hp / eb.maxHp, w);
+      const w = Math.max(70, baseDims[0] * 0.8),
+        top = baseDims[1] + MARKER_GAP;
+      if (pb.hp < pb.maxHp)
+        this.overlays.healthBar(pb.x, top, pb.z, pb.hp / pb.maxHp, w);
+      if (enemyBaseVisible && eb.hp < eb.maxHp)
+        this.overlays.healthBar(eb.x, top, eb.z, eb.hp / eb.maxHp, w);
     }
     if (relDims) {
-      const w = Math.max(60, relDims[0] * 0.8), top = relDims[1] + MARKER_GAP;
-      if (!pr.dead && pr.hp < pr.maxHp) this.overlays.healthBar(pr.x, top, pr.z, pr.hp / pr.maxHp, w);
-      if (enemyRelVisible && er.hp < er.maxHp) this.overlays.healthBar(er.x, top, er.z, er.hp / er.maxHp, w);
+      const w = Math.max(60, relDims[0] * 0.8),
+        top = relDims[1] + MARKER_GAP;
+      if (!pr.dead && pr.hp < pr.maxHp)
+        this.overlays.healthBar(pr.x, top, pr.z, pr.hp / pr.maxHp, w);
+      if (enemyRelVisible && er.hp < er.maxHp)
+        this.overlays.healthBar(er.x, top, er.z, er.hp / er.maxHp, w);
     }
   }
 }

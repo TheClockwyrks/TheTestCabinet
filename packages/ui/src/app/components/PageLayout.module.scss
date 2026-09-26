@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 @use "../styles/breakpoints" as bp;
 
 .shell {
@@ -138,7 +139,7 @@
 
 .navActive {
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .controls {
@@ -155,6 +156,18 @@
     margin-left: auto;
     gap: t.$space-sm;
   }
+}
+
+// The icon controls (analyze, bell, gear) as one tight cluster. They are the same
+// kind of thing — square glyph buttons — so they sit almost shoulder to shoulder
+// and read as a group, while the account control and menu toggle keep the wider
+// `.controls` gap around them. The tighter spacing is also what makes room for the
+// analyze control without pushing the row onto a second line.
+.iconControls {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  flex: none;
 }
 
 // The mobile section-nav toggle. Mirrors the gear/bell sizing and hover so the

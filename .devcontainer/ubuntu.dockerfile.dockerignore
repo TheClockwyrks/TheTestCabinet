@@ -1,0 +1,245 @@
+# The build context for the DEVCONTAINER image, and only for it.
+#
+# WHY THERE IS A SECOND ALLOWLIST AT ALL. This image used to build from
+# `.devcontainer/` as its context, which was enough while everything it installed
+# was a download pinned by a script sitting in that directory. It is not enough
+# any more: gg's eleven program-language toolchains are pinned by the REPOSITORY —
+# each arm's own `packages/gg-sandbox-*/<lang>-version.sh`, installed by
+# `scripts/ci/install-gg-toolchains.sh` — and `crates/gg/build.rs` reflects all
+# eleven signature catalogues as a step of building the crate, so a container that
+# does not have them cannot `cargo build --workspace` at all. Baking them into the
+# image therefore means the image build has to be able to READ the repository, so
+# the context moved up to the repository root (see `docker-compose.yml`'s
+# `context: ..`).
+#
+# WHY THIS FILE IS NOT THE ONLY PLACE THE SLICE IS DESCRIBED. Read the root
+# `.dockerignore`'s opening paragraph: it is an allowlist rather than a list of
+# exclusions precisely so "a change to anything cargo does NOT compile — the
+# frontend, the docs, test cases, k8s manifests, models — can never invalidate a
+# build layer". Seven Dockerfiles built from that context do `COPY . .` (the shared
+# asset-tooling builder that compiles ~20 Rust binaries, the adversarial and
+# performance run images, the web console image and all three service targets), so
+# every path admitted there lands in seven layer cache keys. This file exists to keep
+# the devcontainer's slice — in particular the narrow `packages` and `scripts/ci`
+# patterns that feed a 1.9 GB layer — out of those keys, and on a Docker host it
+# succeeds completely: the sibling Dockerfiles read the root allowlist, unchanged and
+# unaffected.
+#
+# It does NOT get that for free on every host, and the paragraph below is why: the
+# root allowlist now carries five `!/.devcontainer/…` entries, because a builder that
+# has never heard of this file has to be able to build the image too. Those entries
+# and this file are one list with two spellings — this one admits `!/.devcontainer`
+# whole, the root one names the five directories the Dockerfile's COPYs read — so a
+# new script directory works here and fails there. `scripts/ci/build-context.sh`
+# checks this Dockerfile against BOTH allowlists for that reason.
+#
+# HOW DOCKER FINDS THIS FILE. BuildKit looks for `<dockerfile-path>.dockerignore`
+# beside the Dockerfile and uses it INSTEAD OF the context root's when it exists —
+# so this file wins for `.devcontainer/ubuntu.dockerfile` and applies to nothing
+# else. `docker compose build` honours the same rule, which is what matters here
+# because compose is how the Dev Containers extension builds this image; verified by
+# moving this file aside, at which point the compose build dies with
+# `"/.devcontainer/...": not found` on the first COPY it resolves, and putting it
+# back, at which point it builds.
+#
+# THIS REQUIRES BUILDKIT. The classic builder (`DOCKER_BUILDKIT=0`) does not know
+# about per-dockerfile ignore files: it silently falls back to the root allowlist.
+# Docker has defaulted to BuildKit since 23 and the devcontainer's own `docker` client
+# ships `buildx`, so that is a statement of a requirement rather than a caveat. It is
+# no longer a way to BREAK the build, though, because the root allowlist now admits
+# this image's `.devcontainer/` sources too — see the next paragraph for why it had to.
+#
+# AND ROOTLESS PODMAN DOES NOT RELIABLY REACH THIS FILE — which is not hypothetical:
+# `docker-compose.nixos.yml` and `.env.podman` are committed and `README.md` tells a
+# NixOS user to copy them, and a rebuild on such a host is what reported it. Podman
+# does not go through BuildKit. Buildah resolves an ignore file in its own order
+# (`pkg/parse.ContainerIgnoreFile`): an explicit `--ignorefile`, then
+# `<containerfile>.containerignore`, then `<containerfile>.dockerignore`, then
+# `$CONTEXT/.containerignore`, then `$CONTEXT/.dockerignore`. So it does have a
+# sibling rule, and by that order it ought to find this very file — and it did not.
+# The build, driven by VS Code's Dev Containers extension through `podman-compose`,
+# ended on its first COPY with
+#
+#     no items matching glob ".../.devcontainer/system/apt.sh" copied
+#     (1 filtered out using /…/.dockerignore): no such file or directory
+#
+# naming the ROOT allowlist, by absolute path, as the one it applied. An older buildah
+# than the sibling rule and a containerfile path `podman-compose` hands it that the
+# lookup cannot join back to this directory are both consistent with that, and the two
+# are not worth distinguishing, because either way the lesson is the same one: THIS
+# FILE IS AN OPTIMISATION AND MAY SIMPLY NOT BE FOUND.
+#
+# SO THE BUILD IS MADE TO WORK IN THE ROOT ALLOWLIST, NOT HERE. It re-includes the five
+# `.devcontainer/` paths this Dockerfile COPYs, and its own block there argues the
+# cost (~24 files in seven `COPY . .` cache keys, against the whole of `crates/` and
+# `scripts/ci` those keys already carry) and the alternative that was rejected (a root
+# `.containerignore`, which Buildah prefers over `.dockerignore` for EVERY image built
+# from this context, on every Podman host).
+#
+# So both builders now build this image, and they do not build it identically. Docker
+# reads this file and gets the ~230 kB slice. Podman reads the root allowlist, and the
+# difference lands on exactly ONE of the Dockerfile's COPYs: the bare
+# `COPY ./packages`. Every other one names files or globs them (`install-*.sh`,
+# `gg-*.sh`, `rust-toolchain.toml`), so a wider allowlist cannot widen what they take
+# — but a directory copy takes whatever survives, and the root allowlist admits the
+# guest packages whole (the driver image compiles them) plus `ui`, `run-record`,
+# `run-stats` and the two runtimes (the web image bundles them). So on a Podman host
+# that layer carries a few MB rather than the nine `*-version.sh` files and the seven
+# pins named below it, and the 1.9 GB
+# toolchain layer beneath it takes an unrelated `packages/ui` edit as a cache miss.
+# Correct either way; cheaper under Docker. If that ever matters enough to fix, the fix
+# is `podman build --ignorefile` (below), not a narrowing of the root file:
+#
+#     podman build --ignorefile .devcontainer/ubuntu.dockerfile.dockerignore \
+#       -f .devcontainer/ubuntu.dockerfile -t <the tag compose expects> .
+#
+# `.devcontainer/README.md`'s Podman section says the same thing where a person looking
+# for it would actually be standing.
+
+# Ignore everything by default…
+*
+
+# …then re-include the four things this image's COPY instructions read.
+
+# The devcontainer's own scripts and shell config — the whole directory, because
+# every file in it exists to be copied into the image and enumerating them here
+# would be a second list to keep in step with the Dockerfile's COPYs.
+!/.devcontainer
+
+# The toolchain installers, and only them, ENUMERATED. `install-gg-toolchains.sh` runs
+# eight per-arm installers by that name and sources `scripts/ci/lib.sh` beside them, so
+# the installers and the two named files below are the whole closure.
+#
+# This used to be the glob `!/scripts/ci/install-*.sh`, and the two blocks after it were
+# globs too; none of the three can be. A RE-INCLUSION MUST NEVER CARRY A WILDCARD: BuildKit's
+# context sender skips an ignored directory outright only while it can prove, by string
+# prefix, that no negated pattern is rooted beneath it — and one `*`, `?` or `[` in any `!`
+# pattern in this file turns that proof off for every directory, so the sender walks the
+# whole working tree (node_modules, target/, tmp/; ~650,000 entries on a developer machine)
+# to ship the few hundred kB it keeps, and one unreadable entry anywhere in that walk fails
+# the build. The root allowlist records the same rule for the same reason. What the glob
+# bought — a new arm's installer admitted without an edit — scripts/ci/build-context.sh now
+# buys the other way round: every tracked file the three former globs matched must still
+# survive this file, so a forgotten line fails CI instead of failing the devcontainer build.
+#
+# It is deliberately NOT the whole `scripts/ci` directory, though the root allowlist
+# admits it that way for the driver image. The Dockerfile's COPY is written to match
+# these same families, and the reason is the 1.9 GB layer it feeds: Docker hashes
+# everything a COPY matches into that layer's cache key, so admitting the other twelve
+# scripts here would mean an edit to `web-build.sh` or `specs-lint.sh` cost the next
+# image build every toolchain in it.
+!/scripts/ci/install-adapter.sh
+!/scripts/ci/install-dotnet.sh
+!/scripts/ci/install-gg-build-toolchains.sh
+!/scripts/ci/install-gg-build-tools.sh
+!/scripts/ci/install-gg-toolchains.sh
+!/scripts/ci/install-java.sh
+!/scripts/ci/install-kotlin.sh
+!/scripts/ci/install-nextest.sh
+# Matched by the devcontainer image's `install-*.sh` COPY, so it must be in the context too.
+!/scripts/ci/install-playwright-chromium.sh
+!/scripts/ci/install-purescript.sh
+!/scripts/ci/install-rust-wasm.sh
+!/scripts/ci/install-swift.sh
+!/scripts/ci/install-uv.sh
+!/scripts/ci/install-wasi-sdk.sh
+!/scripts/ci/install-wit-bindgen.sh
+!/scripts/ci/lib.sh
+# The third file in that closure: the resuming, retrying `curl` six of those installers
+# fetch their toolchain archive with. Without it they die on their own `source` line,
+# having copied cleanly.
+!/scripts/ci/fetch.sh
+
+# The gg build's own shared shell, which those installers source: `gg-downloads.sh` resolves the
+# pinned `wit-bindgen` and wasmtime adapter, `gg-npm-tools.sh` resolves the pinned npm-delivered
+# build tools, and `gg-arms.sh` is the one list of the arms. Enumerated, for the reason above.
+# Small files; the layer-cache argument above is unaffected, because these change about as
+# often as an arm is added.
+!/scripts/gg-arms.sh
+!/scripts/gg-artifacts-out-dir.sh
+!/scripts/gg-artifacts.sh
+!/scripts/gg-downloads.sh
+!/scripts/gg-npm-tools.sh
+!/scripts/gg-probe-fixtures.sh
+!/scripts/gg-reference.sh
+!/scripts/gg-scratch-lock.sh
+!/scripts/gg-signatures.sh
+
+# The version files those installers source, one per arm — and nothing else under
+# `packages/`: the arms' sources, their `.build/` scratch and the unrelated npm
+# workspaces beside them all stay out, which is why the Dockerfile can still COPY
+# `./packages` as a directory. Measured whole slice: ~230 kB. Enumerated, for the
+# reason above; the gate asserts every tracked `packages/gg-sandbox-*/*-version.sh` is here.
+!/packages/gg-sandbox-cpp/cpp-version.sh
+!/packages/gg-sandbox-csharp/csharp-version.sh
+!/packages/gg-sandbox-java/java-version.sh
+!/packages/gg-sandbox-kotlin/kotlin-version.sh
+!/packages/gg-sandbox-purescript/purescript-version.sh
+!/packages/gg-sandbox-ruby/opal-version.sh
+!/packages/gg-sandbox-ruby/yard-version.sh
+!/packages/gg-sandbox-rust/rust-version.sh
+!/packages/gg-sandbox-swift/swift-version.sh
+
+# Nine files that are NOT version files and are read by `scripts/ci/install-gg-build-tools.sh`,
+# which warms the package-manager-delivered half of gg's build toolchain. They are named
+# individually rather than admitted by a glob, because a glob wide enough to catch them
+# (`!/packages/gg-sandbox*/build.sh`) would put ten build scripts in this layer's cache key and the
+# note above `!/scripts/ci/install-*.sh` is the reason not to.
+#
+#   the two `build.sh`   carry the `componentize-js` and `componentize-py` pins. Those two arms have
+#                        no `*-version.sh` of their own, so this is where the pin lives.
+#   requirements.txt     the Python arm's wheels, pre-fetched into uv's cache.
+#   the two Cargo files  the Rust arm's SEPARATE lockfile, whose registry closure nothing else in
+#                        this repository warms and which that arm's build resolves `--offline`.
+#   the two guest        the same for gg's ECMAScript guest, a crate outside the workspace with a
+#   Cargo files          lockfile of its own, built `--locked --offline` by its `guest.sh`. Only the
+#                        manifest and the lockfile: the manifest names its `[lib] path` so
+#                        `cargo fetch` does not look for `src/`, which keeps the guest's sources out
+#                        of this layer's cache key.
+#   spago.yaml           read by TWO things, and the first is why it cannot wait for the glob above:
+#                        `purescript-version.sh` does not merely sit beside it, it READS it. The
+#                        registry package set is written down once, where Spago reads it, and that
+#                        version file projects it with a `sed` that `exit 1`s on an empty result —
+#                        so every installer that sources the PureScript pin fails inside the image
+#                        without this line. The second reader is the build-tool installer, below.
+#   spago.lock           `install-gg-build-tools.sh` warms Spago's package STORE by running `spago
+#                        install` in that package, and the lockfile decides which versions it
+#                        resolves to. A warm without it caches a set the arm's build re-resolves,
+#                        which is worse than no warm because it looks like it worked.
+!/packages/gg-sandbox/build.sh
+!/packages/gg-sandbox-python/build.sh
+!/packages/gg-sandbox-python/requirements.txt
+!/packages/gg-sandbox-rust/Cargo.toml
+!/packages/gg-sandbox-rust/Cargo.lock
+!/packages/gg-sandbox/guest/Cargo.toml
+!/packages/gg-sandbox/guest/Cargo.lock
+!/packages/gg-sandbox-purescript/spago.yaml
+!/packages/gg-sandbox-purescript/spago.lock
+
+# `packages/gg-sandbox-rust/rust-version.sh` reads the toolchain channel out of
+# this file rather than pinning a second copy of it, so the Rust arm's installer
+# (`rustup target add wasm32-unknown-unknown`) cannot run without it. It is also
+# what makes that install cheap: `channel` here equals the `RUST_VERSION` build arg
+# in `docker-compose.yml`, so rustup adds a target to the toolchain the image
+# already has rather than downloading a second one.
+!/rust-toolchain.toml
+
+# Finally, re-exclude the two host-specific files that are deliberately not
+# committed (see `.devcontainer/.gitignore`). They would ride in under the
+# `!/.devcontainer` re-inclusion above, which would put one developer's SSH-agent
+# path and timezone into the context of everyone's build. Nothing COPYs them —
+# `docker-compose.local.yml` is read by compose on the HOST, before any of this.
+# These come last so they win.
+/.devcontainer/docker-compose.local.yml
+/.devcontainer/.env
+
+# And macOS Finder metadata, which rides in under the same `!/.devcontainer`
+# re-inclusion for the same reason and is worse: those two files at least only change
+# when a developer edits them, while a `.DS_Store` is rewritten because a window was
+# resized or a folder scrolled — churn with no edit behind it at all. Every rewrite
+# changes this image's `COPY` cache key, so a devcontainer rebuild re-runs the
+# toolchain installs it would otherwise have skipped. The primary development host is
+# macOS sharing this tree into a Linux VM, so Finder and the builder see the same
+# directories. The root allowlist carries the same entry; this is the half of that
+# pair that scripts/ci/build-context.sh checks against THIS file.
+**/.DS_Store

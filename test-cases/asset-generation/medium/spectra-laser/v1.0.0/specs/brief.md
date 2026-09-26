@@ -1,7 +1,7 @@
 # Spectra Laser — synthesis brief
 
 You are synthesizing the **laser-fire sound effect** for the **player's
-resonator-fighter** in *Spectra*, a two-band formation shooter. The player flies
+resonator-fighter** in _Spectra_, a two-band formation shooter. The player flies
 along the bottom of the screen and fires this shot **upward** at a swarm of drones,
 many times a second. This is the fighter's primary weapon sound — the one the
 player hears constantly — so it must be **short, bright, and instantly readable as
@@ -12,7 +12,7 @@ a laser**. Build it from **oscillators and noise alone: no samples, no recording
 A crisp, synthetic **"pew"** — a fast pitch-down zap:
 
 - **Bright and energetic**, arcade-retro, chiptune-adjacent — the neon voice of
-  *Spectra*. It should read as overtly electronic, not organic or recorded.
+  _Spectra_. It should read as overtly electronic, not organic or recorded.
 - **Snappy and tight**: an instant, percussive onset and a quick fall to silence.
   Because the fighter fires it in rapid bursts, it must not feel sluggish or ring
   on. The whole event is a fraction of a second.
@@ -59,7 +59,7 @@ reaching for one complex one:
   pitch sweep** applied to it and a fast attack / quick decay envelope. This is the
   core of the sound.
 - A short **noise transient** stacked at the very start — a brief burst of filtered
-  noise (a few milliseconds, high-passed so it reads as a bright *tick* rather than
+  noise (a few milliseconds, high-passed so it reads as a bright _tick_ rather than
   a low thud) to give the attack a crisp, percussive edge. Keep it short and quiet
   relative to the tonal voice.
 - Optional **shaping** to taste, if it serves the sound: a **filter sweep** (e.g. a

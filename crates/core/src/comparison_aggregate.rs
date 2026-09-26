@@ -1,0 +1,274 @@
+//! Aggregation: fold a [comparison](crate::comparison)'s arms and their runs into
+//! the computed [`ComparisonArmResult`]s a view renders.
+//!
+//! This is the bridge from stored runs to presented distributions. It is
+//! **deterministic** — an arm's runs are read in sorted-id order and the bootstrap
+//! is seeded from those ids — so a comparison recomputes identically every time,
+//! whether live in the console or baked into the public snapshot. It computes; it
+//! never judges: every output is a distribution, a count, or a diagnostic, never a
+//! winner.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::comparison::{
+    ArmDiagnostics, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig, Confound,
+    ScorePoint, automated_only_score,
+};
+use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
+use crate::metrics::TokenCounts;
+use crate::model_id::canonical_model_id;
+use crate::review::Score;
+use crate::run_record::{AuthMode, RunRecord};
+use crate::test_case::ReviewItem;
+
+/// A run counts as passing only when it earned every auto-covered point; this is
+/// the float tolerance for that all-or-nothing check.
+const FULL_MARKS_EPSILON: f64 = 1e-9;
+
+/// Fold every arm of `config` into its result. `items` is the case's **effective**
+/// review items (common + variant, errata applied) — shared by every arm, since a
+/// comparison holds the case and variant constant. `runs` maps run id → record; an
+/// arm reads exactly the runs its [`run_ids`](ComparisonArm::run_ids) name that are
+/// present in the map.
+///
+/// `live` is every recorded id that still exists — a run still stored, or a job still
+/// queued or running — which is a wider set than `runs`: a run launched a minute ago
+/// has no record yet but must not be launched again. The caller resolves it against
+/// the store (statistics are computed here; existence is not a question this module
+/// can answer), and each arm reports its own share as
+/// [`live_run_ids`](ComparisonArmResult::live_run_ids).
+pub fn aggregate_comparison(
+    config: &ComparisonConfig,
+    items: &[ReviewItem],
+    runs: &BTreeMap<String, RunRecord>,
+    live: &BTreeSet<String>,
+) -> Vec<ComparisonArmResult> {
+    config
+        .arms
+        .iter()
+        .map(|arm| aggregate_arm(config, arm, items, runs, live))
+        .collect()
+}
+
+/// Fold one arm's runs into its result.
+fn aggregate_arm(
+    config: &ComparisonConfig,
+    arm: &ComparisonArm,
+    items: &[ReviewItem],
+    runs: &BTreeMap<String, RunRecord>,
+    live: &BTreeSet<String>,
+) -> ComparisonArmResult {
+    // The arm's present runs, in a deterministic sorted-id order so the bootstrap
+    // seed and every derived figure are independent of arrival order.
+    let mut ids: Vec<String> = arm
+        .run_ids
+        .iter()
+        .filter(|id| runs.contains_key(*id))
+        .cloned()
+        .collect();
+    ids.sort();
+    let arm_runs: Vec<&RunRecord> = ids.iter().map(|id| &runs[id]).collect();
+    let seed = seed_from_run_ids(&ids);
+
+    // The arm's still-existing ids, in launch order rather than sorted: this is what a
+    // top-up counts off, and the order it was launched in is the order a reader reads
+    // it in. Wider than `ids` above — a run that has not reported back yet exists.
+    let live_run_ids: Vec<String> = arm
+        .run_ids
+        .iter()
+        .filter(|id| live.contains(*id))
+        .cloned()
+        .collect();
+
+    // Cost (comparable USD) and total-token distributions, over the runs that
+    // report each metric — a run missing the figure is left out rather than folded
+    // in as a zero that would drag the distribution down.
+    let costs: Vec<f64> = arm_runs
+        .iter()
+        .filter_map(|r| r.metrics.cost.comparable)
+        .collect();
+    let tokens: Vec<f64> = arm_runs
+        .iter()
+        .filter_map(|r| r.metrics.tokens.total().map(|t| t as f64))
+        .collect();
+    let cost = MetricSummary::compute(&costs, seed);
+    let tokens_summary = MetricSummary::compute(&tokens, seed);
+    // The harness session alone. Setup, teardown, and validation are the
+    // cabinet's time, and a run recorded before the stage durations were
+    // measured reports none — left out rather than folded in as a zero.
+    let sessions: Vec<f64> = arm_runs
+        .iter()
+        .filter_map(|r| r.metrics.session_seconds)
+        .collect();
+    let session_duration = MetricSummary::compute(&sessions, seed);
+
+    // Automated-only scores, over the runs that carry validators. A run whose
+    // covered denominator is zero (no auto-checkable points ran) contributes to
+    // neither the score nor the pass rate.
+    let mut points: Vec<ScorePoint> = Vec::new();
+    let mut passed = 0u64;
+    for r in &arm_runs {
+        let scripts = &r.validation.debug_scripts;
+        if scripts.is_empty() {
+            continue;
+        }
+        let Score { earned, total } = automated_only_score(items, scripts);
+        if total == 0 {
+            continue;
+        }
+        if (earned - f64::from(total)).abs() < FULL_MARKS_EPSILON {
+            passed += 1;
+        }
+        points.push(ScorePoint { earned, total });
+    }
+    let scored_n = points.len();
+    let score = (!points.is_empty()).then(|| {
+        let mean_fraction = points
+            .iter()
+            .map(|p| p.earned / f64::from(p.total))
+            .sum::<f64>()
+            / scored_n as f64;
+        ArmScore {
+            n: scored_n,
+            mean_fraction,
+            points,
+        }
+    });
+    let pass_rate = PassRate::compute(passed, scored_n as u64);
+
+    ComparisonArmResult {
+        arm: arm.clone(),
+        n_desired: config.n,
+        n_observed: arm_runs.len(),
+        live_run_ids,
+        cost,
+        tokens: tokens_summary,
+        session_duration,
+        score,
+        pass_rate,
+        diagnostics: diagnostics_of(&arm_runs),
+        confounds: detect_confounds(config, arm, &arm_runs),
+    }
+}
+
+/// Sum the token classes and tool-call counts across an arm's runs.
+fn diagnostics_of(arm_runs: &[&RunRecord]) -> ArmDiagnostics {
+    let mut tokens = TokenCounts::default();
+    let mut tool_calls: BTreeMap<String, u64> = BTreeMap::new();
+    for r in arm_runs {
+        tokens = tokens.plus(r.metrics.tokens);
+        for (name, count) in &r.tool_calls {
+            *tool_calls.entry(name.clone()).or_default() += count;
+        }
+    }
+    ArmDiagnostics { tokens, tool_calls }
+}
+
+/// Detect variables that slipped across an arm's runs: a variable the arm's own
+/// [configuration](ComparisonArm) fixes whose observed value drifted or differs from
+/// what the arm declared, plus the comparison-wide controls.
+///
+/// The model and the harness are per-arm — an arm *is* one configuration — so they
+/// are checked against that arm's declaration rather than a global control. The auth
+/// mode comes from the harness's own configuration and is never declared here, so it
+/// is only a confound when it drifted *within* the arm's runs (which does make the
+/// arm's costs incomparable). A gg arm declares no single model (its capability set
+/// may span one per agent role), so its model is likewise checked for drift only.
+fn detect_confounds(
+    config: &ComparisonConfig,
+    arm: &ComparisonArm,
+    arm_runs: &[&RunRecord],
+) -> Vec<Confound> {
+    let controls = &config.controls;
+    let mut out = Vec::new();
+
+    let auth: Vec<String> = arm_runs
+        .iter()
+        .map(|r| auth_mode_slug(r.environment.auth_mode).to_string())
+        .collect();
+    if let Some(c) = confound_for("auth_mode", None, &auth) {
+        out.push(c);
+    }
+
+    let orch: Vec<String> = arm_runs
+        .iter()
+        .map(|r| r.subject.orchestrator_slug.clone())
+        .collect();
+    if let Some(c) = confound_for("orchestrator", Some(&controls.orchestrator_slug), &orch) {
+        out.push(c);
+    }
+
+    // The engine, checked against the control exactly as the orchestrator is — and
+    // for a blunter reason. An A/B that varies the engine is not measuring what it
+    // claims to: runs of one case under different engines measure *different work*,
+    // because the engine hands the model the frame loop, input, audio, assets, and
+    // diagnostics the engineless build has to write for itself, and the case's
+    // available checklist points differ with it. The resulting gap in cost, tokens,
+    // and score belongs to the runtime rather than to the configurations under test,
+    // so it is reported rather than folded in.
+    let engines: Vec<String> = arm_runs
+        .iter()
+        .map(|r| r.subject.engine_slug.clone())
+        .collect();
+    if let Some(c) = confound_for("engine", Some(&controls.engine_slug), &engines) {
+        out.push(c);
+    }
+
+    let harnesses: Vec<String> = arm_runs
+        .iter()
+        .map(|r| r.subject.harness_slug.as_str().to_string())
+        .collect();
+    let declared_harness = arm.harness_slug.map(|h| h.as_str().to_string());
+    if let Some(c) = confound_for("harness", declared_harness.as_deref(), &harnesses) {
+        out.push(c);
+    }
+
+    // The arm's declared model, canonicalized the same way an observed one is, so a
+    // provider-prefixed declaration and the id a harness reports do not read as a
+    // mismatch. A gg arm declares none (see the doc above), leaving a drift check.
+    let declared_model = match (arm.model_id.as_deref(), arm.harness_slug) {
+        (Some(model), Some(harness)) => Some(canonical_model_id(model, harness)),
+        (Some(model), None) => Some(model.to_string()),
+        (None, _) => None,
+    };
+    let models: Vec<String> = arm_runs
+        .iter()
+        .map(|r| canonical_model_id(&r.subject.model_id, r.subject.harness_slug))
+        .collect();
+    if let Some(c) = confound_for("model", declared_model.as_deref(), &models) {
+        out.push(c);
+    }
+
+    out
+}
+
+/// A confound for `variable` when the `observed` values are anything other than the
+/// single declared value (drift within the arm, or a wholesale mismatch with the
+/// control). `None` when every observation equals `declared` (or there are none).
+fn confound_for(variable: &str, declared: Option<&str>, observed: &[String]) -> Option<Confound> {
+    let distinct: BTreeSet<&str> = observed.iter().map(String::as_str).collect();
+    let consistent = match declared {
+        Some(d) => distinct.iter().all(|v| *v == d),
+        None => distinct.len() <= 1,
+    };
+    if consistent {
+        return None;
+    }
+    Some(Confound {
+        variable: variable.to_string(),
+        values: distinct.into_iter().map(str::to_string).collect(),
+    })
+}
+
+/// The stable slug for an auth mode, used in confound values and to compare against
+/// the declared control.
+fn auth_mode_slug(mode: AuthMode) -> &'static str {
+    match mode {
+        AuthMode::ApiKey => "apiKey",
+        AuthMode::Subscription => "subscription",
+    }
+}
+
+#[cfg(test)]
+#[path = "comparison_aggregate.test.rs"]
+mod tests;

@@ -1,7 +1,7 @@
 /*
  * The `--tcab-*` custom-property contract that every shared UI component reads.
  * These defaults give the library a working synthwave theme out of the box, so
- * an app can simply `@import "@test-cabinet/ui/tokens.css"`. Any app may override
+ * an app can simply `@import "@clockwyrks/ui/tokens.css"`. Any app may override
  * individual properties in its own global styles — the public site, for example,
  * maps these onto its existing `--ttc-*` palette so the moved components render
  * exactly as before.
@@ -25,6 +25,17 @@
   --tcab-rating-passable: #a3e635;
   --tcab-rating-scuffed: #fbbf24;
   --tcab-rating-broken: #f87171;
+
+  /* Per-tier AESTHETIC rating colors, best to worst — the second rating channel a
+     reviewer rates on a validator-rated run. Legendary is the exceptional tier:
+     its badge is a shimmering gradient between the two colors below rather than
+     a flat tint, so a viewer sees at once that it is not the normal maximum. */
+  --tcab-aesthetic-legendary: #f0abfc;
+  --tcab-aesthetic-legendary-2: #fde68a;
+  --tcab-aesthetic-amazing: #c084fc;
+  --tcab-aesthetic-good: #60a5fa;
+  --tcab-aesthetic-okay: #94a3b8;
+  --tcab-aesthetic-slop: #a16207;
 
   --tcab-font:
     ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,

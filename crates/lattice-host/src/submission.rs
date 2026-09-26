@@ -32,9 +32,14 @@ use wasmtime::{Engine, Instance, Memory, Module, Store, TypedFunc};
 /// and surfaces the reason for diagnostics.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum InvokeError {
-    /// The submission exhausted its per-scenario fuel ceiling.
-    #[error("submission exhausted its fuel ceiling")]
-    OutOfFuel,
+    /// The submission exhausted its per-scenario fuel ceiling. The ceiling is carried
+    /// so the message names the bound that stopped it, exactly as Foray's per-tick
+    /// twin does.
+    #[error("submission exhausted its {limit}-fuel per-scenario ceiling")]
+    OutOfFuel {
+        /// The per-scenario fuel ceiling that was exhausted.
+        limit: u64,
+    },
     /// The submission's linear memory grew past the cap.
     #[error("submission exceeded its {limit}-byte memory cap (used {used} bytes)")]
     OutOfMemory { used: usize, limit: usize },
@@ -65,7 +70,7 @@ pub struct Submission {
     max_memory_bytes: usize,
 }
 
-/// Per-store host state. wasmtime calls back into [`ResourceLimiter`] before each
+/// Per-store host state. wasmtime calls back into [`ResourceLimiter`](wasmtime::ResourceLimiter) before each
 /// memory growth, so the cap is enforced at the point of `memory.grow` rather than
 /// observed after the fact.
 struct StoreState {
@@ -240,7 +245,9 @@ impl Submission {
         if err.downcast_ref::<wasmtime::Trap>() == Some(&wasmtime::Trap::OutOfFuel)
             || self.store.get_fuel().map(|f| f == 0).unwrap_or(false)
         {
-            return InvokeError::OutOfFuel;
+            return InvokeError::OutOfFuel {
+                limit: self.fuel_limit,
+            };
         }
         let used = self.memory.data_size(&self.store);
         if used >= self.max_memory_bytes {

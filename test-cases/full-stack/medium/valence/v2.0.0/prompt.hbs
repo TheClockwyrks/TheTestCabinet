@@ -8,7 +8,7 @@ Your project root is `{{workspace}}`. Create the game there.
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that pins
 **Playwright** as a dev dependency and depends on the
-**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
+**`@clockwyrks/particle-runtime`** library (below). Its dependencies have already
 been installed for you — `node_modules/` is populated and Playwright's headless
 **Chromium** is downloaded — so you can build right away (see "Playwright and
 Chromium" below for what they are there for). Build on this project rather than
@@ -28,7 +28,7 @@ towers and their two-branch upgrades), `specs/controls.md`, `specs/gameplay.md` 
 campaign start this run plays, the economy, integrity, the round campaign, and scoring),
 `specs/ui.md` (the game states, the menus, and the HUD), `specs/assets.md` (the
 asset-production contract), `specs/instrumentation.md` (the `window.__valence` debugging
-and automation API and the debug overlay), and `specs/proof.md`.
+and automation API and the debug overlay).
 
 ## Build requirements
 
@@ -61,15 +61,10 @@ harness depends on them:
   authoritative contract**: it enumerates every sprite, animation, particle system,
   and sound the game needs, names which tool produces each and where it lands under
   `assets/`, and states how each is wired into the build — including that the particle
-  systems are played live through the **`@test-cabinet/particle-runtime`** library
+  systems are played live through the **`@clockwyrks/particle-runtime`** library
   already installed as a dependency of your project (import it like any other
   dependency; do not fetch or reimplement it). Load every produced file with
   page-relative URLs so it resolves from the served sub-path.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are **illustrative examples, not targets to reproduce**, of the
-  title, gameplay, and containment-failed screens — design your own menus and layout
-  from the specification; the images only illustrate one way the intended look can
-  come together, so build the screens from the specification rather than copying them.
 
 ## Playwright and Chromium
 
@@ -79,8 +74,7 @@ Using them to validate your build as you go — serving it, selecting a map, pla
 towers, running a round, and exercising the `window.__valence` API — is a good way to
 catch problems, but whether and how far to do so is your call. Worth exercising the
 control operations deliberately, and not only a played round: playing by hand never
-touches the scenario board a script poses on. (You will separately
-need them for the proof-of-implementation captures that `specs/proof.md` asks for.)
+touches the scenario board a script poses on.
 
 Whenever you do launch the browser, use the project's own Playwright: import it from
 your project (for example `import { chromium } from "playwright"`) or run the
@@ -99,4 +93,4 @@ published. When the build is complete and verified, commit everything: run
 with nothing uncommitted or untracked. A `.gitignore` already excludes `node_modules/`
 and the build output (`dist/`/`build/`/`out/`), so a clean tree does not mean
 committing those — but it does mean committing your source, your `package-lock.json`,
-your `README.md`, the **produced assets under `assets/`**, and the `proof/` artifacts.
+your `README.md`, and the **produced assets under `assets/`**.

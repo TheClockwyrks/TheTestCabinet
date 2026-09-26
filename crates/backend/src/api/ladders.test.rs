@@ -9,6 +9,10 @@
 
 use super::*;
 
+use super::super::coverage::gg_member_defect;
+use test_cabinet_core::gg::{
+    GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
+};
 use test_cabinet_core::review::Rating;
 
 fn combo(model: &str) -> ReviewPlanCombo {
@@ -16,7 +20,16 @@ fn combo(model: &str) -> ReviewPlanCombo {
         harness: HarnessSlug::Claude,
         model: model.to_string(),
         provider: None,
+        gg_config_id: None,
+        gg_slot_models: BTreeMap::new(),
+        gg_config_name: None,
     }
+}
+
+/// The same combination resolved into the member a board actually walks. Every climber in
+/// this file is a harness member, which resolves without consulting any configuration.
+fn member(model: &str) -> PlanMember {
+    resolve_member(&combo(model), &GgLibrary::default())
 }
 
 fn rung_input(slug: &str) -> LadderRungInput {
@@ -25,6 +38,7 @@ fn rung_input(slug: &str) -> LadderRungInput {
         slug: slug.to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
         runs: None,
     }
 }
@@ -63,13 +77,13 @@ fn climb_of(slugs: &[&str]) -> StoredLadder {
 
 /// One climber's standing: the rung it stands on (if any), and everywhere it reached.
 fn standing<'a>(
-    combo: &'a ReviewPlanCombo,
+    member: &'a PlanMember,
     status: ClimberStatus,
     current: Option<usize>,
     reached: &'a [usize],
 ) -> ClimberStanding<'a> {
     ClimberStanding {
-        combo,
+        member,
         status,
         current,
         reached,
@@ -86,7 +100,7 @@ fn placed(cells: &[RungCell], ladder: &StoredLadder) -> Vec<(String, usize)> {
                 .iter()
                 .position(|rung| rung.id == cell.rung_id)
                 .expect("a cell names one of the ladder's rungs");
-            (cell.combo.model.clone(), position)
+            (cell.member.combo.model.clone(), position)
         })
         .collect()
 }
@@ -380,15 +394,15 @@ fn a_required_fraction_is_reported_as_the_run_count_it_actually_takes() {
 
 #[test]
 fn steering_decides_the_climb_order_and_declaration_order_breaks_ties() {
-    let combos = vec![combo("opus"), combo("sonnet"), combo("haiku")];
+    let combos = vec![member("opus"), member("sonnet"), member("haiku")];
     let mut steer = HashMap::new();
     steer.insert(
-        combination_key(&combos[2]),
-        steering(&combination_key(&combos[2]), 10, false),
+        combination_key(&combos[2].combo),
+        steering(&combination_key(&combos[2].combo), 10, false),
     );
     steer.insert(
-        combination_key(&combos[1]),
-        steering(&combination_key(&combos[1]), 0, true),
+        combination_key(&combos[1].combo),
+        steering(&combination_key(&combos[1].combo), 0, true),
     );
     let order = climb_order(&combos, &steer);
     // Priority first (haiku), then the focused tiebreak among equal priorities
@@ -396,7 +410,7 @@ fn steering_decides_the_climb_order_and_declaration_order_breaks_ties() {
     assert_eq!(
         order
             .iter()
-            .map(|&index| combos[index].model.as_str())
+            .map(|&index| combos[index].combo.model.as_str())
             .collect::<Vec<_>>(),
         vec!["haiku", "sonnet", "opus"]
     );
@@ -404,7 +418,7 @@ fn steering_decides_the_climb_order_and_declaration_order_breaks_ties() {
 
 #[test]
 fn an_unsteered_climber_takes_its_declared_place_without_a_row() {
-    let combos = vec![combo("opus"), combo("sonnet")];
+    let combos = vec![member("opus"), member("sonnet")];
     // No steering rows at all — which is exactly the state of a model added to a
     // standing ladder — and the order is simply the ladder's own.
     let order = climb_order(&combos, &HashMap::new());
@@ -426,9 +440,15 @@ fn a_schedule_round_trips_through_the_stores_shape() {
         outer_axis: LadderAxis::Combination,
         paused: true,
         auto_top_up: true,
-        buffer_target: Some(6),
+        buffer_target: Some(BufferTarget::Bounded { runs: 6 }),
     };
     assert_eq!(LadderSchedule::from_db(schedule.to_db()), schedule);
+    // The unbounded shape survives the store untouched too.
+    let unbounded = LadderSchedule {
+        buffer_target: Some(BufferTarget::Unbounded),
+        ..LadderSchedule::default()
+    };
+    assert_eq!(LadderSchedule::from_db(unbounded.to_db()), unbounded);
     let default = LadderSchedule::default();
     assert_eq!(default.outer_axis, LadderAxis::Rung);
     // Disabled on creation: saving a climb describes the question, and a ladder that
@@ -470,6 +490,7 @@ fn a_verdict_decided_live_is_flagged_as_not_yet_recorded() {
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
         runs_override: None,
     };
     let wire = live_outcome(&rung, LadderOutcome::Advanced, "2026-08-15T00:00:00Z");
@@ -487,6 +508,7 @@ fn a_rung_is_counted_as_the_same_cell_a_plan_would_count() {
         slug: "carom".to_string(),
         version: "v1.2.0".to_string(),
         variant: "hard".to_string(),
+        engine: None,
         runs_override: None,
     };
     // The rung's case and a plan's case are the same identity, so a run of this rung
@@ -495,15 +517,89 @@ fn a_rung_is_counted_as_the_same_cell_a_plan_would_count() {
     assert_eq!(case.slug, "carom");
     assert_eq!(case.version, "v1.2.0");
     assert_eq!(case.variant, "hard");
+    assert_eq!(case.engine, None);
     assert_eq!(
-        cell_key(&case, &combo("opus")),
+        cell_key(&case, &member("opus")),
         (
             "carom".to_string(),
             "v1.2.0".to_string(),
             "hard".to_string(),
+            // A rung that pins no engine climbs the engineless run, which is the segment
+            // a run recording no engine is counted under.
+            "none".to_string(),
             "claude".to_string(),
             "opus".to_string(),
+            // A harness combination has no gg identity: both segments are empty.
+            String::new(),
+            String::new(),
         )
+    );
+}
+
+#[test]
+fn the_same_case_on_two_engines_is_two_rungs() {
+    let ladder = ladder_from_input(
+        "l-1".to_string(),
+        input(vec![
+            rung_input("carom"),
+            LadderRungInput {
+                engine: Some("simple-2d".to_string()),
+                ..rung_input("carom")
+            },
+        ]),
+        "2026-08-15T00:00:00Z",
+    )
+    .expect("two engines are two rungs, not a duplicate");
+
+    // Clearing a case with a runtime underneath is a different achievement from clearing
+    // it with nothing, so a climb may ask for both — and the two are counted and gated
+    // apart.
+    let cases: Vec<ReviewPlanCase> = ladder.rungs.iter().map(rung_case).collect();
+    assert_eq!(
+        cases.iter().map(|c| c.engine_slug()).collect::<Vec<_>>(),
+        vec!["none", "simple-2d"]
+    );
+    assert_ne!(
+        cell_key(&cases[0], &member("opus")),
+        cell_key(&cases[1], &member("opus"))
+    );
+    // And the engine survives the round trip onto the wire, so a re-save does not quietly
+    // re-pin the rung to the engineless run.
+    assert_eq!(
+        rung_to_wire(&ladder.rungs[1]).engine.as_deref(),
+        Some("simple-2d")
+    );
+}
+
+#[test]
+fn a_rung_saved_before_the_engine_existed_climbs_the_engineless_run() {
+    // A console built against the previous contract sends no engine key, and the stored
+    // rungs written by one carry a `NULL` column. Both must keep meaning what they always
+    // meant — the engineless run — rather than becoming a rung nothing can resolve.
+    let sent: LadderRungInput =
+        serde_json::from_str(r#"{"slug":"carom","version":"v1.0.0","variant":"base"}"#)
+            .expect("a pre-engine rung input still parses");
+    assert_eq!(sent.engine, None);
+
+    let stored = StoredLadderRung {
+        id: "r1".to_string(),
+        slug: "carom".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        engine: None,
+        runs_override: None,
+    };
+    assert_eq!(rung_case(&stored).engine_slug(), "none");
+    // And it goes back out the way it came in: no engine key on the wire, so a console
+    // round-tripping a ladder does not re-pin every rung it touches.
+    let wire = rung_to_wire(&stored);
+    assert_eq!(wire.engine, None);
+    assert!(
+        !serde_json::to_value(&wire)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("engine")
     );
 }
 
@@ -523,7 +619,7 @@ fn a_decided_rungs_unreviewed_runs_stay_reviewable_after_the_climber_moves_on() 
     // drop the four runs nobody had looked at the instant the first was judged — while
     // they went on occupying the review buffer they had disappeared from.
     let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let model = combo("claude-opus-5");
+    let model = member("claude-opus-5");
     let (active, reviewable) = cell_sets(
         &ladder,
         LadderAxis::Rung,
@@ -556,9 +652,9 @@ fn a_climber_that_is_not_fed_is_still_reviewed() {
     // climber's runs are the very ones a re-review would unwall it with, and a hold
     // stops spending rather than reviewing.
     let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let walled = combo("walled-model");
-    let held = combo("held-model");
-    let topped = combo("topped-model");
+    let walled = member("walled-model");
+    let held = member("held-model");
+    let topped = member("topped-model");
     let (active, reviewable) = cell_sets(
         &ladder,
         LadderAxis::Combination,
@@ -592,7 +688,7 @@ fn awaiting_review_is_fed_because_the_review_is_what_it_is_waiting_on() {
     // nothing new — but it stays in the fed set, because the moment the review lands
     // the climber moves and the next rung is launched from exactly here.
     let ladder = climb_of(&["carom", "pong"]);
-    let model = combo("claude-opus-5");
+    let model = member("claude-opus-5");
     let (active, reviewable) = cell_sets(
         &ladder,
         LadderAxis::Rung,
@@ -610,8 +706,8 @@ fn awaiting_review_is_fed_because_the_review_is_what_it_is_waiting_on() {
 #[test]
 fn both_cell_sets_come_out_in_the_ladders_own_order() {
     let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let ahead = combo("ahead-model");
-    let behind = combo("behind-model");
+    let ahead = member("ahead-model");
+    let behind = member("behind-model");
     let standings = [
         standing(&ahead, ClimberStatus::Climbing, Some(2), &[0, 1, 2]),
         standing(&behind, ClimberStatus::Climbing, Some(1), &[0, 1]),
@@ -652,7 +748,7 @@ fn one_case_pinned_on_two_rungs_is_one_cell() {
     // combination: counting the cell twice would inflate the review buffer, and
     // offering it twice would ask for the same run to be judged under two headings.
     let ladder = climb_of(&["carom", "carom"]);
-    let model = combo("claude-opus-5");
+    let model = member("claude-opus-5");
     let (_, reviewable) = cell_sets(
         &ladder,
         LadderAxis::Rung,
@@ -662,4 +758,430 @@ fn one_case_pinned_on_two_rungs_is_one_cell() {
         placed(&reviewable, &ladder),
         vec![("claude-opus-5".into(), 0)]
     );
+}
+
+// ---- gg climbers -----------------------------------------------------------
+
+/// A saved configuration with **two** launch inputs: a configuration slot (`primary`)
+/// filling the root agent's binding, and a passthrough slot on a second profile
+/// (`reviewer.critic`).
+///
+/// Two, because one is not enough to show what a ladder needs: a climber keyed on the root
+/// model alone would merge two climbers that differ only on the reviewer's model, and those
+/// are exactly the two arms a ladder exists to keep apart.
+fn gg_config(id: &str, name: &str) -> crate::api::GgConfig {
+    let mut set = GgCapabilitySet::minimal("");
+    let root_key = format!("k-{}", set.agents[0].slug);
+    set.agents[0].id = Some(root_key.clone());
+    set.agents[0].model_slot = Some("main".to_string());
+    set.agents[0].model_slots = vec![GgModelSlot {
+        name: "main".to_string(),
+        default_model_id: None,
+        passthrough: false,
+    }];
+    set.model_slots = vec![GgConfigSlot {
+        name: "primary".to_string(),
+        default_model_id: None,
+        targets: vec![GgSlotTarget {
+            agent: root_key,
+            slot: "main".to_string(),
+        }],
+    }];
+    set.agents.push(GgAgentConfig {
+        id: Some("k-reviewer".to_string()),
+        slug: "reviewer".to_string(),
+        name: "reviewer".to_string(),
+        model_slot: Some("critic".to_string()),
+        model_slots: vec![GgModelSlot {
+            name: "critic".to_string(),
+            default_model_id: None,
+            passthrough: true,
+        }],
+        ..GgAgentConfig::root()
+    });
+    crate::api::GgConfig {
+        id: id.to_string(),
+        name: name.to_string(),
+        description: String::new(),
+        capability_set: set,
+        agent_sources: Vec::new(),
+        updated_at: "2026-08-15T00:00:00Z".to_string(),
+    }
+}
+
+/// The account's gg library: two saved configurations, no saved agents.
+fn gg_configs() -> GgLibrary {
+    GgLibrary::from_parts(
+        vec![
+            gg_config("cfg-1", "Critic sweep"),
+            gg_config("cfg-2", "Solo sweep"),
+        ],
+        Vec::new(),
+    )
+}
+
+/// A gg climber of one configuration, binding `root` to its primary slot and `critic` to the
+/// reviewer's — spelled the way the console's picker values a configuration.
+fn gg_combo(config: &str, root: &str, critic: &str) -> ReviewPlanCombo {
+    ReviewPlanCombo {
+        harness: HarnessSlug::Gg,
+        model: String::new(),
+        provider: None,
+        gg_config_id: Some(format!("saved:{config}")),
+        gg_slot_models: BTreeMap::from([
+            ("primary".to_string(), root.to_string()),
+            ("reviewer.critic".to_string(), critic.to_string()),
+        ]),
+        gg_config_name: None,
+    }
+}
+
+/// The same climber, resolved against the account's configurations.
+fn gg_member(config: &str, root: &str, critic: &str) -> PlanMember {
+    resolve_member(&gg_combo(config, root, critic), &gg_configs())
+}
+
+#[test]
+fn a_harness_climbers_key_is_still_its_harness_model_provider_triple() {
+    // Byte-identical to what every ladder recorded before gg was a climber at all: a
+    // verdict written against the old key must still address the same climber, so this
+    // literal is the contract and not an example.
+    assert_eq!(climber_key(&combo("opus")), "claude|opus|");
+}
+
+#[test]
+fn a_gg_climbers_key_names_its_configuration_and_the_models_it_binds() {
+    let key = climber_key(&gg_combo("cfg-1", "opus", "haiku"));
+    assert_eq!(key, "gg:cfg-1|primary=opus,reviewer.critic=haiku");
+    // It cannot be mistaken for a harness climber's, whose key has no `gg:` configuration
+    // in the first segment — the two forms share one column of stored verdicts.
+    assert!(!key.contains("claude"));
+    assert_ne!(key, climber_key(&combo("opus")));
+    // A bare id and the picker's `saved:` spelling name one configuration, so they are one
+    // climber: a ladder written through the API and the same ladder written in the console
+    // must not climb twice.
+    let bare = ReviewPlanCombo {
+        gg_config_id: Some("cfg-1".to_string()),
+        ..gg_combo("cfg-1", "opus", "haiku")
+    };
+    assert_eq!(climber_key(&bare), key);
+}
+
+#[test]
+fn two_gg_climbers_of_one_configuration_are_two_climbers() {
+    let critic_haiku = climber_key(&gg_combo("cfg-1", "opus", "haiku"));
+    let critic_sonnet = climber_key(&gg_combo("cfg-1", "opus", "sonnet"));
+    // One configuration, one root model, one subagent changed: the two arms a ladder is
+    // being asked to compare, so they must not share a rung's verdicts.
+    assert_ne!(critic_haiku, critic_sonnet);
+    // The same models bound to swapped slots is a third climber, because which agent runs
+    // which model is the whole question.
+    assert_ne!(
+        critic_haiku,
+        climber_key(&gg_combo("cfg-1", "haiku", "opus"))
+    );
+    // And the same bindings on a different configuration is a fourth.
+    assert_ne!(
+        critic_haiku,
+        climber_key(&gg_combo("cfg-2", "opus", "haiku"))
+    );
+
+    // They climb as separate rows on the board, each taking its own steering.
+    let combos = vec![
+        gg_member("cfg-1", "opus", "haiku"),
+        gg_member("cfg-1", "opus", "sonnet"),
+    ];
+    let mut steer = HashMap::new();
+    steer.insert(critic_sonnet.clone(), steering(&critic_sonnet, 10, false));
+    assert_eq!(climb_order(&combos, &steer), vec![1, 0]);
+}
+
+#[test]
+fn a_gg_climber_read_off_the_board_is_steered_and_overridden_as_itself() {
+    // What a board hands a client: the configuration's name and the root model filled in,
+    // and the harness resolved to gg.
+    let read = gg_member("cfg-1", "opus", "haiku").combo;
+    assert_eq!(read.gg_config_name.as_deref(), Some("Critic sweep"));
+    assert_eq!(read.model, "opus");
+    assert_eq!(read.harness, HarnessSlug::Gg);
+
+    // A console echoing that straight back into `POST /ladders/{id}/climbers` or
+    // `.../outcomes` addresses the climber it was reading, not a second one nothing on the
+    // ladder refers to — because both keys are taken from the member as it is stored.
+    let stored = gg_combo("cfg-1", "opus", "haiku");
+    assert_ne!(read, stored, "the read shape really does differ");
+    assert_eq!(climber_key(&read), climber_key(&stored));
+
+    // Even a client that hands back a stale name and a stale root model — a configuration
+    // renamed and re-bound since it was read — steers the same climber, since neither is
+    // part of what the climber is.
+    let stale = ReviewPlanCombo {
+        gg_config_name: Some("what it used to be called".to_string()),
+        model: "some-other-model".to_string(),
+        provider: Some("openrouter".to_string()),
+        harness: HarnessSlug::Claude,
+        ..read.clone()
+    };
+    assert_eq!(climber_key(&stale), climber_key(&stored));
+}
+
+#[test]
+fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
+    let rung = StoredLadderRung {
+        id: "r1".to_string(),
+        slug: "carom".to_string(),
+        version: "v1.2.0".to_string(),
+        variant: "hard".to_string(),
+        engine: None,
+        runs_override: None,
+    };
+    let case = rung_case(&rung);
+    // The key `rung_runs` asks the store for. The two gg segments are what keep one
+    // configuration's runs out of another's evidence: the configuration's id, because that is
+    // what it is across time, and the bound models, because one configuration runs several.
+    assert_eq!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
+        (
+            "carom".to_string(),
+            "v1.2.0".to_string(),
+            "hard".to_string(),
+            "none".to_string(),
+            "gg".to_string(),
+            "opus".to_string(),
+            "cfg-1".to_string(),
+            "reviewer=haiku,root=opus".to_string(),
+        )
+    );
+    // Same case, same root model, a different configuration: a different cell, so a climber
+    // walled on one configuration is not walled by the other's runs.
+    assert_ne!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
+        cell_key(&case, &gg_member("cfg-2", "opus", "haiku"))
+    );
+    // Same configuration, one subagent's model changed: also a different cell.
+    assert_ne!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
+        cell_key(&case, &gg_member("cfg-1", "opus", "sonnet"))
+    );
+    // And never the harness cell of the same root model, whose gg segments are both empty.
+    assert_ne!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
+        cell_key(&case, &member("opus"))
+    );
+}
+
+#[test]
+fn a_climbers_key_and_its_cell_name_one_configuration() {
+    let rung = StoredLadderRung {
+        id: "r1".to_string(),
+        slug: "carom".to_string(),
+        version: "v1.2.0".to_string(),
+        variant: "hard".to_string(),
+        engine: None,
+        runs_override: None,
+    };
+    let case = rung_case(&rung);
+    let combo = gg_combo("cfg-1", "opus", "haiku");
+
+    // The two halves of a ladder — the verdicts it records against a climber, and the runs
+    // it counts under that climber's cells — name the configuration by the same value. A
+    // ladder whose halves disagreed would keep a climber's history while resetting the
+    // evidence beneath it.
+    let key = climber_key(&combo);
+    assert_eq!(key, "gg:cfg-1|primary=opus,reviewer.critic=haiku");
+    assert_eq!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")).6,
+        "cfg-1"
+    );
+
+    // Rename the configuration and neither half moves.
+    let renamed = GgLibrary::from_parts(
+        vec![
+            gg_config("cfg-1", "Sweep, take two"),
+            gg_config("cfg-2", "Solo sweep"),
+        ],
+        Vec::new(),
+    );
+    let after = resolve_member(&combo, &renamed);
+    assert_eq!(climber_key(&after.combo), key);
+    assert_eq!(
+        cell_key(&case, &after),
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku"))
+    );
+
+    // Two configurations an account gave one name are two climbers and two cells, on both
+    // halves at once.
+    let twins = GgLibrary::from_parts(
+        vec![
+            gg_config("cfg-1", "Critic sweep"),
+            gg_config("cfg-2", "Critic sweep"),
+        ],
+        Vec::new(),
+    );
+    let first = resolve_member(&combo, &twins);
+    let second = resolve_member(&gg_combo("cfg-2", "opus", "haiku"), &twins);
+    assert_ne!(climber_key(&first.combo), climber_key(&second.combo));
+    assert_ne!(cell_key(&case, &first), cell_key(&case, &second));
+}
+
+#[test]
+fn a_gg_climber_is_stored_as_the_pointer_it_is() {
+    // A ladder saved from a board read: the derived fields arrive filled in, and the store
+    // must not keep them — a configuration is renamed in one place, and a ladder holding the
+    // name it bore at save time would show the old one forever.
+    let read = gg_member("cfg-1", "opus", "haiku").combo;
+    let mut body = input(vec![rung_input("carom")]);
+    body.combos = vec![read.clone(), combo("opus")];
+    let stored =
+        ladder_from_input("l1".to_string(), body, "2026-08-15T00:00:00Z").expect("a valid climb");
+    assert!(stored.combos[0].model.is_empty());
+    assert!(stored.combos[0].gg_config_name.is_none());
+    assert_eq!(
+        stored.combos[0].gg_config_id.as_deref(),
+        Some("saved:cfg-1")
+    );
+    assert_eq!(stored.combos[0].gg_slot_models, read.gg_slot_models);
+    // The harness climber beside it is stored exactly as it arrived.
+    assert_eq!(stored.combos[1], combo("opus"));
+    // And what was stored still names the climber the board was showing.
+    assert_eq!(climber_key(&stored.combos[0]), climber_key(&read));
+}
+
+#[test]
+fn a_climber_naming_a_configuration_the_account_does_not_own_is_refused() {
+    // The same validator a plan's members go through, so a climber a ladder accepts and a
+    // member a plan accepts are one set. A ladder is where the alternative would be worst:
+    // an unlaunchable climber simply never moves, and nothing says why.
+    let missing = gg_member_defect(&gg_combo("cfg-9", "opus", "haiku"), &gg_configs())
+        .expect("a configuration nobody owns is a defect");
+    assert!(missing.contains("cfg-9"), "unexpected: {missing}");
+
+    let mut unbound = gg_combo("cfg-1", "opus", "haiku");
+    unbound.gg_slot_models.remove("reviewer.critic");
+    let defect = gg_member_defect(&unbound, &gg_configs()).expect("an unbound slot is a defect");
+    // Both halves of what the reviewer has to go and change.
+    assert!(defect.contains("reviewer.critic"), "unexpected: {defect}");
+    assert!(defect.contains("Critic sweep"), "unexpected: {defect}");
+
+    // A harness climber has nothing to check.
+    assert!(gg_member_defect(&combo("opus"), &gg_configs()).is_none());
+}
+
+#[test]
+fn a_climber_whose_configuration_vanished_keeps_its_place_and_stops_being_fed() {
+    // The configuration was deleted after the ladder was written. The climber is not
+    // dropped from the board: a row that quietly disappeared would be indistinguishable
+    // from a model nobody ever added, which is the one thing a standing ladder must not
+    // do to a climber that has history on it.
+    let member = resolve_member(&gg_combo("cfg-9", "opus", "haiku"), &gg_configs());
+    let reason = member
+        .unlaunchable
+        .clone()
+        .expect("a configuration that is gone cannot be launched");
+    assert!(reason.contains("cfg-9"), "unexpected: {reason}");
+    // And it still keys as itself, so the verdicts and the steering it earned stay
+    // attached to it and come back the moment the configuration does.
+    assert_eq!(
+        climber_key(&member.combo),
+        climber_key(&gg_combo("cfg-9", "opus", "haiku"))
+    );
+
+    // What the top-up walk sees: a rung that wants nothing more, so the buffer is spent on
+    // the climbers that can still move.
+    let demand = CellDemand {
+        target: 5,
+        completed: 2,
+        in_flight: 1,
+        unreviewed: 2,
+        harness: 0,
+    };
+    let held_back = launchable_demand(demand, &member);
+    assert_eq!(held_back.missing(), 0);
+    // Its occupancy is untouched, though. Runs already launched have not un-launched
+    // themselves, and they hold the review-buffer slots they always held.
+    assert_eq!(held_back.outstanding(), demand.outstanding());
+    assert!(
+        demand.outstanding() > 0,
+        "the demand really did occupy the buffer"
+    );
+
+    // A resolvable climber is handed through unchanged.
+    assert_eq!(
+        launchable_demand(demand, &gg_member("cfg-1", "opus", "haiku")),
+        demand
+    );
+}
+
+#[test]
+fn a_climber_that_cannot_be_launched_says_so_on_the_board() {
+    // The reason is the plan cell's reason, on the row the reviewer is actually looking at.
+    // A ladder is where it is hardest to infer: a climber that cannot launch simply stops
+    // moving, which reads exactly like one waiting on capacity, and the board is the only
+    // place anybody looks between top-ups.
+    let gone = gg_member("cfg-9", "opus", "haiku");
+    let row = climber_row(
+        climber_key(&gone.combo),
+        &gone,
+        None,
+        ClimberStatus::Climbing,
+        None,
+        Vec::new(),
+    );
+    assert_eq!(row.unlaunchable, gone.unlaunchable);
+    let reason = row.unlaunchable.expect("the board carries the reason");
+    assert!(reason.contains("cfg-9"), "unexpected: {reason}");
+
+    // And a climber that can be launched carries nothing, so the row is a reason to act
+    // rather than a decoration every climber wears.
+    let fine = gg_member("cfg-1", "opus", "haiku");
+    let row = climber_row(
+        climber_key(&fine.combo),
+        &fine,
+        Some(&steering(
+            "gg:cfg-1|primary=opus,reviewer.critic=haiku",
+            3,
+            true,
+        )),
+        ClimberStatus::Climbing,
+        None,
+        Vec::new(),
+    );
+    assert!(row.unlaunchable.is_none());
+    // The steering still arrives with it.
+    assert_eq!(row.priority, 3);
+    assert!(row.focused);
+}
+
+#[test]
+fn two_climbers_that_cannot_be_launched_are_two_cells() {
+    // Neither resolves to a launch identity, so both carry the same cell key with no runs
+    // under it. They are still two climbers, and a top-up that reported one of them would
+    // leave the other stuck on a rung with nothing said about why.
+    let ladder = climb_of(&["carom"]);
+    let gone = gg_member("cfg-8", "opus", "haiku");
+    let also_gone = gg_member("cfg-9", "opus", "haiku");
+    assert!(gone.unlaunchable.is_some() && also_gone.unlaunchable.is_some());
+    let (active, _) = cell_sets(
+        &ladder,
+        LadderAxis::Rung,
+        &[
+            standing(&gone, ClimberStatus::Climbing, Some(0), &[0]),
+            standing(&also_gone, ClimberStatus::Climbing, Some(0), &[0]),
+        ],
+    );
+    let named: Vec<Option<&str>> = active
+        .iter()
+        .map(|cell| cell.member.combo.gg_config_id.as_deref())
+        .collect();
+    assert_eq!(named, vec![Some("saved:cfg-8"), Some("saved:cfg-9")]);
+
+    // One such climber standing where two rungs pin one case is still one cell: the
+    // de-dupe that stops a case being counted and offered twice is untouched.
+    let twice = climb_of(&["carom", "carom"]);
+    let (_, reviewable) = cell_sets(
+        &twice,
+        LadderAxis::Rung,
+        &[standing(&gone, ClimberStatus::Climbing, Some(1), &[0, 1])],
+    );
+    assert_eq!(reviewable.len(), 1);
 }

@@ -15,8 +15,8 @@ use super::{AdversarialValidator, replay_entry, summarize};
 use crate::execution::ArtifactCollection;
 use crate::match_play::ended_to;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
-    Variant,
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
 
@@ -34,7 +34,8 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
+        showcase: None,
     }
 }
 
@@ -58,7 +59,7 @@ fn replay_of(result: ReplayResult) -> Replay {
     }
 }
 
-/// Build a scored replay entry for a match `decided` a given way over `result`'s
+/// Build a scored session-record entry for a match `decided` a given way over `result`'s
 /// facts, against `border-soldier` (the opponent id and `scored` flag are
 /// immaterial to the outcome derivation under test).
 fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
@@ -70,10 +71,12 @@ fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
 /// is `module_rel` (relative to the run root).
 fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),
@@ -111,6 +114,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -118,11 +122,13 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -149,7 +155,7 @@ fn a_missing_submission_module_is_a_forfeit_loss() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -178,7 +184,7 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -221,9 +227,7 @@ fn validate_writes_a_replay_per_opponent_and_records_them() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )

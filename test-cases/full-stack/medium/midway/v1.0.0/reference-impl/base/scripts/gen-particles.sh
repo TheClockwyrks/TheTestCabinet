@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Midway — author the particle systems with the on-PATH `particle-2d` tool (specs/assets.md, ASSETS.md §3).
 #
-# Four effects, played live in-game through @test-cabinet/particle-runtime's /canvas binding
+# Four effects, played live in-game through @clockwyrks/particle-runtime's /canvas binding
 # (never baked frames): a celebratory FIREWORKS burst (one-shot), a rising STEAM/aroma vent
 # over a running food/drink stall (loop), a light SPARKLE at a running ride (loop), and a short
 # CLEANUP puff when a janitor clears litter (one-shot). Each is authored as a system

@@ -22,7 +22,7 @@ use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::resource::{DEPLOYMENT_ENVIRONMENT_NAME, SERVICE_VERSION};
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::layer::{Layer as _, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// Telemetry configuration supplied by the calling binary.
@@ -34,6 +34,7 @@ pub struct Config {
     service_name: String,
     service_version: String,
     default_filter: String,
+    log_to_stderr: bool,
 }
 
 impl Config {
@@ -54,7 +55,22 @@ impl Config {
             service_name: service_name.into(),
             service_version: service_version.into(),
             default_filter: default_filter.into(),
+            log_to_stderr: false,
         }
+    }
+
+    /// Write the human-readable log lines to standard error instead of standard output.
+    ///
+    /// For a **service** the two streams are equivalent — a collector reads both — so the
+    /// default stays stdout and nothing about the deployed binaries changes. For a **command
+    /// line tool** they are not equivalent at all: a subcommand whose output is meant to be
+    /// piped (`--json`) produces a stream that is not parseable if a log line is interleaved
+    /// into it. Diagnostics on stderr, data on stdout, is the convention that makes the two
+    /// separable, and it is what `tcab` opts into.
+    #[must_use]
+    pub fn with_stderr_logging(mut self) -> Self {
+        self.log_to_stderr = true;
+        self
     }
 }
 
@@ -62,7 +78,8 @@ impl Config {
 ///
 /// Behavior:
 /// - Always installs the fmt layer with the `RUST_LOG`/default `EnvFilter`, so
-///   stdout logging matches today's behavior.
+///   local logging matches today's behavior — on stdout unless the caller asked
+///   for [stderr](Config::with_stderr_logging).
 /// - If `OTEL_EXPORTER_OTLP_ENDPOINT` is set and non-blank, additionally
 ///   installs the OTLP traces/logs layers and a metrics pipeline, sets the
 ///   global W3C propagator, and returns a guard whose `Drop` flushes and shuts
@@ -75,7 +92,14 @@ impl Config {
 pub fn init(config: Config) -> anyhow::Result<TelemetryGuard> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&config.default_filter));
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    // Boxed so both writers share one type; the layer is otherwise identical.
+    let fmt_layer = if config.log_to_stderr {
+        tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .boxed()
+    } else {
+        tracing_subscriber::fmt::layer().boxed()
+    };
 
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .ok()
@@ -89,7 +113,12 @@ pub fn init(config: Config) -> anyhow::Result<TelemetryGuard> {
             .try_init()
             .ok();
         tracing::info!(
-            "OTLP export disabled (OTEL_EXPORTER_OTLP_ENDPOINT unset); logging to stdout only"
+            stream = if config.log_to_stderr {
+                "stderr"
+            } else {
+                "stdout"
+            },
+            "OTLP export disabled (OTEL_EXPORTER_OTLP_ENDPOINT unset); logging locally only"
         );
         return Ok(TelemetryGuard::inert());
     };

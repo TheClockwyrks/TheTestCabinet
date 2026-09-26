@@ -10,11 +10,37 @@ above you see the belts feeding in and out at the edges and that closed housing 
 the middle. To show the machine at work, the housing carries **some visible moving
 part that suggests items being sorted and split** between the lanes, and its
 **output end is drawn as an arrow** so it is obvious which way the splitter feeds.
-Everything below describes that *device seen from above*.
+Everything below describes that _device seen from above_.
 
 The splitter is **not** a pair of belts. It is a distinct component that belts
 **plug into** — think of a belt running up to the splitter's input mouth, and a
 belt leaving from its output mouth. Draw the machine, not a length of belt.
+
+## Layers — the belt is the base, the mechanism sits on top
+
+The splitter is drawn in **two layers**, because in the simulation items ride the
+belt **under** the machine's mechanism rather than being hidden by it:
+
+- **The belt bed (the base).** Draw the transport-belt surface straight into each
+  frame (with `--frame`, on no layer) as a **continuous belt bed** — the same dark
+  belt metal, side rails, and scrolling amber chevrons as a Lattice transport belt,
+  in both lanes, **unbroken from the West edge to the East edge, including the
+  stretch beneath the mechanism**. This is the surface items travel on, so it must
+  run continuously under the machine: an item entering an input slides along it and
+  out an output without ever leaving the belt.
+- **The mechanism (a separate layer).** Register a layer named **`mechanism`**
+  (`draw-sheet register-layer --name mechanism`) and draw the machine's **housing
+  shell, its East-pointing output arrow, and its moving sort/split part** onto that
+  layer (`--layer mechanism`). The mechanism composites **on top of** the belt bed,
+  so it hides the belt beneath it in the sprite — and, crucially, the renderer draws
+  game items **between** the belt bed and this layer, so an item riding the belt
+  passes **under** the mechanism (sliding beneath it and out the far side) rather
+  than being faded out. That only works because the mechanism is a genuine separate
+  layer with the belt whole underneath, not paint over a broken belt.
+
+Everything the mechanism covers is therefore drawn twice — the belt bed underneath,
+the mechanism on top — which is the whole point: the belt is continuous, and the
+machine merely occludes it.
 
 ## The frames
 
@@ -46,14 +72,16 @@ full 32 px height (both tile cells):
   short run of belt surface (dark belt metal, a single central row of amber chevrons
   pointing East, side rails) reaching the **left edge**, so a transport belt tile
   butts up to it **flush, edge to edge**, neither wider nor narrower.
-- **Housing (centre, `x` ≈ 8–24):** a solid **grey-blue metal housing** that
-  spans the full height and **covers both cells**. This is the machine body: the
-  balancing mechanism lives underneath and is **not visible**. The belt runs *under*
-  the housing — items entering at the inputs disappear beneath it and reappear at
-  the outputs. The housing is the **dominant mass** of the sprite and is what makes
-  the device read as a machine rather than a belt. It carries **some visible moving
-  part suggesting the sort/split at work**, and its **East (output) end is shaped as
-  an East-pointing arrow** — both detailed in *The form* below.
+- **Housing (centre, `x` ≈ 8–24), on the `mechanism` layer:** a solid **grey-blue
+  metal housing** that spans the full height and **covers both cells**. This is the
+  machine body, drawn on the `mechanism` layer over the continuous belt bed (see
+  _Layers_). The belt bed runs whole _underneath_ it, so items ride that belt and
+  pass **under** the housing, reappearing at the outputs — the housing occludes them,
+  it does not sit on a gap in the belt. The housing is the **dominant mass** of the
+  sprite and is what makes the device read as a machine rather than a belt. It
+  carries **some visible moving part suggesting the sort/split at work**, and its
+  **East (output) end is shaped as an East-pointing arrow** — both detailed in _The
+  form_ below, all on the `mechanism` layer.
 - **Outputs (East, `x` ≈ 24–32):** two short **belt mouths**, one in the top cell
   and one in the bottom cell, mirroring the inputs — a single transport belt
   connects to each, **exactly one belt wide** (one 32 px cell). Each reaches the
@@ -67,8 +95,9 @@ two tiles.
 ## What goes in each frame
 
 Every frame shows the **same splitter** in the **same place**. What changes frame
-to frame is only the **belt surface at the four mouths** (the input and output
-stubs):
+to frame is the **scrolling belt bed** — the continuous base surface, which runs
+the full width and is only _seen_ at the four mouths because the `mechanism` layer
+occludes its middle — and the mechanism's **moving sort/split part**:
 
 - Each belt mouth carries a **single central row** of **amber chevrons pointing
   East** (right), centred in its 32 px cell exactly like a Lattice transport belt's
@@ -86,7 +115,7 @@ stubs):
   machine sorting and splitting the flow between the two lanes — and it must
   actually move, cycling smoothly so **frame 7 hands back to frame 0 with no
   jump**, at a distinct state each frame rather than jittering between two spots.
-  What that moving part *is* is your choice (see *The form*); what matters is that
+  What that moving part _is_ is your choice (see _The form_); what matters is that
   a viewer reads it as the splitter working, not as static decoration.
 - The **housing shell, the output arrow, and the divider are static** — they sit
   in the same place in every frame. The only moving things are the **belt chevrons
@@ -147,18 +176,18 @@ parts.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
-| Belt metal — base | `#34383d` |
-| Belt metal — mid | `#4a4f55` |
-| Belt rail / edge highlight | `#6b7178` |
-| Chevron (amber) — base | `#e6b329` |
+| Role                        | Hex       |
+| --------------------------- | --------- |
+| Dark outline / shadow       | `#1b1d21` |
+| Belt metal — base           | `#34383d` |
+| Belt metal — mid            | `#4a4f55` |
+| Belt rail / edge highlight  | `#6b7178` |
+| Chevron (amber) — base      | `#e6b329` |
 | Chevron (amber) — highlight | `#f6d96b` |
-| Chevron (amber) — shadow | `#b88410` |
+| Chevron (amber) — shadow    | `#b88410` |
 | Housing (grey-blue) — light | `#6a7884` |
-| Housing (grey-blue) — mid | `#4d5a64` |
-| Housing (grey-blue) — dark | `#36424b` |
+| Housing (grey-blue) — mid   | `#4d5a64` |
+| Housing (grey-blue) — dark  | `#36424b` |
 
 The **sort/split moving part** uses the housing tones — housing-light `#6a7884`
 for its body with an amber `#e6b329` accent against the dark outline `#1b1d21`, and

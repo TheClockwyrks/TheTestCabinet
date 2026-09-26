@@ -6,6 +6,8 @@
   },
   "ticks": 50000,
   "snapshots": [
+    1250,
+    2500,
     12500,
     25000,
     50000
@@ -302,7 +304,7 @@
       "x": 0,
       "y": 3,
       "dir": "E",
-      "item": "copper-plate",
+      "item": "express-assembler",
       "lane": "both",
       "period": 4
     },
@@ -769,7 +771,7 @@
       "x": 0,
       "y": 8,
       "dir": "E",
-      "item": "iron-ore",
+      "item": "fast-transport-belt",
       "lane": "both",
       "period": 6
     },
@@ -950,7 +952,7 @@
       "x": 0,
       "y": 10,
       "dir": "E",
-      "item": "iron-gear",
+      "item": "assembler",
       "lane": "both",
       "period": 2
     },

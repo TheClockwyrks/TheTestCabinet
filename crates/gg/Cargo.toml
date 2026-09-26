@@ -1,0 +1,219 @@
+[package]
+name = "test-cabinet-gg"
+edition.workspace = true
+# A REAL version, deliberately not `version.workspace = true` (which is `0.0.0`).
+# `gg --version` prints this, `core` reads it out of the run container, and it is
+# recorded as every gg run's `subject.harnessVersion` — the field that says which
+# harness build produced a result. Left at the workspace `0.0.0` it is a constant,
+# and the whole recorded corpus claims to come from one indistinguishable build.
+# Kept in lockstep with `crates/core` (see the note there, and the
+# `the_default_release_version_matches_this_binary` test in `src/lib.test.rs`).
+version = "0.7.0"
+license.workspace = true
+publish.workspace = true
+# Named explicitly rather than left to cargo's auto-detection of a `build.rs`, because building this
+# crate is not the ordinary thing a reader of a manifest assumes: `build.rs` reflects each of gg's
+# eleven program languages' signature catalogues out of that language's own SDK, with that language's
+# own documentation tool, and the arm modules `include_str!` the results out of `OUT_DIR`. So a build
+# of `test-cabinet-gg` wants every one of those toolchains present — which is what the devcontainer
+# and `scripts/ci/install-gg-toolchains.sh` are for — and that is worth learning here rather than from
+# a failure. See the header of `build.rs` for why the catalogues are generated instead of committed.
+build = "build.rs"
+
+[[bin]]
+name = "gg"
+path = "src/main.rs"
+
+[dependencies]
+# gg's data contract (the capability set and the schema-v1 telemetry types) is
+# owned by `core`, so the binary consumes those types from there rather than
+# redefining them. `core` is also where the integration workflow will construct
+# the invocation config that core hands this binary.
+test-cabinet-core = { path = "../core" }
+
+# THE PROGRAM-LANGUAGE ARTIFACT CRATES. Not libraries — every one of them is an empty `lib.rs` — but
+# build steps: each runs one arm's `packages/gg-sandbox*/build.sh` into its own `OUT_DIR` and
+# publishes the directory it wrote to, which `build.rs` here turns into a `GG_ARTIFACTS_<ARM>`
+# variable and the arm modules `include_bytes!`/`include_str!` from. Those bytes are what a model's
+# program is compiled and evaluated against: the Java and Kotlin arms' SDK jars, the Opal compiler
+# the Ruby arm lowers a program with, the `tsc` the TypeScript arm type-checks one with, the rlibs
+# and the compiled PureScript tree a program links or resolves against, the C++ and Swift arms'
+# guest archives, and the four baked interpreters — the TypeScript/JavaScript, Python, Ruby and C#
+# guest components, 14 to 35 MB apiece, each carrying a whole language runtime.
+#
+# THEY MUST BE ORDINARY `[dependencies]`, NOT `[build-dependencies]`, and the difference is silent.
+# Cargo hands a `links` package's metadata to the build script of every package that depends on it —
+# that is the one channel a build script has for talking to another build script — but only across a
+# NORMAL dependency edge. Moved to `[build-dependencies]`, every one of them still builds, and
+# `DEP_GG_ARTIFACT_JAVA_ROOT` is simply absent in `build.rs`, with no warning from anything. See
+# `gg-artifact-build`'s header, which records the measurement.
+#
+# ONE OF THESE EDGES DOES MORE THAN CARRY BYTES. `gg-artifact-purescript` is also an ORDERING
+# constraint: the PureScript signature reflection `build.rs` runs compiles this arm's SDK against
+# the library tree that crate builds, so the tree has to exist first. A dependency edge is how that
+# is said in a way cargo enforces — see that crate's `src/lib.rs`.
+#
+# TEN EDGES, ELEVEN ARMS, AND THE ARITHMETIC IS NOT A MISTAKE. `gg-artifact-typescript` serves the
+# JavaScript arm too: those two arms are one SDK and one set of declarations, and
+# `packages/gg-sandbox` builds BOTH ECMAScript guests — the `componentize-js` one the JavaScript and
+# PureScript arms evaluate a function body in, and the quickjs-ng one the TypeScript arm evaluates a
+# module in — so `scripts/gg-arms.sh` carries one row for both. There is no `gg-artifact-javascript`
+# and there never will be.
+#
+# ONE OF THESE COSTS SOMETHING A DEVELOPER WILL NOTICE. `gg-artifact-csharp` is the only arm whose
+# build needs toolchains no gg RUN needs — a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB —
+# installed by `scripts/ci/install-gg-build-toolchains.sh`, which is deliberately NOT part of the
+# eleven-arm `install-gg-toolchains.sh` list. Building gg on a machine that never ran it SUCCEEDS,
+# and that is the thing to know: `packages/gg-sandbox-csharp/build.sh` falls back to fetching both
+# into the package's own `.build/`, so what a missing prefix costs is a silent ~1.4 GB download in
+# the middle of somebody's `cargo build` rather than an error naming the installer. Which is why
+# every surface that builds gg calls that installer explicitly — see `ci/images/rust.Dockerfile`,
+# whose comment on the line says the same thing in the same words. The argument for paying it rather
+# than committing 35 MB is in that crate's `src/lib.rs`.
+gg-artifact-typescript = { path = "../gg-sandbox-artifacts/typescript" }
+gg-artifact-python = { path = "../gg-sandbox-artifacts/python" }
+gg-artifact-ruby = { path = "../gg-sandbox-artifacts/ruby" }
+gg-artifact-java = { path = "../gg-sandbox-artifacts/java" }
+gg-artifact-kotlin = { path = "../gg-sandbox-artifacts/kotlin" }
+gg-artifact-purescript = { path = "../gg-sandbox-artifacts/purescript" }
+gg-artifact-rust = { path = "../gg-sandbox-artifacts/rust" }
+gg-artifact-swift = { path = "../gg-sandbox-artifacts/swift" }
+gg-artifact-cpp = { path = "../gg-sandbox-artifacts/cpp" }
+gg-artifact-csharp = { path = "../gg-sandbox-artifacts/csharp" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+cuid2 = { workspace = true }
+# gg's model-facing prose (the system prompt, the pinned context blocks, the compaction
+# instructions) is authored as Handlebars templates under `templates/` and embedded at compile
+# time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,
+# `core` renders a test case's `prompt.hbs` with, so there is one templating idiom in the
+# workspace.
+handlebars = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+# The invocation config is parsed and the (future) turn loop is async, so the
+# binary is a tokio program; the client/loop that arrive in the next workflow
+# need the async runtime.
+tokio = { workspace = true }
+# Argument parsing: gg takes a single `--config <path>` flag (see the module
+# rustdoc in `src/main.rs`).
+clap = { workspace = true }
+# RFC 3339 timestamps for the telemetry stream, matching how `core` stamps its
+# own event/record times (`OffsetDateTime::now_utc().format(&Rfc3339)`).
+time = { workspace = true }
+# The HTTP client the model client (`src/client.rs`) reaches OpenRouter with — the
+# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/core`.
+reqwest = { workspace = true }
+# Draining `reqwest`'s `bytes_stream()` in the streaming model transport
+# (`src/client.rs`): `futures-util` supplies the `StreamExt::next` the chunk loop
+# is written against. Already in the dependency graph via reqwest/tokio, so naming
+# it adds no fetch. `bytes` is deliberately NOT added alongside it: each chunk
+# arrives as a `bytes::Bytes`, but it is only ever passed on as `&[u8]` through
+# its `Deref`, so gg never names the type and a direct dependency would be one
+# nothing in the crate uses.
+futures-util = { workspace = true }
+# `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
+# can back the async turn loop and be shared across spawned subagents later.
+async-trait = { workspace = true }
+# The wasm runtime backing the responses-as-code sandbox (`src/sandbox.rs`). gg adds
+# `component-model` (the sandbox's guest is a WIT component, not a core module) and
+# `parallel-compilation` (the guest embeds a JavaScript engine, so its one-off compile
+# is ~4.8s single-threaded and ~0.66s across cores — a measured 7.3x on the one latency
+# that is paid at all). `cache` is deliberately NOT added: gg runs one process per run in
+# an ephemeral container, so a disk cache is written once and discarded, and it would
+# pull `zstd`'s C compile onto the `tcab` release builds. The process-wide
+# compiled-component cache is what delivers the latency.
+# `addr2line` is the third and it is not about speed: it is what lets a trap's frames be
+# symbolicated out of the artifact's own DWARF, including the INLINED ones. On a compiled arm
+# with no exception mechanism a trap is how an ordinary program failure arrives, and the Swift
+# arm encodes what went wrong as an inlined frame's name rather than printing it — so without
+# this a model is told `program.wasm!main` and nothing else. See `Config::wasm_backtrace_details`
+# in `src/sandbox/engine.rs`. `demangle` comes with it so a frame is a name a person can read.
+wasmtime = { workspace = true, features = [
+	"component-model",
+	"parallel-compilation",
+	"addr2line",
+	"demangle",
+] }
+# The byte buffer WASI's `output-stream` trait speaks in, for the one stream gg implements
+# itself: the guest's stderr (`src/sandbox/membrane.rs`). Naming it adds no fetch — it is
+# already in the graph through wasmtime-wasi, reqwest and tokio — and the alternative was
+# taking `StdoutStream`'s default `AsyncWrite` path, which buffers a guest's dying message
+# into a background task this synchronous embedding never lets flush.
+bytes = { workspace = true }
+# WASI preview 2 for the sandbox's guests (`src/sandbox.rs`). A guest toolchain emits a
+# component that imports `wasi:io`, `wasi:filesystem`, `wasi:clocks`, `wasi:random` and the
+# rest whether or not a program touches them, so a linker that provided none of it could not
+# instantiate one at all. gg links the whole surface, ambiently, with one exception the host
+# owns: stdout stays closed, because gg's telemetry stream is this process's stdout.
+wasmtime-wasi = { workspace = true }
+# BPE tokenizer backing the default context-window token estimator (`src/context.rs`).
+# gg accounts every context contribution per source in estimated tokens; the estimator
+# is a trait so this is swappable, but the default counts with a fixed BPE base as a
+# documented cross-model approximation. The crate embeds its vocab (no network).
+tiktoken-rs = { workspace = true }
+# Encoding a workspace image for the wire: a `read_file` of a reference mockup attaches
+# the picture to its tool result as a base64 `data:` URL, which is how every provider
+# behind OpenRouter takes an inline image (`src/tools/filesystem.rs`, `src/client.rs`).
+base64 = { workspace = true }
+# Unpacking the PureScript arm's compiled library set
+# (`src/sandbox/language/purescript.compile.rs`). `purs` cannot type-check a program
+# without the sources AND the compiled externs of everything it imports, and compiling
+# that set costs ~16 s — so it is compiled once, by `gg-artifact-purescript`'s build
+# script into that crate's `OUT_DIR`, and shipped as a 1.2 MB gzipped tar inside this
+# binary, unpacked once per machine into a shared, sealed, read-only directory. `flate2` is the workspace's gzip codec (pure-Rust `miniz_oxide`
+# backend, no system zlib); `tar` is the same pure-Rust reader `artifacts`, `driver` and
+# `publisher` already use on the run-tree artifact path.
+flate2 = { workspace = true }
+tar = "0.4"
+# The `search` tool (`src/tools/filesystem.search.rs`): `ignore` walks the workspace under its
+# `.gitignore`/`.ignore` files with ripgrep's own semantics — nested, negated, `.git/info/exclude`
+# and the global file included — which is what makes a search a question about the project rather
+# than about the disk; `regex` is the query syntax, because a model reaching for `grep` writes a
+# pattern. Both are already in the workspace graph (`code-analysis` walks with `ignore`).
+ignore = "0.4"
+regex = "1"
+# Encoding the core wasm module a compiled arm's compiler emits into the component gg's engine
+# instantiates — `rustc`'s (`src/sandbox/language/rust.compile.rs`) and `swiftc`'s
+# (`src/sandbox/language/swift.compile.rs`). Those arms' artifacts are produced per program
+# rather than committed, so this step runs on the turn path — in process, from the bytes the
+# compiler wrote, with no `wasm-tools` binary to install in a run container. The Swift arm
+# additionally uses its `adapter`, because the Swift SDK targets `wasm32-unknown-wasip1` and the
+# preview1 module it emits has to be adapted to the preview 2 interfaces the host links. See the
+# workspace pin for why its version tracks wasmtime's wasmparser line.
+wit-component = { workspace = true }
+wit-parser = { workspace = true }
+# Reading the source map an arm's compiler emitted, so a frame the guest reports against the text
+# it evaluated is read back to the model against the text the model wrote
+# (`src/sandbox/locate.rs`). The TypeScript arm is what needs it: `tsc` erases the types by
+# re-printing the program, and the invariants allow the resulting location to be recovered through a
+# source map and by no other means.
+sourcemap = { workspace = true }
+# The operating system's entropy, for the one function of `test-cabinet:gg/math` that is not
+# arithmetic (`src/sandbox/membrane/math.rs`). TeaVM's WebAssembly backend leaves `java.lang.Math`
+# to a host and gg answers it, `Math.random()` included. It is already in this crate's graph —
+# `wasmtime-wasi` fills WASI's `random_get` from it — and naming it here is what stops a second
+# generator from being a second answer to one question.
+getrandom = { workspace = true }
+
+[dev-dependencies]
+# A scratch workspace root for the tool tests (shell + filesystem): tools operate on
+# the local filesystem rooted at the invocation's workspace, so the tests exercise
+# them against a real temporary directory.
+tempfile = { workspace = true }
+# `start_paused` for the per-model-call timeout tests: a ceiling elapses the moment the
+# runtime has nothing left to do, so a timeout test costs milliseconds instead of minutes
+# and reads the ceiling exactly off the paused clock.
+tokio = { workspace = true, features = ["test-util"] }
+# The response a timeout test's stand-in gateway hands the client (`src/client.timeout.test.rs`):
+# reqwest builds its `Response` from an `http::Response`, which is how a test supplies one
+# without a socket. Already in the graph through reqwest.
+http = { workspace = true }
+# The content key of the test suite's on-disk cache of compiled components
+# (`src/sandbox/engine.cache.rs`, `#[cfg(test)]` only): an entry is mapped in and run on the
+# strength of its name, so the name is a collision-resistant digest of the bytes it was compiled from.
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

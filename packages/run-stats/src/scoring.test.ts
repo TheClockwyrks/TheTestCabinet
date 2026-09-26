@@ -1,15 +1,37 @@
 import { describe, expect, it } from "vitest";
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {
+  DomainAesthetic,
+  FailureCap,
   ReviewVerdict,
   VerdictStatus,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 import {
+  AESTHETIC_RATINGS,
+  FAILURE_CAPS,
+  FAILURE_CAP_RATING,
   OVERALL_VERDICT_ID,
+  aggregateAestheticRating,
   aggregateOverallGrade,
+  automatedOnlyScore,
+  automatedVerdicts,
+  effectiveVerdicts,
+  isAestheticRating,
+  isFailureCap,
+  reviewAesthetic,
+  validatorAggregateRating,
+  validatorAggregateScore,
+  validatorDomainRatings,
+  validatorRating,
+  validatorReviewRating,
+  validatorReviewScore,
+  validatorScore,
+  worstAestheticRating,
   applyScoreExclusions,
   excludedVerdictIds,
   gradePoints,
   mergeReviewItems,
+  reviewItemsForEngine,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
@@ -200,6 +222,84 @@ describe("mergeReviewItems", () => {
   });
 });
 
+// Mirrors the Rust core's `TestCaseVersion::review_items_for_engine`
+// (crates/core/src/test_case.rs): a point whose validator names a set of engines is
+// decided only under those, and a run built on any other engine does not carry it.
+describe("reviewItemsForEngine", () => {
+  it("keeps a point whose validator names no engines", () => {
+    const items = [
+      { id: "hud", weight: 1, validation: { engines: [] } },
+      { id: "menu", weight: 1, validation: {} },
+      { id: "audio", weight: 1 },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d").map((i) => i.id)).toEqual([
+      "hud",
+      "menu",
+      "audio",
+    ]);
+  });
+
+  it("drops a whole item its validator does not cover", () => {
+    const items = [
+      { id: "overlay", weight: 1, validation: { engines: ["none"] } },
+      {
+        id: "serve",
+        weight: 1,
+        validation: { engines: ["none", "simple-2d"] },
+      },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d").map((i) => i.id)).toEqual([
+      "serve",
+    ]);
+    expect(reviewItemsForEngine(items, "none").map((i) => i.id)).toEqual([
+      "overlay",
+      "serve",
+    ]);
+  });
+
+  it("drops an uncovered sub-item from its parent, keeping the rest", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 2,
+        subItems: [
+          { id: "scoring", validation: { engines: ["none"] } },
+          { id: "serve", validation: { engines: ["simple-2d"] } },
+        ],
+      },
+    ];
+    const kept = reviewItemsForEngine(items, "simple-2d");
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.subItems?.map((s) => s.id)).toEqual(["serve"]);
+  });
+
+  it("drops an item whose sub-items are all uncovered", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 1,
+        subItems: [{ id: "scoring", validation: { engines: ["none"] } }],
+      },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d")).toEqual([]);
+  });
+
+  it("does not mutate the input", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 1,
+        subItems: [
+          { id: "scoring", validation: { engines: ["none"] } },
+          { id: "serve" },
+        ],
+      },
+    ];
+    reviewItemsForEngine(items, "simple-2d");
+    expect(items[0]!.subItems).toHaveLength(2);
+  });
+});
+
 // Mirrors the Rust core's `TestCaseVersion::excluded_verdict_ids` and
 // `apply_score_exclusions` (crates/core/src/test_case.rs) plus the exclusion skip in
 // `score_checklist`: a version's errata can drop a review point from scoring without a
@@ -275,5 +375,528 @@ describe("score exclusions (errata excludeFromScore)", () => {
     ]);
     expect(score.total).toBe(2);
     expect(score.earned).toBeCloseTo(1);
+  });
+});
+
+// --- the aesthetic channel and the validator-decided functional rating ---------
+// Mirror the Rust core's tests of the same names (crates/core/src/review.test.rs).
+
+const aesthetic = (
+  domain: string,
+  rating: DomainAesthetic["rating"],
+): DomainAesthetic => ({ domain, rating });
+
+/** A debug-script result backing `itemId`(`.subItemId`) with decided verdicts. */
+function script(
+  itemId: string,
+  subItemId: string | null,
+  verdicts: readonly (readonly [string, boolean])[],
+  ran = true,
+  preconditionUnmet = false,
+): DebugScriptResult {
+  return {
+    itemId,
+    subItemId,
+    title: "",
+    categoryTitle: "",
+    script: "",
+    gates: true,
+    ran,
+    preconditionUnmet,
+    detail: null,
+    verdicts: verdicts.map(([id, pass]) => ({ id, pass, assertions: [] })),
+    outputs: [],
+  };
+}
+
+/** A decided verdict for `id` under `item`. */
+const decided = (item: string, id: string, pass: boolean) =>
+  script(item, id.startsWith(`${item}.`) ? id.slice(item.length + 1) : null, [
+    [id, pass],
+  ]);
+
+/** A validator-rated category whose points carry `[id, cap, domains]`. */
+const cappedCategory = (
+  id: string,
+  points: readonly (readonly [string, FailureCap, readonly string[]])[],
+): WeightedItem => ({
+  id,
+  weight: points.length,
+  subItems: points.map(([subId, failureCap, domains]) => ({
+    id: subId,
+    weight: 1,
+    failureCap,
+    domains,
+  })),
+});
+
+describe("aesthetic ratings", () => {
+  it("orders the five tiers best to worst and guards the union", () => {
+    expect(AESTHETIC_RATINGS).toEqual([
+      "legendary",
+      "amazing",
+      "good",
+      "okay",
+      "slop",
+    ]);
+    expect(isAestheticRating("amazing")).toBe(true);
+    expect(isAestheticRating("flawless")).toBe(false);
+  });
+
+  it("worstAestheticRating picks the lowest tier and null when empty", () => {
+    expect(worstAestheticRating(["legendary", "okay", "good"])).toBe("okay");
+    expect(worstAestheticRating([])).toBeNull();
+  });
+
+  it("aggregateAestheticRating is the worst run-wide tier across reviews", () => {
+    expect(aggregateAestheticRating(["amazing", "okay", "legendary"])).toBe(
+      "okay",
+    );
+    // A review with no tier (a legacy run's) contributes nothing.
+    expect(aggregateAestheticRating(["good", null, undefined])).toBe("good");
+    expect(aggregateAestheticRating([null])).toBeNull();
+    expect(aggregateAestheticRating([])).toBeNull();
+  });
+
+  it("reviewAesthetic prefers the run-wide tier", () => {
+    expect(reviewAesthetic({ aesthetic: "good" })).toBe("good");
+    // The run-wide field wins even when a legacy array is also present.
+    expect(
+      reviewAesthetic({
+        aesthetic: "amazing",
+        aesthetics: [aesthetic("versus", "slop")],
+      }),
+    ).toBe("amazing");
+  });
+
+  it("reviewAesthetic collapses a legacy review's per-domain tiers to the worst", () => {
+    // The worst tier equals the old per-domain aggregation, so a legacy review's
+    // displayed value does not change.
+    expect(
+      reviewAesthetic({
+        aesthetics: [
+          aesthetic("single-player", "amazing"),
+          aesthetic("versus", "okay"),
+        ],
+      }),
+    ).toBe("okay");
+    expect(
+      reviewAesthetic({
+        aesthetic: null,
+        aesthetics: [aesthetic("single-player", "good")],
+      }),
+    ).toBe("good");
+  });
+
+  it("reviewAesthetic is null for a review with no aesthetic channel", () => {
+    expect(reviewAesthetic({})).toBeNull();
+    expect(reviewAesthetic({ aesthetic: null, aesthetics: [] })).toBeNull();
+  });
+});
+
+describe("failure caps", () => {
+  it("map onto their functional rating and are never flawless", () => {
+    expect(FAILURE_CAPS).toEqual(["broken", "scuffed", "passable", "great"]);
+    expect(FAILURE_CAP_RATING).toEqual({
+      broken: "broken",
+      scuffed: "scuffed",
+      passable: "passable",
+      great: "great",
+    });
+    expect(isFailureCap("great")).toBe(true);
+    expect(isFailureCap("flawless")).toBe(false);
+  });
+});
+
+describe("automatedVerdicts / automatedOnlyScore", () => {
+  it("fails a contract failure, skips an inconclusive or silent script", () => {
+    const verdicts = automatedVerdicts([
+      script("a", null, [["a", true]]),
+      script("b", "x", [], false, false),
+      script("c", null, [], false, true),
+      script("d", null, [], true, false),
+    ]);
+    expect(verdicts).toEqual([
+      { id: "a", status: "pass" },
+      { id: "b.x", status: "fail" },
+    ]);
+  });
+
+  it("restricts both numerator and denominator to the covered points", () => {
+    const items: WeightedItem[] = [
+      { id: "a", weight: 3 },
+      { id: "b", weight: 2 },
+      { id: "human", weight: 5 },
+    ];
+    const score = automatedOnlyScore(items, [
+      script("a", null, [["a", true]]),
+      script("b", null, [["b", false]]),
+    ]);
+    expect(score).toEqual({ earned: 3, total: 5 });
+  });
+});
+
+describe("validatorDomainRatings", () => {
+  const domains = [{ id: "single-player" }, { id: "versus" }];
+  const items = [
+    cappedCategory("gameplay", [
+      ["serve", "broken", ["single-player", "versus"]],
+      ["ai", "scuffed", ["single-player"]],
+      ["controls", "great", ["versus"]],
+      ["hud", "passable", ["single-player", "versus"]],
+    ]),
+  ];
+
+  it("starts every domain flawless and stays there with no failures", () => {
+    const ratings = validatorDomainRatings(domains, items, [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", true),
+    ]);
+    expect(ratings).toEqual([
+      { domain: "single-player", rating: "flawless" },
+      { domain: "versus", rating: "flawless" },
+    ]);
+    expect(validatorRating(false, ratings)).toBe("flawless");
+  });
+
+  it("lowers only the failing point's domains, to the lowest cap", () => {
+    const ratings = validatorDomainRatings(domains, items, [
+      decided("gameplay", "gameplay.ai", false),
+      decided("gameplay", "gameplay.controls", false),
+    ]);
+    expect(ratings).toEqual([
+      { domain: "single-player", rating: "scuffed" },
+      { domain: "versus", rating: "great" },
+    ]);
+    expect(validatorRating(false, ratings)).toBe("scuffed");
+
+    // great + passable → passable; adding broken → broken.
+    expect(
+      validatorDomainRatings(domains, items, [
+        decided("gameplay", "gameplay.controls", false),
+        decided("gameplay", "gameplay.hud", false),
+      ]).map((r) => r.rating),
+    ).toEqual(["passable", "passable"]);
+    expect(
+      validatorDomainRatings(domains, items, [
+        decided("gameplay", "gameplay.controls", false),
+        decided("gameplay", "gameplay.hud", false),
+        decided("gameplay", "gameplay.serve", false),
+      ]).map((r) => r.rating),
+    ).toEqual(["broken", "broken"]);
+  });
+
+  it("uses the automated-only failure semantics", () => {
+    const one = [{ id: "gameplay" }];
+    const points: WeightedItem[] = [
+      { id: "crashed", weight: 1, failureCap: "broken", domains: ["gameplay"] },
+      { id: "unmet", weight: 1, failureCap: "broken", domains: ["gameplay"] },
+      { id: "silent", weight: 1, failureCap: "broken", domains: ["gameplay"] },
+    ];
+    expect(
+      validatorDomainRatings(one, points, [
+        script("unmet", null, [], false, true),
+        script("silent", null, [], true, false),
+      ])[0].rating,
+    ).toBe("flawless");
+    expect(
+      validatorDomainRatings(one, points, [
+        script("crashed", null, [], false, false),
+      ])[0].rating,
+    ).toBe("broken");
+  });
+
+  it("never lowers for an unscored point, an unknown domain, or an uncapped point", () => {
+    const one = [{ id: "gameplay" }];
+    const points: WeightedItem[] = [
+      {
+        id: "serve",
+        weight: 1,
+        failureCap: "broken",
+        domains: ["gameplay"],
+        scored: false,
+      },
+      { id: "stray", weight: 1, failureCap: "broken", domains: ["elsewhere"] },
+      { id: "uncapped", weight: 1 },
+    ];
+    expect(
+      validatorDomainRatings(one, points, [
+        decided("serve", "serve", false),
+        decided("stray", "stray", false),
+        decided("uncapped", "uncapped", false),
+        decided("ghost", "ghost", false),
+      ]),
+    ).toEqual([{ domain: "gameplay", rating: "flawless" }]);
+
+    const category = cappedCategory("gameplay", [
+      ["serve", "broken", ["gameplay"]],
+      ["hud", "great", ["gameplay"]],
+    ]);
+    category.subItems = category.subItems!.map((sub, i) =>
+      i === 0 ? { ...sub, scored: false } : sub,
+    );
+    expect(
+      validatorDomainRatings(
+        one,
+        [category],
+        [
+          decided("gameplay", "gameplay.serve", false),
+          decided("gameplay", "gameplay.hud", false),
+        ],
+      )[0].rating,
+    ).toBe("great");
+  });
+});
+
+describe("validatorRating / validatorScore", () => {
+  it("composes with the toolchain gate", () => {
+    const flawless = [{ domain: "gameplay", rating: "flawless" as const }];
+    expect(validatorRating(true, flawless)).toBe("broken");
+    expect(validatorRating(false, flawless)).toBe("flawless");
+    expect(validatorRating(false, [])).toBeNull();
+    expect(validatorRating(true, [])).toBe("broken");
+  });
+
+  it("is the automated-only score with zero reviews, zeroed by the gate", () => {
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["ai", "scuffed", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    expect(validatorScore(false, items, scripts)).toEqual({
+      earned: 2,
+      total: 3,
+      reviews: 0,
+    });
+    expect(validatorScore(true, items, scripts)).toEqual({
+      earned: 0,
+      total: 3,
+      reviews: 0,
+    });
+  });
+});
+
+// --- reviewer overrides on a validator-rated run --------------------------------
+// Mirror the Rust core's override tests (crates/core/src/review.overrides.test.rs):
+// the effective checklist, the per-review figures that fold a review's overrides
+// into the validators' verdicts, and the run-level aggregation across reviews.
+
+/** A validator-rated whole-item point worth 1: scored, with a cap and domains. */
+const cappedItem = (
+  id: string,
+  failureCap: FailureCap,
+  domains: readonly string[],
+): WeightedItem => ({ id, weight: 1, failureCap, domains });
+
+/** A debug-script result recorded inconclusive (`preconditionUnmet`): the
+ * validators leave the point undecided. */
+const inconclusive = (item: string) => script(item, null, [], false, true);
+
+describe("effectiveVerdicts", () => {
+  it("overlays the reviewer's overrides per id", () => {
+    const auto = [pass("a"), fail("b"), pass("c")];
+    // `b` is overridden to pass (with a note), `d` — a point the validators left
+    // undecided — is decided by the reviewer; `a` and `c` are untouched.
+    const overrides: ReviewVerdict[] = [
+      { id: "b", status: "pass", note: "works when driven by hand" },
+      fail("d"),
+    ];
+    const effective = effectiveVerdicts(auto, overrides);
+    // The validators' order holds, reviewer-only points append.
+    expect(effective.map((v) => v.id)).toEqual(["a", "b", "c", "d"]);
+    expect(effective[0]!.status).toBe("pass");
+    expect(effective[1]!.status).toBe("pass");
+    // The override replaces the verdict wholesale, note included.
+    expect(effective[1]!.note).toBe("works when driven by hand");
+    expect(effective[3]!.status).toBe("fail");
+  });
+
+  it("with no overrides is exactly the validators' checklist", () => {
+    const auto = [pass("a"), fail("b")];
+    expect(effectiveVerdicts(auto, [])).toEqual(auto);
+  });
+});
+
+describe("validatorReviewRating / validatorReviewScore", () => {
+  it("an override raises the review's rating and score", () => {
+    // `serve` (broken cap) failed under the validators; the reviewer overrides
+    // it to pass, which recomputes both figures.
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    expect(
+      validatorRating(false, validatorDomainRatings(domains, items, scripts)),
+    ).toBe("broken");
+
+    const overrides = [pass("gameplay.serve")];
+    expect(validatorReviewRating(false, domains, items, auto, overrides)).toBe(
+      "flawless",
+    );
+    const score = validatorReviewScore(false, items, auto, overrides);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(2);
+  });
+
+  it("an override can also lower the review's figures", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedItem("serve", "scuffed", ["gameplay"]),
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [
+      decided("serve", "serve", true),
+      decided("hud", "hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+
+    const overrides = [fail("serve")];
+    expect(validatorReviewRating(false, domains, items, auto, overrides)).toBe(
+      "scuffed",
+    );
+    const score = validatorReviewScore(false, items, auto, overrides);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1);
+  });
+
+  it("a reviewer deciding an undecided point grows the denominator", () => {
+    // The validators covered only `hud` (`serve`'s precondition was unmet), so
+    // their score reads over 1 point. A reviewer deciding `serve` covers it:
+    // both sides of that review's ratio now include the point.
+    const items = [
+      cappedItem("serve", "broken", ["gameplay"]),
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [inconclusive("serve"), decided("hud", "hud", true)];
+    const auto = automatedVerdicts(scripts);
+    expect(validatorReviewScore(false, items, auto, []).total).toBe(1);
+
+    const score = validatorReviewScore(false, items, auto, [pass("serve")]);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(2);
+  });
+
+  it("an erratum-excluded point counts toward neither side even when overridden", () => {
+    const items = [
+      { ...cappedItem("serve", "broken", ["gameplay"]), scored: false },
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [
+      decided("serve", "serve", false),
+      decided("hud", "hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    const score = validatorReviewScore(false, items, auto, [pass("serve")]);
+    // The excluded point stays out of the total.
+    expect(score.total).toBe(1);
+    expect(score.earned).toBeCloseTo(1);
+  });
+});
+
+describe("validatorAggregateRating / validatorAggregateScore", () => {
+  it("zero reviews aggregate to the validators' own figures", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["ai", "scuffed", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+
+    expect(validatorAggregateRating(false, domains, items, auto, [])).toBe(
+      validatorRating(false, validatorDomainRatings(domains, items, scripts)),
+    );
+    expect(validatorAggregateScore(false, items, auto, [])).toEqual(
+      validatorScore(false, items, scripts),
+    );
+    // The gate still applies with no reviews at all.
+    expect(validatorAggregateRating(true, domains, items, auto, [])).toBe(
+      "broken",
+    );
+    const gated = validatorAggregateScore(true, items, auto, []);
+    expect(gated.earned).toBe(0);
+    expect(gated.total).toBe(3);
+  });
+
+  it("a review with no overrides is the aggregation's fixed point", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["ai", "scuffed", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", false),
+    ];
+    const auto = automatedVerdicts(scripts);
+    const reviews = [[]];
+
+    expect(validatorAggregateRating(false, domains, items, auto, reviews)).toBe(
+      "scuffed",
+    );
+    const score = validatorAggregateScore(false, items, auto, reviews);
+    expect(score.reviews).toBe(1);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1);
+  });
+
+  it("takes the worst rating and the average score across reviews", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    // One reviewer overrides the failing `serve` to pass (flawless, 2/2); the
+    // other leaves the validators' verdicts (broken, 1/2).
+    const reviews = [[pass("gameplay.serve")], []];
+
+    // One harsh review cannot be masked by a generous one.
+    expect(validatorAggregateRating(false, domains, items, auto, reviews)).toBe(
+      "broken",
+    );
+    const score = validatorAggregateScore(false, items, auto, reviews);
+    expect(score.reviews).toBe(2);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1.5);
+
+    // The toolchain gate applies at the aggregation seam.
+    expect(validatorAggregateRating(true, domains, items, auto, reviews)).toBe(
+      "broken",
+    );
+    const gated = validatorAggregateScore(true, items, auto, reviews);
+    expect(gated.earned).toBe(0);
+    expect(gated.total).toBe(2);
+    expect(gated.reviews).toBe(2);
   });
 });

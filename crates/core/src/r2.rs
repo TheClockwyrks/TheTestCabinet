@@ -114,16 +114,26 @@ impl R2Client {
         }
     }
 
-    /// Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body` and the
-    /// given content type, signed with SigV4. Returns an error when the request
-    /// cannot be sent or R2 responds with a non-2xx status.
+    /// Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body` under the given
+    /// [labels](crate::content_labels::ContentLabels), signed with SigV4. Returns an
+    /// error when the request cannot be sent or R2 responds with a non-2xx status.
+    ///
+    /// The labels are stored on the object and returned on every read of it, so an
+    /// object whose body is framed — a `.json.gz` recording — is served to a browser
+    /// as the JSON it is, with the gzip declared as the framing.
     #[tracing::instrument(
         name = "r2.put_object",
         skip(self, body),
         fields(r2.key = %key, r2.bytes = body.len()),
         err,
     )]
-    pub async fn put_object(&self, key: &str, body: Vec<u8>, content_type: &str) -> Result<()> {
+    pub async fn put_object(
+        &self,
+        key: &str,
+        body: Vec<u8>,
+        content_type: &str,
+        content_encoding: Option<&str>,
+    ) -> Result<()> {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
@@ -173,25 +183,31 @@ impl R2Client {
         test_cabinet_telemetry::propagation::inject_current_context(&mut trace_headers);
 
         let url = format!("{}{canonical_uri}", scheme_prefix(&self.config.endpoint));
-        let response = self
+        let mut request = self
             .http
             .put(&url)
             .header("Host", host)
             .header("x-amz-date", amz_date)
             .header("x-amz-content-sha256", payload_hash)
             .header("Authorization", authorization)
-            .header("Content-Type", content_type)
+            .header("Content-Type", content_type);
+        // Not in `signed_headers`, the same as `Content-Type`, so R2 records it on the
+        // object without it participating in the signature.
+        if let Some(encoding) = content_encoding {
+            request = request.header("Content-Encoding", encoding);
+        }
+        let response = request
             .headers(trace_headers)
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 PUT `{key}` failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("PUT `{key}` failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
             return Err(Error::R2(format!(
-                "R2 PUT `{key}` returned {status}: {detail}"
+                "PUT `{key}` returned {status}: {detail}"
             )));
         }
         Ok(())
@@ -339,13 +355,13 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 DELETE batch failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("DELETE batch failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
             return Err(Error::R2(format!(
-                "R2 DELETE batch returned {status}: {detail}"
+                "DELETE batch returned {status}: {detail}"
             )));
         }
         // A quiet-mode success body carries no elements; anything reported is a
@@ -353,7 +369,7 @@ impl R2Client {
         let detail = response.text().await.unwrap_or_default();
         if let Some(failures) = parse_delete_errors(&detail) {
             return Err(Error::R2(format!(
-                "R2 DELETE batch reported {failures} per-key error(s): {detail}"
+                "DELETE batch reported {failures} per-key error(s): {detail}"
             )));
         }
         Ok(())
@@ -407,16 +423,16 @@ impl R2Client {
             .header("Authorization", authorization)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 LIST failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("LIST failed: {e}")))?;
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!("R2 LIST returned {status}: {detail}")));
+            return Err(Error::R2(format!("LIST returned {status}: {detail}")));
         }
         response
             .text()
             .await
-            .map_err(|e| Error::R2(format!("reading R2 LIST body: {e}")))
+            .map_err(|e| Error::R2(format!("reading the LIST body: {e}")))
     }
 
     /// Compute the SigV4 signing key chain and sign the string-to-sign.

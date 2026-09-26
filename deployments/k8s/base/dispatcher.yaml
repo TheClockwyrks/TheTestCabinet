@@ -13,7 +13,7 @@
 #
 # It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/base/rbac.yaml),
 # which grants exactly jobs create/get/list/watch/delete plus pods + pods/log get
-# for failure reporting. See deployment/kubernetes.md and the dispatcher's
+# for failure reporting. See deployment/kubernetes/run-plane.md and the dispatcher's
 # config docs (crates/dispatcher/src/config.rs) for every variable.
 apiVersion: apps/v1
 kind: Deployment
@@ -34,14 +34,15 @@ spec:
       serviceAccountName: tcab-dispatcher # RBAC to create+watch driver Jobs
       containers:
         - name: dispatcher
-          image: REPLACE_REGISTRY/tcab-dispatcher:latest # CI publishes ghcr.io/<owner>/tcab-dispatcher; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-dispatcher:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-dispatcher:<git-sha>
           resources:
-          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
-            # ignores limits, so a gap between them is memory promised twice; an
-            # unbounded container is worse still, because it makes the sum of a node's
-            # limits unknowable and so removes the only guarantee that a run pod cannot
-            # be killed to satisfy someone else's growth. See the `TCAB_K8S_RUN_MEMORY_*`
-            # commentary in base/dispatcher.yaml for the full argument.
+            # MEMORY REQUEST == LIMIT, as on every ALWAYS-ON service. The scheduler
+            # packs a node by requests and ignores limits, so a gap between them is
+            # memory promised twice, and an unbounded service is worse still: it could
+            # be what crowds a run pod off its node. A service that hits its ceiling is
+            # restarted, not lost, so bounding it costs nothing a run pod pays for. The
+            # RUN pods (driver + sandbox) are the deliberate exception — request and NO
+            # limit — see the `TCAB_K8S_RUN_MEMORY_*` commentary below.
             #
             # Sized from prod, 2026-08-18: each container's cgroup high-water mark
             # (`memory.peak`) over the pods' then ~4-day lifetime, cross-checked against
@@ -123,50 +124,72 @@ spec:
               value: "tcab-prod"
             # Resource requests/limits applied to each sandbox pod.
             #
-            # MEMORY REQUEST == MEMORY LIMIT, DELIBERATELY. The scheduler packs a node
-            # by *requests* and ignores limits entirely, so any gap between the two is
-            # memory the node has promised twice. With a 1Gi request against a 4Gi
-            # ceiling, five sandbox pods fit a node by request and can then demand 20Gi
-            # of it — and the shortfall is not resolved politely. The kubelet ranks
-            # eviction victims by how far a pod exceeds its memory *request*, so the
-            # sandbox pod that grew past 1Gi is the first thing killed on the node,
-            # ahead of every system pod. Killing a sandbox pod mid-run destroys a run
-            # that has already spent real money on harness API calls, which makes this
-            # the one resource the deployment must never oversubscribe.
+            # MEMORY: A REQUEST AND NO LIMIT, DELIBERATELY. This is the opposite of the
+            # always-on services above, and the reason is what a run pod is. A memory
+            # limit is a cgroup ceiling the kernel enforces by SIGKILL: a sandbox that
+            # reaches it is dead that instant, deterministically, however much memory
+            # the node still has free. A run may hold a sandbox for hours and spend
+            # real money on harness API calls the whole time, so a sandbox OOM-killed
+            # mid-run destroys a run that has already paid for every one of them. That
+            # is the failure this deployment must never produce, and a limit on a run
+            # pod is precisely the mechanism that produces it. (An earlier revision set
+            # the limit equal to the request so a node's arithmetic was exact; the
+            # first run to outgrow the ceiling was OOM-killed — exit 137 — by its own
+            # cgroup, the very outcome the ceiling existed to prevent.) The same rule
+            # applies to the driver pod: see DEFAULT_DRIVER_MEMORY_REQUEST in
+            # crates/dispatcher/src/config.rs, which is the canonical argument.
             #
-            # Setting them equal makes the scheduler's own accounting the guarantee:
-            # a node admits a sandbox pod only if the full 4Gi is actually there, the
-            # pod can never exceed its request, and it therefore never enters the
-            # kubelet's eviction ranking at all. With every container on the node
-            # carrying a memory limit, the sum of limits stays under allocatable and a
-            # node-level OOM — the kernel picking a victim of its own choosing — cannot
-            # arise from these pods in the first place.
+            # The REQUEST does the work instead, and it must be sized to the real peak
+            # of the heaviest case the deployment will run:
+            #   - the scheduler packs a node by requests, so a node admits a sandbox
+            #     only when the full 4Gi is actually there;
+            #   - a request keeps the pod out of BestEffort, where it would be the
+            #     first thing evicted and OOM-killed;
+            #   - a sandbox that grows past its request is NOT killed for doing so; it
+            #     spends memory the node was not holding for it, and survives whenever
+            #     the node actually has that memory spare.
+            # What removing the limit does NOT do is make node memory pressure
+            # harmless. If the node itself runs short, the kubelet evicts the pod
+            # furthest above its request first, and the kernel's OOM killer weighs a
+            # large resident set heavily — a sandbox that has outgrown its request on a
+            # full node is still the likely victim (Evicted rather than OOMKilled, and
+            # just as dead). The limit was a CERTAIN kill at a fixed ceiling regardless
+            # of node headroom; what remains is a kill only when the node is genuinely
+            # out of memory. Closing that gap is a sizing job: the request must cover
+            # the real peak so the scheduler never seats a run on a node that cannot
+            # hold it. Size it from `container_memory_max_usage_bytes` (the
+            # observability component's cAdvisor scrape) over a window wide enough to
+            # contain the rare heavy case.
             #
             # The cost is density, and it is charged in whole nodes. Node allocatable
             # is what is left after the kubelet's reservation (on AKS `Standard_D2ps_v6`,
             # 5766Mi of 7.7Gi capacity), and the DaemonSets request ~984Mi of that, so
             # ~4782Mi is actually schedulable: exactly ONE 4Gi sandbox pod per node,
-            # with room for its driver pod beside it only if the driver's own ceiling
-            # stays under ~686Mi (see DEFAULT_DRIVER_MEMORY_LIMIT — today's 1Gi does
-            # not, by choice, so a driver lands on a different node than the sandbox it
-            # drives). A 16Gi node fits three.
+            # with room for its driver pod beside it only if the driver's own request
+            # stays under ~686Mi (today's 2Gi does not, by choice, so a driver lands on
+            # a different node than the sandbox it drives and the two can never contend
+            # for one node's memory). A 16Gi node fits three.
             #
             # CPU is oversubscribed on purpose and is not symmetric with this. A pod
             # over its CPU limit is throttled, not killed, so the failure mode is a
             # slower run rather than a destroyed one — worth trading for the density.
             #
-            # WHEN RAISING THE CEILING: the limit and the request move TOGETHER, and
-            # the new value must still fit one node's schedulable space. The heaviest
-            # cases already exceed 4Gi (a dual-contouring `double` variant needs ~8Gi —
-            # see overlays/local/patch-dispatcher.yaml), so they OOM at this ceiling
-            # until the nodes are large enough to carry an 8Gi request.
+            # WHEN RAISING THE REQUEST: the new value must still fit one node's
+            # schedulable space, or the sandbox sits Pending forever. The heaviest
+            # cases exceed 4Gi (a dual-contouring `double` variant needs ~8Gi — see
+            # overlays/local/patch-dispatcher.yaml). Those do NOT fit an 8Gi node
+            # whatever the manifest says: they no longer die at the 4Gi ceiling, but
+            # they will still be evicted when the node runs short. Running them needs
+            # nodes that can seat an 8Gi request, and the request raised to match.
+            #
+            # TCAB_K8S_RUN_MEMORY_LIMIT is intentionally NOT set. Set it only if a
+            # namespace LimitRange or ResourceQuota refuses pods without one, and then
+            # far above any real peak.
             - name: TCAB_K8S_RUN_CPU_REQUEST
               value: "500m"
             - name: TCAB_K8S_RUN_CPU_LIMIT
               value: "2"
             - name: TCAB_K8S_RUN_MEMORY_REQUEST
-              value: "4Gi"
-            - name: TCAB_K8S_RUN_MEMORY_LIMIT
               value: "4Gi"
             # Pull secret(s) for the run-container images, if the registry is private
             # (comma-separated dockerconfigjson Secret names). Forwarded to each Job.
@@ -176,16 +199,12 @@ spec:
             # (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/-performance).
             # Forwarded into every driver Job, where core's resolve_run_image reads
             # them; unset there falls back to the compiled defaults
-            # (ghcr.io/theclockwyrks / latest). PIN the run images the same way the
-            # overlays pin the service image: tags — set TCAB_CONTAINER_TAG to the
-            # :<git-sha> build-containers.yml published (an immutable multi-arch
-            # manifest list) and roll it in lockstep with the service images, testing
-            # on staging before prod. Left at latest here so a fresh deployment works
-            # out of the box; an overlay patches it to a sha.
+            # (testcabinet.azurecr.io / latest). The Azure pipeline pushes each run
+            # image as testcabinet.azurecr.io/<image>:<git-sha> and never :latest, so
+            # every deployment pins TCAB_CONTAINER_TAG to the commit its service
+            # images come from: scripts/ci/deploy.sh sets it for the azure-* overlays.
             - name: TCAB_CONTAINER_TAG
               value: "latest"
-            # - name: TCAB_CONTAINER_REGISTRY
-            #   value: "ghcr.io/theclockwyrks"
             # The artifact service each driver uploads its produced run tree to before
             # reporting terminal status. Forwarded into every driver Job. Unset skips
             # the upload (a single-box cluster with no artifact service).

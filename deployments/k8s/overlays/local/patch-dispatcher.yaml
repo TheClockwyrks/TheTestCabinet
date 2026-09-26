@@ -1,7 +1,7 @@
 # Local dispatcher overrides: tag the environment, point the namespaces at the
 # local namespace, set TCAB_DRIVER_IMAGE to the locally-imported driver image (an
 # env value, so the kustomize images transformer cannot reach it), and raise the
-# sandbox pod's memory limit above the base 4Gi so the heaviest cases fit. Everything
+# sandbox pod's memory request above the base 4Gi so the heaviest cases fit. Everything
 # else (the service token from the generated secret, the remaining resource
 # passthroughs) carries over from the base manifest unchanged.
 apiVersion: apps/v1
@@ -27,27 +27,26 @@ spec:
               value: "tcab-local"
             - name: TCAB_K8S_NAMESPACE
               value: "tcab-local"
-            # Raise the per-sandbox memory ceiling above the base 4Gi. The heaviest
+            # Raise the per-sandbox memory REQUEST above the base 4Gi. The heaviest
             # cases blow past 4Gi: a dual-contouring field samples at a 0.5 cell, so
             # the `double`-size variant of a DC case (e.g. aegis-dc-anim at
             # 240x220x300) is a ~129M-node field — ~1.5GB per part for the field
             # arrays plus the DC vertex grid, before the extracted mesh, the
             # Mesa/llvmpipe preview renderer, and the agent process share the same pod.
-            # At 4Gi those runs get OOM-killed, which surfaces as an Infrastructure
-            # failure. Forwarded verbatim into each driver Job like the base passthrough.
+            # Forwarded verbatim into each driver Job like the base passthrough.
             #
-            # The REQUEST is raised with the limit, keeping the base's request == limit
-            # invariant (see base/dispatcher.yaml for why the two must move together).
-            # It is what makes the ceiling real rather than aspirational: the k3d node
-            # advertises the host Docker daemon's RAM, so with an 8Gi request a host
-            # that cannot actually spare 8Gi leaves the sandbox pod `Pending` — a
+            # There is NO memory limit, here or in the base (see the
+            # `TCAB_K8S_RUN_MEMORY_*` commentary in base/dispatcher.yaml): a limit is
+            # enforced by SIGKILL and an OOM-killed sandbox destroys a run that has
+            # already paid for its API calls. The request is the reservation: the k3d
+            # node advertises the host Docker daemon's RAM, so with an 8Gi request a
+            # host that cannot actually spare 8Gi leaves the sandbox pod `Pending` — a
             # visible, diagnosable scheduling failure — instead of admitting the run
-            # and OOM-killing it halfway through, which is the same Infrastructure
-            # failure this ceiling exists to prevent, just later and more expensively.
-            # A dev host that cannot seat an 8Gi request cannot run these cases at all.
+            # and losing it to node memory pressure halfway through. A dev host that
+            # cannot seat an 8Gi request cannot run these cases at all. A run that
+            # outgrows 8Gi is not killed for doing so; it uses more of the host, and
+            # is at risk only if the host itself runs out of memory.
             - name: TCAB_K8S_RUN_MEMORY_REQUEST
-              value: "8Gi"
-            - name: TCAB_K8S_RUN_MEMORY_LIMIT
               value: "8Gi"
             # The driver image the Makefile builds + imports (tag `local` ⇒ the
             # kubelet's IfNotPresent default uses the imported image, no pull).
@@ -55,14 +54,14 @@ spec:
               value: "tcab-driver:local"
             # Resolve the RUN-CONTAINER images from the locally-built+imported set the
             # `run-images` target produces, instead of the compiled default
-            # (ghcr.io/theclockwyrks/…:latest). The dispatcher forwards these into
+            # (testcabinet.azurecr.io/…:latest). The dispatcher forwards these into
             # every driver Job, where core's resolve_run_image composes
             # <registry>/test-cabinet-<kind>:<tag> — e.g.
             # docker.io/library/test-cabinet-voxel-animation:local — matching the
             # names `run-images` imports (RUN_IMAGE_PREFIX/RUN_IMAGE_TAG). The `local`
             # tag (not `latest`) is what makes the kubelet's IfNotPresent default use
             # the imported image rather than trying to pull it. Without this override a
-            # run pod would pull the published ghcr image and a local change to the
+            # run pod would pull the image from the ACR and a local change to the
             # baked-in tooling (voxel-anim/draw/…) would never reach a run.
             - name: TCAB_CONTAINER_REGISTRY
               value: "docker.io/library"

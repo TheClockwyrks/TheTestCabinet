@@ -24,16 +24,23 @@ the harness's most recently published version, rather than whatever was current
 when an image was last built. This mirrors how a test case prepares its workspace
 with an [init command](../apps/docs/src/content/docs/components/core/execution.md#init).
 
+The one exception is [`gg`](../apps/docs/src/content/docs/gg/overview.md), which
+ships no manifest and is not one of the eight above: it is a static binary copied
+into the container, and a gg run resolves a `<name>-gg`
+[variant](../containers/README.md#the-exception-the--gg-variants) of its image
+carrying the language toolchains its programs are compiled with. Those exist for
+that one harness and are absent from every image any other harness runs in.
+
 ## Manifest
 
 Each `harness.toml` declares:
 
-| Field | Meaning |
-| --- | --- |
-| `slug` | Stable slug; must match the directory name and a slug the agent harness layer knows. |
-| `name` | Human-readable name, shown by `tcab harnesses`. |
-| `binary` | The CLI binary a run probes (`<binary> --version`) and invokes. The installer must put it on the run user's `PATH`. |
-| `install` | Shell command run inside the run container, before the session, to install the CLI. |
+| Field     | Meaning                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `slug`    | Stable slug; must match the directory name and a slug the agent harness layer knows.                                |
+| `name`    | Human-readable name, shown by `tcab harnesses`.                                                                     |
+| `binary`  | The CLI binary a run probes (`<binary> --version`) and invokes. The installer must put it on the run user's `PATH`. |
+| `install` | Shell command run inside the run container, before the session, to install the CLI.                                 |
 
 The `install` command runs through `sh -c` as the container's unprivileged run
 user, with the same environment the session uses — the base image's `PATH`

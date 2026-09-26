@@ -22,8 +22,20 @@ export function stepDesires(g: Guest, dt: number): void {
   const grow = TUNE.guests.desireGrowth;
   bump(g, "thrill", grow.thrill * day);
   bump(g, "hunger", grow.hunger * day);
-  bump(g, "thirst", grow.thirst * day + (g.thirstBoostTimer > 0 ? TUNE.guests.thirstAfterRide.amount * day : 0));
-  bump(g, "bladder", grow.bladder * day + (g.bladderBoostTimer > 0 ? TUNE.guests.bladderAfterDrink.amount * day : 0));
+  bump(
+    g,
+    "thirst",
+    grow.thirst * day +
+      (g.thirstBoostTimer > 0 ? TUNE.guests.thirstAfterRide.amount * day : 0),
+  );
+  bump(
+    g,
+    "bladder",
+    grow.bladder * day +
+      (g.bladderBoostTimer > 0
+        ? TUNE.guests.bladderAfterDrink.amount * day
+        : 0),
+  );
   g.thirstBoostTimer = Math.max(0, g.thirstBoostTimer - dt);
   g.bladderBoostTimer = Math.max(0, g.bladderBoostTimer - dt);
 }
@@ -78,7 +90,11 @@ export function willBuy(g: Guest, a: Attraction, world: World): boolean {
 
 // Admission judgment at the gate: affordable, and fair enough given the park's rating
 // (a poorly-rated, pricey gate turns guests away — specs/guests.md).
-export function judgeAdmission(price: number, wallet: number, rating: number): boolean {
+export function judgeAdmission(
+  price: number,
+  wallet: number,
+  rating: number,
+): boolean {
   if (price > wallet) return false;
   const affordability = price / wallet;
   const fairness = 0.35 + rating / 100;
@@ -96,7 +112,8 @@ export function shouldLeave(g: Guest): "angry" | "content" | null {
   if (g.happiness < TUNE.guests.leaveAngryBelow) return "angry";
   if (g.wallet < TUNE.guests.contentWalletBelow) return "content";
   const q = g.desires;
-  if (q.thrill < 25 && q.hunger < 25 && q.thirst < 25 && q.bladder < 25) return "content";
+  if (q.thrill < 25 && q.hunger < 25 && q.thirst < 25 && q.bladder < 25)
+    return "content";
   return null;
 }
 
@@ -122,7 +139,11 @@ export type GuestDecision =
 // Weigh the guest's pressing desires against what it can reach + afford, and pick a
 // target (or wander / rest / leave). `guestRegion` is the path-graph component the guest
 // currently stands on, so it never chooses a stranded attraction (specs/guests.md).
-export function chooseAction(g: Guest, guestRegion: number, env: GuestEnv): GuestDecision {
+export function chooseAction(
+  g: Guest,
+  guestRegion: number,
+  env: GuestEnv,
+): GuestDecision {
   const leave = shouldLeave(g);
   if (leave) return { kind: "leave" };
 
@@ -149,7 +170,11 @@ export function chooseAction(g: Guest, guestRegion: number, env: GuestEnv): Gues
   // Rest: a tired guest seeks the nearest reachable bench-side tile.
   if (g.desires.energy < 35) {
     const rest = nearestRest(g, guestRegion, env.restTiles);
-    if (rest) consider({ kind: "bench", cell: rest }, 45 - g.desires.energy + (g.desires.energy < 15 ? 45 : 0));
+    if (rest)
+      consider(
+        { kind: "bench", cell: rest },
+        45 - g.desires.energy + (g.desires.energy < 15 ? 45 : 0),
+      );
   }
 
   // Souvenir impulse: a happy guest with spare cash splurges on a want.
@@ -163,7 +188,12 @@ export function chooseAction(g: Guest, guestRegion: number, env: GuestEnv): Gues
 
 // The best reachable, affordable target that serves `need` (a ride for thrill, the right
 // stall otherwise). Rides also respect the guest's queue tolerance.
-function pickTarget(g: Guest, need: DesireKey, guestRegion: number, env: GuestEnv): GuestDecision | null {
+function pickTarget(
+  g: Guest,
+  need: DesireKey,
+  guestRegion: number,
+  env: GuestEnv,
+): GuestDecision | null {
   if (need === "thrill") {
     let bestId = -1;
     let bestVal = -1;
@@ -186,7 +216,12 @@ function pickTarget(g: Guest, need: DesireKey, guestRegion: number, env: GuestEn
 }
 
 // The best reachable, affordable stall whose `serves` matches (a plain -1 when none).
-function pickStallServing(g: Guest, serves: string, guestRegion: number, env: GuestEnv): number {
+function pickStallServing(
+  g: Guest,
+  serves: string,
+  guestRegion: number,
+  env: GuestEnv,
+): number {
   let bestId = -1;
   let bestVal = -1;
   for (const a of env.attractions) {
@@ -203,12 +238,17 @@ function pickStallServing(g: Guest, serves: string, guestRegion: number, env: Gu
   return bestId;
 }
 
-function nearestRest(g: Guest, guestRegion: number, restTiles: RestTile[]): Cell | null {
+function nearestRest(
+  g: Guest,
+  guestRegion: number,
+  restTiles: RestTile[],
+): Cell | null {
   let best: Cell | null = null;
   let bestD = Infinity;
   for (const rt of restTiles) {
     if (rt.region !== guestRegion) continue;
-    const d = Math.abs(rt.cell.col - g.tile.col) + Math.abs(rt.cell.row - g.tile.row);
+    const d =
+      Math.abs(rt.cell.col - g.tile.col) + Math.abs(rt.cell.row - g.tile.row);
     if (d < bestD) {
       bestD = d;
       best = rt.cell;

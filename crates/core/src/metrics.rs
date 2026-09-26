@@ -1,7 +1,9 @@
-//! Run metrics: normalized token classes, cost, and run time.
+//! Run metrics: normalized token classes, cost, and the run's stage durations.
 //!
 //! See `docs/metrics.md`. The Test Cabinet does not reduce a run to a single
 //! score; these values describe the resources a run consumed.
+
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +74,23 @@ impl TokenCounts {
     pub fn total(&self) -> Option<u64> {
         sum_reported(self.total_input(), self.total_output())
     }
+
+    /// Sum two token accountings class by class, treating an unreported (`None`)
+    /// class as zero but keeping a class `None` when **neither** side reports it —
+    /// exactly `sum_reported`'s rule, applied per class. This is how a session's
+    /// incremental usage deltas (an orchestrator's per-session usage, or a
+    /// [gg](crate::gg) run's per-turn `usage` telemetry events, which are deltas
+    /// consumers sum) are accumulated into one total without a genuinely-empty
+    /// class ever being reported as a misleading zero.
+    #[must_use]
+    pub fn plus(self, other: TokenCounts) -> TokenCounts {
+        TokenCounts {
+            uncached_input: sum_reported(self.uncached_input, other.uncached_input),
+            cached_input: sum_reported(self.cached_input, other.cached_input),
+            output: sum_reported(self.output, other.output),
+            reasoning: sum_reported(self.reasoning, other.reasoning),
+        }
+    }
 }
 
 /// Sum two optional token counts, treating an unreported (`None`) class as zero,
@@ -86,33 +105,43 @@ fn sum_reported(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 
 /// Per-token prices (USD) used to compute the comparable cost.
 ///
-/// These come from the prices OpenRouter lists for the model used. Reasoning
-/// tokens are priced at the output rate, so no separate field is needed.
+/// These are the model developer's published list prices, curated on the
+/// model's catalog entry — not the billed rate of whichever endpoint served the
+/// run. Reasoning tokens are priced at the output rate, so no separate field is
+/// needed.
 ///
 /// Each price is optional: `None` means the price is **unknown** (OpenRouter
 /// does not list one, or lists a nonsensical value such as a negative sentinel),
 /// which is distinct from `Some(0.0)` (a genuinely free class). A class priced
 /// `None` poisons any cost it contributes to rather than being silently treated
 /// as free — see [`Cost::comparable_from`].
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "TokenPrices"),
+    schemars(rename = "TokenPrices")
+)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPrices {
     /// Price per uncached input token, or `None` when unknown.
+    #[serde(default)]
     pub uncached_input: Option<f64>,
     /// Price per cached input token, or `None` when unknown.
+    #[serde(default)]
     pub cached_input: Option<f64>,
     /// Price per output token (also applied to reasoning tokens), or `None` when
     /// unknown.
+    #[serde(default)]
     pub output: Option<f64>,
 }
 
 /// Cost of a run, recorded two ways.
 ///
 /// Each figure is optional: `None` means the cost is **unknown** — typically
-/// because the model's per-token prices could not be resolved (the model is
-/// absent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).
-/// This is distinct from `Some(0.0)`, a genuinely free run. Keeping the two
-/// apart avoids presenting an unknown cost as `$0.00`.
+/// because the model's per-token list prices could not be resolved (the model's
+/// catalog entry curates none). This is distinct from `Some(0.0)`, a genuinely
+/// free run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.
 #[cfg_attr(
     feature = "contract",
     derive(ts_rs::TS, schemars::JsonSchema),
@@ -123,20 +152,20 @@ pub struct TokenPrices {
 #[serde(rename_all = "camelCase")]
 pub struct Cost {
     /// The canonical figure shown on the site, stable across providers. It is
-    /// derived from token classes and OpenRouter's listed prices, except for
-    /// harnesses that drive a single provider directly and report their own
-    /// exact cost (such as Claude Code), where that reported cost — itself
-    /// provider-stable — is used instead. `None` when the cost is unknown.
+    /// computed from the run's token classes and the model's curated list
+    /// price, and from nothing else: a billed figure never feeds it, so two
+    /// runs of one model at different billed rates still compare on the same
+    /// basis. `None` when the cost is unknown.
     pub comparable: Option<f64>,
-    /// The amount actually charged for the run, recorded for reference. Equal
-    /// to the comparable figure unless the harness reports its own exact cost.
-    /// `None` when the cost is unknown.
+    /// The amount the run was actually billed, recorded for reference: the
+    /// harness's own accounting where it reports one, otherwise the comparable
+    /// figure. `None` when the cost is unknown.
     pub actual: Option<f64>,
 }
 
 impl Cost {
-    /// Compute the comparable cost from token counts and listed prices, or
-    /// `None` when the cost cannot be determined.
+    /// Compute the comparable cost from token counts and the model's curated
+    /// list prices, or `None` when the cost cannot be determined.
     ///
     /// Reasoning tokens are priced at the output rate. An unknown token class
     /// (`None`) contributes nothing to the cost: its tokens are either genuinely
@@ -177,12 +206,119 @@ impl Cost {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunMetrics {
-    /// End-to-end wall-clock time of the run, in seconds.
+    /// End-to-end wall-clock time of the whole run, in seconds, excluding any
+    /// time the run's container spent queued for cluster capacity before it
+    /// started.
+    ///
+    /// This is what the run cost in machine time. It is the sum of
+    /// [`Self::setup_seconds`], [`Self::session_seconds`] and
+    /// [`Self::teardown_seconds`], and a question about the model is answered by
+    /// the session alone: setup is shared by every run of a test case and
+    /// dominates this figure whenever the session is short.
     pub run_time_seconds: f64,
+    /// Wall-clock time of the harness session alone, in seconds — the model's own
+    /// working time, and the figure that describes a model.
+    ///
+    /// `None` on a record written before the stage durations were measured, which
+    /// is distinct from `Some(0.0)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub session_seconds: Option<f64>,
+    /// Wall-clock time from the start of the run until the harness session began,
+    /// in seconds: rendering the case's references, seeding the workspace,
+    /// starting the container, probing its environment, installing the harness,
+    /// and running the test case's `init` step.
+    ///
+    /// The queueing wait excluded from [`Self::run_time_seconds`] is subtracted
+    /// here, the stage that contains it. `None` on a record written before the
+    /// stage durations were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub setup_seconds: Option<f64>,
+    /// Wall-clock time spent collecting the produced tree and stopping the
+    /// container, in seconds.
+    ///
+    /// Taken as the remainder of [`Self::run_time_seconds`], so the three stages
+    /// sum to it exactly. `None` on a record written before the stage durations
+    /// were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub teardown_seconds: Option<f64>,
+    /// Wall-clock time of the [validation](crate::validation) pass, in seconds.
+    ///
+    /// Recorded outside [`Self::run_time_seconds`], which is frozen before
+    /// validation and before every [post-run stage](crate::post_run) runs. `None`
+    /// on a canceled run, which skips validation, and on a record written before
+    /// the stage durations were measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub validation_seconds: Option<f64>,
     /// Normalized token usage.
     pub tokens: TokenCounts,
     /// Cost, recorded as comparable and actual.
     pub cost: Cost,
+}
+
+/// The wall-clock durations measured across one run's lifecycle, partitioned so
+/// the stages sum to the run's measured duration exactly.
+///
+/// Built once by the run engine and handed to
+/// [`RunEngine::collect_metrics`](crate::RunEngine::collect_metrics), which is the
+/// only thing that writes the duration fields of [`RunMetrics`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RunDurations {
+    /// The whole run, queueing wait already excluded.
+    pub run_time_seconds: f64,
+    /// Everything before the harness session began.
+    pub setup_seconds: f64,
+    /// The harness session alone.
+    pub session_seconds: f64,
+    /// Tree collection and container stop, the remainder of the run.
+    pub teardown_seconds: f64,
+    /// The validation pass, which sits outside the run's measured duration.
+    /// `None` for a run that skipped validation.
+    pub validation_seconds: Option<f64>,
+}
+
+impl RunDurations {
+    /// Partition a run's measured wall clock into its lifecycle stages.
+    ///
+    /// `elapsed` is the run timer read once teardown is complete and
+    /// `before_teardown` the same timer read the instant the harness session
+    /// ended; both still carry `scheduling_wait`, the time the run's container
+    /// spent queued for capacity, which is subtracted from the run's measured
+    /// duration and from the setup stage that contains it. `session` is the
+    /// session's own elapsed time, measured around the capped drive itself.
+    ///
+    /// Teardown is taken as the remainder rather than measured, so setup, session
+    /// and teardown sum to [`Self::run_time_seconds`] exactly however the timers
+    /// were read. Each stage is clamped into what remains of the run so the
+    /// partition holds even for durations that could not have been produced by a
+    /// real run.
+    pub fn partition(
+        elapsed: Duration,
+        before_teardown: Duration,
+        session: Duration,
+        scheduling_wait: Duration,
+        validation: Option<Duration>,
+    ) -> Self {
+        let run_time_seconds = elapsed.saturating_sub(scheduling_wait).as_secs_f64();
+        let setup_seconds = (before_teardown
+            .saturating_sub(scheduling_wait)
+            .as_secs_f64()
+            - session.as_secs_f64())
+        .clamp(0.0, run_time_seconds);
+        let session_seconds = session
+            .as_secs_f64()
+            .clamp(0.0, run_time_seconds - setup_seconds);
+        RunDurations {
+            run_time_seconds,
+            setup_seconds,
+            session_seconds,
+            teardown_seconds: run_time_seconds - setup_seconds - session_seconds,
+            validation_seconds: validation.map(|validation| validation.as_secs_f64()),
+        }
+    }
 }
 
 #[cfg(test)]

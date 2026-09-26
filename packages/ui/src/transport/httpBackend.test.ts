@@ -99,6 +99,90 @@ describe("createBackendExec build-link resolution", () => {
   });
 });
 
+describe("createBackendExec media resolvers", () => {
+  it("resolves a run's showcase file against the artifact service", () => {
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBe(
+      `${ARTIFACTS}/runs/run-1/showcase/title.png`,
+    );
+  });
+
+  it("resolves no showcase file without an artifact service", () => {
+    const client = createBackendExec(BACKEND, AUTH, null);
+    expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBeNull();
+  });
+});
+
+describe("createBackendExec unreadable listing", () => {
+  it("reads /runs/unreadable and passes the page through unchanged", async () => {
+    const page = {
+      runs: [
+        {
+          id: "r1",
+          startedAt: "2026-01-01T00:00:00Z",
+          finishedAt: "2026-01-01T01:00:00Z",
+          testCaseSlug: "voxel-rig",
+          testCaseVersion: "v1.0.0",
+          variant: "base",
+          engineSlug: "none",
+          harnessSlug: "claude",
+          modelId: "anthropic/claude",
+          ggPreset: null,
+          testType: "asset-generation",
+          state: "completed",
+          published: false,
+          reviewCount: 0,
+          error: "missing field `interp`",
+        },
+      ],
+      total: 3,
+    };
+    const fetchMock = vi.fn(async (_url: string) => Response.json(page));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const result = await client.listUnreadableRuns!();
+
+    // An open read like the other run reads: no bearer travels with it.
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${BACKEND}/runs/unreadable`);
+    // `total` counts every unreadable run rather than the rows of this page, and is
+    // what sizes the pager, so it must not be recomputed from them.
+    expect(result).toEqual(page);
+  });
+
+  it("carries the numbered pager into the query", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({ runs: [], total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    await client.listUnreadableRuns!({ limit: 20, offset: 40 });
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${BACKEND}/runs/unreadable?limit=20&offset=40`,
+    );
+  });
+});
+
+describe("createHttpBackend summary listing", () => {
+  it("carries the gg configuration filter under its wire name", async () => {
+    // The filter is what a coverage cell's Runs link narrows by, and a name the
+    // backend does not bind is a filter that silently disappears: the listing would
+    // answer with every gg run of the model while claiming to be one cell's.
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({ runs: [], total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createHttpBackend(BACKEND);
+    await client.listRunSummaries({ offset: 0, ggConfigId: "cfg-a" });
+
+    const url = new URL(String(fetchMock.mock.calls[0]![0]));
+    expect(url.searchParams.get("ggConfigId")).toBe("cfg-a");
+  });
+});
+
 describe("createBackendExec catalog listing", () => {
   // The listing is what a catalog page renders from, and it must be ONE request:
   // the fan-out this endpoint's metadata replaced (resolve every version of every
@@ -135,8 +219,53 @@ describe("createBackendExec catalog listing", () => {
         difficulty: "easy",
         tags: ["arcade"],
         summary: "A duel of angles.",
+        // A backend that predates catalog showcases reads as "no preview", so
+        // the catalog renders its placeholder stage.
+        showcase: null,
       },
     ]);
+  });
+
+  // The catalog showcase preview rides the same single listing request; its wire
+  // shape is the client's, so it travels verbatim.
+  it("carries the catalog showcase preview through the listing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          testCases: [
+            {
+              slug: "carom",
+              versions: ["v3.0.0"],
+              name: "Carom",
+              testType: "end-to-end",
+              difficulty: "easy",
+              tags: [],
+              summary: null,
+              showcase: {
+                version: "v3.0.0",
+                variant: "base",
+                media: [
+                  { file: "title.png", name: "Title screen", kind: "image" },
+                  { file: "rally.json.gz", name: "A rally", kind: "replay" },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const cases = await createHttpBackend(BACKEND).listTestCases();
+
+    expect(cases[0]!.showcase).toEqual({
+      version: "v3.0.0",
+      variant: "base",
+      media: [
+        { file: "title.png", name: "Title screen", kind: "image" },
+        { file: "rally.json.gz", name: "A rally", kind: "replay" },
+      ],
+    });
   });
 
   // A backend that predates the asset-shape field must not make the catalog's
@@ -223,6 +352,274 @@ function useFakeEventSource() {
   vi.stubGlobal("EventSource", FakeEventSource);
   return FakeEventSource;
 }
+
+describe("engine dimension", () => {
+  // The engines a version supports are what the new-run form's picker offers. A
+  // resolved version that drops them offers nothing, so no case can be run on an
+  // engine at all.
+  it("carries a version's supported engines through resolution", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({
+        slug: "carom",
+        version: "v3.0.0",
+        name: "Carom",
+        difficulty: "easy",
+        tags: [],
+        summary: null,
+        description: null,
+        changelog: "",
+        maxRuntimeSeconds: 1800,
+        testType: "end-to-end",
+        engines: [{ slug: "none" }, { slug: "simple-2d", minVersion: "1.0.0" }],
+        variants: [],
+        checks: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "simple-2d",
+    );
+
+    // The range is the host's gate, not the picker's, so only the slugs travel on.
+    expect(info.engines).toEqual(["none", "simple-2d"]);
+    // The engine names which branch of the case's templates the per-variant prompt
+    // is rendered from, so it has to reach the backend on the read itself.
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `${BACKEND}/test-cases/carom/versions/v3.0.0?engine=simple-2d`,
+    );
+  });
+
+  // The spec bodies branch on the engine exactly as the prompt does, so the run's
+  // Inputs tab has to name the engine on this read too — otherwise the specs and
+  // the prompt beside them could describe different deliverables.
+  it("renders seeded specs for the requested engine", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({
+        slug: "carom",
+        version: "v3.0.0",
+        variant: "base",
+        description: null,
+        specs: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpBackend(BACKEND).readSpecs(
+      "carom",
+      "v3.0.0",
+      "base",
+      "simple-2d",
+    );
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `${BACKEND}/test-cases/carom/versions/v3.0.0/specs/base?engine=simple-2d`,
+    );
+  });
+
+  // The launch body is the only place a collected engine reaches the backend. A
+  // run enqueued without it is an engineless run, whatever the operator picked.
+  it("puts the selected engine on the enqueued launch body", async () => {
+    // The mock declares its parameters so the recorded call is typed, which is
+    // what lets the assertion read the enqueued body back off it.
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      Response.json({ runId: "run-9" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
+      {
+        testCase: "carom",
+        version: "v3.0.0",
+        variant: "base",
+        harness: "claude",
+        modelId: "claude-opus-4-8",
+        orchestrator: "one-shot",
+        engine: "simple-2d",
+        maxRuntimeOverride: null,
+      },
+      "token",
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
+    expect(body.engine).toBe("simple-2d");
+  });
+
+  // Omitted rather than sent as an empty value, which is how the backend spells
+  // the `none` default.
+  it("omits the engine when the caller pinned none", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      Response.json({ runId: "run-10" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
+      {
+        testCase: "carom",
+        version: "v1.0.0",
+        variant: "base",
+        harness: "claude",
+        modelId: "claude-opus-4-8",
+        orchestrator: "one-shot",
+        maxRuntimeOverride: null,
+      },
+      "token",
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
+    expect(body).not.toHaveProperty("engine");
+  });
+});
+
+describe("case showcase and starter workspace", () => {
+  // The shared frame of a resolved version; each test overrides the variants and
+  // workspace tables it is about.
+  function resolvedVersionBody(overrides: Record<string, unknown>) {
+    return {
+      slug: "carom",
+      version: "v3.0.0",
+      name: "Carom",
+      difficulty: "easy",
+      tags: [],
+      summary: null,
+      description: null,
+      changelog: "",
+      maxRuntimeSeconds: 1800,
+      testType: "end-to-end",
+      engines: [{ slug: "none" }, { slug: "simple-2d" }],
+      checks: [],
+      variants: [],
+      ...overrides,
+    };
+  }
+
+  function variantBody(overrides: Record<string, unknown> = {}) {
+    return {
+      slug: "base",
+      name: "Base",
+      description: null,
+      prompt: "Build the thing.",
+      specs: [],
+      ...overrides,
+    };
+  }
+
+  // The variant's authored showcase travels verbatim (its wire shape is the
+  // client's); a backend that predates the field reads as "no showcase" rather
+  // than leaving the surfaces undefined-sensitive.
+  it("maps a variant's showcase and reads a missing one as null", async () => {
+    const showcase = {
+      description: "Captured from the reference implementation.",
+      media: [
+        { file: "title.png", name: "Title screen", kind: "image" },
+        { file: "rally.json.gz", name: "A rally", kind: "replay" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          resolvedVersionBody({
+            variants: [
+              variantBody({ showcase }),
+              variantBody({ slug: "gyre", name: "Gyre" }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "none",
+    );
+
+    expect(info.variants[0]!.showcase).toEqual(showcase);
+    expect(info.variants[1]!.showcase).toBeNull();
+  });
+
+  // The effective workspace is the variant's own override when it declares one,
+  // else the case's common set — the same fallback a run's seed applies — and the
+  // engine the caller resolved for selects which per-engine directory travels.
+  // Each file resolves to the version artifacts route on the backend base, so the
+  // Inputs tree can fetch a starter file lazily.
+  it("resolves the effective starter workspace for the requested engine", async () => {
+    const workspace = {
+      none: [{ source: "workspace/none/index.html", dest: "index.html" }],
+      "simple-2d": [
+        { source: "workspace/simple-2d/src/main.ts", dest: "src/main.ts" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          resolvedVersionBody({
+            workspace,
+            variants: [
+              variantBody(),
+              variantBody({
+                slug: "gyre",
+                name: "Gyre",
+                workspace: {
+                  "simple-2d": [
+                    {
+                      source: "workspace-gyre/simple-2d/src/main.ts",
+                      dest: "src/main.ts",
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "simple-2d",
+    );
+
+    // The common set, selected by the resolved engine's directory.
+    expect(info.variants[0]!.workspace).toEqual([
+      {
+        path: "src/main.ts",
+        url: `${BACKEND}/test-cases/carom/versions/v3.0.0/artifacts/workspace/simple-2d/src/main.ts`,
+      },
+    ]);
+    // A variant's override REPLACES the common set entirely.
+    expect(info.variants[1]!.workspace).toEqual([
+      {
+        path: "src/main.ts",
+        url: `${BACKEND}/test-cases/carom/versions/v3.0.0/artifacts/workspace-gyre/simple-2d/src/main.ts`,
+      },
+    ]);
+  });
+
+  // A backend that predates the workspace tables — or a case that seeds no
+  // starter file for the engine — reads as an empty set, never undefined.
+  it("reads an absent workspace as empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(resolvedVersionBody({ variants: [variantBody()] })),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "none",
+    );
+
+    expect(info.variants[0]!.workspace).toEqual([]);
+  });
+});
 
 describe("createBackendExec console stream", () => {
   afterEach(() => {
@@ -443,5 +840,231 @@ describe("createBackendExec console stream", () => {
 
     expect(source.closed).toBe(false);
     expect(onNotification).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The live NDJSON stream (`GET /jobs/{id}/live`) as the browser hands it to the
+// reader: each chunk is delivered, then the body either closes cleanly or fails
+// mid-read the way a reset connection does (Chromium: `TypeError: Error in input
+// stream`).
+function liveBody(lines: string[], dropAfter: boolean): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(`${line}\n`));
+    },
+    // Called once the queued chunks are drained — so, as on the wire, the bytes
+    // that made it through are read before the drop (or the close) is seen.
+    pull(controller) {
+      if (dropAfter) controller.error(new TypeError("Error in input stream"));
+      else controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "application/x-ndjson" },
+  });
+}
+
+function event(n: number): string {
+  return JSON.stringify({
+    timestamp: `2026-01-01T00:00:0${n}Z`,
+    type: "system",
+    message: `e${n}`,
+  });
+}
+
+// Drive `subscribeToRun` to its terminal handler, resolving with the outcome.
+function subscribe(client: ReturnType<typeof createBackendExec>) {
+  const onEvent = vi.fn();
+  const onError = vi.fn();
+  const done = new Promise<unknown>((resolve) => {
+    client.subscribeToRun("job-1", {
+      onEvent,
+      onError: (e) => {
+        onError(e);
+        resolve({ error: e });
+      },
+      onDone: resolve,
+    });
+  });
+  return { onEvent, onError, done };
+}
+
+describe("subscribeToRun over a dropped live stream", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // The regression: a gg run that refused its configuration exited within a
+  // minute, the live connection was reset mid-body, and the monitor surfaced
+  // the browser's `TypeError: Error in input stream` as a UI error instead of
+  // the run's own failed outcome.
+  it("resolves a run that has already ended to its outcome, not the transport error", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) return liveBody([event(1)], true);
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json({
+          id: "job-1",
+          state: "failed",
+          recordId: "run-1",
+          detail: "run failed: gg exited with code 1 (session ended `error`)",
+        });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onEvent, onError, done } = subscribe(client);
+
+    await expect(done).resolves.toEqual({
+      kind: "failed",
+      message: "run failed: gg exited with code 1 (session ended `error`)",
+    });
+    expect(onError).not.toHaveBeenCalled();
+    expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-joins a still-running job and skips the replayed backlog", async () => {
+    vi.useFakeTimers();
+    let liveOpens = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) {
+        liveOpens += 1;
+        // First connection: two events, then the drop. Second: the backend
+        // replays both, adds a third, and closes because the run ended.
+        return liveOpens === 1
+          ? liveBody([event(1), event(2)], true)
+          : liveBody([event(1), event(2), event(3)], false);
+      }
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json(
+          liveOpens === 1
+            ? { id: "job-1", state: "running" }
+            : { id: "job-1", state: "succeeded", recordId: "run-1" },
+        );
+      if (url.endsWith("/runs/run-1"))
+        return Response.json(storedRunBody("run-1"));
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onEvent, onError, done } = subscribe(client);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(done).resolves.toMatchObject({ kind: "completed" });
+    expect(onError).not.toHaveBeenCalled();
+    expect(liveOpens).toBe(2);
+    expect(onEvent.mock.calls.map(([e]) => e.message)).toEqual([
+      "e1",
+      "e2",
+      "e3",
+    ]);
+  });
+
+  it("reports the drop once the job stays unreachable past the reconnect budget", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) return liveBody([], true);
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json({ id: "job-1", state: "running" });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onError, done } = subscribe(client);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await done;
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(String(onError.mock.calls[0]![0])).toContain(
+      "Error in input stream",
+    );
+  });
+});
+
+// The publish stream's failure messages. Each reports the error and nothing about
+// what the app decided to do next, per the run-record contract's failure-detail
+// style, and each keeps the figures it holds.
+describe("publish stream failures", () => {
+  const ack = () => Response.json({ liveUrl: "/publish-jobs/p-1/live" });
+
+  function publish(lines: string[], close = true) {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of lines) {
+          controller.enqueue(encoder.encode(`${line}\n`));
+        }
+      },
+      pull(controller) {
+        if (close) controller.close();
+      },
+    });
+    return new Response(body, {
+      headers: { "content-type": "application/x-ndjson" },
+    });
+  }
+
+  function client(stream: () => Response) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/publish")) return ack();
+        if (url.endsWith("/publish-jobs/p-1/live")) return stream();
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+    return createBackendExec(BACKEND, AUTH, ARTIFACTS);
+  }
+
+  it("names the status when the backend refuses the stream", async () => {
+    const c = client(
+      () => new Response("nope", { status: 503, statusText: "Unavailable" }),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream failed: HTTP 503 Unavailable",
+    );
+  });
+
+  it("separates a 2xx with no readable body from a refused stream", async () => {
+    // The merged `!res.ok || !res.body` guard reported this as "publish stream
+    // failed: 200", naming a success as the failure.
+    const c = client(() => new Response(null, { status: 200 }));
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream carried no body",
+    );
+  });
+
+  it("reports a stream that closed before its terminal result", async () => {
+    const c = client(() =>
+      publish([JSON.stringify({ type: "progress", message: "releasing" })]),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream ended before reporting a result",
+    );
+  });
+
+  it("carries the publisher's own reason through unwrapped", async () => {
+    // The publisher already wrote a sentence naming the failure, so this layer
+    // adds no verb of its own on top of it.
+    const c = client(() =>
+      publish([
+        JSON.stringify({
+          type: "result",
+          state: "failed",
+          detail: "pages deploy failed: HTTP 403",
+        }),
+      ]),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "pages deploy failed: HTTP 403",
+    );
   });
 });

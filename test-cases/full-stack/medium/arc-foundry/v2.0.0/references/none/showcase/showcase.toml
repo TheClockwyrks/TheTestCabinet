@@ -1,0 +1,8 @@
+# The carousel the existence check reads. A reference implementation carries the
+# least that check needs — the description, this manifest, and the one file it
+# names — because the media this case PRESENTS is captured once into the
+# variant's `showcase/base/` directory, which is the copy every surface renders.
+
+[[media]]
+file = "wave.png"
+name = "A wave crossing the maze under fire"

@@ -3,7 +3,7 @@ import {
   SegmentedControl,
   Spinner,
   type SegmentedOption,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import {
   fetchParticleSystem,
   useParticleSystem,
@@ -177,10 +177,11 @@ export function ParticleResultSection({ view }: { view: ParticleResultView }) {
         Live particle effect
       </h3>
       <p className={styles.secondary}>
-        The authored system is <strong>simulated live</strong> — a running particle
-        editor, not a replayed clip — so a particle effect varies slightly from play
-        to play. A looping effect (fire, smoke) loops; a one-shot (an explosion,
-        a muzzle flash) replays on its own. Drag to orbit a 3D effect.
+        The authored system is <strong>simulated live</strong> in a running
+        particle editor rather than replayed from a clip, so a particle effect
+        varies slightly from play to play. A looping effect (fire, smoke) loops;
+        a one-shot (an explosion, a muzzle flash) replays on its own. Drag to
+        orbit a 3D effect.
       </p>
       <div className={styles.rigModeSwitch}>
         <SegmentedControl

@@ -1,11 +1,37 @@
-import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
-import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
+import type {
+  AssetSheet,
+  MediaKind,
+  ModelSpec,
+  TestType,
+} from "@clockwyrks/run-record";
+import type {
+  AssetKind,
+  CaseShowcase,
+  CatalogShowcase,
+  Erratum,
+  ReferenceSheet,
+  ReviewItemValidation,
+  WorkspaceFileRef,
+} from "../../client";
+import type { FailureCap } from "../../ratings";
 
 export type { Erratum, ErratumSeverity } from "../../client";
 /** The published reference frames of one asset-generation case variant, as the
  * catalog records them. Re-exported from the client wire shape so the catalog and
  * the transports cannot drift on it. */
 export type { ReferenceSheet } from "../../client";
+/** A variant's authored showcase (description + media carousel captured from the
+ * reference implementation), one carousel entry, a case's catalog showcase
+ * preview, and one starter-workspace file reference — as the catalog records
+ * them. Re-exported from the client wire shapes (the same drift rule as
+ * {@link ReferenceSheet}): the media bytes resolve through the gallery's
+ * `caseShowcaseMediaUrl`, a workspace file's through its own `url`. */
+export type {
+  CaseShowcase,
+  CatalogShowcase,
+  ShowcaseMediaRef,
+  WorkspaceFileRef,
+} from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -37,7 +63,7 @@ export interface SeededInput {
  * npm name and a UI-only description of what it provides (never seeded into a run —
  * it exists only to explain, on the Inputs surfaces, what the package is for). */
 export interface PackageInput {
-  /** The npm package name the case declares (e.g. `@test-cabinet/particle-runtime`). */
+  /** The npm package name the case declares (e.g. `@clockwyrks/particle-runtime`). */
   name: string;
   /** The UI-only description of what the package provides. */
   description: string;
@@ -73,10 +99,23 @@ export interface ReviewItemSummary {
   graded?: boolean;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
+  /** On a validator-rated version, the failure cap of a whole-item point — the
+   * highest functional rating its `domains` may reach while its validator fails.
+   * Absent on a legacy version and on a category (whose points carry their own). */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this
+   * whole-item point lowers. Empty on a legacy version and on a category. */
+  domains?: string[];
   /** Whether this item contributes to the run's score. Set false on the effective
    * checklist only when an erratum's `excludeFromScore` links its verdict id (still
    * checked and shown, just not scored). Absent/true otherwise. */
   scored?: boolean;
+  /** The engine scoping of this point's validator: the engines it decides the
+   * point on. A run built on any other engine does not carry the point at all, so
+   * a run-scoped surface filters this checklist through `reviewItemsForEngine`.
+   * Null when the point is human-judged, or its validator names no engines and so
+   * decides it on every engine the case supports. */
+  validation?: ReviewItemValidation | null;
   /** Name-only sub-items this item is graded by, each an independently scored
    * pass/fail point keyed by the composite `<item id>.<sub id>`. Empty for an
    * item graded as a whole. */
@@ -98,10 +137,20 @@ export interface ReviewSubItemSummary {
   /** Optional paired reference view / proof id for this point. */
   reference?: string | null;
   proof?: string | null;
+  /** On a validator-rated version, this point's failure cap — the highest
+   * functional rating its `domains` may reach while its validator fails. Absent
+   * on a legacy version. */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this point
+   * lowers. Empty on a legacy version. */
+  domains?: string[];
   /** Whether this sub-item contributes to the run's score. Set false on the
    * effective checklist only when an erratum's `excludeFromScore` links its composite
    * verdict id (or excludes its whole category). Absent/true otherwise. */
   scored?: boolean;
+  /** The engine scoping of this point's validator (see
+   * {@link ReviewItemSummary.validation}). */
+  validation?: ReviewItemValidation | null;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's
@@ -139,10 +188,23 @@ export interface ErrataEntry {
 export interface ReferenceScreenshot {
   /** The view the reference depicts (e.g. `title`, `game-over`). */
   view: string;
-  /** Whether the media is a still image or a video. */
-  kind: "image" | "video";
+  /** Whether the media is a still image, a video, or an engine replay — the kind
+   * decides how it is shown, and a replay is re-drawn onto a canvas rather than
+   * loaded as a media file. Carried as the contract's own {@link MediaKind} rather
+   * than a narrower copy of it, so a kind added there reaches the catalog instead
+   * of failing to assign into it. */
+  kind: MediaKind;
   /** Public URL of the reference media. */
   url: string;
+}
+
+/** A variant's identity alone — what a selector offers before the selected
+ * coordinate is resolved in full. */
+export interface VariantRef {
+  /** The stable slug naming the variant (e.g. `base`). */
+  slug: string;
+  /** Human-readable display name (defaults to the humanized slug). */
+  name: string;
 }
 
 /** One variant of a test case, as the catalog records it. */
@@ -175,18 +237,31 @@ export interface VariantSummary {
    * reviewer rates each independently; a run's overall rating is the worst across
    * them. Empty when the host could not resolve them. */
   domains: DomainSummary[];
-  /** The absolute URL of this variant's **reference implementation** — the
-   * authored, in-repo, versioned static build that is the *correct* implementation
-   * of the variant, deployed out-of-band by `tcab publish-reference` exactly as a
-   * published run's playable build is. `null` when the variant declares no
-   * `reference_implementation`, which is the common case. It is never a seeded
-   * input and never produced by a run; it is the case-variant analogue of a run's
-   * `links.playableBuild`, and the case-detail Reference tab (shown only for an
-   * end-to-end case whose selected variant carries one) iframes it as-is — the
-   * build was already redacted at publish, so it is loaded inline with no caveat.
-   * Carried by every host: the backend catalog populates it from the
-   * `case_reference_build` table, the static snapshot from `CaseVariantOut.referenceBuild`. */
-  referenceBuild: string | null;
+  /** Whether a run of this variant is **validator-rated**: its case version is on
+   * the engine manifest format and is not a game jam, so every point above
+   * carries a `failureCap` and `domains`, the functional rating and score are
+   * decided by the validators the moment a run completes, and a reviewer rates
+   * the run-wide aesthetic channel (and may override individual verdicts).
+   * False on a legacy version, reviewed as before. */
+  validatorRated: boolean;
+  /** The absolute URLs of this variant's **reference implementations**, keyed by
+   * the engine each was built for — the authored, in-repo, versioned static builds
+   * that are the *correct* implementation of the variant, deployed out-of-band by
+   * `tcab publish-reference` exactly as a published run's playable build is. Empty
+   * when the variant declares no `reference_implementation`, which is the common
+   * case.
+   *
+   * Keyed by engine because the build a reference demonstrates genuinely differs
+   * under each: an engineless one carries its own runtime, an engine-backed one
+   * hands the same surfaces to the runtime it vendors. The case-detail Reference
+   * tab iframes one and offers a switch between the rest — the build was already
+   * redacted at publish, so it is loaded inline with no caveat.
+   *
+   * Never a seeded input and never produced by a run; it is the case-variant
+   * analogue of a run's `links.playableBuild`. Carried by every host: the backend
+   * catalog populates it from the `case_reference_build` table, the static snapshot
+   * from `CaseVariantOut.referenceBuilds`. */
+  referenceBuilds: Record<string, string>;
   /** The published **reference frames** of this variant of an asset-generation
    * case — the other shape a reference implementation takes. An asset case builds
    * no site, so its reference is data rather than a page: `tcab publish-reference`
@@ -196,9 +271,28 @@ export interface VariantSummary {
    * the deterministic keys defined in `crates/core/src/asset_reference.rs` and
    * resolved through the host's `referenceMediaUrl`. `null` when the variant has no
    * published asset reference, which is the common case — and always null for an
-   * end-to-end/full-stack variant, whose reference is a {@link referenceBuild}
+   * end-to-end/full-stack variant, whose reference is a {@link referenceBuilds}
    * instead. The two are mutually exclusive in practice: a case is one test type. */
   referenceSheet: ReferenceSheet | null;
+  /** The variant's authored **showcase**, when it declares one: the description
+   * plus the 2–10-entry media carousel captured from the reference
+   * implementation, committed with the version. Drives the detail page's Play
+   * tab (and, at the listing level, the catalog's preview stage — see
+   * {@link TestCaseSummary.showcase}). The media bytes resolve through the
+   * host's `caseShowcaseMediaUrl`; a host that omits the resolver degrades
+   * exactly like the run showcase ("not available here"). `null` when the
+   * variant declares none, and absent on a host that predates the field —
+   * either way the Play surfaces show no showcase. */
+  showcase?: CaseShowcase | null;
+  /** The variant's **effective** starter-workspace files (its own override when
+   * it declares one, else the case's common workspace) for the engine this
+   * summary was rendered for — the starter project a run is seeded with, newly
+   * surfaced on the Inputs tab's file tree. Each entry carries the
+   * run-root-relative path and a lazily-fetched URL (the consoles point at the
+   * backend's version artifacts route, the static site at the snapshot's
+   * published objects). Empty when the case seeds no starter file for the
+   * engine, and absent on a host that predates the field. */
+  workspace?: WorkspaceFileRef[];
 }
 
 /**
@@ -235,6 +329,35 @@ export interface TestCaseSummary {
   versions: string[];
   /** The newest version (first of `versions`). */
   latestVersion: string;
+  /** The case's catalog **showcase preview** — the latest version's first
+   * variant (manifest order) that declares a showcase, with the media list the
+   * catalog's preview stage loops (only the addressing rides here; the
+   * description lives on the resolved variant — see
+   * {@link VariantSummary.showcase}). The media bytes resolve through the
+   * host's `caseShowcaseMediaUrl`. `null` when no variant of the latest version
+   * declares one, and absent on a host that predates the field — either way the
+   * catalog renders its placeholder stage. */
+  showcase?: CatalogShowcase | null;
+}
+
+/**
+ * One repo-defined test-case group — a global, ordered set of related test-case
+ * slugs the home page renders a leaderboard per (NOT the per-account coverage
+ * "case group"). The wire's `TestCaseGroupOut` shape, host-agnostic: the console
+ * fetches groups from `GET /test-case-groups`, the static site reads them from
+ * the snapshot's `test-case-groups.json`; both arrive already in display order
+ * (rank ascending then name, resolved at ingest — rank never rides the wire).
+ */
+export interface TestCaseGroupSummary {
+  /** The group's stable slug. */
+  slug: string;
+  /** Display name, heading the group's home-page leaderboard. */
+  name: string;
+  /** Optional one-line description, or null. */
+  summary: string | null;
+  /** The ordered member test-case/game-jam slugs, by manifest-declared identity
+   * (the slug run records carry). */
+  cases: string[];
 }
 
 /**
@@ -244,8 +367,16 @@ export interface TestCaseSummary {
  * costs one request per version plus one per variant's seeded specs.
  */
 export interface TestCaseDetail extends TestCaseSummary {
-  /** Inlined site-facing Markdown from the case's `description.md`, or null. */
+  /** Inlined site-facing Markdown from the latest version's `description.md`,
+   * or null. The same text is `descriptionsByVersion[latestVersion]`. */
   description: string | null;
+  /** Each published version's own site-facing description (its
+   * `description.md`, inlined), keyed by version and covering every version
+   * including the latest; null for a version that declares none. A description
+   * is authored per version — a rewrite ships with the version it describes —
+   * so a detail page anchored to an older version shows that version's text,
+   * never the latest one's. */
+  descriptionsByVersion: Record<string, string | null>;
   /** The case's changelog, one entry per version that declares a `changelog.md`,
    * ordered newest version first. Empty when no version carries one. */
   changelog: ChangelogEntry[];
@@ -257,6 +388,27 @@ export interface TestCaseDetail extends TestCaseSummary {
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
+  /** Each published version's variants — identity only, in declared order
+   * (default first), keyed by version and covering every version including the
+   * latest. This is the frame the detail header's variant selector is built
+   * from, so picking a version offers exactly the variants that version
+   * declares; the selected coordinate's full {@link VariantSummary} is resolved
+   * separately through the gallery's `fetchCaseVariant`. */
+  variantsByVersion: Record<string, VariantRef[]>;
+  /** The engine slugs each published version supports, keyed by version — the set
+   * a run of that version may select, and therefore the set of renderings its
+   * inputs exist in. Never empty for a version this host carries.
+   *
+   * A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so a
+   * version that supports more than one has more than one set of inputs, and the
+   * Inputs tab needs the list to offer them. It is keyed by version because the
+   * supported set is a property of a version: an engine added to a case appears in
+   * the version that added it and not in the ones before.
+   *
+   * Each host fills it from what it can actually render: the consoles from the
+   * version's declared `engines`, the static site from the renderings its snapshot
+   * carries. */
+  enginesByVersion: Record<string, string[]>;
   /** The case's COMMON scoring domains (every variant is rated on these; a
    * variant may add its own — see VariantSummary.domains). A reviewer rates each
    * domain independently; a run's overall rating is the worst across them. At

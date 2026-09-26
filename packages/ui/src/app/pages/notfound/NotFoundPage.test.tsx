@@ -54,9 +54,13 @@ describe("NotFoundPage", () => {
     );
   });
 
-  it("offers About on the gallery and Other on a console, matching the nav", () => {
+  it("offers Other everywhere and About only on the gallery, matching the nav", () => {
     gallery.canExecute = false;
     const { unmount } = renderAt("/nonsense");
+    expect(screen.getByRole("link", { name: "Other" })).toHaveAttribute(
+      "href",
+      "/other",
+    );
     expect(screen.getByRole("link", { name: "About" })).toHaveAttribute(
       "href",
       "/about",
@@ -69,5 +73,6 @@ describe("NotFoundPage", () => {
       "href",
       "/other",
     );
+    expect(screen.queryByRole("link", { name: "About" })).toBeNull();
   });
 });

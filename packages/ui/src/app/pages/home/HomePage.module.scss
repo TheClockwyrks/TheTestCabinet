@@ -1,24 +1,90 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 .terminal {
   font-family: var(--ttc-font);
 }
 
-// The featured run's `›` caret, reused from the shared prompt header's accent
-// treatment.
-.caret {
-  margin-right: t.$space-sm;
-  opacity: 0.8;
+// Section headings sit out on the backdrop (not in a panel), so they take the
+// readability halo like every other loose title.
+.sectionTitle {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-lg;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  @include h.halo;
 }
 
-// The lead run: a neon-outlined panel echoing the log's surface, scaled up so
-// the newest result reads first. Cross-links into the test case and model sit
-// alongside the run's vital stats.
-.feature {
-  margin-bottom: t.$space-lg;
-  padding: t.$space-md t.$space-lg t.$space-lg;
+.sectionHint {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.sep {
+  color: t.$color-text-muted;
+}
+
+// ---- Legendary showcase ------------------------------------------------------
+
+.showcase {
+  margin-bottom: t.$space-xl;
+}
+
+// The fixed-aspect stage every showcase entry plays on: 16:9, clipped and
+// centered, so the hero and the thumbnail row hold one geometry whatever media
+// each run produced (the replay player is intrinsically aspect-driven).
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+
+  // The replay player mounts its own figure; let it fill the stage's box.
+  > * {
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+.stageMedia {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stagePlaceholder {
+  color: t.$color-text-muted;
+}
+
+.stageMark {
+  width: 20%;
+  max-width: 6rem;
+  opacity: 0.5;
+}
+
+// The whole-stage link a non-replay hero stage gets; it must not introduce its
+// own box, the stage inside it is the visual.
+.stageLink {
+  display: block;
+}
+
+// The hero: a neon-outlined panel scaled up so the newest legendary run reads
+// first, echoing the surface treatment the featured run used to carry.
+.hero {
+  padding: t.$space-md;
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
@@ -27,24 +93,22 @@
     inset 0 0 2rem color-mix(in srgb, t.$color-accent 12%, transparent);
 }
 
-.featureLabel {
-  margin: 0;
-  font-size: t.$font-sm;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: t.$color-text-muted;
-
-  .caret {
-    color: t.$color-accent;
-    text-shadow: var(--ttc-glow);
-  }
+.heroCaption {
+  margin-top: t.$space-md;
 }
 
-.featureTest {
+.heroTitleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+.heroCase {
   display: flex;
   align-items: baseline;
   gap: t.$space-sm;
-  margin: t.$space-sm 0 0;
+  margin: 0;
   font-size: t.$font-xl;
   font-weight: 700;
   text-transform: uppercase;
@@ -58,74 +122,41 @@
   }
 }
 
-.featureSubject {
+.heroSubject {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: t.$space-sm;
   margin: t.$space-sm 0 0;
   color: t.$color-text;
 }
 
-.featureHarness {
-  color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
-}
-
-.featureVariant {
-  color: t.$color-text-muted;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: t.$font-sm;
-}
-
-.featureSep {
-  color: t.$color-text-muted;
-}
-
-.featureModel {
+.heroModel {
   color: t.$color-text;
 
   &:hover {
     color: t.$color-accent;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
-// Vital stats laid out as a responsive grid of labelled figures.
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-  gap: t.$space-md;
-  margin: t.$space-lg 0 0;
+.heroHarness {
+  color: t.$color-accent-2;
+  @include h.halo-glow;
 }
 
-.stat {
-  margin: 0;
-}
-
-.statLabel {
-  font-size: t.$font-sm;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.heroTime {
   color: t.$color-text-muted;
 }
 
-.statValue {
-  margin: t.$space-sm 0 0;
-  font-size: t.$font-lg;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  text-shadow: var(--ttc-glow);
-}
-
-.featureCta {
+.openRun {
   display: inline-block;
-  margin-top: t.$space-lg;
+  margin-top: t.$space-md;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 
   &:hover {
     text-decoration: none;
@@ -135,17 +166,218 @@
   }
 }
 
-// Compact unpublished marker next to the featured run's title.
+// Compact unpublished marker next to the hero's title.
 .tag {
   font-size: 0.7rem;
 }
 
-.noRating {
-  color: t.$color-text-muted;
-  opacity: 0.6;
+// The four runners-up, 4-across under the hero; 2-across, then stacked, as the
+// viewport narrows.
+.thumbRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: t.$space-md;
+  margin-top: t.$space-md;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.empty {
+// A thumbnail card is its own positioning context: the badges float over the
+// stage's top corner and the overlay link (with the caption pinned to its
+// bottom) covers the whole card.
+.thumb {
+  position: relative;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow: hidden;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.thumbBadges {
+  position: absolute;
+  top: t.$space-sm;
+  left: t.$space-sm;
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  // Over the overlay link. The container stays inert so the gap between badges
+  // clicks through to the link, but each badge takes the pointer itself: both
+  // badges explain themselves through native `title` tooltips (UnpublishedTag
+  // is otherwise a bare triangle), which only show on the element they hover —
+  // matching the hero card, where the same badges sit in normal flow.
+  z-index: 2;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.thumbLink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  color: t.$color-text;
+
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+// The caption strip along the card's bottom edge, faded up from dark so it
+// stays legible over whatever the stage is playing.
+.thumbCaption {
+  width: 100%;
+  padding: t.$space-lg t.$space-sm t.$space-sm;
+  font-size: t.$font-sm;
+  font-weight: 700;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, t.$color-bg 85%, transparent),
+    transparent
+  );
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumbModel {
   color: t.$color-text-muted;
-  @include h.halo;
+  font-weight: 400;
+}
+
+// ---- Totals band + activity --------------------------------------------------
+
+// Five tiles across, reflowing by fit rather than by count so the band degrades
+// on narrow viewports without a breakpoint per tile.
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.activity {
+  margin-bottom: t.$space-xl;
+}
+
+// ---- Group leaderboards ------------------------------------------------------
+
+.boards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.board {
+  min-width: 0;
+}
+
+.boardHead {
+  margin-bottom: t.$space-md;
+}
+
+.boardName {
+  margin: 0;
+  font-size: t.$font-lg;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+// The member-slug line under a board's name: each slug is a link into its case.
+.boardCases {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.boardEmpty {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// A dense, column-aligned board mirroring the case leaderboard's treatment:
+// rank, model, mean score fraction, mean cost, badge.
+.boardRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.boardRow {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) 3.5rem 4.5rem auto;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-xs 0;
+  border-bottom: 1px solid t.$color-border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.rank {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.model {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The harness slug (and, on a mixed board, the engine) after the model name,
+// muted so the model stays the primary read.
+.harness {
+  color: t.$color-text-muted;
+  font-weight: 400;
+}
+
+.score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cost {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.noRating {
+  color: t.$color-text-muted;
+}
+
+// The functional badge (or a jam's grade) with the aesthetic badge beside it.
+.badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  justify-content: flex-end;
 }

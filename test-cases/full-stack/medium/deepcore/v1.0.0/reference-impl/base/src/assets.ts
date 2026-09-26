@@ -8,7 +8,7 @@
 // undefined entry and the renderer draws a neutral fallback, so `npm run build` and a
 // headless load both succeed before the assets land.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { MinerState, Ore } from "./types";
 import type { FxKind } from "./particles";
 import type { Cue, LoopCue } from "./audio";

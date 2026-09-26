@@ -1,0 +1,27 @@
+Your context window is full.
+{{#if summary}}
+{{#if codeMode}}
+Call `{{compactTool}}(summary)` and nothing else. All other calls are blocked
+until you do.
+{{else}}
+Reply with a plain text summary and nothing else. All tool calls are blocked
+until you do.
+{{/if}}
+The summary must cover the working state: what is being built, progress so far,
+and what is left to do.
+{{/if}}
+{{#if compactCall}}
+{{#if codeMode}}
+Call `{{compactTool}}(summary, files)` and nothing else. All other calls are
+blocked until you do.
+{{else}}
+Call `{{compactTool}}` and nothing else. All other tool calls are blocked until
+you do.
+{{/if}}
+`summary` must cover the working state: what is being built, progress so far,
+and what is left to do. `files` are the paths re-read for you afterwards.
+{{/if}}
+{{#if memoryWrites}}
+Record the working state with {{memoryCreate}} / {{memoryRevise}} /
+{{memoryDelete}} and nothing else. All other calls are blocked until you do.
+{{/if}}

@@ -1,0 +1,21 @@
+# The third-party libraries the Python guest is baked with, pinned exactly.
+#
+# Pinned rather than floating for the reason the `componentize-py` release is: the component is a
+# binary in the repository, so a silent dependency bump would land as an unexplained multi-megabyte
+# diff. `build.sh` installs these into a private tree and puts it on `componentize-py`'s Python
+# path; `src/library.py` imports them, which is what actually bakes them in, and its docstring is
+# where the rationale for the set lives.
+#
+# Two rules for anything added here:
+#   1. Pure Python. A C extension cannot be built for this component's CPython.
+#   2. Importable without a network, a process, or `ssl`. An import that succeeds and a call that
+#      always fails is worse than an honest `ModuleNotFoundError`.
+
+# YAML, which the standard library has no answer for at all, and which is what half the
+# configuration and front matter in a real repository is written in.
+PyYAML==6.0.3
+
+# Writing TOML. `tomllib` reads it and deliberately does not write it, so a program that has to
+# edit a manifest — `pyproject.toml`, `Cargo.toml`, this repository's own `test-case.toml` — has
+# nothing in the standard library to write it back with.
+tomli-w==1.2.0

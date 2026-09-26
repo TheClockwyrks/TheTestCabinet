@@ -25,23 +25,32 @@ use sea_orm::{
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::comparison::ComparisonConfig;
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::reference_lock::ReferenceBuildEntry;
-use test_cabinet_core::review::{DomainRating, Rating, ReviewDiff, ReviewRevision, ReviewVerdict};
+use test_cabinet_core::review::{
+    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
+    ReviewVerdict,
+};
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
 use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
-    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, coverage_settings,
+    backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
+    coverage_plan, coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query,
     harness_config, job, ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias,
-    model_price, publish_job, review, review_plan, review_revision, run, run_link, snapshot_state,
-    tournament,
+    model_price, model_probe, model_probe_item, publish_job, review, review_plan, review_revision,
+    run, run_link, snapshot_state, tournament,
 };
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
+use crate::coverage::schedule::BufferTarget;
 use crate::error::{BackendError, Result};
+use crate::store::{CaseNames, StoredManifest};
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -50,6 +59,39 @@ use crate::error::{BackendError, Result};
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
 /// and `running` each have a driver Job coming up or executing.
 const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+
+/// The column value that stores an [unbounded](BufferTarget::Unbounded) buffer target.
+///
+/// The three `buffer_target` columns (`coverage_settings`, `coverage_plan`, `ladder`)
+/// are integers that only ever held a non-negative run count, and on the two override
+/// tables `NULL` already means "inherit". A negative value is the one thing those
+/// columns could never legitimately hold, which makes it a lossless place to keep the
+/// third instruction without a second column whose combination with the first would
+/// need an invariant of its own. Every read and write goes through
+/// [`buffer_target_from_column`] and [`buffer_target_to_column`], so nothing else
+/// knows the number.
+const UNBOUNDED_BUFFER_COLUMN: i32 = -1;
+
+/// Decode a stored `buffer_target` column: negative is the unbounded marker, anything
+/// else the bound it counts.
+fn buffer_target_from_column(value: i32) -> BufferTarget {
+    if value < 0 {
+        BufferTarget::Unbounded
+    } else {
+        BufferTarget::Bounded { runs: value as u32 }
+    }
+}
+
+/// Encode a buffer target for its column; the inverse of
+/// [`buffer_target_from_column`]. A bound wider than the column is saturated rather
+/// than wrapped into the marker, so a caller that forgot to clamp cannot accidentally
+/// store "no bound".
+fn buffer_target_to_column(target: BufferTarget) -> i32 {
+    match target {
+        BufferTarget::Bounded { runs } => i32::try_from(runs).unwrap_or(i32::MAX),
+        BufferTarget::Unbounded => UNBOUNDED_BUFFER_COLUMN,
+    }
+}
 
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
@@ -114,6 +156,78 @@ const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
 /// gone.
 const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
 
+/// The generation of the run-record contract this build reads.
+///
+/// The run-side counterpart of [`crate::store::STORE_FORMAT`]. Every `run` row
+/// carries the generation its [readability marker](test_cabinet_entities::run::Model::record_readable)
+/// was decided under, and a build whose constant differs from a row's stamp
+/// re-decides that row once at startup ([`Db::revalidate_run_records`]).
+///
+/// Bump it in the same change as anything that can stop an existing stored record
+/// deserializing: a new required field on `RunRecord` or anything in its tree —
+/// the gg capability set a gg run's record embeds included — a removed or retyped
+/// variant, a renamed wire key. A change that only adds optional or defaulted
+/// fields leaves every stored record readable and needs no bump. The pin in the
+/// readability tests holds the whole tree's shape against this constant, so a
+/// change anywhere in it forces the decision.
+pub const RUN_RECORD_FORMAT: u32 = 3;
+
+/// The `run` query narrowed to the rows this build can read — the single seam
+/// every run listing starts from, so a listing's `COUNT(*)` and the page it serves
+/// run one predicate and the total equals the number of rows returned.
+///
+/// A row falls out of this set when its stored record stops deserializing against
+/// the current [`RunRecord`]. Such a run is served by
+/// [`Db::list_unreadable_runs`], which reports the error its record produces now,
+/// and is deleted through [`Db::delete_run`], which reads the row rather than the
+/// record.
+fn readable_runs() -> Select<run::Entity> {
+    run::Entity::find().filter(run::Column::RecordReadable.eq(true))
+}
+
+/// One row of [`Db::list_unreadable_runs`]: a stored run this build cannot decode,
+/// reduced to the identity its lifted columns already hold plus the error its
+/// stored record produces now.
+///
+/// Carries no `RunRecord`, because there is no readable one — that is the whole
+/// reason the row is here. Everything a console needs to recognise the run and
+/// decide to delete it comes off the row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableRun {
+    /// The run id (`RunRecord.id`).
+    pub id: String,
+    /// RFC 3339 of when the run started.
+    pub started_at: String,
+    /// RFC 3339 of when the run finished.
+    pub finished_at: String,
+    /// The run's test case slug.
+    pub test_case_slug: String,
+    /// The run's test case version.
+    pub test_case_version: String,
+    /// The run's variant slug.
+    pub variant: String,
+    /// The run's engine slug, or `None` for a row whose slug was never lifted.
+    pub engine_slug: Option<String>,
+    /// The run's harness slug.
+    pub harness_slug: String,
+    /// The run's model id.
+    pub model_id: String,
+    /// The gg configuration the run was launched from, for a gg run launched from
+    /// a named one.
+    pub gg_preset: Option<String>,
+    /// The run's test type as its kebab-case wire token.
+    pub test_type: String,
+    /// The run's terminal state.
+    pub run_state: String,
+    /// Whether the run is published.
+    pub published: bool,
+    /// How many reviews the run carries.
+    pub review_count: i64,
+    /// The error decoding the stored record produces against the current
+    /// [`RunRecord`], which is what tells an operator why the run is here.
+    pub error: String,
+}
+
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
 /// pushed (private, [`published`](Self::published) false) or published; it may
@@ -123,9 +237,27 @@ pub struct StoredRun {
     /// The full run record, links populated.
     pub record: RunRecord,
     /// The run's reviews, oldest first. Empty while the run is still pending
-    /// review; one per reviewing account once reviewed. The run's overall rating
-    /// is the worst across them and its score the average.
+    /// review; one per reviewing account once reviewed. On a legacy run the run's
+    /// functional rating is the worst across them and its score the average; on a
+    /// validator-rated run they supply the run-wide aesthetic tier and may
+    /// override validator verdicts (folded into the rating and score).
     pub reviews: Vec<StoredReview>,
+    /// The lifted `run.rating` column: the run's **functional** rating. On a
+    /// validator-rated run the validators' decision as overridden by its reviews,
+    /// written at push time and recomputed on review-add — the only place a
+    /// catalog-free reader can get it from, since deciding it needs the case's
+    /// checklist; on a legacy run the review aggregate the store maintains on
+    /// review-add (`None` while unreviewed).
+    #[serde(default)]
+    pub rating: Option<Rating>,
+    /// The lifted `run.aesthetic` column: the run's aggregate **aesthetic** rating,
+    /// maintained on review-add; `None` until a review rates the aesthetic channel.
+    #[serde(default)]
+    pub aesthetic: Option<AestheticRating>,
+    /// The lifted `run.validator_rated` flag: whether the run's case version is
+    /// validator-rated, decided at push time from the definition store.
+    #[serde(default)]
+    pub validator_rated: bool,
     /// The resolved links.
     pub links: RunLinks,
     /// Whether the run is published (and thus eligible for the public snapshot).
@@ -138,6 +270,22 @@ pub struct StoredRun {
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
+}
+
+/// One row of [`Db::gg_run_versions`]: a gg run's id paired with its **mutation
+/// timestamp**, and nothing else.
+///
+/// The deliberately tiny shape the [document index](crate::gg_docs::GgDocIndex)
+/// reconciles against. Everything the index needs to decide what to do with a run
+/// — is it new, did it change, is it gone — is in these two strings, so the common
+/// case (nothing changed) costs one narrow scan and no deserialization at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GgRunVersion {
+    /// The run id (`RunRecord.id`).
+    pub id: String,
+    /// RFC 3339 of the last write that changed anything observable about the row.
+    /// Compared for **inequality only**; see the `run.updated_at` column docs.
+    pub updated_at: String,
 }
 
 /// A published tournament as stored: the full record plus its first-publish
@@ -156,14 +304,33 @@ pub struct StoredTournament {
 pub struct StoredReview {
     /// The account that wrote the review.
     pub reviewer: Reviewer,
-    /// The reviewer's per-domain ratings. This review's overall rating is the
-    /// worst across them; the run's is the worst across all its reviews.
+    /// The reviewer's per-domain functional ratings. This review's overall rating
+    /// is the worst across them; the run's is the worst across all its reviews.
+    /// Empty on a review of a validator-rated run, whose functional rating is not
+    /// the reviewer's to give.
     pub ratings: Vec<DomainRating>,
+    /// **Legacy:** the reviewer's per-domain aesthetic ratings, from when the
+    /// channel was rated per scoring domain. Stored as a JSON array in the
+    /// `review.aesthetics` column. Empty on a legacy run's review and on every
+    /// new write — the channel is now run-wide (see
+    /// [`aesthetic`](Self::aesthetic)); kept so old rows keep their tiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aesthetics: Vec<DomainAesthetic>,
+    /// The reviewer's **run-wide** aesthetic tier, on a review of a
+    /// validator-rated run; `None` on a legacy run's review, which has no
+    /// aesthetic channel. Stored in the `review.aesthetic` column; a decoded
+    /// pre-migration row carries its legacy per-domain tiers **collapsed to the
+    /// worst** here (`row_aesthetic`), so every read sees one run-wide tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aesthetic: Option<AestheticRating>,
     /// The markdown writeup body.
     pub writeup: String,
-    /// The reviewer's verdicts on the case's declared checklist items. Stored as
-    /// a JSON array in the `review.checklist` column. Empty for a case with no
-    /// items.
+    /// The reviewer's verdicts on the case's declared checklist items. On a
+    /// legacy run the full checklist; on a validator-rated run only the
+    /// reviewer's **overrides** — the points whose verdict differs from the
+    /// validators' (plus any the validators left undecided), overlaid per id when
+    /// figures are derived. Stored as a JSON array in the `review.checklist`
+    /// column. Empty for a case with no items, or a review with no overrides.
     pub checklist: Vec<ReviewVerdict>,
     /// RFC 3339 of when the review was **first** submitted. A later edit no longer
     /// overwrites this — it stamps [`edited_at`](Self::edited_at) instead.
@@ -188,8 +355,13 @@ pub struct RecentReviewSubject {
     /// The reviewed run's raw model id.
     pub model_id: String,
     /// This review's per-domain ratings; empty for a review that rated no domain (a
-    /// game jam), or one whose stored ratings JSON no longer parsed.
+    /// game jam or a validator-rated run), or one whose stored ratings JSON no
+    /// longer parsed.
     pub ratings: Vec<DomainRating>,
+    /// This review's run-wide aesthetic tier (a legacy per-domain row collapsed to
+    /// its worst tier — `row_aesthetic`); `None` for a legacy run's review, or
+    /// one whose stored aesthetics JSON no longer parsed.
+    pub aesthetic: Option<AestheticRating>,
 }
 
 /// The reviewing account a [`StoredReview`] is attributed to, denormalized from
@@ -242,6 +414,12 @@ pub struct SnapshotState {
 
 /// The fixed primary key of the single-row `snapshot_state` table.
 const SNAPSHOT_STATE_ID: i32 = 1;
+
+/// The `backfill_state` key of [`Db::backfill_gg_config_id`].
+const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
+
+/// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
+const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
 
 /// The SeaORM-backed store.
 pub struct Db {
@@ -344,11 +522,22 @@ impl Db {
     /// the published flag and `published_at`. Marks the snapshot dirty only when
     /// the run is already published (an unpublished run is not in the snapshot, so
     /// re-pushing it changes nothing public).
+    ///
+    /// `manifest` is the run's case version as the definition store holds it (or
+    /// `None` when the store does not have it). It decides whether the run is
+    /// **validator-rated**: for such a run the functional `rating` starts as the
+    /// validators' decision, derived from the record's `debug_scripts` and written
+    /// here, at push time, so it is visible the moment the run completes — and a
+    /// review may then move it by overriding verdicts (see [`Self::add_review`]),
+    /// so a re-push recomputes it over the run's current reviews rather than
+    /// clobbering a reviewed aggregate. A legacy run's `rating` stays
+    /// review-maintained exactly as before.
     pub async fn push(
         &self,
         record: &RunRecord,
         links: &RunLinks,
         events_json: Option<&str>,
+        manifest: Option<&StoredManifest>,
     ) -> Result<PushOutcome> {
         // The stored record always carries the resolved links, so the snapshot's
         // record blob and its `links` sibling never disagree.
@@ -367,11 +556,59 @@ impl Db {
         let existing_published_at = existing.and_then(|model| model.published_at);
 
         // The record-derived sort columns (test type, run time, tokens, cost) are
-        // refreshed on every (re-)push; the review-derived columns (rating /
-        // review_count) are NOT touched here — they are maintained by `add_review`,
-        // and a re-push must preserve an already-reviewed run's aggregate. A brand-
-        // new push writes the zero-review defaults (no rating, count 0).
+        // refreshed on every (re-)push; the review-derived columns (aesthetic /
+        // review_count, and on a legacy run rating) are NOT touched here — they are
+        // maintained by `add_review`, and a re-push must preserve an already-reviewed
+        // run's aggregate. A brand-new push writes the zero-review defaults (no
+        // aesthetic, count 0). On a validator-rated run `rating` is decided by the
+        // validators *as overridden by the run's reviews*, so it is written (and
+        // re-written) here over whatever reviews the run already carries — none on a
+        // first push, which yields the validators' own figure.
         let lifted = lifted_run_metrics(&record);
+        let validator_rated = manifest.is_some_and(StoredManifest::validator_rated);
+        let rating = if validator_rated {
+            let reviews = review::Entity::find()
+                .filter(review::Column::RunId.eq(record.id.clone()))
+                .all(&txn)
+                .await?
+                .into_iter()
+                .map(stored_review)
+                .collect::<Result<Vec<_>>>()?;
+            lifted_rating(manifest, &record, &reviews)
+        } else {
+            None
+        };
+        let mut refreshed_columns = vec![
+            run::Column::StartedAt,
+            run::Column::FinishedAt,
+            run::Column::TestCaseSlug,
+            run::Column::TestCaseVersion,
+            run::Column::Variant,
+            run::Column::EngineSlug,
+            run::Column::HarnessSlug,
+            run::Column::HarnessVersion,
+            run::Column::ModelId,
+            run::Column::GgPreset,
+            run::Column::GgConfigId,
+            run::Column::GgModels,
+            run::Column::TestType,
+            run::Column::RunState,
+            run::Column::RunTimeSeconds,
+            run::Column::TotalTokens,
+            run::Column::CostComparable,
+            run::Column::CodeAnalyzerVersion,
+            run::Column::Loaded,
+            run::Column::RecordJson,
+            run::Column::EventsJson,
+            // The pushed record is one this build just serialized, so it is readable
+            // by definition; a re-push of a run previously marked unreadable
+            // therefore returns it to the listings.
+            run::Column::RecordReadable,
+            run::Column::RecordFormat,
+        ];
+        if validator_rated {
+            refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
+        }
 
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
@@ -381,45 +618,45 @@ impl Db {
             test_case_slug: Set(record.subject.test_case_slug.clone()),
             test_case_version: Set(record.subject.test_case_version.clone()),
             variant: Set(record.subject.variant.clone()),
+            engine_slug: Set(Some(record.subject.engine_slug.clone())),
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
+            gg_preset: Set(lifted.gg_preset),
+            gg_config_id: Set(lifted.gg_config_id),
+            gg_models: Set(lifted.gg_models),
             test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
             run_time_seconds: Set(lifted.run_time_seconds),
             total_tokens: Set(lifted.total_tokens),
             cost_comparable: Set(lifted.cost_comparable),
-            rating: Set(None),
+            code_analyzer_version: Set(lifted.code_analyzer_version),
+            rating: Set(rating),
+            aesthetic: Set(None),
+            validator_rated: Set(validator_rated),
             review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
             record_json: Set(record_json),
+            record_readable: Set(true),
+            record_format: Set(RUN_RECORD_FORMAT as i32),
             events_json: Set(events_json.map(|s| s.to_string())),
+            // `NotSet` on both paths: the mutation timestamp is stamped by
+            // `touch_run` below, inside this same transaction, so that exactly one
+            // place in the store decides its value. The insert therefore lands on
+            // the column's `''` default for an instant, and the upsert leaves the
+            // prior value alone, but neither is ever committed.
+            updated_at: NotSet,
         })
         .on_conflict(
             // Re-push updates the record and its lifted record-derived columns but
             // never the publish state (`Published`/`PublishedAt`, changed only by
-            // `publish`) nor the review-derived `Rating`/`ReviewCount` (maintained
-            // by `add_review`).
+            // `publish`) nor the review-derived `Aesthetic`/`ReviewCount` (maintained
+            // by `add_review`). `Rating` is review-derived on a legacy run (left
+            // alone) and record-derived on a validator-rated one (rewritten, with the
+            // flag that says so).
             OnConflict::column(run::Column::Id)
-                .update_columns([
-                    run::Column::StartedAt,
-                    run::Column::FinishedAt,
-                    run::Column::TestCaseSlug,
-                    run::Column::TestCaseVersion,
-                    run::Column::Variant,
-                    run::Column::HarnessSlug,
-                    run::Column::HarnessVersion,
-                    run::Column::ModelId,
-                    run::Column::TestType,
-                    run::Column::RunState,
-                    run::Column::RunTimeSeconds,
-                    run::Column::TotalTokens,
-                    run::Column::CostComparable,
-                    run::Column::Loaded,
-                    run::Column::RecordJson,
-                    run::Column::EventsJson,
-                ])
+                .update_columns(refreshed_columns)
                 .to_owned(),
         )
         .exec(&txn)
@@ -440,6 +677,8 @@ impl Db {
         )
         .exec(&txn)
         .await?;
+
+        touch_run(&txn, &record.id).await?;
 
         // Re-pushing an already-published run changes its public record, so mark
         // the snapshot dirty; pushing a pending run does not (it is not public).
@@ -463,6 +702,14 @@ impl Db {
     /// re-submission that changes nothing is a no-op (no note needed, no revision). A
     /// first submission needs no note.
     ///
+    /// `manifest` is the run's case version as the definition store holds it (or
+    /// `None` when the store does not have it). On a **validator-rated** run it is
+    /// what lets the lifted `rating` be recomputed here: a review may override
+    /// validator verdicts, so the run's functional rating is re-derived from the
+    /// full review set through the same seam push uses (`functional_rating` —
+    /// worst across the reviews' effective ratings, the validators' own figure
+    /// while the run has none). On a legacy run the manifest is not consulted.
+    ///
     /// Returns the run's current published state so the caller can decide whether the
     /// public snapshot needs refreshing. Errors with
     /// [`NotFound`](crate::error::BackendError::NotFound) when no run with `run_id` is
@@ -472,9 +719,12 @@ impl Db {
         run_id: &str,
         review: &StoredReview,
         edit_note: Option<&str>,
+        manifest: Option<&StoredManifest>,
     ) -> Result<bool> {
         let ratings_json = serde_json::to_string(&review.ratings)?;
+        let aesthetics_json = serde_json::to_string(&review.aesthetics)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
+        let aesthetic_token = review.aesthetic.map(|rating| rating.as_str().to_string());
 
         let txn = self.conn().begin().await?;
 
@@ -497,15 +747,23 @@ impl Db {
             .await?;
         let (id, reviewed_at, edited_at) = match &existing {
             Some(prior) => {
-                let prior_ratings: Vec<DomainRating> = serde_json::from_str(&prior.ratings)?;
-                let prior_checklist: Vec<ReviewVerdict> = serde_json::from_str(&prior.checklist)?;
+                // Decode the prior row through the same path every read uses, so a
+                // pre-migration row's legacy per-domain tiers are already collapsed
+                // to the one run-wide tier the diff compares.
+                let prior_review = stored_review(prior.clone())?;
                 let diff = test_cabinet_core::review::diff_reviews(
-                    &prior_ratings,
-                    &prior.writeup,
-                    &prior_checklist,
-                    &review.ratings,
-                    &review.writeup,
-                    &review.checklist,
+                    test_cabinet_core::review::ReviewContent {
+                        ratings: &prior_review.ratings,
+                        aesthetic: prior_review.aesthetic,
+                        writeup: &prior_review.writeup,
+                        checklist: &prior_review.checklist,
+                    },
+                    test_cabinet_core::review::ReviewContent {
+                        ratings: &review.ratings,
+                        aesthetic: review.aesthetic,
+                        writeup: &review.writeup,
+                        checklist: &review.checklist,
+                    },
                 );
                 if diff.is_empty() {
                     // Nothing changed: keep the existing timestamps and record no
@@ -527,7 +785,7 @@ impl Db {
                         })?;
                     let edited_at = review.reviewed_at.clone();
                     review_revision::Entity::insert(review_revision::ActiveModel {
-                        id: Set(uuid::Uuid::new_v4().to_string()),
+                        id: Set(cuid2::create_id()),
                         review_id: Set(prior.id.clone()),
                         edited_at: Set(edited_at.clone()),
                         note: Set(note.to_string()),
@@ -538,11 +796,7 @@ impl Db {
                     (prior.id.clone(), prior.reviewed_at.clone(), Some(edited_at))
                 }
             }
-            None => (
-                uuid::Uuid::new_v4().to_string(),
-                review.reviewed_at.clone(),
-                None,
-            ),
+            None => (cuid2::create_id(), review.reviewed_at.clone(), None),
         };
 
         review::Entity::insert(review::ActiveModel {
@@ -552,6 +806,8 @@ impl Db {
             reviewer_username: Set(review.reviewer.username.clone()),
             reviewer_display_name: Set(review.reviewer.display_name.clone()),
             ratings: Set(ratings_json),
+            aesthetics: Set(aesthetics_json),
+            aesthetic: Set(aesthetic_token),
             writeup: Set(review.writeup.clone()),
             checklist: Set(checklist_json),
             reviewed_at: Set(reviewed_at),
@@ -565,6 +821,8 @@ impl Db {
                     review::Column::ReviewerUsername,
                     review::Column::ReviewerDisplayName,
                     review::Column::Ratings,
+                    review::Column::Aesthetics,
+                    review::Column::Aesthetic,
                     review::Column::Writeup,
                     review::Column::Checklist,
                     review::Column::EditedAt,
@@ -574,9 +832,9 @@ impl Db {
         .exec(&txn)
         .await?;
 
-        // Recompute the lifted rating / review_count from the run's full review set
-        // (including the review just written) so the console's sort columns stay in
-        // step with the reviews table.
+        // Recompute the lifted aesthetic / review_count (and, on a legacy run, the
+        // rating) from the run's full review set (including the review just written)
+        // so the console's sort columns stay in step with the reviews table.
         let reviews = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
             .all(&txn)
@@ -584,14 +842,41 @@ impl Db {
             .into_iter()
             .map(stored_review)
             .collect::<Result<Vec<_>>>()?;
-        let rating = lifted_rating(&reviews);
+        // On a validator-rated run the functional rating starts as the validators'
+        // decision but folds in each review's overrides (worst across the reviews'
+        // effective ratings), so a review moves it and it is recomputed here through
+        // the same seam push uses — falling back to the column push wrote when the
+        // caller has no manifest or the record no longer deserializes (recomputing
+        // needs the case's checklist). On a legacy run it is the review aggregate.
+        // The gate is a fact about the run record, not about the reviews, so the
+        // record is read back here to compose it with the freshly-recomputed
+        // aggregate. A record that will not deserialize cannot gate: a storage
+        // problem must not silently mark a run broken.
+        let rating = if run.validator_rated {
+            match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
+                Some(record) if manifest.is_some() => lifted_rating(manifest, &record, &reviews),
+                _ => run.rating.clone(),
+            }
+        } else {
+            match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
+                Some(record) => lifted_rating(None, &record, &reviews),
+                None => test_cabinet_core::review::aggregate_rating(
+                    reviews.iter().map(|review| review.ratings.as_slice()),
+                )
+                .map(|rating| rating.as_str().to_string()),
+            }
+        };
+        let aesthetic = lifted_aesthetic(&reviews);
         let review_count = reviews.len() as i64;
 
         let published = run.published;
         let mut active = run.into_active_model();
         active.rating = Set(rating);
+        active.aesthetic = Set(aesthetic);
         active.review_count = Set(review_count);
         active.update(&txn).await?;
+
+        touch_run(&txn, run_id).await?;
 
         // A new/updated review changes a published run's aggregate rating and
         // score, so refresh the snapshot; a pending run is not public.
@@ -621,10 +906,10 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        // The gate (infrastructure → refuse; completed needs ≥1 review;
-        // catastrophic/timed-out waived) is shared with
-        // [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
-        gate_publishable(&txn, run_id, &run.run_state).await?;
+        // The gate (infrastructure → refuse; a legacy completed run needs ≥1 review;
+        // a validator-rated one and the catastrophic/timed-out tiers are waived) is
+        // shared with [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
+        gate_publishable(&txn, run_id, &run.run_state, run.validator_rated, false).await?;
 
         let newly_published = !run.published;
         // Preserve the first publish's timestamp on re-publish.
@@ -638,6 +923,8 @@ impl Db {
         active.published_at = Set(Some(effective_published_at));
         active.update(&txn).await?;
 
+        touch_run(&txn, run_id).await?;
+
         set_dirty(&txn).await?;
 
         txn.commit().await?;
@@ -647,12 +934,19 @@ impl Db {
     /// Delete a stored run and its dependent rows (its reviews and links cascade
     /// via their `ON DELETE CASCADE` foreign keys; its run- and publish-queue rows
     /// are deleted explicitly, as they reference the run by a plain column with no
-    /// foreign key). Refused with
-    /// [`crate::error::BackendError::Unprocessable`] when the run is **published**:
-    /// a public run is in the snapshot and the gallery, so it can never be deleted
-    /// out from under them. [`crate::error::BackendError::NotFound`] when no run
-    /// with `run_id` is stored. Because only an unpublished run can be deleted, the
-    /// run is not in the public snapshot and no refresh is needed.
+    /// foreign key). [`crate::error::BackendError::NotFound`] when no run with
+    /// `run_id` is stored.
+    ///
+    /// Refused with [`crate::error::BackendError::Unprocessable`] for a published
+    /// run this build can read: a public run is in the snapshot and the gallery, so
+    /// it can never be deleted out from under them. A published run this build
+    /// cannot read is deleted, because it is already absent from both — every
+    /// listing the snapshot is baked from serves the readable runs — and this is the
+    /// only way to get rid of one short of a re-push.
+    ///
+    /// Reads the row rather than the record, so it deletes a run whose stored record
+    /// no longer deserializes. Every run it deletes is outside the public snapshot,
+    /// so no refresh is queued.
     pub async fn delete_run(&self, run_id: &str) -> Result<()> {
         let txn = self.conn().begin().await?;
 
@@ -663,9 +957,9 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        if run.published {
+        if run.published && run.record_readable {
             return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` is published and cannot be deleted; only an unpublished run can be deleted"
+                "run `{run_id}` is published and cannot be deleted"
             )));
         }
 
@@ -721,7 +1015,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find().filter(run::Column::Published.eq(true));
+        let mut query = readable_runs().filter(run::Column::Published.eq(true));
         if let Some(before) = before {
             query = query.filter(run::Column::PublishedAt.lt(before));
         }
@@ -790,7 +1084,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find().filter(run::Column::Published.eq(false));
+        let mut query = readable_runs().filter(run::Column::Published.eq(false));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -827,7 +1121,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query = run::Entity::find()
+        let mut query = readable_runs()
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES));
@@ -868,14 +1162,23 @@ impl Db {
     /// its **tier** (`flawless > great > passable > scuffed > broken`), not
     /// lexically — see `rating_rank_expr`.
     ///
-    /// `assemble` preserves the input row order (it maps rows
-    /// one-for-one, only skipping any that no longer deserialize), so the returned
-    /// page stays in the sorted order.
+    /// Both halves run over the readable-runs seam, so the total equals the number of
+    /// rows the page can serve and a pager sized from it offers no empty pages. A run
+    /// whose stored record this build cannot read is listed by
+    /// [`list_unreadable_runs`](Self::list_unreadable_runs) instead.
+    ///
+    /// `assemble` preserves the input row order (it maps rows one-for-one), so the
+    /// returned page stays in the sorted order.
+    ///
+    /// `case_names` is consulted only by [`SummarySort::TestCase`], which orders by
+    /// the case's display name rather than its slug (see `case_name_expr`); every
+    /// other sort may pass an empty map.
     pub async fn list_summaries(
         &self,
         filter: &SummaryFilter,
         sort: SummarySort,
         dir: SortDir,
+        case_names: &CaseNames,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
@@ -892,7 +1195,7 @@ impl Db {
             SortDir::Asc => Order::Asc,
             SortDir::Desc => Order::Desc,
         };
-        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone())
+        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone(), case_names)
             // A stable final tiebreak on the primary key so paging is deterministic
             // even when the sort column ties.
             .order_by(run::Column::Id, order)
@@ -906,13 +1209,15 @@ impl Db {
     }
 
     /// The per-case current-version allowlist a filter asks for, or `None` when it
-    /// does not (the toggle is off, or an exact [`SummaryFilter::version`] overrides
-    /// it — see that field).
+    /// does not (the toggle is off, or an explicit version selection — an exact
+    /// [`SummaryFilter::version`] or a [`SummaryFilter::versions`] list — overrides
+    /// it; see those fields).
     async fn resolve_version_scope(
         &self,
         filter: &SummaryFilter,
     ) -> Result<Option<Vec<CaseVersions>>> {
-        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty());
+        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty())
+            || filter.versions.as_deref().is_some_and(|v| !v.is_empty());
         if !filter.latest_versions || exact {
             return Ok(None);
         }
@@ -952,31 +1257,40 @@ impl Db {
     /// account's review by id). Ordering is driven by the `review` rows — the run's
     /// own `finished_at` is unrelated to when a given account reviewed it — so this
     /// is a distinct path from the run-centric listings above.
+    ///
+    /// The total is counted through the same join the page walks, so a review of a
+    /// run whose record this build cannot read leaves the total and the page in
+    /// agreement.
     pub async fn list_reviews_by_user(
         &self,
         user_id: &str,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
-        let total = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
-            .count(&self.conn())
-            .await? as usize;
+        // Both halves join to the run and filter on readability, so the count and the
+        // page answer the same question: a review of a run whose record this build
+        // cannot read is neither counted nor returned.
+        let reviewed = || {
+            review::Entity::find()
+                .filter(review::Column::ReviewerUserId.eq(user_id))
+                .join(JoinType::InnerJoin, review::Relation::Run.def())
+                .filter(run::Column::RecordReadable.eq(true))
+        };
+        let total = reviewed().count(&self.conn()).await? as usize;
 
         // The account's reviews, newest-first, windowed to this page. Each names its
         // run; the run ids (in this order) drive the returned run order.
-        let review_rows = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+        let review_rows: Vec<String> = reviewed()
+            .select_only()
+            .column(review::Column::RunId)
             .order_by_desc(review::Column::ReviewedAt)
             .order_by_desc(review::Column::Id)
             .limit(limit as u64)
             .offset(offset as u64)
+            .into_tuple()
             .all(&self.conn())
             .await?;
-        let ordered_run_ids: Vec<String> = review_rows
-            .into_iter()
-            .map(|review| review.run_id)
-            .collect();
+        let ordered_run_ids: Vec<String> = review_rows;
         if ordered_run_ids.is_empty() {
             return Ok((Vec::new(), total));
         }
@@ -985,7 +1299,7 @@ impl Db {
         // query does not preserve the id list's order). A run id with no matching row
         // (a run deleted after the review, which the FK cascade normally prevents) is
         // simply dropped.
-        let mut by_id: std::collections::HashMap<String, run::Model> = run::Entity::find()
+        let mut by_id: std::collections::HashMap<String, run::Model> = readable_runs()
             .filter(run::Column::Id.is_in(ordered_run_ids.clone()))
             .all(&self.conn())
             .await?
@@ -1021,13 +1335,15 @@ impl Db {
             .count(&self.conn())
             .await? as usize;
 
-        // Select only the three columns the charts need, joined to the review's run for
+        // Select only the columns the charts need, joined to the review's run for
         // its subject. Column order here is the tuple order below.
-        let rows: Vec<(String, String, String)> = review::Entity::find()
+        let rows: Vec<(String, String, String, String, Option<String>)> = review::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::ModelId)
             .column(review::Column::Ratings)
+            .column(review::Column::Aesthetics)
+            .column(review::Column::Aesthetic)
             .filter(review::Column::ReviewerUserId.eq(user_id))
             .join(JoinType::InnerJoin, review::Relation::Run.def())
             .order_by_desc(review::Column::ReviewedAt)
@@ -1040,10 +1356,18 @@ impl Db {
         let subjects = rows
             .into_iter()
             .map(
-                |(test_case_slug, model_id, ratings_json)| RecentReviewSubject {
-                    test_case_slug,
-                    model_id,
-                    ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
+                |(test_case_slug, model_id, ratings_json, aesthetics_json, aesthetic)| {
+                    let legacy: Vec<DomainAesthetic> =
+                        serde_json::from_str(&aesthetics_json).unwrap_or_default();
+                    RecentReviewSubject {
+                        test_case_slug,
+                        model_id,
+                        ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
+                        aesthetic: row_aesthetic(
+                            aesthetic.as_deref().and_then(AestheticRating::parse),
+                            &legacy,
+                        ),
+                    }
                 },
             )
             .collect();
@@ -1060,8 +1384,7 @@ impl Db {
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
         let fetch = limit.saturating_add(1);
-        let mut query =
-            run::Entity::find().filter(run::Column::RunState.is_in(states.iter().copied()));
+        let mut query = readable_runs().filter(run::Column::RunState.is_in(states.iter().copied()));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -1088,13 +1411,77 @@ impl Db {
     /// that uploaded a controller). Unpaginated: an adversarial case's field is
     /// small.
     pub async fn list_for_case(&self, slug: &str) -> Result<Vec<StoredRun>> {
-        let rows = run::Entity::find()
+        let rows = readable_runs()
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .all(&self.conn())
             .await?;
         self.assemble(rows).await
+    }
+
+    /// The `(id, updated_at)` projection of every stored **gg** run (harness `gg`),
+    /// pending and published — the whole cost of a steady-state
+    /// [document index](crate::gg_docs::GgDocIndex) reconcile.
+    ///
+    /// Deliberately selects **two columns and no record blob**. The index this feeds
+    /// holds one built document per gg run and refreshes on a timer; if that refresh
+    /// re-read `record_json` it would deserialize the entire corpus every cycle,
+    /// which is precisely the per-query cost the index exists to stop paying. So the
+    /// projection answers only "which runs exist, and which of them changed", and
+    /// [`gg_runs_by_id`](Self::gg_runs_by_id) then loads just the changed ones.
+    ///
+    /// `updated_at` is compared for **inequality**, never ordered — see the column's
+    /// own documentation on `run::Model`, whose RFC 3339 rendering drops a zero
+    /// fractional part and so does not sort reliably between two stamps less than a
+    /// second apart.
+    pub async fn gg_run_versions(&self) -> Result<Vec<GgRunVersion>> {
+        let rows: Vec<(String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::UpdatedAt)
+            .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .order_by_asc(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, updated_at)| GgRunVersion { id, updated_at })
+            .collect())
+    }
+
+    /// Load the named runs in full (record, reviews, links, publish state). The
+    /// result is keyed by [`RunRecord::id`] rather than positional — order is
+    /// unspecified beyond being deterministic — because its caller indexes the runs
+    /// by id anyway.
+    ///
+    /// The companion to [`gg_run_versions`](Self::gg_run_versions): the document
+    /// index reconciles per id, so this is called with **only the ids whose
+    /// `updated_at` moved**, not with the corpus. Ids are looked up in chunks so the
+    /// bound parameter count stays well inside every backend's ceiling (SQLite's
+    /// 32 766, PostgreSQL's 65 535) no matter how many runs changed in one cycle —
+    /// a first, cold reconcile passes every id there is.
+    ///
+    /// A run whose stored record no longer deserializes is **omitted** rather than
+    /// failing the load, exactly as every other listing here treats it; the caller
+    /// sees fewer runs than ids and must not mistake that for "not yet loaded".
+    pub async fn gg_runs_by_id(&self, ids: &[String]) -> Result<Vec<StoredRun>> {
+        /// Ids per lookup round. Comfortably under every backend's bound-parameter
+        /// ceiling while keeping a cold reconcile of tens of thousands of runs to a
+        /// modest number of round trips.
+        const CHUNK: usize = 500;
+
+        let mut out = Vec::with_capacity(ids.len());
+        for chunk in ids.chunks(CHUNK) {
+            let rows = run::Entity::find()
+                .filter(run::Column::Id.is_in(chunk.to_vec()))
+                .order_by_asc(run::Column::Id)
+                .all(&self.conn())
+                .await?;
+            out.extend(self.assemble(rows).await?);
+        }
+        Ok(out)
     }
 
     /// The gameplay READMEs of earlier game-jam runs of jam `slug` built by
@@ -1155,13 +1542,29 @@ impl Db {
     /// regeneration. Pending (unpublished) runs are excluded — the public
     /// snapshot only ever contains published runs.
     pub async fn all_published(&self) -> Result<Vec<StoredRun>> {
-        let rows = run::Entity::find()
+        let rows = readable_runs()
             .filter(run::Column::Published.eq(true))
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .all(&self.conn())
             .await?;
         self.assemble(rows).await
+    }
+
+    /// Every stored run's id, published and pending alike.
+    ///
+    /// The live set the [artifact reclamation sweep](crate::artifacts) protects a
+    /// tree with: a tree whose id is absent from this set is referenced by nothing in
+    /// the system of record. Only the id column is selected, so the query stays a
+    /// single index-sized read regardless of how much a run row holds.
+    pub async fn all_run_ids(&self) -> Result<std::collections::HashSet<String>> {
+        let ids: Vec<String> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(ids.into_iter().collect())
     }
 
     /// The distinct `(test_case_slug, test_case_version)` pairs referenced by **any**
@@ -1183,9 +1586,30 @@ impl Db {
         Ok(rows.into_iter().collect())
     }
 
-    /// The total number of published runs (the count that lands in the snapshot).
-    pub async fn run_count(&self) -> Result<i64> {
+    /// The `/stats/cabinet` projection: every stored run's start time, lifted
+    /// token total, comparable cost, case slug, and model id — five lifted
+    /// columns across the **whole** corpus (every state, published or not),
+    /// folded in Rust by [`fold_cabinet_stats`](crate::stats::fold_cabinet_stats).
+    /// No SQL aggregation or date function is used, so SQLite and Postgres fold
+    /// identically.
+    pub async fn cabinet_stat_rows(&self) -> Result<Vec<crate::stats::CabinetRunRow>> {
         Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::StartedAt)
+            .column(run::Column::TotalTokens)
+            .column(run::Column::CostComparable)
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The total number of published runs (the count that lands in the snapshot).
+    /// Counts the readable rows only, which is exactly what
+    /// [`all_published`](Self::all_published) puts in the snapshot.
+    pub async fn run_count(&self) -> Result<i64> {
+        Ok(readable_runs()
             .filter(run::Column::Published.eq(true))
             .count(&self.conn())
             .await? as i64)
@@ -1194,6 +1618,11 @@ impl Db {
     /// Assemble [`StoredRun`]s from `run` rows: batch-load their links and reviews
     /// and stitch them in. Keeps the per-run review fan-out to two queries total
     /// regardless of page size.
+    ///
+    /// A row whose stored record no longer deserializes is dropped from the result
+    /// and marked unreadable, which is the lazy repair path for a build that changed
+    /// the record contract without bumping [`RUN_RECORD_FORMAT`]. Callers select
+    /// through [`readable_runs`], so in the steady state nothing is dropped here.
     async fn assemble(&self, runs: Vec<run::Model>) -> Result<Vec<StoredRun>> {
         if runs.is_empty() {
             return Ok(Vec::new());
@@ -1246,14 +1675,16 @@ impl Db {
         }
 
         let mut out = Vec::with_capacity(runs.len());
+        let mut unreadable: Vec<String> = Vec::new();
         for run in runs {
             // Tolerate a single record that no longer matches the current
             // `RunRecord` schema: skip it (with a warning) rather than failing the
             // whole page. A stored record can predate a contract change — e.g. an
             // animated-voxel run recorded before F-curve keyframes gained their
             // required `interp` field — and without this guard one such legacy row
-            // would 500 an entire worklist, blanking the console. The record stays in
-            // the DB for inspection; it simply does not appear in a listing.
+            // would 500 an entire worklist, blanking the console. The row is marked
+            // unreadable below, which is what keeps it out of the count as well as
+            // out of the page and puts it on the unreadable listing.
             let record: RunRecord = match serde_json::from_str(&run.record_json) {
                 Ok(record) => record,
                 Err(err) => {
@@ -1263,6 +1694,7 @@ impl Db {
                         "skipping run whose stored record no longer deserializes against the \
                          current RunRecord schema (likely predates a contract change)",
                     );
+                    unreadable.push(run.id.clone());
                     continue;
                 }
             };
@@ -1270,6 +1702,9 @@ impl Db {
             out.push(StoredRun {
                 record,
                 reviews: review_map.remove(&run.id).unwrap_or_default(),
+                rating: run.rating.as_deref().and_then(Rating::parse),
+                aesthetic: run.aesthetic.as_deref().and_then(AestheticRating::parse),
+                validator_rated: run.validator_rated,
                 links: RunLinks {
                     source_repo: link.as_ref().and_then(|l| l.source_repo.clone()),
                     playable_build: link.and_then(|l| l.playable_build.clone()),
@@ -1279,7 +1714,143 @@ impl Db {
                 events_json: run.events_json,
             });
         }
+        if !unreadable.is_empty() {
+            self.mark_unreadable(unreadable).await;
+        }
         Ok(out)
+    }
+
+    /// Mark the named rows unreadable at the current [`RUN_RECORD_FORMAT`].
+    ///
+    /// Best-effort on a read path: the caller has already produced its answer, so a
+    /// failed marker write is logged and swallowed rather than turned into a `500`.
+    /// It runs on its own connection, outside any caller transaction, and it does
+    /// **not** stamp `updated_at` — see that column's documentation.
+    async fn mark_unreadable(&self, ids: Vec<String>) {
+        let count = ids.len();
+        let update = run::Entity::update_many()
+            .col_expr(run::Column::RecordReadable, Expr::value(false))
+            .col_expr(
+                run::Column::RecordFormat,
+                Expr::value(RUN_RECORD_FORMAT as i32),
+            )
+            .filter(run::Column::Id.is_in(ids))
+            .exec(&self.conn())
+            .await;
+        match update {
+            Ok(_) => tracing::info!(count, "marked runs whose stored record no longer reads"),
+            Err(err) => tracing::warn!(
+                error = %err,
+                count,
+                "failed to mark runs whose stored record no longer reads",
+            ),
+        }
+    }
+
+    /// Re-decide the readability of every `run` row whose marker was decided under a
+    /// record-format generation other than [`RUN_RECORD_FORMAT`], and return how
+    /// many rows it re-decided.
+    ///
+    /// The cost contract: no rows at all in the steady state, because a push stamps
+    /// the current generation; one bounded pass over the whole corpus at the boot of
+    /// a build that bumped the constant. The pass selects `id` and `record_json`
+    /// only, in `id`-ordered batches, so memory stays flat regardless of corpus size.
+    ///
+    /// An `id` cursor rather than offset paging: a re-decided row leaves the stale
+    /// predicate mid-pass, which would shift offset pages.
+    pub async fn revalidate_run_records(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let stamp = RUN_RECORD_FORMAT as i32;
+        let mut decided = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find().filter(run::Column::RecordFormat.ne(stamp));
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<(String, String)> = query
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::RecordJson)
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some((last, _)) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.clone());
+
+            for (id, record_json) in rows {
+                let readable = serde_json::from_str::<RunRecord>(&record_json).is_ok();
+                run::Entity::update_many()
+                    .col_expr(run::Column::RecordReadable, Expr::value(readable))
+                    .col_expr(run::Column::RecordFormat, Expr::value(stamp))
+                    .filter(run::Column::Id.eq(id))
+                    .exec(&self.conn())
+                    .await?;
+                decided += 1;
+            }
+        }
+        Ok(decided)
+    }
+
+    /// One page of the stored runs this build cannot read, newest-first by
+    /// `finished_at`, plus the total number of such runs.
+    ///
+    /// Paged like every other listing, from one predicate shared by the count and
+    /// the page, so `total` counts exactly the rows the listing can serve across its
+    /// pages and a pager sized from it offers only pages that hold rows.
+    ///
+    /// Each row carries the identity its lifted columns hold and the error decoding
+    /// its record produces now, which is the only way an operator learns why the run
+    /// is here. This is what keeps a run that appears in no other listing reachable:
+    /// it is read here and deleted through [`delete_run`](Self::delete_run), which
+    /// acts on the row rather than the record.
+    pub async fn list_unreadable_runs(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<UnreadableRun>, usize)> {
+        let unreadable = || run::Entity::find().filter(run::Column::RecordReadable.eq(false));
+        let total = unreadable().count(&self.conn()).await? as usize;
+        let rows = unreadable()
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.conn())
+            .await?;
+        let runs = rows
+            .into_iter()
+            .map(|row| UnreadableRun {
+                error: match serde_json::from_str::<RunRecord>(&row.record_json) {
+                    // The row is marked unreadable but decodes now, which happens
+                    // between a contract change and the sweep that re-decides it.
+                    // Say so rather than reporting an error that does not exist.
+                    Ok(_) => "the stored record decodes against the current contract; \
+                              this row is awaiting revalidation"
+                        .to_string(),
+                    Err(err) => err.to_string(),
+                },
+                id: row.id,
+                started_at: row.started_at,
+                finished_at: row.finished_at,
+                test_case_slug: row.test_case_slug,
+                test_case_version: row.test_case_version,
+                variant: row.variant,
+                engine_slug: row.engine_slug,
+                harness_slug: row.harness_slug,
+                model_id: row.model_id,
+                gg_preset: row.gg_preset,
+                test_type: row.test_type,
+                run_state: row.run_state,
+                published: row.published,
+                review_count: row.review_count,
+            })
+            .collect();
+        Ok((runs, total))
     }
 
     /// Publish a tournament: upsert its verbatim `TournamentRecord` JSON plus the
@@ -1440,40 +2011,112 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     Ok(())
 }
 
-/// The publish gate, factored out so both [`Db::publish`] (the legacy/desktop
-/// flip) and [`Db::ensure_publishable`] (the publish-queue's at-enqueue check)
-/// enforce it identically.
+/// Stamp `run.updated_at` for `run_id` with the current time — the row's
+/// **mutation timestamp**, and the one signal a cache or index can key on to learn
+/// that a stored run now means something different.
+///
+/// **Every mutator of a `run` row must call this**, and none may write the column
+/// any other way. That obligation is enforced by convention alone: the in-memory
+/// document index behind the gg query language reconciles per id against a narrow
+/// `(id, updated_at)` projection, so a mutation that forgets to stamp does not
+/// fail — it silently serves the pre-mutation document forever. Concentrating the
+/// write here at least makes the obligation one call, greppable and identical
+/// everywhere, rather than a field assignment to be remembered at each new site.
+///
+/// Deliberately a separate `UPDATE` rather than a field on each mutator's
+/// `ActiveModel`: [`Db::push`] writes its row through an upsert whose conflict
+/// clause would otherwise have to list the column too (a second, easily forgotten
+/// obligation), and an update-many keyed on the id is uniform across the insert and
+/// update paths alike. Callers inside a transaction pass the transaction, so the
+/// stamp commits or rolls back with the mutation it describes.
+async fn touch_run<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<()> {
+    let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+    run::Entity::update_many()
+        .col_expr(run::Column::UpdatedAt, Expr::value(now))
+        .filter(run::Column::Id.eq(run_id))
+        .exec(conn)
+        .await?;
+    Ok(())
+}
+
+/// The publish gate, factored out so both [`Db::publish`] (the direct flip) and
+/// [`Db::ensure_publishable`] (the publish-queue's at-enqueue check) enforce it
+/// identically.
 ///
 /// Publishability is decided by the run's terminal state. Infrastructure failures
-/// are the Test Cabinet's fault, not a model result, and are never publishable.
-/// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic, timed-out, and harness-error —
-/// are real model signal: publishable, but with no review checklist to complete, so the
-/// review-count requirement is waived for them (they publish through the separate
-/// publish-failures path).
+/// are the Test Cabinet's fault, not a model result, and canceled runs were stopped
+/// by an operator rather than reaching an outcome; neither is ever publishable.
+/// Legacy completed runs publish through the review gate (≥1 review). A
+/// **validator-rated** completed run needs none: its functional rating and score
+/// are decided by its validators and stand on their own, so a blatantly broken
+/// build reaches the gallery without costing a reviewer's time (an aesthetic review
+/// can still be added later). The publishable failure tiers — catastrophic,
+/// timed-out, and harness-error — are real model signal: publishable, but with no
+/// review checklist to complete, so the review-count requirement is waived for them
+/// (they publish through the separate publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
     conn: &C,
     run_id: &str,
     run_state: &str,
+    validator_rated: bool,
+    allow_auto_validated: bool,
 ) -> Result<()> {
-    if run_state == "infrastructure" {
+    if never_publishable_states().contains(&run_state) {
+        let reason = if run_state == "canceled" {
+            "canceled by an operator"
+        } else {
+            "an infrastructure failure"
+        };
         return Err(crate::error::BackendError::Unprocessable(format!(
-            "run `{run_id}` is an infrastructure failure and can never be published"
+            "run `{run_id}` is not publishable: {reason}"
         )));
     }
     let is_publishable_failure = publishable_failure_states().contains(&run_state);
-    if !is_publishable_failure {
+    if !is_publishable_failure && !validator_rated {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
             .count(conn)
             .await?;
         if review_count == 0 {
-            return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
-            )));
+            // The single sanctioned waiver of the review requirement beyond the
+            // catastrophic-failure states: an auto-validated comparison run. A
+            // comparison scores each run from its automated validators (no human
+            // review), so publishing its runs — which the comparison publish path
+            // requests with `allow_auto_validated` — must not require a review that
+            // was deliberately never done. Any other publish path keeps the review
+            // requirement. A run with no automated verdicts is still refused: there is
+            // nothing to stand in for the missing review.
+            let waived = allow_auto_validated && run_has_auto_verdicts(conn, run_id).await?;
+            if !waived {
+                return Err(crate::error::BackendError::Unprocessable(format!(
+                    "run `{run_id}` has no reviews"
+                )));
+            }
         }
     }
     Ok(())
+}
+
+/// Whether a run carries at least one automated validation verdict — the signal
+/// that it was scored by a machine and can stand in for the human review the
+/// comparison publish path waives. Reads the run's stored record and looks for any
+/// `debug_scripts` verdict; a run whose record is missing or unparseable, or that ran
+/// no validators, has none.
+async fn run_has_auto_verdicts<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<bool> {
+    let Some(row) = run::Entity::find_by_id(run_id.to_string())
+        .one(conn)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+        return Ok(false);
+    };
+    Ok(record
+        .validation
+        .debug_scripts
+        .iter()
+        .any(|script| !script.verdicts.is_empty()))
 }
 
 /// Whether a publish job has gone quiet long enough to be treated as **abandoned**
@@ -1514,7 +2157,12 @@ fn stored_review_with_revisions(
     revisions: Vec<ReviewRevision>,
 ) -> Result<StoredReview> {
     let ratings: Vec<DomainRating> = serde_json::from_str(&model.ratings)?;
+    let aesthetics: Vec<DomainAesthetic> = serde_json::from_str(&model.aesthetics)?;
     let checklist: Vec<ReviewVerdict> = serde_json::from_str(&model.checklist)?;
+    let aesthetic = row_aesthetic(
+        model.aesthetic.as_deref().and_then(AestheticRating::parse),
+        &aesthetics,
+    );
     Ok(StoredReview {
         reviewer: Reviewer {
             user_id: model.reviewer_user_id,
@@ -1522,6 +2170,8 @@ fn stored_review_with_revisions(
             display_name: model.reviewer_display_name,
         },
         ratings,
+        aesthetics,
+        aesthetic,
         writeup: model.writeup,
         checklist,
         reviewed_at: model.reviewed_at,
@@ -1555,6 +2205,15 @@ fn stored_tournament(model: tournament::Model) -> Result<StoredTournament> {
 struct LiftedRunMetrics {
     /// The kebab-case test-type token (`record.subject.test_type`).
     test_type: String,
+    /// The gg configuration name the run was launched from, or `None` for a non-gg
+    /// run or a gg run assembled without one (see [`lifted_gg_preset`]).
+    gg_preset: Option<String>,
+    /// The id of the gg configuration the run was launched from, or `None` for a
+    /// non-gg run or a gg run assembled without one (see [`lifted_gg_config_id`]).
+    gg_config_id: Option<String>,
+    /// The models the run's gg capability set binds, as one comparable string, or
+    /// `None` for a non-gg run (see [`lifted_gg_models`]).
+    gg_models: Option<String>,
     /// End-to-end wall-clock time in seconds (`record.metrics.run_time_seconds`).
     run_time_seconds: f64,
     /// Total token count across every class — the same sum the UI's `totalTokens`
@@ -1562,6 +2221,9 @@ struct LiftedRunMetrics {
     total_tokens: i64,
     /// Comparable cost (USD), or `None` when the cost is unknown.
     cost_comparable: Option<f64>,
+    /// The static code analyzer's generation, from `record.code_analysis`, or `None` for a
+    /// run that carries no analysis (see [`lifted_code_analyzer_version`]).
+    code_analyzer_version: Option<i32>,
 }
 
 /// Lift the record-derived sort columns out of a run's record. Reuses the core
@@ -1570,22 +2232,198 @@ struct LiftedRunMetrics {
 fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
         test_type: record.subject.test_type.as_str().to_string(),
+        gg_preset: lifted_gg_preset(record),
+        gg_config_id: lifted_gg_config_id(record),
+        gg_models: lifted_gg_models(record),
         run_time_seconds: record.metrics.run_time_seconds,
         total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
         cost_comparable: record.metrics.cost.comparable,
+        code_analyzer_version: lifted_code_analyzer_version(record),
     }
 }
 
-/// The run's aggregate rating — the worst rating any reviewer gave any domain —
-/// or `None` when the run carries no reviews. The single source of truth for the
-/// lifted `run.rating` column and the snapshot's summary cards; wraps the core
-/// [`aggregate_rating`](test_cabinet_core::review::aggregate_rating).
+/// The lifted `run.code_analyzer_version` column value: which generation of the static
+/// analyzer produced the run's code figures, or `None`.
+///
+/// Read straight off the record rather than from this build's
+/// [`CODE_ANALYZER_VERSION`](test_cabinet_core::CODE_ANALYZER_VERSION) constant, and the
+/// distinction is the whole point: a backend redeployed with a newer analyzer must not
+/// restamp an older run's figures with a generation that did not compute them. The column
+/// describes the *stored result*, not the server.
+///
+/// Single-sided like [`lifted_gg_preset`]: a `NULL` means the run carries no analysis at
+/// all, so a consumer may treat absence as "never analysed" without re-deriving anything.
+fn lifted_code_analyzer_version(record: &RunRecord) -> Option<i32> {
+    record
+        .code_analysis
+        .as_ref()
+        .map(|analysis| analysis.analyzer_version as i32)
+}
+
+/// The lifted `run.gg_preset` column value: the name of the gg configuration the
+/// run was launched from, or `None`.
+///
+/// Gated on the **harness**, not on the capability set alone, so the column's
+/// contract is single-sided: a non-gg run can never hold a preset, and every
+/// consumer may therefore fall back to `model_id` with a bare `COALESCE` instead of
+/// re-deriving the harness test. (The console applies the same guard when it
+/// resolves the cell — see `useEnrichedRuns` in
+/// `packages/ui/src/app/components/runColumns.tsx`.)
+fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .and_then(|set| set.preset.clone())
+}
+
+/// The lifted `run.gg_config_id` column value: the id of the gg configuration the run
+/// was launched from, or `None`.
+///
+/// The first half of a gg run's [cell identity](CellKey) — the id, not the
+/// [name](lifted_gg_preset), because a name is rewritten freely and is unique to nothing,
+/// while the id a configuration is minted with is the same text tomorrow.
+///
+/// Gated on the **harness** exactly as [`lifted_gg_preset`] is, so a set that somehow rode
+/// in on a third-party-harness record cannot put the run in a cell no gg run can join. A
+/// gg run assembled by hand carries no configuration and so no id, which reads as the
+/// empty segment — the harness form of the cell key.
+fn lifted_gg_config_id(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .and_then(|set| set.preset_id.clone())
+}
+
+/// The lifted `run.gg_models` column value: the models the run's capability set binds,
+/// sorted, de-duplicated and comma-joined, or `None`.
+///
+/// The other half of a gg run's [cell identity](CellKey), and gated on the **harness**
+/// exactly as [`lifted_gg_config_id`] and [`lifted_gg_preset`] are, so the three are
+/// written and absent together and a consumer that has tested one need not re-derive the
+/// others. (Absent for one further reason of its own: a hand-assembled set names no
+/// configuration, so it has an id and a name of `None` while still binding models.)
+///
+/// The string is asked of the contract
+/// ([`bound_model_key`](test_cabinet_core::gg::GgCapabilitySet::bound_model_key)) rather
+/// than assembled here, because the enqueue lift writes the same value onto the job and
+/// a cell only counts while a queued run and the run it becomes agree to the byte.
+fn lifted_gg_models(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .map(|set| set.bound_model_key())
+}
+
+/// A **legacy** run's functional rating: the aggregate review rating — the worst
+/// rating any reviewer gave any domain — or `None` when the run carries no reviews.
+/// Wraps the core [`aggregate_rating`](test_cabinet_core::review::aggregate_rating);
+/// [`functional_rating`] is the seam that picks between this and the
+/// validator-decided rating.
+///
+/// The record is taken as well as the reviews because a run can be rated `broken`
+/// *without* any reviewer saying so: a case's gating `typecheck` that ran and failed
+/// disqualifies the run (see
+/// [`RunRecord::gated_broken`](test_cabinet_core::RunRecord::gated_broken)). The gate
+/// is composed over the reviews here, at the single seam that derives a run's one
+/// overall rating, rather than written into any reviewer's stored marks.
 pub(crate) fn aggregate_review_rating(
+    record: &RunRecord,
     reviews: &[StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::aggregate_rating(
-        reviews.iter().map(|review| review.ratings.as_slice()),
+    test_cabinet_core::review::gated_rating(
+        record.gated_broken(),
+        test_cabinet_core::review::aggregate_rating(
+            reviews.iter().map(|review| review.ratings.as_slice()),
+        ),
     )
+}
+
+/// A review row's **run-wide** aesthetic tier: the `aesthetic` column when set,
+/// else the worst tier across its `legacy` per-domain `aesthetics` JSON (which
+/// equals the old per-domain aggregation, so a pre-migration row displays
+/// unchanged), else `None` (a legacy run's review, no aesthetic channel). The
+/// single place the legacy shape collapses — every read path goes through it at
+/// decode ([`stored_review_with_revisions`], [`Db::recent_review_subjects`]).
+pub(crate) fn row_aesthetic(
+    aesthetic: Option<AestheticRating>,
+    legacy: &[DomainAesthetic],
+) -> Option<AestheticRating> {
+    aesthetic.or_else(|| AestheticRating::worst(legacy.iter().map(|entry| entry.rating)))
+}
+
+/// The run's aggregate **aesthetic** rating — the worst run-wide tier across its
+/// reviews — or `None` when no review rated the aesthetic channel (a legacy run,
+/// or a validator-rated run nobody has reviewed yet). The single source of truth
+/// for the lifted `run.aesthetic` column and the summary cards; wraps the core
+/// [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
+/// No gate composes over it: the toolchain gate is a functional verdict.
+pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<AestheticRating> {
+    test_cabinet_core::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
+}
+
+/// **The run's functional rating** — the single seam every consumer derives it
+/// through: the lifted `run.rating` column (at push and on review-add) and the
+/// summary cards (the console listing and the snapshot).
+///
+/// `manifest` is the run's case version as the store holds it (`None` when the
+/// store does not have it). On a [validator-rated](StoredManifest::validator_rated)
+/// version the rating is the validators' decision (each failing scored point
+/// capping its declared domains at its failure cap) **as overridden by the run's
+/// reviews**: each review's checklist overlays the validators' verdicts and the
+/// run takes the worst across the reviews' effective ratings
+/// ([`validator_aggregate_rating`](test_cabinet_core::review::validator_aggregate_rating));
+/// with zero reviews the validators' own figure stands, so it is `Some` from the
+/// moment the run completes. Otherwise it is the legacy review aggregate
+/// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
+/// composed with the toolchain gate.
+///
+/// A run whose terminal state is not
+/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a catastrophic
+/// failure, a timeout, or any tier that released nothing — has no rating at all
+/// (`None`), whatever its case version. Its build never loaded, so no validator
+/// ran against it, and the validators' figure over an empty verdict set would
+/// otherwise read as flawless.
+pub(crate) fn functional_rating(
+    manifest: Option<&StoredManifest>,
+    record: &RunRecord,
+    reviews: &[StoredReview],
+) -> Option<Rating> {
+    if !record.status.state.is_scored() {
+        return None;
+    }
+    match manifest.filter(|manifest| manifest.validator_rated()) {
+        Some(manifest) => {
+            let variant = record.subject.variant.as_str();
+            let items = crate::snapshot::review_items_for_engine(
+                manifest,
+                variant,
+                &record.subject.engine_slug,
+            );
+            let domains = crate::snapshot::domains_for(manifest, variant);
+            let auto =
+                test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);
+            test_cabinet_core::review::validator_aggregate_rating(
+                record.gated_broken(),
+                &domains,
+                &items,
+                &auto,
+                reviews.iter().map(|review| review.checklist.as_slice()),
+            )
+        }
+        None => aggregate_review_rating(record, reviews),
+    }
 }
 
 /// Reviewer coverage plans and the run/job counts the coverage matrix is built
@@ -1747,7 +2585,7 @@ impl Db {
             outer_axis: Set(schedule.outer_axis.clone()),
             paused: Set(schedule.paused),
             auto_top_up: Set(schedule.auto_top_up),
-            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
             // A fresh plan is nobody's claim: the marker is only ever set by a top-up
             // taking the plan, and cleared when it lets go.
             topping_up_at: Set(None),
@@ -1815,6 +2653,192 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
+    /// Every saved gg configuration the account owns, ordered by display name.
+    pub async fn list_gg_configs(&self, user_id: &str) -> Result<Vec<crate::api::GgConfig>> {
+        gg_config::Entity::find()
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .order_by_asc(gg_config::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_config_from_row)
+            .collect()
+    }
+
+    /// One saved gg configuration by id, scoped to the owning account (`None` when
+    /// the id is unknown or belongs to someone else).
+    pub async fn get_gg_config(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgConfig>> {
+        let Some(row) = gg_config::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_config_from_row(row)?))
+    }
+
+    /// Insert a new gg configuration (id already minted by the handler).
+    pub async fn insert_gg_config(
+        &self,
+        user_id: &str,
+        config: &crate::api::GgConfig,
+    ) -> Result<()> {
+        gg_config::ActiveModel {
+            id: Set(config.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(config.name.clone()),
+            description: Set(config.description.clone()),
+            capability_set_json: Set(serde_json::to_string(&config.capability_set)?),
+            agent_sources_json: Set(Some(serde_json::to_string(&config.agent_sources)?)),
+            updated_at: Set(config.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a gg configuration in place, scoped to the owning account. Returns
+    /// whether a row matched.
+    pub async fn update_gg_config(
+        &self,
+        user_id: &str,
+        config: &crate::api::GgConfig,
+    ) -> Result<bool> {
+        let res = gg_config::Entity::update_many()
+            .col_expr(gg_config::Column::Name, Expr::value(config.name.clone()))
+            .col_expr(
+                gg_config::Column::Description,
+                Expr::value(config.description.clone()),
+            )
+            .col_expr(
+                gg_config::Column::CapabilitySetJson,
+                Expr::value(serde_json::to_string(&config.capability_set)?),
+            )
+            .col_expr(
+                gg_config::Column::AgentSourcesJson,
+                Expr::value(serde_json::to_string(&config.agent_sources)?),
+            )
+            .col_expr(
+                gg_config::Column::UpdatedAt,
+                Expr::value(config.updated_at.clone()),
+            )
+            .filter(gg_config::Column::Id.eq(config.id.clone()))
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a gg configuration, scoped to the owning account. Returns whether a
+    /// row was removed. Runs already launched from it are unaffected — each records
+    /// its own capability set.
+    pub async fn delete_gg_config(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_config::Entity::delete_many()
+            .filter(gg_config::Column::Id.eq(id))
+            .filter(gg_config::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every saved gg agent the account owns, ordered by name.
+    pub async fn list_gg_agents(&self, user_id: &str) -> Result<Vec<crate::api::GgSavedAgent>> {
+        gg_agent::Entity::find()
+            .filter(gg_agent::Column::UserId.eq(user_id))
+            .order_by_asc(gg_agent::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_agent_from_row)
+            .collect()
+    }
+
+    /// One saved gg agent by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_agent(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgSavedAgent>> {
+        let Some(row) = gg_agent::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_agent_from_row(row)?))
+    }
+
+    /// Insert a new saved gg agent (id already minted by the handler).
+    pub async fn insert_gg_agent(
+        &self,
+        user_id: &str,
+        agent: &crate::api::GgSavedAgent,
+    ) -> Result<()> {
+        gg_agent::ActiveModel {
+            id: Set(agent.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(agent.name.clone()),
+            description: Set(agent.description.clone()),
+            agent_json: Set(serde_json::to_string(&agent.agent)?),
+            updated_at: Set(agent.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a saved gg agent in place, scoped to the owning account. Returns whether
+    /// a row matched. Every configuration that imported it follows the change, except
+    /// in the fields it overrides.
+    pub async fn update_gg_agent(
+        &self,
+        user_id: &str,
+        agent: &crate::api::GgSavedAgent,
+    ) -> Result<bool> {
+        let res = gg_agent::Entity::update_many()
+            .col_expr(gg_agent::Column::Name, Expr::value(agent.name.clone()))
+            .col_expr(
+                gg_agent::Column::Description,
+                Expr::value(agent.description.clone()),
+            )
+            .col_expr(
+                gg_agent::Column::AgentJson,
+                Expr::value(serde_json::to_string(&agent.agent)?),
+            )
+            .col_expr(
+                gg_agent::Column::UpdatedAt,
+                Expr::value(agent.updated_at.clone()),
+            )
+            .filter(gg_agent::Column::Id.eq(agent.id.clone()))
+            .filter(gg_agent::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a saved gg agent, scoped to the owning account. Returns whether a row was
+    /// removed. A configuration that imported it keeps its own resolved copy and stops
+    /// following this one.
+    pub async fn delete_gg_agent(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_agent::Entity::delete_many()
+            .filter(gg_agent::Column::Id.eq(id))
+            .filter(gg_agent::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
     /// One plan's [schedule](CoveragePlanSchedule), scoped to the owning account
     /// (`None` when the id is unknown or owned by someone else).
     pub async fn coverage_plan_schedule(
@@ -1830,7 +2854,7 @@ impl Db {
                 outer_axis: row.outer_axis,
                 paused: row.paused,
                 auto_top_up: row.auto_top_up,
-                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+                buffer_target: row.buffer_target.map(buffer_target_from_column),
             }))
     }
 
@@ -1860,7 +2884,7 @@ impl Db {
             )
             .col_expr(
                 coverage_plan::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
             )
             .filter(coverage_plan::Column::Id.eq(id))
             .filter(coverage_plan::Column::UserId.eq(user_id))
@@ -1938,27 +2962,28 @@ impl Db {
     /// An account's chosen default buffer target, or `None` when they have never set
     /// one.
     ///
-    /// `None` is deliberately not `0`: an account with no row has expressed no
-    /// opinion, and the caller applies the backend's compiled-in default rather than
-    /// the store materializing a row on read. An explicit `0` — "never top me up
-    /// automatically" — is a different, storable instruction.
-    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<u32>> {
+    /// `None` is deliberately not a bound of `0`: an account with no row has expressed
+    /// no opinion, and the caller applies the backend's compiled-in default rather
+    /// than the store materializing a row on read. An explicit `0` — "never top me up
+    /// automatically" — and an explicit "no bound" are both different, storable
+    /// instructions.
+    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<BufferTarget>> {
         Ok(coverage_settings::Entity::find_by_id(user_id.to_string())
             .one(&self.conn())
             .await?
-            .map(|row| row.buffer_target.max(0) as u32))
+            .map(|row| buffer_target_from_column(row.buffer_target)))
     }
 
     /// Set an account's default buffer target, creating its settings row on first use.
     pub async fn set_coverage_buffer_target(
         &self,
         user_id: &str,
-        buffer_target: u32,
+        buffer_target: BufferTarget,
         now: &str,
     ) -> Result<()> {
         coverage_settings::Entity::insert(coverage_settings::ActiveModel {
             user_id: Set(user_id.to_string()),
-            buffer_target: Set(buffer_target as i32),
+            buffer_target: Set(buffer_target_to_column(buffer_target)),
             updated_at: Set(now.to_string()),
         })
         .on_conflict(
@@ -1972,6 +2997,393 @@ impl Db {
         .exec(&self.conn())
         .await?;
         Ok(())
+    }
+
+    /// Every saved gg query the account owns, ordered by display name.
+    ///
+    /// The gg *corpus* is deployment-wide; a saved **view** over it is personal, which
+    /// is why this — and nothing on the query path — filters by account.
+    pub async fn list_gg_saved_queries(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::GgSavedQuery>> {
+        Ok(gg_saved_query::Entity::find()
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .order_by_asc(gg_saved_query::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_saved_query_from_row)
+            .collect())
+    }
+
+    /// One saved gg query by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_saved_query(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgSavedQuery>> {
+        let Some(row) = gg_saved_query::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_saved_query_from_row(row)))
+    }
+
+    /// Insert a new saved gg query (id already minted by the handler).
+    pub async fn insert_gg_saved_query(
+        &self,
+        user_id: &str,
+        saved: &crate::api::GgSavedQuery,
+    ) -> Result<()> {
+        gg_saved_query::ActiveModel {
+            id: Set(saved.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(saved.name.clone()),
+            description: Set(saved.description.clone()),
+            query_text: Set(saved.query.clone()),
+            range_id: Set(saved.range_id.clone()),
+            updated_at: Set(saved.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a saved gg query in place, scoped to the owning account. Returns whether
+    /// a row matched.
+    pub async fn update_gg_saved_query(
+        &self,
+        user_id: &str,
+        saved: &crate::api::GgSavedQuery,
+    ) -> Result<bool> {
+        let res = gg_saved_query::Entity::update_many()
+            .col_expr(
+                gg_saved_query::Column::Name,
+                Expr::value(saved.name.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::Description,
+                Expr::value(saved.description.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::QueryText,
+                Expr::value(saved.query.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::RangeId,
+                Expr::value(saved.range_id.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::UpdatedAt,
+                Expr::value(saved.updated_at.clone()),
+            )
+            .filter(gg_saved_query::Column::Id.eq(saved.id.clone()))
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a saved gg query, scoped to the owning account. Returns whether a row
+    /// was removed. Dashboards built from it are unaffected — a panel carries its own
+    /// copy of the text.
+    pub async fn delete_gg_saved_query(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_saved_query::Entity::delete_many()
+            .filter(gg_saved_query::Column::Id.eq(id))
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every gg dashboard the account owns, ordered by display name.
+    pub async fn list_gg_dashboards(&self, user_id: &str) -> Result<Vec<crate::api::GgDashboard>> {
+        gg_dashboard::Entity::find()
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .order_by_asc(gg_dashboard::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_dashboard_from_row)
+            .collect()
+    }
+
+    /// One gg dashboard by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_dashboard(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgDashboard>> {
+        let Some(row) = gg_dashboard::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_dashboard_from_row(row)?))
+    }
+
+    /// Insert a new gg dashboard (id already minted by the handler).
+    pub async fn insert_gg_dashboard(
+        &self,
+        user_id: &str,
+        board: &crate::api::GgDashboard,
+    ) -> Result<()> {
+        gg_dashboard::ActiveModel {
+            id: Set(board.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(board.name.clone()),
+            description: Set(board.description.clone()),
+            panels_json: Set(serde_json::to_string(&board.panels)?),
+            range_id: Set(board.range_id.clone()),
+            updated_at: Set(board.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a gg dashboard in place, scoped to the owning account. Returns whether a
+    /// row matched.
+    pub async fn update_gg_dashboard(
+        &self,
+        user_id: &str,
+        board: &crate::api::GgDashboard,
+    ) -> Result<bool> {
+        let res = gg_dashboard::Entity::update_many()
+            .col_expr(gg_dashboard::Column::Name, Expr::value(board.name.clone()))
+            .col_expr(
+                gg_dashboard::Column::Description,
+                Expr::value(board.description.clone()),
+            )
+            .col_expr(
+                gg_dashboard::Column::PanelsJson,
+                Expr::value(serde_json::to_string(&board.panels)?),
+            )
+            .col_expr(
+                gg_dashboard::Column::RangeId,
+                Expr::value(board.range_id.clone()),
+            )
+            .col_expr(
+                gg_dashboard::Column::UpdatedAt,
+                Expr::value(board.updated_at.clone()),
+            )
+            .filter(gg_dashboard::Column::Id.eq(board.id.clone()))
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a gg dashboard, scoped to the owning account. Returns whether a row was
+    /// removed.
+    pub async fn delete_gg_dashboard(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_dashboard::Entity::delete_many()
+            .filter(gg_dashboard::Column::Id.eq(id))
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every comparison the account owns, most-recently-updated first.
+    pub async fn list_comparisons(&self, user_id: &str) -> Result<Vec<StoredComparison>> {
+        comparison::Entity::find()
+            .filter(comparison::Column::UserId.eq(user_id))
+            .order_by_desc(comparison::Column::UpdatedAt)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(comparison_from_row)
+            .collect()
+    }
+
+    /// Every **published** comparison across all accounts, newest-published first —
+    /// the set the snapshot builder folds into the public site. Ownership is not a
+    /// filter here (unlike the per-account list): the public snapshot is global.
+    pub async fn all_published_comparisons(&self) -> Result<Vec<StoredComparison>> {
+        comparison::Entity::find()
+            .filter(comparison::Column::Published.eq(true))
+            .order_by_desc(comparison::Column::PublishedAt)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(comparison_from_row)
+            .collect()
+    }
+
+    /// One comparison by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_comparison(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<StoredComparison>> {
+        let Some(row) = comparison::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(comparison_from_row(row)?))
+    }
+
+    /// Insert a new comparison (id already minted by the handler).
+    pub async fn insert_comparison(&self, user_id: &str, stored: &StoredComparison) -> Result<()> {
+        comparison::ActiveModel {
+            id: Set(stored.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(stored.name.clone()),
+            description: Set(stored.description.clone()),
+            config_json: Set(serde_json::to_string(&stored.config)?),
+            published: Set(stored.published),
+            published_at: Set(stored.published_at.clone()),
+            created_at: Set(stored.created_at.clone()),
+            updated_at: Set(stored.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a comparison's name, description, and config in place, scoped to the
+    /// owning account. Leaves `created_at` and the published state untouched.
+    /// Returns whether a row matched.
+    pub async fn update_comparison(
+        &self,
+        user_id: &str,
+        stored: &StoredComparison,
+    ) -> Result<bool> {
+        let res = comparison::Entity::update_many()
+            .col_expr(comparison::Column::Name, Expr::value(stored.name.clone()))
+            .col_expr(
+                comparison::Column::Description,
+                Expr::value(stored.description.clone()),
+            )
+            .col_expr(
+                comparison::Column::ConfigJson,
+                Expr::value(serde_json::to_string(&stored.config)?),
+            )
+            .col_expr(
+                comparison::Column::UpdatedAt,
+                Expr::value(stored.updated_at.clone()),
+            )
+            .filter(comparison::Column::Id.eq(stored.id.clone()))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a comparison, scoped to the owning account. Returns whether a row was
+    /// removed. Runs launched for its arms are unaffected.
+    pub async fn delete_comparison(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = comparison::Entity::delete_many()
+            .filter(comparison::Column::Id.eq(id))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Set a comparison's published flag (and first-publish timestamp), scoped to
+    /// the owning account. The single lever for snapshot inclusion (Layer 4).
+    /// Returns whether a row matched.
+    pub async fn set_comparison_published(
+        &self,
+        user_id: &str,
+        id: &str,
+        published: bool,
+        published_at: Option<&str>,
+    ) -> Result<bool> {
+        let res = comparison::Entity::update_many()
+            .col_expr(comparison::Column::Published, Expr::value(published))
+            .col_expr(
+                comparison::Column::PublishedAt,
+                Expr::value(published_at.map(str::to_string)),
+            )
+            .filter(comparison::Column::Id.eq(id))
+            .filter(comparison::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Which of `ids` still exist as runs: the ones a `run` row is stored for, the
+    /// ones a `job` still holds in flight (`queued`, `pending`, `dispatched`,
+    /// `starting`, or `running`), and the ones whose job produced a `run` row that is
+    /// still stored.
+    ///
+    /// Three ways because the id a launch hands back is the **job** id, and the record
+    /// the driver mints later carries an id of its own ([`test_cabinet_core::mint_run_id`]);
+    /// `job.record_id` is the only link between the two. So a recorded id is live while
+    /// its job sits in the queue, live once the run it produced is stored, and dead
+    /// once that run is deleted — which is the whole question a comparison asks before
+    /// topping an arm back up to `n`.
+    ///
+    /// Ids that match nothing are simply absent, so the result is a subset of `ids`.
+    pub async fn live_run_ids(&self, ids: &[String]) -> Result<std::collections::BTreeSet<String>> {
+        use std::collections::BTreeSet;
+        if ids.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let conn = self.conn();
+        let requested: BTreeSet<String> = ids.iter().cloned().collect();
+
+        // Every job enqueued under one of the ids, with the state that says whether it
+        // is still in flight and the record it produced if it has finished.
+        let jobs: Vec<(String, String, Option<String>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Id)
+            .column(job::Column::State)
+            .column(job::Column::RecordId)
+            .filter(job::Column::Id.is_in(ids.to_vec()))
+            .into_tuple()
+            .all(&conn)
+            .await?;
+
+        // The run rows to look for: the ids themselves (a recorded id that is already a
+        // run id), plus the record each matched job produced (the row a recorded job id
+        // resolves to once its run landed).
+        let mut wanted = requested.clone();
+        for (_, _, record_id) in &jobs {
+            if let Some(record_id) = record_id {
+                wanted.insert(record_id.clone());
+            }
+        }
+        let stored: BTreeSet<String> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .filter(run::Column::Id.is_in(wanted.into_iter().collect::<Vec<_>>()))
+            .into_tuple::<String>()
+            .all(&conn)
+            .await?
+            .into_iter()
+            .collect();
+
+        let mut live: BTreeSet<String> = requested.intersection(&stored).cloned().collect();
+        for (job_id, state, record_id) in jobs {
+            let in_flight = IN_FLIGHT_STATES.contains(&state.as_str());
+            let produced_a_stored_run = record_id.is_some_and(|id| stored.contains(&id));
+            if in_flight || produced_a_stored_run {
+                live.insert(job_id);
+            }
+        }
+        Ok(live)
     }
 
     /// The legacy single-per-account plans that the startup backfill has not yet
@@ -2006,10 +3418,10 @@ impl Db {
     }
 
     /// Count the **completed** runs for every coverage cell whose case slug is in
-    /// `slugs`, in a single grouped query. The result is keyed by cell identity
-    /// `(slug, version, variant, harness, model)`; a cell with no completed runs
-    /// is simply absent. Only evaluable `completed` runs count toward a cell's
-    /// target; the failure tiers do not.
+    /// `slugs`, in a single grouped query. The result is keyed by the cell's
+    /// [`CellKey`] identity; a cell with no completed runs is simply absent. Only
+    /// evaluable `completed` runs count toward a cell's target; the failure tiers do
+    /// not.
     ///
     /// This computes the whole coverage matrix's completed counts at once, so the
     /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
@@ -2018,21 +3430,27 @@ impl Db {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = run::Entity::find()
+        let rows: Vec<CellCountRow> = run::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
             .column(run::Column::Variant)
+            .column(run::Column::EngineSlug)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
+            .column(run::Column::GgConfigId)
+            .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
             .group_by(run::Column::Variant)
+            .group_by(run::Column::EngineSlug)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
+            .group_by(run::Column::GgConfigId)
+            .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -2050,21 +3468,27 @@ impl Db {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = job::Entity::find()
+        let rows: Vec<CellCountRow> = job::Entity::find()
             .select_only()
             .column(job::Column::TestCaseSlug)
             .column(job::Column::TestCaseVersion)
             .column(job::Column::Variant)
+            .column(job::Column::EngineSlug)
             .column(job::Column::HarnessSlug)
             .column(job::Column::ModelId)
+            .column(job::Column::GgConfigId)
+            .column(job::Column::GgModels)
             .column_as(job::Column::Id.count(), "cnt")
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .filter(job::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
             .group_by(job::Column::TestCaseSlug)
             .group_by(job::Column::TestCaseVersion)
             .group_by(job::Column::Variant)
+            .group_by(job::Column::EngineSlug)
             .group_by(job::Column::HarnessSlug)
             .group_by(job::Column::ModelId)
+            .group_by(job::Column::GgConfigId)
+            .group_by(job::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -2104,8 +3528,11 @@ impl Db {
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
             .column(run::Column::Variant)
+            .column(run::Column::EngineSlug)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
+            .column(run::Column::GgConfigId)
+            .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             // Left-join *this account's* review and keep the rows that found none.
             // Narrowing on the join rather than in the `WHERE` is what makes it "no
@@ -2129,12 +3556,15 @@ impl Db {
         if exclude_unloaded {
             query = query.filter(run::Column::Loaded.eq(true));
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = query
+        let rows: Vec<CellCountRow> = query
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
             .group_by(run::Column::Variant)
+            .group_by(run::Column::EngineSlug)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
+            .group_by(run::Column::GgConfigId)
+            .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -2144,11 +3574,17 @@ impl Db {
     /// The requesting account's own verdict on every completed run of one cell, oldest
     /// first — the evidence a ladder's rung gate is evaluated from.
     ///
-    /// `cell` is the same `(slug, version, variant, harness, launched model)` identity
-    /// the grouped counts are keyed by, so a caller builds it exactly as it builds the
-    /// key it looks a count up with. The model segment is the id the run was
-    /// **launched** with (a provider-routed harness carries an `openrouter/` prefix the
-    /// plan's canonical model omits); matching on anything else silently reads zero.
+    /// `cell` is the same [`CellKey`] the grouped counts are keyed by, so a caller
+    /// builds it exactly as it builds the key it looks a count up with. The model
+    /// segment is the id the run was **launched** with (a provider-routed harness
+    /// carries an `openrouter/` prefix the plan's canonical model omits); matching on
+    /// anything else silently reads zero. The two gg segments are matched through the
+    /// same `COALESCE` the counts collapse with (`cell_gg_segment`), so a harness
+    /// cell's empty pair selects exactly the rows that carry no configuration — a gate
+    /// therefore reads the evidence of the one configuration its climber names, not of
+    /// every gg run of the case. The engine segment is matched through the same
+    /// collapse (`cell_engine_segment`), so a `none` cell reads the runs recorded before
+    /// the slug was lifted as the engineless runs they are.
     ///
     /// Only `completed` runs are returned. A failed or canceled job is an
     /// infrastructure problem that retries (`job.attempt`) and must never be mistaken
@@ -2161,7 +3597,7 @@ impl Db {
         cell: &CellKey,
         reviewer_user_id: &str,
     ) -> Result<Vec<CellRunRating>> {
-        let (slug, version, variant, harness, model) = cell;
+        let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
         let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
@@ -2185,8 +3621,13 @@ impl Db {
             .filter(run::Column::TestCaseSlug.eq(slug))
             .filter(run::Column::TestCaseVersion.eq(version))
             .filter(run::Column::Variant.eq(variant))
+            .filter(Expr::expr(cell_engine_segment(run::Column::EngineSlug)).eq(engine.as_str()))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
+            .filter(
+                Expr::expr(cell_gg_segment(run::Column::GgConfigId)).eq(gg_config_id.as_str()),
+            )
+            .filter(Expr::expr(cell_gg_segment(run::Column::GgModels)).eq(gg_models.as_str()))
             .order_by_asc(run::Column::FinishedAt)
             .order_by_asc(run::Column::Id)
             .into_tuple()
@@ -2237,9 +3678,10 @@ pub struct CoveragePlanSchedule {
     /// Whether submitting a review re-runs this plan's top-up automatically.
     pub auto_top_up: bool,
     /// This plan's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`]. `None` and `Some(0)` are different
-    /// instructions — "no opinion" versus "never top up".
-    pub buffer_target: Option<u32>,
+    /// [`Db::coverage_buffer_target`]. `None`, a bound of `0`, and
+    /// [`BufferTarget::Unbounded`] are three different instructions — "no opinion",
+    /// "never top up", and "top up everything".
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for CoveragePlanSchedule {
@@ -2309,25 +3751,123 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
     now - held > TOP_UP_LEASE
 }
 
-/// A coverage cell's identity: `(slug, version, variant, harness, model)` — the
-/// key both grouped-count queries return their tallies under.
-pub type CellKey = (String, String, String, String, String);
+/// A coverage cell's identity:
+/// `(slug, version, variant, engine, harness, launch model, gg configuration id, gg models)`
+/// — the key every grouped-count query returns its tallies under, and the identity a gate
+/// reads its evidence by.
+///
+/// The first four segments are the **case pin**, engine included, because a result is only
+/// comparable with another result on the same engine: one case at one version and variant
+/// on two engines is two cells. A run or job that names no engine is a `none` run, so a
+/// `NULL` column coalesces to that slug (`cell_engine_segment`) rather than to an empty
+/// segment of its own.
+///
+/// The first six segments identify a **harness** cell, and its last two are empty. A
+/// gg run has no such identity to be counted by: it is launched from a saved
+/// configuration and binds a model per agent, so every gg run of one plan would
+/// otherwise pile into a single `gg/<root model>` cell. The two extra segments are what
+/// separate them:
+///
+/// - the configuration's **id**, because that is what a configuration *is* across time:
+///   its name is display text an operator rewrites freely and nothing keeps unique within
+///   an account, so a cell keyed on the name would empty itself on a rename — the plan
+///   reading 0/N and the next top-up re-buying every run behind it — and would merge two
+///   configurations that happen to agree on one. A ladder's climber is keyed on the same
+///   id ([`combination_key`]), so a rung's recorded verdicts and the runs counted under
+///   them describe one configuration rather than two halves that disagree;
+/// - the **models the bound set runs on**, because one configuration can run several.
+///   Two members that agree on the root agent's model and differ on a reviewer's are two
+///   arms of a study, and a cell reading only the root model would merge them.
+///
+/// A configuration is account-scoped, which costs the cell nothing: no other account's run
+/// could satisfy a cell by being "the same configuration" in the first place, so keying on
+/// the id narrows nothing that keying on the name kept. Counts stay
+/// [global](https://docs.testcabinet.ai/components/backend/coverage/) in the sense that
+/// matters — whoever launched a run of *this* configuration, it counts.
+pub type CellKey = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
 
-/// Fold the `(slug, version, variant, harness, model, count)` rows a grouped
-/// coverage query returns into a [`CellCounts`] map. The count is a SQL
-/// `COUNT(*)` so it is non-negative; the clamp is defensive.
-fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> CellCounts {
-    rows.into_iter()
-        .map(|(slug, version, variant, harness, model, count)| {
-            (
-                (slug, version, variant, harness, model),
-                count.max(0) as u32,
-            )
-        })
-        .collect()
+/// Fold the
+/// `(slug, version, variant, engine, harness, model, gg configuration id, gg models, count)`
+/// rows a grouped coverage query returns into a [`CellCounts`] map, reading the nullable
+/// engine column as `none` and the two nullable gg columns as the empty string a harness
+/// cell carries.
+///
+/// Tallies are **summed** into the entry rather than assigned to it, because neither
+/// collapse is injective: SQL groups `NULL` and the concrete value as different rows and
+/// both arrive here as the same segment, so a store holding one of each would otherwise
+/// report only whichever came last. The count is a SQL `COUNT(*)` so it is
+/// non-negative; the clamp is defensive.
+fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
+    let mut counts = CellCounts::new();
+    for (slug, version, variant, engine, harness, model, gg_config_id, gg_models, count) in rows {
+        *counts
+            .entry((
+                slug,
+                version,
+                variant,
+                cell_engine(engine),
+                harness,
+                model,
+                gg_config_id.unwrap_or_default(),
+                gg_models.unwrap_or_default(),
+            ))
+            .or_insert(0) += count.max(0) as u32;
+    }
+    counts
+}
+
+/// One row of a grouped coverage count: a [`CellKey`]'s eight segments (the engine one and
+/// the two gg ones still nullable, as the columns are) followed by the tally. Named because
+/// all three grouped queries select it and the tuple is otherwise spelled out four times.
+type CellCountRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    i64,
+);
+
+/// A nullable engine column as its [`CellKey`] segment: an absent engine is the `none`
+/// engine, because a launch that omits the key asks for the engineless run.
+fn cell_engine(engine: Option<String>) -> String {
+    engine.unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string())
+}
+
+/// One of the nullable gg identity columns as its [`CellKey`] segment:
+/// `COALESCE(col, '')`. Filtering through it makes an equality test on a cell segment
+/// agree with the grouped counts, which collapse the same `NULL` to the same empty
+/// string — a filter written against the bare column would instead match nothing for
+/// every harness cell in the store.
+fn cell_gg_segment(column: run::Column) -> SimpleExpr {
+    Func::coalesce([column.into_expr().into(), Expr::val("").into()]).into()
+}
+
+/// The nullable engine column as its [`CellKey`] segment: `COALESCE(col, 'none')`. The
+/// SQL twin of [`cell_engine`], and load-bearing for the same reason
+/// [`cell_gg_segment`] is — an equality test written against the bare column would match
+/// nothing for every run recorded before the slug was lifted, and those are `none` runs.
+fn cell_engine_segment(column: run::Column) -> SimpleExpr {
+    Func::coalesce([
+        column.into_expr().into(),
+        Expr::val(test_cabinet_core::engine::NONE_SLUG).into(),
+    ])
+    .into()
 }
 
 /// A legacy single-per-account coverage plan awaiting backfill into `coverage_plan`
@@ -2402,28 +3942,152 @@ fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::Cover
     })
 }
 
+/// Rebuild a saved gg configuration from its stored row, parsing the capability
+/// set held as JSON text.
+fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
+    Ok(crate::api::GgConfig {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        capability_set: serde_json::from_str(&row.capability_set_json)?,
+        // A configuration whose agents are all declared inline stores no sources at
+        // all, which is the same statement as an empty list.
+        agent_sources: match &row.agent_sources_json {
+            Some(json) => serde_json::from_str(json)?,
+            None => Vec::new(),
+        },
+        updated_at: row.updated_at,
+    })
+}
+
+/// One saved gg agent as the API carries it. Fallible: the profile column is parsed.
+fn gg_agent_from_row(row: gg_agent::Model) -> Result<crate::api::GgSavedAgent> {
+    Ok(crate::api::GgSavedAgent {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        agent: serde_json::from_str(&row.agent_json)?,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Rebuild a saved gg query from its stored row. Infallible: every column is a
+/// string, and the query is stored as *source text* rather than a compiled tree
+/// precisely so nothing on the read path has to parse it.
+fn gg_saved_query_from_row(row: gg_saved_query::Model) -> crate::api::GgSavedQuery {
+    crate::api::GgSavedQuery {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        query: row.query_text,
+        range_id: row.range_id,
+        updated_at: row.updated_at,
+    }
+}
+
+/// Rebuild a gg dashboard from its stored row, parsing the panel list held as JSON
+/// text.
+fn gg_dashboard_from_row(row: gg_dashboard::Model) -> Result<crate::api::GgDashboard> {
+    Ok(crate::api::GgDashboard {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        panels: serde_json::from_str(&row.panels_json)?,
+        range_id: row.range_id,
+        updated_at: row.updated_at,
+    })
+}
+
+/// A saved [comparison](test_cabinet_core::comparison) as stored: the row fields
+/// with `config_json` parsed back into its [`ComparisonConfig`]. The per-arm
+/// statistics are **not** stored — they are computed on read by the comparisons API
+/// from the arms' runs — so this is exactly the persisted configuration plus its
+/// identity and publish state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredComparison {
+    /// The comparison's opaque id.
+    pub id: String,
+    /// The owning account's id.
+    pub user_id: String,
+    /// The operator-chosen display name.
+    pub name: String,
+    /// A one-line note on what is being compared. Empty when unset.
+    pub description: String,
+    /// The controls, varied dimension, and arms.
+    pub config: ComparisonConfig,
+    /// Whether the comparison is published to the public site.
+    pub published: bool,
+    /// RFC 3339 of when it was first published, or `None` while unpublished.
+    pub published_at: Option<String>,
+    /// RFC 3339 of when it was created.
+    pub created_at: String,
+    /// RFC 3339 of when it was last saved.
+    pub updated_at: String,
+}
+
+fn comparison_from_row(row: comparison::Model) -> Result<StoredComparison> {
+    Ok(StoredComparison {
+        id: row.id,
+        user_id: row.user_id,
+        name: row.name,
+        description: row.description,
+        config: serde_json::from_str(&row.config_json)?,
+        published: row.published,
+        published_at: row.published_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
 // ---- Ladders --------------------------------------------------------------
 
-/// The canonical key a ladder identifies one harness+model combination by:
-/// `harness|model|provider`, with an empty trailing segment when the harness is not
-/// provider-routed.
+/// The canonical key a ladder identifies one **climber** by — the text its steering
+/// rows and its recorded verdicts are stored against — in one of two forms, one per
+/// shape a [combination](crate::api::ReviewPlanCombo) takes.
 ///
-/// It encodes exactly the `(harness, model, provider)` triple the coverage resolver
-/// de-dupes members on, so a key built here and a member resolved there are the same
-/// combination by construction. `|` separates because a model id routinely contains
-/// `/` (`anthropic/claude-opus-4.8`) and a separator that can appear inside a segment
-/// is not a separator.
+/// A harness climber is `harness|model|provider`, with an empty trailing segment when
+/// the harness is not provider-routed. That encodes exactly the
+/// `(harness, model, provider)` triple the coverage resolver de-dupes members on, so a
+/// key built here and a member resolved there are the same combination by construction.
+/// `|` separates because a model id routinely contains `/`
+/// (`anthropic/claude-opus-4.8`) and a separator that can appear inside a segment is not
+/// a separator.
 ///
-/// The **canonical** model is used, not the launched one: this key names a member of
-/// the ladder, not a row in the `run` table, and the two differ for provider-routed
-/// harnesses (see [`Db::cell_run_ratings`], which does want the launched id).
+/// A gg climber is `gg:<configuration id>|<slot>=<model>,…`, its bindings in slot order and
+/// in their [canonical](crate::api::ReviewPlanCombo::gg_bindings) form, so a pasted model id
+/// carrying surrounding space is the same climber as the same id typed by hand.
+/// The configuration alone would not do: two climbers running one configuration on
+/// different models are the two arms a ladder exists to separate, so the bindings are
+/// part of the key. They are keyed **per slot** rather than as a bare model list,
+/// because binding the same two models to swapped slots is a different arm again.
+///
+/// **The two forms cannot collide.** The harness form's first segment is a
+/// [`HarnessSlug`], a closed set of lowercase kebab tokens, so no harness climber's key
+/// can begin `gg:` — not even one whose harness *is* gg, which keys as `gg||`.
+///
+/// Nothing parses either form. The key is written, stored, and compared whole, which is
+/// what lets it carry a slot map without a grammar to defend.
+///
+/// The **canonical** model is used in the harness form, not the launched one: this key
+/// names a member of the ladder, not a row in the `run` table, and the two differ for
+/// provider-routed harnesses (see [`Db::cell_run_ratings`], which does want the launched
+/// id).
 pub fn combination_key(combo: &crate::api::ReviewPlanCombo) -> String {
-    format!(
-        "{}|{}|{}",
-        combo.harness.as_str(),
-        combo.model,
-        combo.provider.as_deref().unwrap_or_default()
-    )
+    let Some(config) = combo.gg_config_ref() else {
+        return format!(
+            "{}|{}|{}",
+            combo.harness.as_str(),
+            combo.model,
+            combo.provider.as_deref().unwrap_or_default()
+        );
+    };
+    let bindings = combo
+        .gg_bindings()
+        .iter()
+        .map(|(slot, model)| format!("{slot}={model}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("gg:{config}|{bindings}")
 }
 
 /// A reviewer's ladder as stored: an ordered climb through a series of test cases,
@@ -2468,8 +4132,8 @@ pub struct StoredLadder {
     pub updated_at: String,
 }
 
-/// One rung of a [`StoredLadder`]: exactly one test case, pinned to an exact version
-/// and variant.
+/// One rung of a [`StoredLadder`]: exactly one test case, pinned to an exact version,
+/// variant, and engine.
 ///
 /// The rung's position is deliberately **not** a field — it is the rung's index in
 /// [`StoredLadder::rungs`], written to the `position` column on save and used to order
@@ -2490,6 +4154,13 @@ pub struct StoredLadderRung {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or `None` for the `none` engine — the engineless run
+    /// every case supports.
+    ///
+    /// Part of the rung's identity within the climb: the same case at the same version
+    /// and variant on two engines is two rungs, because clearing a case with a runtime
+    /// underneath is a different achievement from clearing it with nothing.
+    pub engine: Option<String>,
     /// This rung's override of [`StoredLadder::runs_per_cell`], or `None` to inherit
     /// it — so one pivotal step can demand more evidence without making the whole
     /// climb more expensive.
@@ -2512,8 +4183,9 @@ pub struct LadderSchedule {
     /// Whether submitting a review re-runs this ladder's top-up automatically.
     pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`].
-    pub buffer_target: Option<u32>,
+    /// [`Db::coverage_buffer_target`]; the same three instructions as
+    /// [`CoveragePlanSchedule::buffer_target`].
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for LadderSchedule {
@@ -2732,7 +4404,7 @@ impl Db {
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
             paused: Set(schedule.paused),
             auto_top_up: Set(schedule.auto_top_up),
-            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
             // A fresh ladder is nobody's claim; only a top-up ever sets this.
             topping_up_at: Set(None),
             combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
@@ -2849,7 +4521,7 @@ impl Db {
                 outer_axis: row.outer_axis,
                 paused: row.paused,
                 auto_top_up: row.auto_top_up,
-                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+                buffer_target: row.buffer_target.map(buffer_target_from_column),
             }))
     }
 
@@ -2871,7 +4543,7 @@ impl Db {
             .col_expr(ladder::Column::AutoTopUp, Expr::value(schedule.auto_top_up))
             .col_expr(
                 ladder::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
             )
             .filter(ladder::Column::Id.eq(id))
             .filter(ladder::Column::UserId.eq(user_id))
@@ -3131,6 +4803,7 @@ async fn write_ladder_rungs(
             slug: Set(rung.slug.clone()),
             version: Set(rung.version.clone()),
             variant: Set(rung.variant.clone()),
+            engine: Set(rung.engine.clone()),
             runs_override: Set(rung.runs_override.map(|runs| runs as i32)),
         });
     ladder_rung::Entity::insert_many(models)
@@ -3141,6 +4814,7 @@ async fn write_ladder_rungs(
                     ladder_rung::Column::Slug,
                     ladder_rung::Column::Version,
                     ladder_rung::Column::Variant,
+                    ladder_rung::Column::Engine,
                     ladder_rung::Column::RunsOverride,
                 ])
                 .to_owned(),
@@ -3174,6 +4848,7 @@ fn stored_ladder_rung(row: ladder_rung::Model) -> StoredLadderRung {
         slug: row.slug,
         version: row.version,
         variant: row.variant,
+        engine: row.engine,
         runs_override: row.runs_override.map(|runs| runs.max(0) as u32),
     }
 }
@@ -3225,10 +4900,20 @@ fn gate_from_row(row: &ladder::Model) -> Result<Gate> {
     })
 }
 
-/// The lifted `run.rating` column value: the aggregate rating as its lowercase
-/// wire token, or `None` when the run carries no reviews.
-fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
-    aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
+/// The lifted `run.rating` column value: the [functional rating](functional_rating)
+/// as its lowercase wire token, or `None` when a legacy run carries no reviews.
+fn lifted_rating(
+    manifest: Option<&StoredManifest>,
+    record: &RunRecord,
+    reviews: &[StoredReview],
+) -> Option<String> {
+    functional_rating(manifest, record, reviews).map(|rating| rating.as_str().to_string())
+}
+
+/// The lifted `run.aesthetic` column value: the aggregate aesthetic rating as its
+/// lowercase wire token, or `None` when no review rated the aesthetic channel.
+fn lifted_aesthetic(reviews: &[StoredReview]) -> Option<String> {
+    aggregate_review_aesthetic(reviews).map(|rating| rating.as_str().to_string())
 }
 
 /// The test types graded automatically, which therefore never await a human
@@ -3274,11 +4959,15 @@ pub enum SummaryState {
     /// Excludes the automatically-graded types, which no reviewer can clear (see
     /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
-    /// **Every** stored run — published and unpublished alike, whatever its
-    /// terminal state. The union of [`Self::Published`] and [`Self::Unpublished`],
-    /// for the consoles' run listings, where an unpublished (and therefore
-    /// unreviewed) run must take its place in the *same* sorted, paged listing as
-    /// the published ones rather than being pinned ahead of them client-side.
+    /// Every recorded run, whatever its terminal state and whether or not it is
+    /// published — the union of [`Self::Published`] and [`Self::Unpublished`]. This
+    /// is what a listing scoped to something *other* than the publish lifecycle
+    /// wants: the consoles' run listings, where an unpublished (and therefore
+    /// unreviewed) run must take its place in the *same* sorted, paged listing as the
+    /// published ones rather than being pinned ahead of them client-side, and the gg
+    /// analysis section's Sessions tab, which must show exactly the runs the
+    /// [document index](crate::gg_docs::GgDocIndex) holds, most of which are never
+    /// published.
     Any,
 }
 
@@ -3291,6 +4980,14 @@ pub struct SummaryFilter {
     pub state: SummaryState,
     /// Restrict to one test-case slug (`test_case_slug`).
     pub test_case: Option<String>,
+    /// Restrict to a list of test-case slugs (`test_case_slug` ∈ the list) — the
+    /// home page's group-leaderboard slice: one query covers a [test-case
+    /// group](test_cabinet_core::TestCaseGroup)'s member cases. Like every other
+    /// filter it ANDs, [`Self::test_case`] included, so naming both narrows to
+    /// their intersection (the semantic `api.md` documents and the console's
+    /// `runQuery.ts` `matches` mirrors), and [`Self::latest_versions`] composes
+    /// with it as with any case slice. An empty or absent list applies no filter.
+    pub test_cases: Option<Vec<String>>,
     /// Restrict to one model (`model_id`).
     pub model: Option<String>,
     /// Restrict to one harness (`harness_slug`).
@@ -3304,6 +5001,39 @@ pub struct SummaryFilter {
     /// [`Self::test_case`] — but it is a plain equality filter, so on its own it
     /// selects that version of *every* case.
     pub version: Option<String>,
+    /// Restrict to a list of exact test-case versions (`test_case_version` ∈ the
+    /// list). This is the case-detail Runs tab's anchored version scope: the
+    /// console computes the versions in the anchored `major.minor` or major line
+    /// from the catalog and sends the concrete list. Like [`Self::version`], it
+    /// silences [`Self::latest_versions`] — the explicit list is the more specific
+    /// instruction. An empty or absent list applies no filter.
+    pub versions: Option<Vec<String>>,
+    /// Restrict to one engine slug (`engine_slug`) — the runtime the produced
+    /// build was written against, with `none` naming the engineless run. Runs
+    /// under different engines are not comparable, so this is how the case-detail
+    /// tabs pin a listing to the anchored engine.
+    ///
+    /// A `NULL` column is a row written before the column existed whose record no
+    /// longer deserializes (the startup backfill lifts every readable record,
+    /// pre-engine-era ones included, to a concrete slug). Such a row's engine is
+    /// unknown, so it is excluded from any engine filter — except `"none"`, where
+    /// `NULL` matches: every pre-engine-era record deserializes to `none`, so an
+    /// un-backfillable row can only plausibly be an engineless-era one.
+    pub engine: Option<String>,
+    /// Restrict to the runs launched from one gg configuration, by the configuration's
+    /// **id** (`gg_config_id`).
+    ///
+    /// The id rather than the configuration's name, which is display text an operator
+    /// rewrites freely and nothing keeps unique within an account. A coverage
+    /// cell counts by this same column, so a listing narrowed by it holds exactly the runs
+    /// a cell's count is made of, and a reviewer following a cell's link reads the rows
+    /// behind the figure they clicked.
+    ///
+    /// The bare id the account's library is keyed by, never the `saved:<id>` spelling a
+    /// stored member may carry: the run records the bare form and this is an equality on
+    /// that column. `NULL` (every non-gg run, and a gg run assembled by hand) matches no
+    /// id.
+    pub gg_config_id: Option<String>,
     /// Restrict every run to its case's **current** version — the greatest
     /// `major.minor` that case has a run for within this filter's
     /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
@@ -3315,8 +5045,17 @@ pub struct SummaryFilter {
     /// is the more specific instruction, and AND'ing the two would silently empty
     /// the listing whenever the picked version is not the current one.
     pub latest_versions: bool,
+    /// Restrict to runs whose aggregate **aesthetic** rating is exactly this wire
+    /// token (`legendary`/`amazing`/`good`/`okay`/`slop`) — an equality on the
+    /// lifted `aesthetic` column. A `NULL` column (no review has rated the
+    /// channel) matches no token, so an unrated run never appears in an
+    /// aesthetic-filtered listing. `aesthetic=legendary` newest-first is the home
+    /// page's showcase query.
+    pub aesthetic: Option<String>,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
-    /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
+    /// `test_case_slug`, `model_id`, `harness_slug`, `variant`, and `gg_preset` —
+    /// the last so a gg run is findable by the configuration name its row shows in
+    /// place of a model.
     pub q: Option<String>,
 }
 
@@ -3350,11 +5089,15 @@ pub enum SummarySort {
     Rating,
     /// By test type (`test_type`).
     TestType,
-    /// By test-case slug (`test_case_slug`).
+    /// By the test case's **display name** — what the listing's column shows — with
+    /// the slug standing in for a case the store has no name for (see
+    /// `case_name_expr`).
     TestCase,
     /// By harness slug (`harness_slug`).
     Harness,
-    /// By model id (`model_id`).
+    /// By the run's model/configuration identity — the gg configuration name where
+    /// there is one, else the model id (`COALESCE(gg_preset, model_id)`), so the
+    /// order matches what the console's MODEL / CONFIG cell actually shows.
     Model,
     /// By variant (`variant`).
     Variant,
@@ -3370,12 +5113,15 @@ pub enum SortDir {
     Asc,
 }
 
-/// The `run` query narrowed to one lifecycle slice and nothing else — the base
-/// both [`summary_query`] and the current-version resolution start from, so the
-/// versions a `latest_versions` query is measured against come from exactly the
+/// The readable `run` query narrowed to one lifecycle slice and nothing else — the
+/// base both [`summary_query`] and the current-version resolution start from, so
+/// the versions a `latest_versions` query is measured against come from exactly the
 /// slice that query lists.
+///
+/// It starts from [`readable_runs`], so the COUNT and the page a listing runs over
+/// it agree on how many rows exist.
 fn state_slice(state: SummaryState) -> Select<run::Entity> {
-    let query = run::Entity::find();
+    let query = readable_runs();
     match state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
@@ -3383,23 +5129,30 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
             query.filter(run::Column::RunState.is_in(publishable_failure_states()))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
-        // Mirrors `gate_publishable` as a query: not already public, never an
-        // infrastructure failure, and either a publishable failure tier (no review
-        // required) or a run someone has reviewed. Kept in step with the gate by
+        // Mirrors `gate_publishable` as a query: not already public, never one of the
+        // states that can never be published, and one of: a publishable failure tier
+        // (no review required), a validator-rated run (its functional rating and
+        // score stand on their own, so no review is required either), or a run
+        // someone has reviewed. The exclusion is `never_publishable_states` rather
+        // than a written-out state for the reason that helper exists: a review is
+        // enough to satisfy the second half of the rule, so any state naming itself
+        // unpublishable has to be refused by the first half or a reviewed one would
+        // be listed and then refused by the gate. Kept in step with the gate by
         // `publishable_slice_matches_the_publish_gate`.
         SummaryState::Publishable => query
             .filter(run::Column::Published.eq(false))
-            .filter(run::Column::RunState.ne("infrastructure"))
+            .filter(run::Column::RunState.is_not_in(never_publishable_states()))
             .filter(
                 Condition::any()
                     .add(run::Column::RunState.is_in(publishable_failure_states()))
+                    .add(run::Column::ValidatorRated.eq(true))
                     .add(run::Column::ReviewCount.gt(0)),
             ),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
-        // Every stored run: no lifecycle predicate at all.
+        // Every recorded run — no lifecycle predicate at all.
         SummaryState::Any => query,
     }
 }
@@ -3420,8 +5173,38 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     if let Some(version) = filter.version.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseVersion.eq(version));
     }
+    if let Some(versions) = filter.versions.as_deref().filter(|v| !v.is_empty()) {
+        query =
+            query.filter(run::Column::TestCaseVersion.is_in(versions.iter().map(String::as_str)));
+    }
+    if let Some(engine) = filter.engine.as_deref().filter(|s| !s.is_empty()) {
+        // NULL is a row whose record could not be re-read (the backfill settles every
+        // readable row to a concrete slug), so its engine is unknown and it matches no
+        // engine filter — except `none`: every pre-engine-era record deserializes to
+        // `none`, so the only engine an un-backfillable row can plausibly have is none.
+        if engine == "none" {
+            query = query.filter(
+                Condition::any()
+                    .add(run::Column::EngineSlug.eq(engine))
+                    .add(run::Column::EngineSlug.is_null()),
+            );
+        } else {
+            query = query.filter(run::Column::EngineSlug.eq(engine));
+        }
+    }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
+    }
+    if let Some(test_cases) = filter.test_cases.as_deref().filter(|v| !v.is_empty()) {
+        // AND'd with `test_case` like every other filter, so naming both narrows
+        // to their intersection (see [`SummaryFilter::test_cases`]).
+        query =
+            query.filter(run::Column::TestCaseSlug.is_in(test_cases.iter().map(String::as_str)));
+    }
+    if let Some(aesthetic) = filter.aesthetic.as_deref().filter(|s| !s.is_empty()) {
+        // A NULL column never equals a token, which is the contract: a run no
+        // review has rated on the aesthetic channel matches no tier.
+        query = query.filter(run::Column::Aesthetic.eq(aesthetic));
     }
     if let Some(model) = filter.model.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::ModelId.eq(model));
@@ -3432,6 +5215,18 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     if let Some(variant) = filter.variant.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::Variant.eq(variant));
     }
+    if let Some(config_id) = filter
+        .gg_config_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // An equality on the same column a gg cell's counts group on, so the listing this
+        // narrows to and the count a cell shows are the one set of runs. A NULL column
+        // never equals an id, which is the contract: a run launched from no configuration
+        // belongs to no configuration's listing.
+        query = query.filter(run::Column::GgConfigId.eq(config_id));
+    }
     if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         // Lower both sides so the match is case-insensitive on any backend (SQLite's
         // LIKE is ASCII-case-insensitive already; lowering makes it explicit and
@@ -3441,7 +5236,11 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
             .add(Expr::expr(Func::lower(run::Column::TestCaseSlug.into_expr())).like(&pattern))
             .add(Expr::expr(Func::lower(run::Column::ModelId.into_expr())).like(&pattern))
             .add(Expr::expr(Func::lower(run::Column::HarnessSlug.into_expr())).like(&pattern))
-            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern));
+            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern))
+            // A gg row is displayed by its configuration, so it must be findable by
+            // it. NULL (every non-gg run) simply never matches: `lower(NULL) LIKE …`
+            // is NULL, which the OR discards.
+            .add(Expr::expr(Func::lower(run::Column::GgPreset.into_expr())).like(&pattern));
         query = query.filter(text);
     }
     query
@@ -3507,20 +5306,27 @@ fn current_versions(pairs: Vec<(String, String)>) -> Vec<CaseVersions> {
 
 /// Apply the primary sort key (in `order`) to a summary query. The caller appends
 /// the `id` tiebreak. Cost/rating lead with a null-group key so NULLs always sort
-/// last regardless of `order`.
+/// last regardless of `order`. `case_names` feeds the test-case key alone.
 fn apply_summary_sort(
     query: Select<run::Entity>,
     sort: SummarySort,
     order: Order,
+    case_names: &CaseNames,
 ) -> Select<run::Entity> {
     match sort {
         SummarySort::Date => query.order_by(run::Column::StartedAt, order),
         SummarySort::Runtime => query.order_by(run::Column::RunTimeSeconds, order),
         SummarySort::Tokens => query.order_by(run::Column::TotalTokens, order),
         SummarySort::TestType => query.order_by(run::Column::TestType, order),
-        SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
+        // The TEST column shows the case's display name, so it sorts by it: a run
+        // of `pong` (shown as Carom) files under "c", not "p".
+        SummarySort::TestCase => query.order_by(case_name_expr(case_names), order),
         SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
-        SummarySort::Model => query.order_by(run::Column::ModelId, order),
+        // The MODEL / CONFIG column sorts by what it displays: a gg run's
+        // configuration name, falling back to the model id for every other run (and
+        // for a gg run recorded without one). A bare COALESCE suffices because
+        // `gg_preset` is only ever set for a gg run — see `lifted_gg_preset`.
+        SummarySort::Model => query.order_by(model_identity_expr(), order),
         SummarySort::Variant => query.order_by(run::Column::Variant, order),
         // Unknown-cost NULLs sort last in either direction: order first by a
         // null-group key (non-null `false`/0 before null `true`/1), then the value.
@@ -3536,6 +5342,38 @@ fn apply_summary_sort(
             .order_by(run::Column::Rating.into_expr().is_null(), Order::Asc)
             .order_by(rating_rank_expr(), order),
     }
+}
+
+/// The run's model/configuration identity as one sortable expression:
+/// `COALESCE(gg_preset, model_id)` — the gg configuration name where the run has
+/// one, else the model id.
+///
+/// This is the value the console's MODEL / CONFIG cell renders, so ordering by it
+/// puts a server-ordered page in the order its own header claims. Safe as a bare
+/// COALESCE because [`lifted_gg_preset`] only ever writes the column for a gg run.
+/// The display name of a run's case as a SQL expression: a `CASE` over
+/// `test_case_slug` mapping every slug in `names` to its name, with the slug itself
+/// for any other. The catalog is not in the database — the definition store holds
+/// it — so the lookup is spelled out per query rather than joined; a catalog's
+/// worth of branches is a few hundred at most. An empty map degrades to the bare
+/// slug column, which is also what a slug nobody knows sorts by.
+fn case_name_expr(names: &CaseNames) -> SimpleExpr {
+    if names.is_empty() {
+        return run::Column::TestCaseSlug.into_expr().into();
+    }
+    let mut case = CaseStatement::new();
+    for (slug, name) in names {
+        case = case.case(run::Column::TestCaseSlug.eq(slug.as_str()), name.as_str());
+    }
+    case.finally(run::Column::TestCaseSlug.into_expr()).into()
+}
+
+fn model_identity_expr() -> SimpleExpr {
+    Func::coalesce([
+        run::Column::GgPreset.into_expr().into(),
+        run::Column::ModelId.into_expr().into(),
+    ])
+    .into()
 }
 
 /// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
@@ -3556,10 +5394,10 @@ fn rating_rank_expr() -> SimpleExpr {
 }
 
 /// The wire strings of the **publishable failure** tiers — catastrophic,
-/// timed-out, and harness-error — the slice every failures-only
+/// timed-out, harness-error, limit-exceeded and hung — the slice every failures-only
 /// query and publish gate filters on.
 ///
-/// Derived from [`RunState::is_publishable_failure`] rather than written out, so a
+/// Derived from [`RunState::is_publishable_failure`](test_cabinet_core::run_record::RunState::is_publishable_failure) rather than written out, so a
 /// new failure tier cannot be added to the contract and silently missed here.
 /// `publishable_failure_states_match_the_contract` pins the two together.
 fn publishable_failure_states() -> Vec<&'static str> {
@@ -3578,9 +5416,26 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::Catastrophic => "catastrophic",
         RunState::TimedOut => "timed_out",
         RunState::HarnessError => "harness_error",
+        RunState::LimitExceeded => "limit_exceeded",
         RunState::Hung => "hung",
         RunState::Infrastructure => "infrastructure",
+        RunState::Canceled => "canceled",
     }
+}
+
+/// The wire strings of the run states that can **never** be published — today the
+/// infrastructure failure (our fault, not a model result) and an operator-canceled
+/// run (a deliberate stop, not an outcome). Both are retained for inspection only.
+///
+/// Derived from [`RunState::is_publishable`](test_cabinet_core::run_record::RunState::is_publishable) rather than written out, for the same
+/// reason [`publishable_failure_states`] is: a new never-publishable state cannot be
+/// added to the contract and silently slip through the publish gate.
+fn never_publishable_states() -> Vec<&'static str> {
+    test_cabinet_core::run_record::RunState::ALL
+        .into_iter()
+        .filter(|state| !state.is_publishable())
+        .map(run_state_str)
+        .collect()
 }
 
 /// Extract the filesystem path from a SQLite **file** connection URL, or `None`
@@ -3704,6 +5559,36 @@ pub struct NewJob {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The engine the launch request names, lifted at enqueue — the fourth segment of a
+    /// queued run's [cell identity](CellKey). `None` where the request named none, which
+    /// is the `none` engine every grouped count coalesces it to.
+    ///
+    /// A column for the reason `harness_slug` and `model_id` are: the queue counts a
+    /// cell's in-flight runs in SQL, and a count that must first deserialize a launch
+    /// request per row is not a count the database can do.
+    pub engine_slug: Option<String>,
+    /// The **gg** run's capability set serialized to JSON, lifted from the launch
+    /// request at enqueue. `None` for every third-party-harness job.
+    pub gg_config_json: Option<String>,
+    /// The **gg** run's configuration name, lifted from that same capability set for the
+    /// console's active-run list. Display text, not identity — that is
+    /// [`gg_config_id`](Self::gg_config_id). `None` for every third-party-harness job,
+    /// and for a gg run assembled without a configuration.
+    pub gg_preset: Option<String>,
+    /// The id of the **gg** configuration the run was launched from, lifted from that
+    /// same capability set — the first half of a queued gg run's
+    /// [cell identity](CellKey). `None` for every third-party-harness job, and for a gg
+    /// run assembled without a configuration.
+    pub gg_config_id: Option<String>,
+    /// The models the **gg** run's capability set binds, as one comparable string — the
+    /// second half of a queued gg run's [cell identity](CellKey). `None` for every
+    /// third-party-harness job.
+    ///
+    /// Lifted into its own column rather than derived per row from `gg_config_json`,
+    /// for the reason `harness_slug` and `model_id` already are: the queue counts a
+    /// cell's in-flight runs in SQL, and a count that must first deserialize a
+    /// capability set per row is not a count the database can do.
+    pub gg_models: Option<String>,
     /// The per-job bearer token the driver authenticates its streaming with.
     pub job_token: String,
     /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
@@ -3757,6 +5642,11 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         test_type: Set(new.test_type),
         harness_slug: Set(new.harness_slug),
         model_id: Set(new.model_id),
+        engine_slug: Set(new.engine_slug),
+        gg_config_json: Set(new.gg_config_json),
+        gg_preset: Set(new.gg_preset),
+        gg_config_id: Set(new.gg_config_id),
+        gg_models: Set(new.gg_models),
         job_token: Set(new.job_token),
         record_id: Set(None),
         detail: Set(None),
@@ -3765,6 +5655,9 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         origin: Set(new.origin.as_ref().map(JobOrigin::as_token)),
         created_at: Set(new.created_at.clone()),
         updated_at: Set(new.created_at),
+        // A queued job has not started; the anchor is stamped by the transition into
+        // `starting`, not by joining the queue.
+        started_at: Set(None),
     }
 }
 
@@ -3814,7 +5707,7 @@ impl Db {
         if jobs.is_empty() {
             return Ok(());
         }
-        // Each row binds ~16 columns; a 1000-row chunk is ~16k parameters, well
+        // Each row binds ~18 columns; a 1000-row chunk is ~18k parameters, well
         // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
         const CHUNK: usize = 1000;
         let txn = self.conn().begin().await?;
@@ -4038,6 +5931,47 @@ impl Db {
         Ok(Some(updated))
     }
 
+    /// Attach the produced `record_id` to an already-`canceled` job, leaving its
+    /// state and cancellation `detail` alone. Returns the updated row, or `None`
+    /// when the job is unknown or is not canceled.
+    ///
+    /// The one sanctioned write to a canceled job, and the reason it is not
+    /// [`set_job_state`](Db::set_job_state): a killed gg run's driver winds the session
+    /// down, builds the record for what it got, and posts it after the cancel landed.
+    /// Without this the record would be discarded and the killed run would vanish from
+    /// the run list. It cannot resurrect the job — `state` is never written — and an
+    /// already-attached record is not overwritten, so a duplicate report from a
+    /// winding-down driver is a no-op.
+    ///
+    /// A killed run of any other harness never reaches here: its driver destroys the run
+    /// and posts no record, so the job stays canceled with nothing attached. Nor does a
+    /// third-party run that reached its own ending before its driver noticed the kill:
+    /// it posts an ordinary terminal status, which the canceled-job guard in
+    /// `update_status` turns away before any record is attached.
+    pub async fn attach_canceled_job_record(
+        &self,
+        id: &str,
+        record_id: &str,
+        now: &str,
+    ) -> Result<Option<job::Model>> {
+        let txn = self.conn().begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.eq("canceled"))
+            .filter(job::Column::RecordId.is_null())
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.record_id = Set(Some(record_id.to_string()));
+        active.updated_at = Set(now.to_string());
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
     /// Cancel every in-flight job matching `filter` in one statement, moving each to
     /// the terminal `canceled` state with `detail` as its reason, and return how many
     /// were cancelled.
@@ -4097,6 +6031,22 @@ impl Db {
     /// `None`): once an operator has canceled a run, a late `running`/`succeeded`/
     /// `failed` report from the still-winding-down driver must not resurrect or
     /// overwrite it.
+    ///
+    /// This is also where `started_at` is stamped, because it is the one choke point
+    /// every job transition passes through. The anchor is the move into `starting`:
+    /// the driver posts that as its very first act and *then* takes the `started_at`
+    /// its produced record's `startedAt` is measured from, so the stamp and the record
+    /// name the same moment. What a duration ticked from it does and does not carry is
+    /// on [`test_cabinet_core::job_api::JobSummary::started_at`], which reports it to
+    /// the console. `dispatched` would wrongly bill the run for pod scheduling and the
+    /// image pull; `running` would wrongly omit setup, which is inside
+    /// `run_time_seconds`. `running` is nonetheless a fallback anchor for a driver that
+    /// never reported `starting`, since a running row with no start time is worse than
+    /// a slightly late one.
+    ///
+    /// Stamped once and never rewritten — the later `running` report must not restart
+    /// the clock — and never stamped for `queued`, `pending`, or `dispatched`, none of
+    /// which is time the run spent working.
     pub async fn set_job_state(
         &self,
         id: &str,
@@ -4112,9 +6062,13 @@ impl Db {
         else {
             return Ok(None);
         };
+        let unstarted = model.started_at.is_none();
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
+        if unstarted && matches!(state, "starting" | "running") {
+            active.started_at = Set(Some(now.to_string()));
+        }
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
         }
@@ -4190,7 +6144,36 @@ impl Db {
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn(), run_id, &run.run_state).await
+        gate_publishable(
+            &self.conn(),
+            run_id,
+            &run.run_state,
+            run.validator_rated,
+            false,
+        )
+        .await
+    }
+
+    /// Gate a run for publishing **as a comparison arm run**: the same checks as
+    /// [`Self::ensure_publishable`], but the review requirement is waived for a run
+    /// that carries automated validation verdicts (a comparison scores its runs by
+    /// machine, not by a human reviewer). An infrastructure failure, or a review-less
+    /// run with no automated verdicts, is still refused.
+    pub async fn ensure_publishable_comparison_run(&self, run_id: &str) -> Result<()> {
+        let run = run::Entity::find_by_id(run_id.to_string())
+            .one(&self.conn())
+            .await?
+            .ok_or_else(|| {
+                crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
+            })?;
+        gate_publishable(
+            &self.conn(),
+            run_id,
+            &run.run_state,
+            run.validator_rated,
+            true,
+        )
+        .await
     }
 
     /// The publish job already releasing `run_id` — one that is `queued`, or
@@ -4357,6 +6340,8 @@ impl Db {
         active.record_json = Set(record_json);
         active.update(&txn).await?;
 
+        touch_run(&txn, run_id).await?;
+
         // Upsert the links sibling, exactly like `push`.
         run_link::Entity::insert(run_link::ActiveModel {
             run_id: Set(run_id.to_string()),
@@ -4419,7 +6404,7 @@ pub struct StoredModel {
 }
 
 /// The write payload for [`Db::upsert_model_config`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ModelConfigWrite {
     pub slug: String,
     pub display_name: String,
@@ -4428,6 +6413,40 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
+    /// The developer provider set by hand: the OpenRouter provider name of the model
+    /// developer's own endpoint, or `None` to take the one the endpoints listing names for the
+    /// model id's author segment.
+    pub provider_pin: Option<String>,
+    /// The native quantization set by hand, lowercased, or `None` to take the highest level any
+    /// endpoint declares.
+    pub native_quantization: Option<String>,
+    /// The input half of the price ceiling, USD per million tokens. Set with
+    /// [`max_output_price`](Self::max_output_price) or not at all.
+    pub max_input_price: Option<f64>,
+    /// The output half of the price ceiling, USD per million tokens.
+    pub max_output_price: Option<f64>,
+    /// The providers a gg run of the model never uses. Empty is stored as `NULL`.
+    pub banned_providers: Vec<String>,
+    /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
+    /// `NULL`.
+    pub unknown_quantization_providers: Vec<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). The write is
+    /// **all-or-nothing**: a caller writes all three prices plus
+    /// `list_price_as_of`, or nothing — the store enforces nothing but the API
+    /// layer does.
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. See [`list_price_input`](Self::list_price_input).
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// See [`list_price_input`](Self::list_price_input).
+    pub list_price_output: Option<f64>,
+    /// The date the operator took the list-price figures.
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (`hand` for an operator-entered
+    /// set).
+    pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
@@ -4445,6 +6464,31 @@ pub struct PriceWrite {
     pub output: Option<f64>,
     pub context_length: Option<i64>,
     pub released_at: Option<String>,
+    /// The accepted input modalities as a comma-separated lowercase list, or
+    /// `None` when OpenRouter reported none (unknown, not "text only").
+    pub input_modalities: Option<String>,
+    /// The developer provider observed for the model, or `None` when the listing named no
+    /// endpoint from its developer.
+    pub provider_pin: Option<String>,
+}
+
+/// The stored form of a catalog entry's provider list: a JSON array of names, or `NULL` for an
+/// empty list.
+fn provider_list_column(providers: &[String]) -> Option<String> {
+    (!providers.is_empty())
+        .then(|| serde_json::to_string(providers).expect("a list of strings always serializes"))
+}
+
+/// Read a catalog entry's provider list column back: `NULL`, and a value that does not parse as
+/// a JSON array of strings, are an empty list. Blank names are dropped.
+pub fn provider_list(column: Option<&str>) -> Vec<String> {
+    column
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
@@ -4539,6 +6583,19 @@ impl Db {
             provider_logo_svg: Set(write.provider_logo_svg),
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
+            provider_pin: Set(write.provider_pin),
+            native_quantization: Set(write.native_quantization),
+            max_input_price: Set(write.max_input_price),
+            max_output_price: Set(write.max_output_price),
+            banned_providers: Set(provider_list_column(&write.banned_providers)),
+            unknown_quantization_providers: Set(provider_list_column(
+                &write.unknown_quantization_providers,
+            )),
+            list_price_input: Set(write.list_price_input),
+            list_price_cached_input: Set(write.list_price_cached_input),
+            list_price_output: Set(write.list_price_output),
+            list_price_as_of: Set(write.list_price_as_of),
+            list_price_source: Set(write.list_price_source),
             created_at: Set(created_at),
             updated_at: Set(write.now),
         };
@@ -4552,6 +6609,17 @@ impl Db {
                         model::Column::ProviderLogoSvg,
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
+                        model::Column::ProviderPin,
+                        model::Column::NativeQuantization,
+                        model::Column::MaxInputPrice,
+                        model::Column::MaxOutputPrice,
+                        model::Column::BannedProviders,
+                        model::Column::UnknownQuantizationProviders,
+                        model::Column::ListPriceInput,
+                        model::Column::ListPriceCachedInput,
+                        model::Column::ListPriceOutput,
+                        model::Column::ListPriceAsOf,
+                        model::Column::ListPriceSource,
                         model::Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -4566,7 +6634,7 @@ impl Db {
             .await?;
         for entry in write.aliases {
             model_alias::Entity::insert(model_alias::ActiveModel {
-                id: Set(uuid::Uuid::new_v4().to_string()),
+                id: Set(cuid2::create_id()),
                 model_slug: Set(write.slug.clone()),
                 alias: Set(entry.alias),
                 harness_family: Set(entry.family.as_str().to_string()),
@@ -4635,6 +6703,8 @@ impl Db {
             output: Set(write.output),
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
+            input_modalities: Set(write.input_modalities),
+            provider_pin: Set(write.provider_pin),
         })
         .exec(&self.conn())
         .await?;
@@ -4652,6 +6722,49 @@ impl Db {
             .await?)
     }
 
+    /// The catalog's curated list price for a run's model, or a human-readable
+    /// reason the model has none. `Ok(Ok(_))` when the model is curated and fully
+    /// priced; `Ok(Err(reason))` when it is unpriced.
+    pub async fn list_price_for_run_model(
+        &self,
+        model_id: &str,
+        harness: HarnessSlug,
+    ) -> Result<std::result::Result<TokenPrices, String>> {
+        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let Some(alias) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(&canonical))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        let config = model::Entity::find_by_id(alias.model_slug)
+            .one(&self.conn())
+            .await?;
+        let Some(config) = config else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Ok(Ok(TokenPrices {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            })),
+            _ => Ok(Err(format!(
+                "model `{canonical}` ({}) has no list price; set it on the model's catalog entry (the Models section) to run it",
+                config.display_name
+            ))),
+        }
+    }
+
     /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
     /// to price a run's model against its configured OpenRouter slug rather than a
     /// slug guessed from the run's model id.
@@ -4667,6 +6780,29 @@ impl Db {
             .one(&self.conn())
             .await?
             .and_then(|m| m.openrouter_slug))
+    }
+
+    /// The curated model that claims `alias`, with its aliases, or `None` for an alias no curated
+    /// model claims.
+    pub async fn model_config_for_alias(&self, alias: &str) -> Result<Option<StoredModel>> {
+        let Some(row) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(alias))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.get_model_config(&row.model_slug).await
+    }
+
+    /// The hand-set developer provider of the curated model that claims `alias`, if one is set.
+    /// Absent means the observed listing name is the developer provider.
+    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        Ok(self
+            .model_config_for_alias(alias)
+            .await?
+            .and_then(|stored| stored.config.provider_pin)
+            .filter(|provider| !provider.trim().is_empty()))
     }
 
     /// Every `(id, alias, harness_family)` triple across all curated models. Used
@@ -4721,10 +6857,11 @@ impl Db {
     /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
     /// strip the tag from the lifted `model_id` column and the record's
     /// `subject.modelId`, and recompute the run's comparable cost at the base
-    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
-    /// price is unavailable has its cost set to unknown rather than left at the
-    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
-    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    /// model's **curated list price** (from `list_prices`, keyed by canonical
+    /// model id). A run whose base model has no list price has its cost set to
+    /// unknown rather than left at the misleading `$0.00` a free tag produces.
+    /// Idempotent (an already-stripped run is unchanged) and best-effort per row.
+    /// Returns how many runs were rewritten.
     ///
     /// Only rows whose `model_id` actually carries a `:` are loaded — the same
     /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
@@ -4733,7 +6870,7 @@ impl Db {
     /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
-        base_prices: &std::collections::HashMap<String, TokenPrices>,
+        list_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::ModelId.contains(":"))
@@ -4755,9 +6892,8 @@ impl Db {
                 continue;
             };
             record.subject.model_id = base.clone();
-            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
-            let comparable = base_prices
-                .get(&lookup)
+            let comparable = list_prices
+                .get(&base)
                 .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
             record.metrics.cost = Cost {
                 comparable,
@@ -4765,12 +6901,14 @@ impl Db {
             };
             let record_json = serde_json::to_string(&record)?;
 
+            let id = row.id.clone();
             let mut active = row.into_active_model();
             active.model_id = Set(base);
             // Keep the lifted cost column in step with the record's recomputed cost.
             active.cost_comparable = Set(comparable);
             active.record_json = Set(record_json);
             active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
             rewritten += 1;
         }
         Ok(rewritten)
@@ -4778,14 +6916,21 @@ impl Db {
 
     /// Backfill the sort/filter columns lifted onto the `run` row after rows
     /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
-    /// `cost_comparable`, `rating`, `review_count`): parse each un-backfilled row's
-    /// record for the record-derived columns and compute `rating` / `review_count`
-    /// from its reviews.
+    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`, `gg_config_id`,
+    /// `gg_models`): parse each
+    /// un-backfilled row's record for the record-derived columns and compute
+    /// `rating` / `review_count` from its reviews.
     ///
     /// Idempotent: a row is "un-backfilled" iff its `test_type` is still the empty
     /// string the migration's default stamped — a value no real run carries, since
     /// every write sets a kebab-case token. A second boot (or a store whose rows
     /// were all written with the columns already populated) therefore does no work.
+    ///
+    /// That candidate rule is also why this is **not** what fills a gg row's cell identity: a
+    /// gg run has always carried a `test_type`, so no gg row is ever a candidate here. The
+    /// gg columns are filled for those rows by [`Self::backfill_gg_models`] and
+    /// [`Self::backfill_gg_config_id`] instead; they are written here as well only so a row
+    /// this pass does claim is left complete.
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
     /// `assemble` tolerate such rows). Returns how many rows were filled.
@@ -4821,19 +6966,605 @@ impl Db {
             };
             let lifted = lifted_run_metrics(&record);
             let reviews = review_map.get(&row.id).map(Vec::as_slice).unwrap_or(&[]);
-            let rating = lifted_rating(reviews);
+            // Rows this backfill fills predate validator-rated versions, so the
+            // legacy review aggregate is the right rating for every one of them.
+            let rating = lifted_rating(None, &record, reviews);
+            let aesthetic = lifted_aesthetic(reviews);
             let review_count = reviews.len() as i64;
 
+            let id = row.id.clone();
             let mut active = row.into_active_model();
             active.test_type = Set(lifted.test_type);
             active.run_time_seconds = Set(lifted.run_time_seconds);
             active.total_tokens = Set(lifted.total_tokens);
             active.cost_comparable = Set(lifted.cost_comparable);
+            active.code_analyzer_version = Set(lifted.code_analyzer_version);
             active.rating = Set(rating);
+            active.aesthetic = Set(aesthetic);
             active.review_count = Set(review_count);
+            active.gg_preset = Set(lifted.gg_preset);
+            active.gg_config_id = Set(lifted.gg_config_id);
+            active.gg_models = Set(lifted.gg_models);
+            active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `code_analyzer_version` column for runs whose record already
+    /// carries a code analysis but which were stored before the column existed.
+    ///
+    /// **This does not analyse anything.** There is no backfill of the analysis itself,
+    /// deliberately: a historical run's tree can only be re-read in its archived,
+    /// post-validation state — carrying build output, a rewritten lockfile and toolchain
+    /// caches — and those are not the figures a fresh run reports. Stamping them into the
+    /// same corpus would create exactly the silent incomparability the version column
+    /// exists to prevent. So the corpus starts at ship day and this routine only lifts a
+    /// number that is *already in the record blob* into a column that can be queried.
+    ///
+    /// Scoped to rows that are still `NULL` **and whose record blob actually mentions an
+    /// analysis**, so the candidate set settles to empty.
+    ///
+    /// The second filter is what makes the difference, and it is not an optimization of
+    /// degree. A `NULL` here is ambiguous — "not yet lifted" or "carries no analysis" —
+    /// and the analysis-less half is *every run recorded before the analyzer shipped*,
+    /// which is the whole historical corpus and grows without bound. Selecting on the
+    /// column alone would therefore fetch and `serde_json`-parse every one of them, at
+    /// tens of kilobytes of `record_json` apiece, on every boot, before the router is
+    /// built — an unbounded startup cost in a service whose availability incidents have
+    /// been single-replica ones. `codeAnalysis` is
+    /// [omitted from the blob when absent](test_cabinet_core::run_record::RunRecord::code_analysis),
+    /// so the substring is a sound over-approximation of "has an analysis": it can only
+    /// fail toward including a row, never toward skipping one that needed the lift. A
+    /// spurious match — the string occurring somewhere else in the record — parses, finds
+    /// nothing to lift and stays `NULL`: a harmless no-write residue. The same pushdown
+    /// [`Self::has_free_tag_candidates`] uses to keep a boot's price fetch off the wire.
+    ///
+    /// Best-effort per row: a record that no longer deserializes is left for a later
+    /// boot. Returns how many rows were filled.
+    pub async fn backfill_code_analyzer_version(&self) -> Result<usize> {
+        let rows = run::Entity::find()
+            .filter(run::Column::CodeAnalyzerVersion.is_null())
+            .filter(run::Column::RecordJson.contains("\"codeAnalysis\""))
+            .all(&self.conn())
+            .await?;
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            let Some(version) = lifted_code_analyzer_version(&record) else {
+                continue;
+            };
+            let id = row.id.clone();
+            let mut active = row.into_active_model();
+            active.code_analyzer_version = Set(Some(version));
+            active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `engine_slug` column for rows stored before the column
+    /// existed: parse each `NULL` row's record and lift `record.subject.engine_slug`
+    /// into the column — `none` included, since the engineless run is a real value
+    /// the engine filter matches on, not an absence.
+    ///
+    /// Unlike [`Self::backfill_code_analyzer_version`], no record-blob pushdown is
+    /// needed for the candidate set to settle: every readable record carries a slug
+    /// (a pre-engine-era record deserializes to the default `none`), so one
+    /// successful pass leaves `NULL` only on rows whose record no longer
+    /// deserializes — a bounded residue, not the whole historical corpus.
+    ///
+    /// Best-effort per row: a record that no longer deserializes is left for a later
+    /// boot (and is the reason the engine filter treats `NULL` as unknown). Returns
+    /// how many rows were filled.
+    ///
+    /// The pass is paged by an `id` cursor because its first boot visits the ENTIRE
+    /// historical corpus — every pre-migration row is `NULL` — and each row carries
+    /// its multi-KB record (and event) blobs; one unpaged `.all()` would materialize
+    /// all of it in memory before the router is even built, on the single-replica
+    /// coordinator. An `id` cursor rather than offset paging (or re-querying the
+    /// first N `NULL`s) is load-bearing twice over: filled rows leave the `NULL`
+    /// predicate mid-pass, which would shift offset pages, and undeserializable rows
+    /// stay `NULL`, which would pin a "first N" loop in place forever.
+    pub async fn backfill_engine_slug(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find().filter(run::Column::EngineSlug.is_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.id.clone());
+
+            for row in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                    continue;
+                };
+                let id = row.id.clone();
+                let mut active = row.into_active_model();
+                active.engine_slug = Set(Some(record.subject.engine_slug));
+                active.update(&self.conn()).await?;
+                touch_run(&self.conn(), &id).await?;
+                backfilled += 1;
+            }
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the second half of a gg run's [cell identity](CellKey) — `run.gg_models` — for
+    /// the gg rows stored before the column existed, by re-deriving it from each row's own
+    /// recorded capability set.
+    ///
+    /// **This is not covered by [`Self::backfill_sort_columns`]**, and the difference matters
+    /// enough to say twice. That pass selects rows whose `test_type` is still the empty string
+    /// the migration's default stamped, which is how it identifies a row written before *that*
+    /// column existed. Every gg run in a live store was written long after `test_type` shipped,
+    /// so no gg row is ever a candidate there and none would ever be filled.
+    ///
+    /// Left unfilled, the column reads as `NULL`, which every grouped coverage query coalesces
+    /// to the empty string — the **harness** form of the cell key. So the entire gg backlog
+    /// would count toward no gg cell at all: a plan's cells would read zero however many runs
+    /// stood behind them, its top-up would re-buy work that already exists, and a ladder rung
+    /// gated on a configuration would find no evidence in its own history. Coverage counts are
+    /// global precisely so that a run someone already paid for is never re-requested, and that
+    /// promise is only kept if the runs that predate the column are keyed like the ones after
+    /// it.
+    ///
+    /// Idempotent and best-effort per row, exactly as the backfills above are: a gg row whose
+    /// record no longer deserializes, or which records no capability set at all (a run
+    /// assembled by hand), keeps its `NULL` and is simply revisited by a later boot — a bounded
+    /// residue, since a set is what a gg run is launched from. Paged by an `id` cursor for the
+    /// same reason [`Self::backfill_engine_slug`] is: the first boot after the migration visits
+    /// every gg run in the store, each carrying its multi-KB blobs.
+    pub async fn backfill_gg_models(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find()
+                .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+                .filter(run::Column::GgModels.is_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.id.clone());
+
+            for row in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                    continue;
+                };
+                // Asked of the same lift a push writes, so a backfilled row and a freshly
+                // pushed one land in one cell rather than in two that differ by a comma.
+                let Some(models) = lifted_gg_models(&record) else {
+                    continue;
+                };
+                let id = row.id.clone();
+                let mut active = row.into_active_model();
+                active.gg_models = Set(Some(models));
+                // The configuration's name is lifted from the same set and gated on the same
+                // harness, so a row missing one is missing both; fill the pair together rather
+                // than leaving half a cell identity behind.
+                active.gg_preset = Set(lifted_gg_preset(&record));
+                active.update(&self.conn()).await?;
+                touch_run(&self.conn(), &id).await?;
+                backfilled += 1;
+            }
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the same two segments on the gg **jobs still in flight** at the moment the
+    /// columns arrived, re-deriving them from the capability set the job was enqueued with.
+    ///
+    /// A queued gg job with no lifted pair counts toward the harness-shaped cell rather than
+    /// its own, which is the one case where the missing identity does not merely under-count
+    /// but actively over-spends: a plan sees zero runs coming for a cell that already has
+    /// several on the way and enqueues a second set on top of them.
+    ///
+    /// Bounded to the non-terminal states on purpose. A finished job's counts come from the
+    /// `run` row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads; what is left in flight across a deploy is at most the queue's
+    /// depth.
+    pub async fn backfill_in_flight_gg_cells(&self) -> Result<usize> {
+        let rows = job::Entity::find()
+            .filter(job::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .filter(job::Column::GgModels.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Some(json) = row.gg_config_json.as_deref() else {
+                continue;
+            };
+            let Ok(set) = serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json)
+            else {
+                continue;
+            };
+            let mut active = row.into_active_model();
+            active.gg_models = Set(Some(set.bound_model_key()));
+            active.gg_preset = Set(set.preset.clone());
             active.update(&self.conn()).await?;
             backfilled += 1;
         }
+        Ok(backfilled)
+    }
+
+    /// Backfill `job.engine_slug` on the **jobs still in flight** at the moment the column
+    /// arrived, re-deriving it from each row's own launch request.
+    ///
+    /// Only a job that actually names an engine needs it. A request with no engine key is a
+    /// `none` run, which is exactly what a `NULL` column already coalesces to, so leaving it
+    /// `NULL` is not a loss — the rows this fixes are the ones whose runs will land in a
+    /// non-`none` cell while the job counts toward the `none` one. That mismatch is the case
+    /// where a missing lift does not merely under-count but over-spends: a plan sees no runs
+    /// coming for a cell that already has several on the way and buys a second set.
+    ///
+    /// Bounded to the non-terminal states for the reason
+    /// [`Self::backfill_in_flight_gg_cells`] is: a finished job's counts come from the `run`
+    /// row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads; what is left in flight across a deploy is at most the queue's
+    /// depth. Best-effort per row — a request that no longer deserializes keeps its `NULL`.
+    pub async fn backfill_in_flight_engine_slugs(&self) -> Result<usize> {
+        let rows = job::Entity::find()
+            .filter(job::Column::EngineSlug.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(body) = serde_json::from_str::<test_cabinet_core::LaunchBody>(&row.request_json)
+            else {
+                continue;
+            };
+            let Some(engine) = body.engine.filter(|slug| !slug.trim().is_empty()) else {
+                continue;
+            };
+            let mut active = row.into_active_model();
+            active.engine_slug = Set(Some(engine));
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the other half of a gg run's [cell identity](CellKey) —
+    /// `run.gg_config_id` — for the gg rows recorded before the column existed.
+    ///
+    /// Unlike every backfill above it, this one cannot be re-derived from the row: an older
+    /// run records the configuration's **name** and nothing else, and the name is not the
+    /// id. What resolves it is the `job` that produced the run — `job.record_id` points at
+    /// the run and `job.user_id` at the account that launched it — because a configuration
+    /// is account-scoped, so a name only means something inside one account. The launching
+    /// account's configurations are then matched by name.
+    ///
+    /// A resolved row is written in **both** places the id lives: the record's
+    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) and the column
+    /// lifted from it. The column is what the grouped counts read and the record is what a
+    /// cell's review queue matches a run against, so filling one alone would produce a run
+    /// that counts toward a cell and can never be offered for review in it — a review-buffer
+    /// slot spent on a run no reviewer is ever shown.
+    ///
+    /// Both are left alone whenever the answer is not exact: no job points at the run, the
+    /// job that does is unattributed, two jobs disagree about whose run it is, the account
+    /// no longer has a configuration by that name, or it has more than one. A miss
+    /// under-counts one cell, which the next top-up fills with new runs; a guess would merge
+    /// two configurations' histories permanently, and no later pass could tell it had
+    /// happened. Rows recording no name at all — a set assembled by hand — are never
+    /// candidates: they belong in no configuration's cell.
+    ///
+    /// **One-shot**, unlike every other backfill here, and marked as such in
+    /// [`backfill_state`] once a pass completes. The name it resolves through is the one
+    /// thing an operator edits freely, so re-examining the residue on a later boot would
+    /// answer with a configuration library that has since moved: a rename frees a name, a
+    /// new configuration takes it, and the old configuration's whole history is adopted by a
+    /// configuration that never ran any of it. A pass that fails part way writes no marker
+    /// and runs again on the next boot.
+    ///
+    /// Best-effort and batched exactly as [`Self::backfill_gg_models`] is. Paged by an `id`
+    /// cursor, and scanning only the two columns it needs, with the whole row read for the
+    /// rows it actually resolves, because the one pass visits every gg run in the store.
+    pub async fn backfill_gg_config_id(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        if self.backfill_completed(RUN_GG_CONFIG_ID_BACKFILL).await? {
+            return Ok(0);
+        }
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        // One name→ids map per account, kept across batches: a store's gg runs cluster into
+        // a handful of accounts, and re-reading a configuration list per batch would be the
+        // bulk of the work.
+        let mut by_account: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        loop {
+            let mut query = run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::GgPreset)
+                .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+                .filter(run::Column::GgConfigId.is_null())
+                .filter(run::Column::GgPreset.is_not_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<(String, Option<String>)> = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some((last, _)) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.clone());
+
+            let launchers = self
+                .launching_accounts(rows.iter().map(|(id, _)| id.clone()).collect())
+                .await?;
+            let wanted: Vec<String> = launchers
+                .values()
+                .filter(|user_id| !by_account.contains_key(*user_id))
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            by_account.extend(self.gg_config_ids_by_name(&wanted).await?);
+
+            for (run_id, preset) in rows {
+                let Some(preset) = preset else {
+                    continue;
+                };
+                let Some(user_id) = launchers.get(&run_id) else {
+                    continue;
+                };
+                let Some(config_id) = by_account
+                    .get(user_id)
+                    .and_then(|configs| configs.get(&preset))
+                    .filter(|ids| ids.len() == 1)
+                    .and_then(|ids| ids.first())
+                    .cloned()
+                else {
+                    continue;
+                };
+                if self.stamp_run_gg_config_id(&run_id, &config_id).await? {
+                    backfilled += 1;
+                }
+            }
+        }
+        self.mark_backfill_complete(RUN_GG_CONFIG_ID_BACKFILL)
+            .await?;
+        Ok(backfilled)
+    }
+
+    /// Write one resolved configuration id onto a run, in the record and in the column
+    /// lifted from it, and report whether the row was rewritten.
+    ///
+    /// The record is the authority: a run whose stored capability set no longer
+    /// deserializes, or which carries no capability set at all, is left entirely alone
+    /// rather than given a column its record cannot account for.
+    async fn stamp_run_gg_config_id(&self, run_id: &str, config_id: &str) -> Result<bool> {
+        let Some(row) = run::Entity::find_by_id(run_id).one(&self.conn()).await? else {
+            return Ok(false);
+        };
+        let Ok(mut record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+            return Ok(false);
+        };
+        let Some(set) = record.subject.gg_capability_set.as_mut() else {
+            return Ok(false);
+        };
+        set.preset_id = Some(config_id.to_string());
+        let record_json = serde_json::to_string(&record)?;
+        let mut active = row.into_active_model();
+        active.gg_config_id = Set(Some(config_id.to_string()));
+        active.record_json = Set(record_json);
+        active.update(&self.conn()).await?;
+        touch_run(&self.conn(), run_id).await?;
+        Ok(true)
+    }
+
+    /// Whether the named startup backfill has already run to completion.
+    ///
+    /// Only the passes that must run **once** ask this. A backfill that re-derives a column
+    /// from the row holding the answer needs no marker: filling a row removes it from the
+    /// candidate set, so the pass settles to empty by itself.
+    async fn backfill_completed(&self, key: &str) -> Result<bool> {
+        Ok(backfill_state::Entity::find_by_id(key.to_string())
+            .one(&self.conn())
+            .await?
+            .is_some())
+    }
+
+    /// Record that the named startup backfill has completed, so no later boot re-examines
+    /// the rows it left unresolved. Called only on a pass that ran through without error.
+    async fn mark_backfill_complete(&self, key: &str) -> Result<()> {
+        let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        backfill_state::Entity::insert(backfill_state::ActiveModel {
+            id: Set(key.to_string()),
+            completed_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::column(backfill_state::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .do_nothing()
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Which account launched each of `run_ids`, via the `job` that produced the run — the
+    /// only link a `run` row has to an account, since a run belongs to no one.
+    ///
+    /// A run with no attributed job is absent, and so is one two jobs claim for two
+    /// different accounts: a retried run keeps its original launcher, so a disagreement is a
+    /// store nobody can interpret rather than a tie to break.
+    async fn launching_accounts(&self, run_ids: Vec<String>) -> Result<HashMap<String, String>> {
+        let rows: Vec<(Option<String>, Option<String>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::RecordId)
+            .column(job::Column::UserId)
+            .filter(job::Column::RecordId.is_in(run_ids))
+            .filter(job::Column::UserId.is_not_null())
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut launchers: HashMap<String, String> = HashMap::new();
+        let mut disputed: Vec<String> = Vec::new();
+        for (record_id, user_id) in rows {
+            let (Some(record_id), Some(user_id)) = (record_id, user_id) else {
+                continue;
+            };
+            match launchers.get(&record_id) {
+                Some(seen) if seen != &user_id => disputed.push(record_id),
+                _ => {
+                    launchers.insert(record_id, user_id);
+                }
+            }
+        }
+        for record_id in disputed {
+            launchers.remove(&record_id);
+        }
+        Ok(launchers)
+    }
+
+    /// Every configuration each of `user_ids` has saved, as a name→ids map per account.
+    ///
+    /// The ids are a list rather than one id because nothing makes a configuration's name
+    /// unique within an account — which is one of the reasons a cell is keyed on the id in
+    /// the first place. A name that lands on two ids is ambiguous and its runs are left
+    /// unattributed; the caller decides that by asking for the length.
+    async fn gg_config_ids_by_name(
+        &self,
+        user_ids: &[String],
+    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>> {
+        let mut by_account: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        if user_ids.is_empty() {
+            return Ok(by_account);
+        }
+        // Every named account gets an entry, even one with no configurations at all, so the
+        // caller's cache does not re-query it on every batch.
+        for user_id in user_ids {
+            by_account.entry(user_id.clone()).or_default();
+        }
+        let rows: Vec<(String, String, String)> = gg_config::Entity::find()
+            .select_only()
+            .column(gg_config::Column::UserId)
+            .column(gg_config::Column::Name)
+            .column(gg_config::Column::Id)
+            .filter(gg_config::Column::UserId.is_in(user_ids.iter().map(String::as_str)))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        for (user_id, name, id) in rows {
+            by_account
+                .entry(user_id)
+                .or_default()
+                .entry(name)
+                .or_default()
+                .push(id);
+        }
+        Ok(by_account)
+    }
+
+    /// Backfill `job.gg_config_id` on the gg **jobs still in flight** when the column
+    /// arrived, so a run already on its way is counted under the cell the run it becomes
+    /// will land in.
+    ///
+    /// Resolved from the job's own capability set where that set already names the
+    /// configuration it came from, and otherwise by the same name lookup
+    /// [`Self::backfill_gg_config_id`] uses — which is cheaper here, because a job carries
+    /// the launching account itself and needs no run to be traced back to it.
+    ///
+    /// A name-resolved job has the id written into its stored capability set as well as into
+    /// its column, because that set is what the driver hands the run: writing the column
+    /// alone would count the job toward a cell and then produce a run recording no
+    /// configuration, which lands in no cell at all and is re-bought.
+    ///
+    /// Bounded to the non-terminal states for the reason
+    /// [`Self::backfill_in_flight_gg_cells`] is: a finished job's counts come from the `run`
+    /// row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads. One-shot for the reason [`Self::backfill_gg_config_id`] is: the
+    /// name it resolves through belongs to a library the operator keeps editing.
+    pub async fn backfill_in_flight_gg_config_ids(&self) -> Result<usize> {
+        if self.backfill_completed(JOB_GG_CONFIG_ID_BACKFILL).await? {
+            return Ok(0);
+        }
+        let rows = job::Entity::find()
+            .filter(job::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .filter(job::Column::GgConfigId.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let user_ids: Vec<String> = rows.iter().filter_map(|row| row.user_id.clone()).collect();
+        let by_account = self.gg_config_ids_by_name(&user_ids).await?;
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let set = row.gg_config_json.as_deref().and_then(|json| {
+                serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json).ok()
+            });
+            let Some(mut set) = set else {
+                continue;
+            };
+            // A set that already names its configuration needs no lookup, and its stored
+            // JSON is already right; only a name-resolved one is rewritten.
+            let resolved = match set.preset_id.clone() {
+                Some(id) => Some((id, false)),
+                None => set
+                    .preset
+                    .as_ref()
+                    .and_then(|name| {
+                        row.user_id
+                            .as_ref()
+                            .and_then(|user_id| by_account.get(user_id))
+                            .and_then(|configs| configs.get(name))
+                            .filter(|ids| ids.len() == 1)
+                            .and_then(|ids| ids.first())
+                            .cloned()
+                    })
+                    .map(|id| (id, true)),
+            };
+            let Some((config_id, rewrite_set)) = resolved else {
+                continue;
+            };
+            let gg_config_json = if rewrite_set {
+                set.preset_id = Some(config_id.clone());
+                Some(serde_json::to_string(&set)?)
+            } else {
+                None
+            };
+            let mut active = row.into_active_model();
+            active.gg_config_id = Set(Some(config_id));
+            if let Some(json) = gg_config_json {
+                active.gg_config_json = Set(Some(json));
+            }
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        self.mark_backfill_complete(JOB_GG_CONFIG_ID_BACKFILL)
+            .await?;
         Ok(backfilled)
     }
 }
@@ -4855,6 +7586,7 @@ impl Db {
         slug: &str,
         version: &str,
         variant: &str,
+        engine: &str,
         url: &str,
         now: &str,
     ) -> Result<()> {
@@ -4862,6 +7594,7 @@ impl Db {
             slug: Set(slug.to_string()),
             version: Set(version.to_string()),
             variant: Set(variant.to_string()),
+            engine: Set(engine.to_string()),
             url: Set(url.to_string()),
             updated_at: Set(now.to_string()),
         })
@@ -4870,6 +7603,7 @@ impl Db {
                 case_reference_build::Column::Slug,
                 case_reference_build::Column::Version,
                 case_reference_build::Column::Variant,
+                case_reference_build::Column::Engine,
             ])
             .update_columns([
                 case_reference_build::Column::Url,
@@ -4882,30 +7616,39 @@ impl Db {
         Ok(())
     }
 
-    /// The reference-build URL of every variant of `(slug, version)` that has one,
-    /// keyed by variant slug. Feeds the version response and the snapshot, both of
-    /// which fold the URL onto each variant object; a variant absent from the map
-    /// simply has no reference implementation.
+    /// The reference-build URLs of every variant of `(slug, version)` that has any,
+    /// keyed by variant slug and then by engine slug. Feeds the version response and
+    /// the snapshot, both of which fold the inner map onto each variant object; a
+    /// variant absent from the outer map simply has no reference implementation, and
+    /// an engine absent from an inner map has none published for that engine yet.
     pub async fn reference_builds_for_version(
         &self,
         slug: &str,
         version: &str,
-    ) -> Result<std::collections::HashMap<String, String>> {
-        Ok(case_reference_build::Entity::find()
+    ) -> Result<std::collections::HashMap<String, std::collections::BTreeMap<String, String>>> {
+        let mut by_variant: std::collections::HashMap<
+            String,
+            std::collections::BTreeMap<String, String>,
+        > = std::collections::HashMap::new();
+        for row in case_reference_build::Entity::find()
             .filter(case_reference_build::Column::Slug.eq(slug))
             .filter(case_reference_build::Column::Version.eq(version))
             .all(&self.conn())
             .await?
-            .into_iter()
-            .map(|row| (row.variant, row.url))
-            .collect())
+        {
+            by_variant
+                .entry(row.variant)
+                .or_default()
+                .insert(row.engine, row.url);
+        }
+        Ok(by_variant)
     }
 
     /// Reconcile the **entire** reference-build table to `desired` — the complete set
     /// of deployed reference URLs for this backend's environment, read from the
     /// committed reference-builds lockfile at ingest (see the `/ingest` handler).
-    /// Every triple in `desired` is upserted; every stored triple absent from
-    /// `desired` is removed. The lockfile is the single source of truth, so this
+    /// Every entry in `desired` is upserted; every stored row absent from `desired`
+    /// is removed. The lockfile is the single source of truth, so this
     /// makes the table match it exactly — the pull-model replacement for the former
     /// per-variant write endpoint.
     ///
@@ -4918,32 +7661,41 @@ impl Db {
     ) -> Result<bool> {
         // Snapshot the current rows so the table is touched only where it differs; an
         // unchanged re-ingest then neither writes nor forces a snapshot rebuild.
-        let current: std::collections::HashMap<(String, String, String), String> =
-            case_reference_build::Entity::find()
-                .all(&self.conn())
-                .await?
-                .into_iter()
-                .map(|row| ((row.slug, row.version, row.variant), row.url))
-                .collect();
-        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+        type Key = (String, String, String, String);
+        let current: std::collections::HashMap<Key, String> = case_reference_build::Entity::find()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| ((row.slug, row.version, row.variant, row.engine), row.url))
+            .collect();
+        let desired_keys: std::collections::HashSet<Key> = desired
             .iter()
-            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .map(|e| {
+                (
+                    e.slug.clone(),
+                    e.version.clone(),
+                    e.variant.clone(),
+                    e.engine.clone(),
+                )
+            })
             .collect();
 
         let mut changed = false;
 
-        // Upsert triples that are new or whose served URL moved.
+        // Upsert rows that are new or whose served URL moved.
         for entry in desired {
             let key = (
                 entry.slug.clone(),
                 entry.version.clone(),
                 entry.variant.clone(),
+                entry.engine.clone(),
             );
             if current.get(&key).map(String::as_str) != Some(entry.url.as_str()) {
                 self.upsert_reference_build(
                     &entry.slug,
                     &entry.version,
                     &entry.variant,
+                    &entry.engine,
                     &entry.url,
                     now,
                 )
@@ -4952,7 +7704,7 @@ impl Db {
             }
         }
 
-        // Remove triples the lockfile no longer lists.
+        // Remove rows the lockfile no longer lists.
         for key in current.keys() {
             if !desired_keys.contains(key) {
                 case_reference_build::Entity::delete_by_id(key.clone())
@@ -5169,12 +7921,197 @@ impl Db {
 /// only affects the `:free` normalization guard, which a non-OpenRouter default
 /// simply skips.
 fn parse_harness_slug(slug: &str) -> HarnessSlug {
-    HarnessSlug::ALL
-        .into_iter()
-        .find(|h| h.as_str() == slug)
-        .unwrap_or(HarnessSlug::Claude)
+    // `from_wire` covers every variant, gg included, so a `gg` run's model id
+    // canonicalizes with the right `:free` handling rather than falling back to
+    // Claude (which does not route through OpenRouter).
+    HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
 
+// `pub(crate)` under `cfg(test)`: the router tests in `api.test.rs` build their
+// fixtures from the same `record`/`links` helpers, so the run a route test drives is
+// the run every database test drives.
 #[cfg(test)]
 #[path = "db.test.rs"]
-mod tests;
+pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "db.readability.test.rs"]
+mod readability_tests;
+
+/// The model-probe store: responses-as-code readiness probes of catalog models
+/// (see [`crate::probe`]).
+///
+/// A probe row is inserted `running` when an operator triggers it, its per-call
+/// items are appended as the background runner completes each call, and the row
+/// is finished exactly once with its verdict and spend. Probes are append-only
+/// history — a re-run is a new row — and console-only data: nothing here feeds
+/// the public snapshot.
+impl Db {
+    /// Insert a freshly-triggered probe row (id and timestamps minted by the
+    /// handler; status `running`).
+    pub async fn insert_model_probe(&self, row: model_probe::Model) -> Result<()> {
+        model_probe::ActiveModel {
+            id: Set(row.id),
+            model_slug: Set(row.model_slug),
+            openrouter_slug: Set(row.openrouter_slug),
+            provider: Set(row.provider),
+            user_id: Set(row.user_id),
+            language: Set(row.language),
+            samples: Set(row.samples),
+            max_tokens: Set(row.max_tokens),
+            request_json: Set(row.request_json),
+            status: Set(row.status),
+            error: Set(row.error),
+            verdict: Set(row.verdict),
+            pass_rate: Set(row.pass_rate),
+            spend: Set(row.spend),
+            created_at: Set(row.created_at),
+            finished_at: Set(row.finished_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe by id, or `None` when unknown.
+    pub async fn get_model_probe(&self, id: &str) -> Result<Option<model_probe::Model>> {
+        Ok(model_probe::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Every probe of one catalog model, newest first.
+    pub async fn list_model_probes(&self, model_slug: &str) -> Result<Vec<model_probe::Model>> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .order_by_desc(model_probe::Column::CreatedAt)
+            .order_by_desc(model_probe::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// Whether a probe of this catalog model is still running (the trigger
+    /// endpoint refuses a second concurrent probe of the same model).
+    pub async fn model_probe_running(&self, model_slug: &str) -> Result<bool> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .filter(model_probe::Column::Status.eq("running"))
+            .one(&self.conn())
+            .await?
+            .is_some())
+    }
+
+    /// Append one completed (or errored) probe call.
+    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<()> {
+        model_probe_item::ActiveModel {
+            id: Set(row.id),
+            probe_id: Set(row.probe_id),
+            language: Set(row.language),
+            scenario: Set(row.scenario),
+            prompt: Set(row.prompt),
+            sample: Set(row.sample),
+            provider: Set(row.provider),
+            finish_reason: Set(row.finish_reason),
+            native_finish_reason: Set(row.native_finish_reason),
+            label: Set(row.label),
+            pass: Set(row.pass),
+            program_text: Set(row.program_text),
+            response_text: Set(row.response_text),
+            reasoning_text: Set(row.reasoning_text),
+            prompt_tokens: Set(row.prompt_tokens),
+            completion_tokens: Set(row.completion_tokens),
+            cost: Set(row.cost),
+            duration_ms: Set(row.duration_ms),
+            error: Set(row.error),
+            created_at: Set(row.created_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe's calls, in case order (items are ordered by creation, which
+    /// the sequential runner makes case-then-sample order).
+    pub async fn list_model_probe_items(
+        &self,
+        probe_id: &str,
+    ) -> Result<Vec<model_probe_item::Model>> {
+        Ok(model_probe_item::Entity::find()
+            .filter(model_probe_item::Column::ProbeId.eq(probe_id))
+            .order_by_asc(model_probe_item::Column::CreatedAt)
+            .order_by_asc(model_probe_item::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The `/stats/providers` probe projection: every probe item's serving
+    /// provider, the probed model's catalog slug (via the owning probe), its
+    /// pass flag, and whether the call errored before classification —
+    /// four columns across the whole store, folded in Rust by
+    /// [`fold_probe_providers`](crate::stats::fold_probe_providers). The label
+    /// travels only as its absence: `None` is the errored call, exactly the
+    /// reading the probe reducer uses.
+    pub async fn probe_item_provider_rows(&self) -> Result<Vec<crate::stats::ProbeItemRow>> {
+        let rows: Vec<(Option<String>, String, bool, Option<String>)> =
+            model_probe_item::Entity::find()
+                .select_only()
+                .column(model_probe_item::Column::Provider)
+                .column(model_probe::Column::ModelSlug)
+                .column(model_probe_item::Column::Pass)
+                .column(model_probe_item::Column::Label)
+                .join(JoinType::InnerJoin, model_probe_item::Relation::Probe.def())
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(provider, model_slug, pass, label)| {
+                (provider, model_slug, pass, label.is_none())
+            })
+            .collect())
+    }
+
+    /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
+    /// verdict and clean rate when it completed, the failure message when it did
+    /// not, and the summed spend. Returns whether a row matched.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn finish_model_probe(
+        &self,
+        id: &str,
+        status: &str,
+        error: Option<String>,
+        verdict: Option<String>,
+        pass_rate: Option<f64>,
+        spend: f64,
+        finished_at: &str,
+    ) -> Result<bool> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value(status))
+            .col_expr(model_probe::Column::Error, Expr::value(error))
+            .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
+            .col_expr(model_probe::Column::PassRate, Expr::value(pass_rate))
+            .col_expr(model_probe::Column::Spend, Expr::value(spend))
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
+            .filter(model_probe::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Fail every probe still marked `running` — the startup reap. A probe runs
+    /// inside the backend process, so a backend restart always killed it; unlike
+    /// the job-queue reap this is correct on every deployment shape.
+    pub async fn fail_running_model_probes(&self, now: &str) -> Result<u64> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value("failed"))
+            .col_expr(
+                model_probe::Column::Error,
+                Expr::value("the backend restarted while the probe was running"),
+            )
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
+            .filter(model_probe::Column::Status.eq("running"))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected)
+    }
+}

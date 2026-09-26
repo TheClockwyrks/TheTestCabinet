@@ -1,17 +1,15 @@
 // Display helpers. These format numbers for the gallery; they don't compute
 // rankings or aggregate scores themselves — that's the leaderboard's job.
 
-import type { RunMetrics } from "@test-cabinet/run-record";
-import type { RunScoreOut } from "@test-cabinet/run-record/snapshot";
+import type { RunMetrics } from "@clockwyrks/run-record";
+import type { RunScoreOut } from "@clockwyrks/run-record/snapshot";
+import { formatPoints as formatPointValue } from "../ratings";
 
 // Add two nullable token counts, treating an unreported (null) category as zero
 // because a harness that doesn't break the split out still folds those tokens into
 // the category it does report. Null only when BOTH are unreported, so a genuinely
 // empty total stays distinguishable from a real zero.
-export function sumTokens(
-  a: number | null,
-  b: number | null,
-): number | null {
+export function sumTokens(a: number | null, b: number | null): number | null {
   return a === null && b === null ? null : (a ?? 0) + (b ?? 0);
 }
 
@@ -80,19 +78,35 @@ export function formatUsd(value: number | null): string {
   }).format(value);
 }
 
+// A USD figure with exactly two decimals, never compacted: 48230.55 ->
+// "$48,230.55", 5 -> "$5.00". The Spend tile's headline formatter — a money
+// total reads as dollars and cents, and the fixed precision keeps the tile
+// stable as the total grows. An unknown (null) figure reads as an em dash,
+// like formatUsd's, rather than a misleading $0.00.
+export function formatUsdExact(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 // A run's aggregate reviewer score as "earned / total" (e.g. "12.5 / 20") — the
-// mean weight its reviews awarded over the points available. The earned figure is
-// fractional (it averages across reviews) so it carries one decimal; the total is
-// a whole point count. An em dash when the run has no reviews (null score).
+// mean weight its reviews awarded over the points available. Review items are
+// integer-weighted, so a whole earned figure shows no ".0" ("12 / 20", never
+// "12.0 / 20"); a genuinely fractional mean (it averages across reviews) keeps
+// its non-zero decimals, trimmed by the same shared rule every other points
+// figure uses (`formatPoints` in ratings.ts). The total is a whole point count.
+// An em dash when the run has no reviews (null score).
 export function formatPoints(score: RunScoreOut | null): string {
   if (score === null) {
     return "—";
   }
-  const earned = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(score.earned);
-  return `${earned} / ${score.total}`;
+  return `${formatPointValue(score.earned)} / ${score.total}`;
 }
 
 // Scale a per-token price to a per-million-token figure for display, preserving
@@ -113,13 +127,28 @@ export function formatReleaseDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+// A duration in whole seconds, as minutes and seconds. Rounded before it is
+// split, so a mean such as 119.7s reads "2m 0s" rather than "1m 60s".
 export function formatRunTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.round(seconds % 60);
+  const whole = Math.round(seconds);
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
   if (minutes === 0) {
     return `${rest}s`;
   }
   return `${minutes}m ${rest}s`;
+}
+
+// One of a run's lifecycle stage durations, or an em dash when the run recorded
+// none. A record written before the stage durations were measured carries none,
+// and a canceled run records no validation duration; printing `0s` for either
+// would read as a stage that finished instantly.
+export function formatStageDuration(
+  seconds: number | null | undefined,
+): string {
+  return seconds === null || seconds === undefined
+    ? "—"
+    : formatRunTime(seconds);
 }
 
 // A run's start time for a dense table cell: calendar date + 24h local time
@@ -137,4 +166,27 @@ export function formatTimestamp(iso: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+// A run's age for a caption ("3h ago"): the distance from `now` in its largest
+// whole unit, "just now" under a minute. Days cap the calendar-free units —
+// beyond them the figure approximates ("mo" is 30 days, "y" 365) — because a
+// caption wants a rough age, not an anniversary. An unparseable timestamp reads
+// as an em dash. `now` is injectable so callers and tests stay off the wall
+// clock.
+export function formatTimeAgo(iso: string, now: Date = new Date()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) {
+    return "—";
+  }
+  const seconds = Math.max(0, Math.floor((now.getTime() - then) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }

@@ -2,291 +2,204 @@
 title: Overview
 ---
 
-This section covers standing up The Test Cabinet's long-running **services** — the
-[backend](/components/backend/overview/) (`tcab-backend`), the
-[auth service](/components/auth/overview/) (`tcab-auth-service`), the
-[dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`), and the
-[artifact service](/components/artifacts/overview/) (`tcab-artifacts`) — as a
-**remote** deployment on **Kubernetes**: a staging and a production environment,
-each a namespace in a cluster. The guidance is written to be reproducible by anyone
-running their own instance; there is nothing here specific to a private deployment.
+This section covers standing up The Test Cabinet's long-running services as a
+remote deployment on Kubernetes: a staging and a production environment, each a
+namespace in a cluster. The guidance is reproducible by anyone running their own
+instance.
 
-To run the same services **entirely on one machine** for development — the local
-mirror of everything below — see [Running](/development/running/) in the
-Development section. Local development runs the *same* manifests on a local
-[k3d](https://k3d.io) cluster, so a run is a Kubernetes `Job` there exactly as it
-is in the cloud. This section is about the real, remote, cluster-based build.
+To run the same services on one machine for development, see
+[Running](/development/running/). Local development applies the same manifests to
+a local [k3d](https://k3d.io) cluster, so a run is a Kubernetes `Job` there as it
+is in the cloud. The static surfaces (the public gallery, this docs site, and the
+per-run playable builds) are covered by [Releasing](/development/releasing/).
 
-For the **static** surfaces — the public [gallery](/components/site/overview/),
-this [docs site](/components/docs/overview/), and the per-run playable builds —
-see [Releasing](/development/releasing/) instead. Those are static Cloudflare
-Pages sites with no servers to operate. This section is only about the services
-that do.
+## Deployed components
 
-## What gets deployed
-
-| Thing | Deployed as | Covered by |
-| ----- | ----------- | ---------- |
-| [Backend](/components/backend/overview/) (`tcab-backend`) | A `StatefulSet` (1 replica) + `Service`, with a `PersistentVolumeClaim` for state; owns the run queue | This section |
-| [Auth service](/components/auth/overview/) (`tcab-auth-service`) | A `StatefulSet` (1 replica) + `Service`, with its own `PersistentVolumeClaim` | This section |
-| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`) | A `Deployment` (1 replica), no `Service`; claims queued runs and creates one driver `Job` per run | This section |
-| [Driver](/components/driver/overview/) (`tcab-driver`) | One Kubernetes `Job` **per run**, created by the dispatcher; each spawns a sandbox pod via the API and exits | This section |
-| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | A `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees | This section |
-| [Web console](/components/web/overview/) (`apps/web`) | A static bundle served in-cluster (`tcab-web`) and reached over the VPN at a private hostname through the internal `Ingress` | This section |
-| [Gallery](/components/site/overview/), [docs](/components/docs/overview/), per-run builds | Static Cloudflare Pages sites | [Releasing](/development/releasing/) |
-| [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs | Not deployed — see [Building](/development/building/) |
-
-The [CLI](/components/cli/overview/) and [Tauri app](/components/tauri/overview/)
-are runner/reporter tools an individual operator runs on their own machine; they
-are not part of a deployment. The web console *is* part of one, but it is just a
-static bundle — served in-cluster by `tcab-web` and reached through the
-[internal Ingress](#access-the-cluster-network-plus-accounts-on-it) — so the
-stateful, always-on processes to operate are the backend, the auth service, the
-dispatcher, and the artifact service.
-
-## Why Kubernetes
-
-A run does not execute in any always-on service; it executes in a **fresh,
-throwaway container started for that one run** and discarded afterward (see
-[Execution](/components/core/execution/) and
-[Run Containers](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)).
-That single fact — *a run's job is to launch a container* — is what shapes the
-whole deployment, and it is exactly what Kubernetes exists to do.
-
-So rather than treat the cluster as a place that merely *holds* a long-lived
-worker, The Test Cabinet uses the cluster as its container runtime, one `Job` at a
-time. A console enqueues a run at the backend; the **dispatcher** claims it and
-creates one **driver** `Job`; that driver calls the **Kubernetes API** to create a
-sandbox pod, streams the harness session in and out of it with the pod `exec` API,
-copies the produced working tree out, and deletes the pod. Each run is a
-first-class, schedulable `Job` the cluster places, isolates, and cleans up like any
-other workload.
-
-This removes the awkward part of the older design — a long-lived worker pool that
-had to be a VM with a privileged container engine, registered and hand-scaled — and
-replaces it with the cluster's native scheduler:
-
-- **No nested container engine.** No pod needs a Docker/Podman daemon, no
-  `privileged: true`, no Docker socket. The driver holds a Kubernetes
-  `ServiceAccount` permitted to manage pods in one namespace, and nothing more.
-- **The cluster schedules runs.** Each run is a `Job` with its own resource
-  requests and limits, placed across nodes by the scheduler, instead of being
-  packed onto whichever VM received the request. Concurrency scales with the queue
-  admission cap plus available capacity — there is no pool to size by hand and no
-  per-pod registration.
-- **One private network for free.** In-cluster DNS and `ClusterIP` services give
-  every component a stable private address with nothing exposed publicly — no mesh
-  VPN to operate. `NetworkPolicy` is the access boundary.
+| Thing                                                                  | Deployed as                                                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [Backend](/components/backend/overview/) (`tcab-backend`)              | `StatefulSet` (1 replica) + `ClusterIP` `Service` + `PersistentVolumeClaim`; owns the run queue       |
+| [Auth service](/components/auth/overview/) (`tcab-auth`)               | `StatefulSet` (1 replica) + `Service` + its own `PersistentVolumeClaim`                               |
+| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)     | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run                      |
+| [Driver](/components/driver/overview/) (`tcab-driver`)                 | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits    |
+| Publisher (`tcab-publisher`)                                           | One `Job` per publish, created by the dispatcher                                                      |
+| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees            |
+| [Arena](/components/arena/overview/) (`tcab-arena`)                    | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                        |
+| [Web console](/components/web/overview/) (`tcab-web`)                  | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
+| Gallery, docs, per-run builds                                          | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                               |
+| [CLI](/components/cli/overview/) (`tcab`)                              | A local tool an operator installs; see [Building](/development/building/)                             |
 
 ## The control plane and the run plane
 
-The services split cleanly into a **control plane** (always-on) and a **run plane**
-(per-run, ephemeral), and that split drives every choice in this section.
+The services split into a control plane that is always on and a run plane that
+exists for the duration of one run.
 
-- **The backend owns the run queue (control plane).** A console enqueues a run at
-  the backend; the backend records it, relays the run's live events back to the
-  console, and stores the produced record. It keeps a database, an on-disk
-  definition store, and a repository checkout it ingests from, and it renders
-  reference screenshots with a headless browser at ingest. With its default
-  embedded **SQLite** store it runs as a `StatefulSet` pinned to a **single
-  replica** (SQLite is single-writer) with a **`PersistentVolumeClaim`** and an
-  image that includes a browser. Pointing `TCAB_BACKEND_DATABASE_URL` at a managed
-  **PostgreSQL** instead lifts the single-replica and database-volume constraints
-  (it can then be a plain `Deployment`). The details are in
-  [Kubernetes: staging & prod](/deployment/kubernetes/#backend).
-- **The auth service is a small stateful service (control plane).** It keeps its
-  **own** database — separate from the backend's — of user accounts
-  (`TCAB_AUTH_DATABASE_URL`, its own SQLite by default) and an HTTP listener
-  (`TCAB_AUTH_BIND`, default `0.0.0.0:8789`); it renders nothing and has no egress.
-  It hosts the same single-writer SQLite trade-off as the backend, so it is a
-  single-replica `StatefulSet` with a `PersistentVolumeClaim`, or pointed at a
-  managed database. The backend reaches it at `TCAB_BACKEND_AUTH_URL`.
-- **The dispatcher turns queued runs into `Job`s (control plane).** It is a thin,
-  stateless controller — the backend's job table is the source of truth, so it
-  holds no state of its own. It claims queued runs (authenticating with a shared
-  service token the backend also holds) and creates one driver `Job` each. It is a
-  single-replica `Deployment` with **no** `Service` (it binds no socket) and **no**
-  volume; its only requirement is a `ServiceAccount` with RBAC to create and watch
-  `Job`s (and read a dead driver pod's logs). See
-  [Kubernetes: staging & prod](/deployment/kubernetes/#dispatcher).
-- **The driver executes one run (run plane).** Each run is one `Job` the dispatcher
-  creates. Under the Kubernetes runtime the driver is the *trusted* pod that creates
-  one *untrusted* sandbox pod per run via the API, `exec`s the harness into it, and
-  deletes it. Its only requirement is a `ServiceAccount` with RBAC to manage pods
-  (and `pods/exec`) in its run namespace. It keeps no persistent state — the per-run
-  working tree is scratch — and uploads the produced tree to the artifact service
-  before it exits. See [Kubernetes: staging & prod](/deployment/kubernetes/#driver-per-run-jobs).
-- **The artifact service retains the produced bytes (data plane).** Because the
-  sandbox pod's disk is gone the moment the run ends, the driver uploads the
-  produced run tree (the playable build, proof and asset media) to the artifact
-  service, which serves it to the console for review. It is a single-replica
-  `StatefulSet` + `Service` + `PersistentVolumeClaim`, with its own `ServiceAccount`
-  that has **no** API access. Artifact bytes never transit the backend; the backend
-  only tells the console where they live (`TCAB_ARTIFACTS_PUBLIC_URL`). See
-  [Kubernetes: staging & prod](/deployment/kubernetes/#artifact-service).
+- The backend owns the run queue. A console enqueues a run at the backend; the
+  backend records it, relays the run's live events back to the console, and
+  stores the produced record. It keeps a database, an on-disk definition store,
+  and a repository checkout it ingests from, and it renders reference
+  screenshots with a headless browser at ingest. With its default embedded
+  SQLite store it runs as a single-replica `StatefulSet` with a
+  `PersistentVolumeClaim`. Pointing `TCAB_BACKEND_DATABASE_URL` at a managed
+  PostgreSQL instance makes it a plain `Deployment`.
+- The auth service keeps the accounts database. It stores Argon2id password
+  hashes for user accounts in its own database (`TCAB_AUTH_DATABASE_URL`) and
+  binds `TCAB_AUTH_BIND`, default `127.0.0.1:8789`, which a deployment overrides
+  with a private-network interface. It takes the same shape as the
+  backend, and the backend reaches it at `TCAB_BACKEND_AUTH_URL`.
+- The dispatcher turns queued runs into `Job`s. The backend's job table is the
+  source of truth, so the dispatcher holds no state. It claims queued runs with
+  a shared service token the backend also holds and creates one driver `Job`
+  each. It is a single-replica `Deployment` with no `Service` and no volume; it
+  needs a `ServiceAccount` with RBAC to create and watch `Job`s and to read a
+  dead driver pod's logs.
+- The driver executes one run. Each driver pod is the trusted pod that creates
+  one untrusted sandbox pod through the Kubernetes API, `exec`s the harness into
+  it, and deletes it. Its `ServiceAccount` may manage pods and `pods/exec` in
+  the run namespace. The per-run working tree is scratch, and the driver uploads
+  the produced tree to the artifact service before it exits.
+- The artifact service retains the produced bytes. The sandbox pod's disk is
+  gone the moment the run ends, so the driver uploads the produced run tree to
+  the artifact service, which serves it to the console for review. It runs under
+  its own `ServiceAccount` with no Kubernetes API access. Artifact bytes flow
+  from the driver to the artifact service to the console, and the backend
+  reports where they live through `TCAB_ARTIFACTS_PUBLIC_URL`. The backend also
+  calls the service over its own in-cluster `TCAB_ARTIFACTS_URL` to prune a
+  deleted run's tree and to sweep the trees no run row references.
 
-| Service | Kubernetes shape | Persistent storage | External egress |
-| ------- | ---------------- | ------------------ | --------------- |
-| Backend | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | **Yes** — database (SQLite, or external PostgreSQL), definition store, ingest checkout | Cloudflare R2 (snapshot upload) + the site's deploy hook |
-| Auth service | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external DB | **Yes** — its own accounts database (SQLite, or external) | None |
-| Dispatcher | `Deployment` (1), no `Service`; creates driver `Job`s via the API | None | None |
-| Driver | One `Job` **per run**; spawns a sandbox pod per run via the API | Scratch only (ephemeral pod) | Model APIs + package registries (from inside the sandbox pod) |
-| Artifact service | `StatefulSet` (1) + `Service` + `PVC` | **Yes** — the produced run trees | None |
+| Service          | Kubernetes shape                                                             | Persistent storage                          | External egress                                                |
+| ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| Backend          | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | Database, definition store, ingest checkout | Cloudflare R2 snapshot upload and the site's deploy hook       |
+| Auth service     | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external database   | Its own accounts database                   | None                                                           |
+| Dispatcher       | `Deployment` (1), no `Service`                                               | None                                        | None                                                           |
+| Driver           | One `Job` per run                                                            | Scratch only                                | Model APIs and package registries, from inside the sandbox pod |
+| Publisher        | One `Job` per publish                                                        | Scratch only                                | GitHub and Cloudflare Pages                                    |
+| Artifact service | `StatefulSet` (1) + `Service` + `PVC`                                        | The produced run trees                      | None                                                           |
+| Arena            | `Deployment` (1) + `Service`                                                 | None                                        | None                                                           |
 
-## How a run becomes a Job
+## From a queued run to a Job
 
 When a run is enqueued at the backend:
 
-1. the **dispatcher** claims it from the queue and **creates one driver `Job`**,
-   passing in the run's identity, a per-job token, and the sandbox-pod settings;
-2. the **driver** pod resolves the test-case definition and references from the
-   backend and **creates a sandbox pod** in its run namespace from the resolved
-   run-container image, carrying the run's resource requests/limits, image-pull
-   secrets, and a `restartPolicy: Never`;
-3. it waits for the sandbox pod to be `Running`, then seeds the working tree into
-   it and `exec`s the harness session, streaming output back to the backend (which
-   relays it to the watching console) over the run's live event stream;
-4. it copies the produced `/work` tree out of the sandbox pod, **uploads it to the
-   artifact service**, and **deletes the sandbox pod**;
-5. it reports terminal status with the produced record, and the `Job` reaps itself.
+1. the dispatcher claims it from the queue and creates one driver `Job`, passing
+   in the run's identity, a per-job token, and the sandbox-pod settings;
+2. the driver pod resolves the test-case definition and references from the
+   backend and creates a sandbox pod in its run namespace from the resolved
+   run-container image, carrying the run's resource requests and limits,
+   image-pull secrets, and `restartPolicy: Never`;
+3. it waits for the sandbox pod to be `Running`, seeds the working tree into it,
+   and `exec`s the harness session, streaming output back to the backend, which
+   relays it to the watching console;
+4. it copies the produced `/work` tree out of the sandbox pod, deletes the
+   sandbox pod, and uploads the tree to the artifact service from its own disk;
+5. it reports terminal status with the produced record, and the `Job` reaps
+   itself after `TCAB_DISPATCHER_JOB_TTL_SECONDS`.
 
-Three properties of this matter for the rest of the section:
+Publishing follows the same path with its own `Job`: the backend queues a publish
+job, the dispatcher claims it, and one `tcab-publisher` `Job` downloads the run
+tree from the artifact service and releases it to GitHub and Cloudflare Pages.
 
-- **The console talks to one backend URL only.** It enqueues a run and watches it;
-  it never addresses a dispatcher or a driver. There is no per-pod registration.
-- **The driver needs API access, not a container engine.** Creating the sandbox is
-  Kubernetes API calls (`create`, `exec`, `delete` on `Pod`). The RBAC that permits
-  exactly this — and the narrower dispatcher RBAC for `Job`s — is in
-  [Kubernetes: staging & prod](/deployment/kubernetes/#rbac).
-- **Each sandbox pod is isolated and ephemeral.** It runs as the image's
-  unprivileged `node` user, gets its working tree copied in over the `exec` API (no
-  shared volume, no host mount, no API token of its own), and is deleted when the
-  run finishes. Egress and reachability are governed by `NetworkPolicy` at the
-  namespace level.
+Three properties of this shape carry through the rest of the section. The
+console talks to one backend URL, enqueueing runs and watching them, and never
+addresses a dispatcher or a driver. The driver needs Kubernetes API access
+rather than a container engine, so the sandbox is created with `create`, `exec`,
+and `delete` on `Pod`. Each sandbox pod runs as the image's unprivileged user,
+receives its working tree over the `exec` API, holds no API token of its own,
+and is deleted when the run finishes.
 
 ## Environments
 
-The same images run in every environment; what changes is the namespace they live
-in, what they talk to, and their `TCAB_ENV` tag (`local`, `staging`, `prod`) so
-[telemetry](/development/observability/) and logs from each can be told apart. By
-default the services bind to distinct ports — backend `8787`, auth service `8789`,
-artifact service `8790` — though in-cluster each is reached by its `Service` name
-regardless (the dispatcher binds no socket).
+The same images run in every environment. What changes is the namespace they live
+in, what they talk to, and their `TCAB_ENV` tag (`local`, `staging`, `prod`), so
+[telemetry](/development/observability/) and logs from each can be told apart.
+Each service binds its own port: backend `8787`, auth service `8789`, artifact
+service `8790`, arena `8791`. In-cluster each is reached by its `Service` name.
 
-| Environment | Purpose | Control plane | Runs |
-| ----------- | ------- | ------------- | ---- |
-| **Local** | Exercise the whole flow on one machine (development) | backend + auth + dispatcher + artifacts on a local k3d cluster | Per-run `Job`s in the local cluster |
-| **Staging** | A production-shaped environment to validate changes | the four services in `tcab-staging` | Per-run `Job`s in `tcab-staging` |
-| **Prod** | The environment operators actually use | the four services in `tcab-prod` | Per-run `Job`s in `tcab-prod` |
+| Environment | Purpose                                             | Control plane                       | Runs                                |
+| ----------- | --------------------------------------------------- | ----------------------------------- | ----------------------------------- |
+| Local       | Exercise the whole flow on one machine              | the services on a local k3d cluster | Per-run `Job`s in the local cluster |
+| Staging     | A production-shaped environment to validate changes | the services in `tcab-staging`      | Per-run `Job`s in `tcab-staging`    |
+| Prod        | The environment operators use                       | the services in `tcab-prod`         | Per-run `Job`s in `tcab-prod`       |
 
-The **local** environment is a development convenience and is documented under
-[Running](/development/running/), not here; it runs the *same* manifests on
-[k3d](https://k3d.io), so a run is a `Job` there exactly as in the cloud — there is
-no separate local code path any more. This section is about the two **remote**
-environments: staging and prod are the *same* manifests — keep them identical so
-staging is a faithful rehearsal — differing only in their namespace, scale, their
-own secrets, and their `TCAB_ENV` tag. The
-[kustomize overlays](/deployment/kubernetes/) under
-`deployments/k8s/overlays/{staging,prod}` are exactly that difference. See
-[Kubernetes: staging & prod](/deployment/kubernetes/).
+The local environment is documented under [Running](/development/running/). This
+section is about the two remote environments. Staging and prod apply the same
+base manifests so staging is a faithful rehearsal, differing in their namespace,
+their own secrets, their hostnames, and their `TCAB_ENV` tag. The kustomize
+overlays under `deployments/k8s/overlays/` are exactly that difference.
 
-## Access: the cluster network, plus accounts on it
+## Delivery
 
-**Reachability is the first line of access control.** Every service is a
-`ClusterIP` `Service` (the dispatcher has none at all) with no *public* `Ingress`,
-so only workloads and operators who can already reach the cluster network can use
-them. The standing way operators reach that network is an **internal-only
-`Ingress`** — an ingress controller whose load balancer holds a **private** VNet
-IP, reachable only over the company **VPN** and resolvable only through private DNS
-(see [Internal ingress](#internal-ingress-the-private-console-and-service-urls)
-below). A `NetworkPolicy` per namespace restricts traffic to the components that
-need to talk to each other. As described under
-[Backend authentication](/components/backend/overview/#authentication), on top of
-that the [auth service](/components/auth/overview/) adds real **user
-[accounts](/components/backend/overview/#accounts)** so that the mutating run
-actions (push, review, publish) are attributed to a person — the backend verifies
-each request's bearer token against the auth service.
+The Azure pipeline (`azure-pipelines.yml`) is the route a commit takes into both
+remote environments. A push to `staging` or `master` runs the gates, mirrors the
+commit to GitHub, builds every service and run-container image into the
+`testcabinet.azurecr.io` registry tagged by the commit sha, and rolls the
+matching cluster to those images: `staging` rolls staging and `master` rolls
+prod. The same run deploys the docs site. Rolling an environment is therefore
+merging to its branch.
 
-This is an added identity layer, **not** a public surface: registration is open,
-but the auth service is itself private, so "open self-registration" means *anyone
-already on the cluster network* can create an account — there is no public sign-up
-page and nothing reachable from the public internet. Reads stay open even within
-the network. Deploy the auth service in the same namespace as the backend and point
-the backend at it with `TCAB_BACKEND_AUTH_URL`.
+The pipeline's deploy identity may write only the application namespace, so the
+few cluster-scoped objects an environment needs are a one-time bootstrap applied
+by a cluster administrator. See
+[Cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites)
+and [Deploying](/deployment/kubernetes/overview/#deploying).
 
-The console's topology is correspondingly simple: it talks to **one backend URL**.
-It enqueues runs and watches them there; the dispatcher and per-run driver `Job`s
-do the work behind the backend, and the console reads a pre-publish run's playable
-build and media from the artifact service at the URL the backend reports
-(`TCAB_ARTIFACTS_PUBLIC_URL`). There is no worker list to maintain and nothing to
-register one pod at a time.
+## Access
 
-### Internal ingress: the private console and service URLs
+Reachability is the first line of access control. Every service is a `ClusterIP`
+`Service` with no public `Ingress`, so only workloads and operators who can reach
+the cluster network can use them. Operators reach that network through an
+internal-only `Ingress` whose load balancer holds a private VNet IP, reachable
+over the VPN and resolvable only through private DNS. A `NetworkPolicy` per
+namespace restricts traffic to the components that need to talk to each other.
+The full build is in
+[Internal ingress](/deployment/kubernetes/internal-ingress/).
 
-Operators reach prod by **browsing to a private URL over the VPN**, not by running
-the console locally. An **internal-only ingress-nginx** — fronting the in-cluster
-`tcab-web` console and the four services at one hostname each — is the documented
-path. On the VPN, an operator opens the console at
-`https://console.tcab.testcabinet.ai`; the console talks to the backend at
-`https://api.tcab.testcabinet.ai` and the auth service at `https://auth.tcab.testcabinet.ai`,
-and pulls a pre-publish run's artifact and arena media from
-`https://artifacts.tcab.testcabinet.ai` and `https://arena.tcab.testcabinet.ai` (the URLs the
-backend reports via `GET /config`). [cert-manager](/deployment/kubernetes/#internal-ingress)
-provides each host a real Let's Encrypt certificate.
+On top of that boundary the [auth service](/components/auth/overview/) adds user
+accounts, so the mutating run actions (push, review, publish) are attributed to a
+person; the backend verifies each request's bearer token against it.
+Registration is open within the cluster network, and reads stay open there too.
+Deploy the auth service in the same namespace as the backend and point the
+backend at it with `TCAB_BACKEND_AUTH_URL`.
 
-**This is an INTERNAL load balancer, never a public one.** Its IP is a private VNet
-address; the `*.testcabinet.ai` console/service hostnames resolve **only** through
-the cloud's private DNS, which only VPN clients see. Nothing here is ever given a
-**public** `Ingress`, a public `LoadBalancer`, or a publicly resolvable FQDN — the
-public surfaces remain solely the static [gallery](/components/site/overview/) and
-[docs](/components/docs/overview/) on Cloudflare Pages. The full build — the
-ingress controller, the host routes, the TLS issuer, the DNS records, and the VPN
-DNS setup — is in
-[Kubernetes: internal ingress](/deployment/kubernetes/#internal-ingress).
+On the VPN an operator opens the console at a private hostname; the console talks
+to the backend and auth service at their own hostnames and pulls a pre-publish
+run's artifact and arena media from theirs, all reported by the backend through
+`GET /config`. For ad-hoc or off-VPN access, `kubectl port-forward` against the
+`ClusterIP` services works; see
+[Running](/development/running/#pointing-tcab-at-a-deployment) for pointing
+`tcab` at either a private hostname or a forwarded port.
 
-For ad-hoc or off-VPN access — debugging, or before the ingress/DNS is stood up —
-`kubectl port-forward` against the `ClusterIP` services stays valid; see
-[Running](/development/running/#pointing-tcab-at-a-deployment) for pointing `tcab`
-at either a private hostname or a forwarded port.
+## Secrets
 
-## Secrets and telemetry
+Every credential is a Kubernetes `Secret` mounted as environment variables or
+files, created from your secret manager rather than committed. The set is:
 
-- **Secrets** — harness API keys, the shared dispatcher service token, and the
-  backend's R2 credentials, deploy-hook URL, and the `GITHUB_TOKEN`/Cloudflare token
-  it uses when a run is published — are Kubernetes `Secret`s mounted as environment
-  variables, **never committed**. The dispatcher mounts the harness keys into each
-  driver `Job` (via `TCAB_DISPATCHER_DRIVER_SECRETS`), and the run engine injects
-  them into the sandbox pod it creates. The backend and the dispatcher must carry
-  the **same** `TCAB_BACKEND_SERVICE_TOKEN` or the queue never drains. The auth
-  service holds no third-party secret; it stores only Argon2id password hashes in
-  its own database, which the [backups](/deployment/backups/) page covers alongside
-  the backend's. Every file under
-  [`deployments/k8s/`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s)
-  is a placeholder template, matching the repo-root
-  [`.env.backend.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.backend.example),
-  [`.env.auth.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.auth.example),
-  [`.env.dispatcher.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.dispatcher.example),
-  and
-  [`.env.artifacts.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.artifacts.example),
-  which remain the authoritative reference for every variable each service reads.
-- **Telemetry** is opt-in and vendor-neutral and is configured the same way in
-  every environment — by pointing the standard `OTEL_*` variables at a collector.
-  The variables themselves are documented under
-  [Observability](/development/observability/); choosing and wiring a collector for
-  a deployment is covered in [Telemetry](/deployment/telemetry/).
+- Harness API keys, in the Secret(s) named by
+  `TCAB_DISPATCHER_DRIVER_SECRETS`. The dispatcher mounts them into each driver
+  `Job`, and the run engine injects them into the sandbox pod.
+- Harness subscription credentials, in the optional Secret named by
+  `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`, mounted read-only as files.
+- The shared service token. The backend and the dispatcher must carry the same
+  `TCAB_BACKEND_SERVICE_TOKEN` or the queue never drains.
+- The backend's R2 credentials and deploy-hook URL, for the public snapshot.
+- The backend's OpenRouter key, `TCAB_OPENROUTER_API_KEY`, which its own
+  completion calls ([model probes](/components/backend/api/#model-probes)) are
+  billed to. It is mapped from the same vault secret as the drivers'
+  `OPENROUTER_API_KEY`, so runs and probes spend one credit pool.
+- The publisher's `GH_TOKEN` and `CLOUDFLARE_API_TOKEN`, in the Secret named by
+  `TCAB_DISPATCHER_PUBLISHER_SECRETS`.
 
-Two operational concerns get their own pages because they apply across every
-environment: keeping published runs safe ([Backups](/deployment/backups/)) and
-seeing what the services are doing ([Telemetry](/deployment/telemetry/)).
+The auth service holds no third-party secret; it stores only password hashes in
+its own database. Every file under `deployments/k8s/` carries placeholder
+values, and the repo-root `.env.backend.example`,
+`.env.auth.example`, `.env.dispatcher.example`, and `.env.artifacts.example`
+remain the reference for every variable each service reads.
 
-## Where to go next
+## Next steps
 
-- [Kubernetes: staging & prod](/deployment/kubernetes/) — the full cluster build
-  (namespace, RBAC, the four services, per-run `Job` scheduling), for both
-  environments.
-- [Running](/development/running/) — the local mirror: the same manifests on k3d,
-  for development.
-- [Backups](/deployment/backups/) — what's actually at risk (just the backend's
-  database) and how to protect it.
-- [Telemetry](/deployment/telemetry/) — choosing and wiring a collector for staging
-  and prod.
+- [Kubernetes](/deployment/kubernetes/overview/): the cluster build, covering
+  topology, prerequisites, the cluster bootstrap, the pipeline's deploy,
+  overlays, and network policy.
+- [Backups](/deployment/backups/): protecting the two irreplaceable databases.
+- [Telemetry](/deployment/telemetry/): choosing and wiring a collector for
+  staging and prod.
+- [Running](/development/running/): the same manifests on k3d, for development.

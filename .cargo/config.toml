@@ -14,12 +14,19 @@
 #   - `tcab-dispatcher` — claims queued runs, creates one driver Job each (`build-portable-dispatcher`)
 #   - `tcab-driver`     — the per-run executor (`build-portable-driver`)
 #   - `tcab-artifacts`  — the produced-run-tree server (`build-portable-artifacts`)
+#   - `gg`              — the first-party in-container coding harness (`build-portable-gg`)
+#
+# For `gg` the static build is not merely a portability convenience: gg runs INSIDE
+# the run container, whose images span glibc Debian bookworm AND the Ubuntu blender
+# image, so a static-musl gg is the one binary that runs across all of them (a
+# glibc gg built on a newer host fails with `GLIBC_… not found` in an older image).
+# The `x86_64` alias below is the release/CI build; to build gg for the HOST arch
+# (e.g. aarch64 in this dev container, for a local k3d cluster) use the arch-adaptive
+# `scripts/build-gg-static.sh`, which the driver image's build stage also runs.
 # All share `test-cabinet-core` and so the same prerequisites. The backend also
 # pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
 # SQLite from vendored C source via the same musl toolchain — so it links
-# statically too (its PostgreSQL driver is pure Rust over rustls). The
-# Tauri desktop shell is NOT portable to musl: its Linux backend links system
-# WebKitGTK/GTK shared libraries that have no musl-static build (see building.md).
+# statically too (its PostgreSQL driver is pure Rust over rustls).
 #
 # Prerequisites (see https://docs.testcabinet.ai/development/building/#portable-static-builds):
 #   rustup target add x86_64-unknown-linux-musl
@@ -45,3 +52,4 @@ build-portable-backend = "build -p test-cabinet-backend --release --target x86_6
 build-portable-dispatcher = "build -p test-cabinet-dispatcher --release --target x86_64-unknown-linux-musl"
 build-portable-driver = "build -p test-cabinet-driver --release --target x86_64-unknown-linux-musl"
 build-portable-artifacts = "build -p test-cabinet-artifacts --release --target x86_64-unknown-linux-musl"
+build-portable-gg = "build -p test-cabinet-gg --release --target x86_64-unknown-linux-musl"

@@ -1,0 +1,86 @@
+{{#if (eq variant.slug "maze")}}
+# Coil — Maze
+
+This file fixes the mode the game is played in, the menu entry that starts it,
+and the course of obstacles laid across the board. The board it is played on is
+in `specs/board.md`, and everything the tick resolves is in `specs/movement.md`.
+Every figure below carries the name this specification gives it.
+
+## The mode
+
+The game ships one mode, Maze, and every round is a round of it. It is the grid
+serpent played on the enclosed `GRID_COLS x GRID_ROWS` board of
+`specs/board.md`, with a fixed course of obstacle cells laid across the interior.
+The border is solid and fatal, the obstacles are solid and fatal, and exactly one
+pellet is on the board at a time.
+
+Maze takes the tick, the turning rules, the growth rule, and the collision rules
+of `specs/movement.md`, the pellet placement of `specs/board.md`, and the scoring
+of `specs/scoring.md` exactly as those files state them. The obstacle course
+below is its one addition.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu entry | `MODE_ITEM` | `MAZE` |
+| HUD label | `MODE_LABEL` | `MAZE` |
+
+`MODE_ITEM` is the first item of the title menu, above `HOW TO PLAY`, as
+`specs/ui.md` states. `MODE_LABEL` is the mode readout in the HUD.
+
+## The obstacle course
+
+`OBSTACLE_CELLS` holds the obstacle cells. They are the same cells in every
+round, they never change while a round runs, and they are exactly these four
+bars.
+
+| Bar | Cells `(col, row)` |
+| --- | --- |
+| 1 | `(8,4)`, `(9,4)`, `(10,4)`, `(11,4)`, `(12,4)`, `(13,4)` |
+| 2 | `(16,13)`, `(17,13)`, `(18,13)`, `(19,13)`, `(20,13)`, `(21,13)` |
+| 3 | `(8,10)`, `(8,11)`, `(8,12)` |
+| 4 | `(21,5)`, `(21,6)`, `(21,7)` |
+
+That is 18 cells. Row `8`, the row the snake starts on, carries none of them, so
+the opening chain has a clear runway ahead of it.
+
+The course obeys three rules.
+
+- An obstacle cell is fatal to the head, exactly as a wall cell is. Step 3 of the
+  tick ends the round when the new head cell is one of them.
+- An obstacle cell is never a valid pellet cell, so a pellet never spawns on the
+  course. It counts against the valid set that decides the board-cleared win.
+- An obstacle cell is part of the board rather than part of the snake. It is
+  drawn one cell in size, distinctly from the wall border, from the snake, and
+  from the pellet, so a player reads the course at a glance.
+{{else}}
+# Coil — Classic
+
+This file fixes the mode the game is played in and the menu entry that starts it.
+The board it is played on is in `specs/board.md`, and everything the tick
+resolves is in `specs/movement.md`. Every figure below carries the name this
+specification gives it.
+
+## The mode
+
+The game ships one mode, Classic, and every round is a round of it. It is the
+grid serpent played on the enclosed `GRID_COLS x GRID_ROWS` board of
+`specs/board.md`. The border is solid and fatal, the interior is open, and
+exactly one pellet is on the board at a time.
+
+Classic takes the tick, the turning rules, the growth rule, and the collision
+rules of `specs/movement.md`, the pellet placement of `specs/board.md`, and the
+scoring of `specs/scoring.md` exactly as those files state them.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu entry | `MODE_ITEM` | `CLASSIC` |
+| HUD label | `MODE_LABEL` | `CLASSIC` |
+
+`MODE_ITEM` is the first item of the title menu, above `HOW TO PLAY`, as
+`specs/ui.md` states. `MODE_LABEL` is the mode readout in the HUD.
+
+## Obstacles
+
+`OBSTACLE_CELLS` is empty in this mode. The interior carries no obstacle cell, so
+the only solid cells on the board are the wall border and the snake's own body.
+{{/if}}

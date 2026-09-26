@@ -1,0 +1,105 @@
+// audio/music-stops-on-abandon — music is not looping on the frame after
+// MAIN MENU on paused returns to the title.
+//
+// WHERE THE THRESHOLD COMES FROM. specs/ui.md ("The loops"): "`music` is looping
+// on every frame exactly when `screen` is `playing`, `levelup`, `chest`, or
+// `paused` ... and it stops on the frame the run ends, fallen or at dawn, or
+// `MAIN MENU` on `paused` abandons it", and "`title`, `howto`, and `almanac`
+// carry no music." specs/ui.md ("`paused`") names the abandon: "`MAIN MENU` |
+// Abandons the run and returns to `title` with `menuIndex = 0`."
+// specs/instrumentation.md fixes the frame the reading is taken on: "Both loops
+// are reconciled from the state on every frame, so a state the debug surface
+// posed sounds, one frame later, exactly as the same state reached by play."
+//
+// WHY THE ABANDON IS PRESSED AND THE PAUSE IS POSED. The abandon is the event
+// this point is about, so it is raised the way a player raises it: the pause
+// menu is `PAUSE_ITEMS`, "`RESUME`, `MAIN MENU`, in that order", with
+// "`menuIndex` is `0` on arriving", so one `ArrowDown` per item above
+// `MAIN MENU` moves the highlight onto it and `Enter` takes it — `down` and
+// `confirm` are those keys in specs/controls.md, and the keyboard belongs to the
+// runtime, where "a dispatched keyboard event ... works the menus exactly as a
+// player's key does" (specs/instrumentation.md). The highlight is read back
+// before the confirm, so a build whose pause menu never moved fails on the
+// precondition rather than on the music. The pause it is pressed from is only
+// the way in, so it is posed through the surface, whose `setScreen("paused")`
+// sets `screen` and nothing else — a build with a broken pause key fails
+// `controls/`, not this.
+//
+// WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
+// nothing alive, nothing dropped, and no slot held, so nothing can end the run
+// before the abandon and no other transition can move the screen.
+//
+// WHY THE LOOP IS ESTABLISHED FIRST. Without it the check would pass on a build
+// whose music never runs at all, which is a different build from one that fails
+// to stop it. The loop is waited for on `playing` before the pause, one frame per
+// crossing, and asserted; the wait is a drive length rather than a threshold,
+// since a build loads and decodes its own produced `.wav` (specs/assets.md).
+//
+// THE TOLERANCE. None: a loop is running on the frame or it is not, and the frame
+// is exact because the specification names it.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { PAUSE_ITEMS, TICK_HZ } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  isLooping,
+  poseScreen,
+  pressConfirm,
+  pressDown,
+  type Harness,
+} from "../harness";
+import { openNight, stepUntilLoop } from "./cues";
+
+/** Where `MAIN MENU` sits in `PAUSE_ITEMS`. */
+const MAIN_MENU = PAUSE_ITEMS.indexOf("MAIN MENU");
+
+/** Frames recorded on the title after the reading, for the replay. Decides nothing. */
+const TRAIL_FRAMES = TICK_HZ / 2;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness({ armAudio: true });
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("stops music by the frame after MAIN MENU on paused abandons the run", async () => {
+  await openNight(h);
+  const running = await stepUntilLoop(h, "music");
+  assertEqual(running, true, "music looping on playing before the pause");
+
+  const paused = await poseScreen(h, "paused");
+  assertEqual(paused.screen, "paused", "the screen the pause posed");
+  assertEqual(paused.menuIndex, 0, "menuIndex on arriving at paused");
+  let highlighted = paused;
+  for (let i = 0; i < MAIN_MENU; i += 1) highlighted = await pressDown(h);
+  assertEqual(
+    highlighted.menuIndex,
+    MAIN_MENU,
+    "the pause menu's highlight, on MAIN MENU",
+  );
+
+  const abandoned = await captureReplay(h, "stopped", async () => {
+    const after = await pressConfirm(h);
+    await h.step(1);
+    const looping = await isLooping(h, "music");
+    await h.step(TRAIL_FRAMES);
+    return { after, looping };
+  });
+
+  assertEqual(
+    abandoned.after.screen,
+    "title",
+    "the screen MAIN MENU on paused returned to",
+  );
+  assertEqual(
+    abandoned.looping,
+    false,
+    "music looping on the frame after the run was abandoned",
+  );
+});

@@ -1,0 +1,11 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, the vendored engine, and the specification this project is
+# built against.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+.vendor/
+package-lock.json
+specs/

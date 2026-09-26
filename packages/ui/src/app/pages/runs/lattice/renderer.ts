@@ -7,11 +7,14 @@
 // reconstructed factory to a <canvas> using the committed sprite sheet. See:
 //   testing/performance/lattice/architecture.md -> "Browser visualization"
 //
-// Because a submission is correct only when it reproduced the engine's snapshot
-// checksums bit for bit, re-stepping the engine reconstructs exactly the factory
-// the graded run computed. The renderer does not re-check that: correctness was
-// settled at grading time, and keeping the bundled wasm in step with the engine is
-// a build concern, not something to recompute in every viewer's browser.
+// Correctness is settled at grading time, where the host re-derives each snapshot's
+// checksum from the state returned with it, so a passing run's recorded checksums
+// describe real state rather than a claim. This module still re-derives nothing —
+// holding the rules here is exactly what it must not do — but the player it feeds
+// does check that the frames it is drawing carry those recorded checksums at the
+// ticks the run graded (`drift.ts`), and says so when they do not. Without that
+// check, "re-stepping the module reconstructs the graded factory" is an assumption
+// about the module, not an observation about the frames on screen.
 //
 // It does NOT draw one tick per displayed frame. Ticks are the simulation's
 // discrete steps; items are drawn at INTERPOLATED positions between the two
@@ -48,7 +51,30 @@ export interface AtlasFrame {
   h: number;
 }
 
-/** A placed entity's sprite: its frames, rate, footprint, and facing rules. */
+/** One upgrade tier of a tiered entity: its own rate and the frame indices (into
+ * the entity's `frames`) of its animated loop. The belt additionally carries a
+ * parallel `curve` loop; other tiered entities have only the straight `loop`. */
+export interface AtlasTier {
+  fps: number;
+  loop: number[];
+  curve?: number[];
+}
+
+/** One named working state of a stateful (untiered) entity — the furnace's `off`
+ * idle and `smelting` burn — each its own loop and rate. The renderer picks the
+ * state from the entity's per-tick snapshot (a furnace is smelting when
+ * `craft_left > 0`), the untiered analogue of a tier. */
+export interface AtlasState {
+  fps: number;
+  loop: number[];
+}
+
+/** A placed entity's sprite: its frames, rate, footprint, and facing rules.
+ *
+ * `frames` is the whole row (every tier's frames end to end). An untiered entity
+ * plays all of them as one loop at `fps`; a tiered entity carries `tiers`, and the
+ * renderer plays the tier a scenario asks for at that tier's own rate. `fps` is the
+ * tier-1 rate, kept as a sensible default for a consumer that ignores tiers. */
 export interface AtlasEntity {
   frames: AtlasFrame[];
   fps: number;
@@ -58,6 +84,11 @@ export interface AtlasEntity {
   /** Pixel offset from the anchor cell — negative when the art overhangs. */
   offset: [number, number];
   rotatable: boolean;
+  /** Present for the belt/inserter/assembler: one entry per upgrade tier. */
+  tiers?: AtlasTier[];
+  /** Present for the furnace: named working-state loops (`off` / `smelting`),
+   * the renderer picks by the furnace's `craft_left`. */
+  states?: Record<string, AtlasState>;
 }
 
 /** The atlas (`sheet.json`). */
@@ -99,7 +130,11 @@ function unpack(packed: bigint): { ptr: number; len: number } {
   return { ptr: Number(v >> 32n), len: Number(v & 0xffffffffn) };
 }
 
-function readJson(memory: WebAssembly.Memory, ptr: number, len: number): unknown {
+function readJson(
+  memory: WebAssembly.Memory,
+  ptr: number,
+  len: number,
+): unknown {
   if (len === 0) return null;
   // A fresh view each read: the guest can grow its memory, which detaches any
   // buffer we cached.
@@ -177,6 +212,96 @@ const TURN: Record<Dir, number> = {
   N: -Math.PI / 2,
 };
 
+// Direction algebra for belt-curve detection. `DELTA` is the tile step of a travel
+// direction; `OPP` its reverse; `CW` its 90°-clockwise turn (E→S→W→N→E).
+const DELTA: Record<Dir, [number, number]> = {
+  E: [1, 0],
+  W: [-1, 0],
+  S: [0, 1],
+  N: [0, -1],
+};
+const OPP: Record<Dir, Dir> = { E: "W", W: "E", S: "N", N: "S" };
+const CW: Record<Dir, Dir> = { E: "S", S: "W", W: "N", N: "E" };
+const DIRS: Dir[] = ["N", "S", "E", "W"];
+
+/** Whether a belt is a **curve** — a belt whose *sole* feeder is a perpendicular
+ * belt (flow turns 90° through it), the same shape the engine merges by forcing. A
+ * belt that is also fed straight-through (a side-load junction) is NOT a curve; a
+ * belt with no belt feeder (fed by a source/inserter) is not either. Returns the
+ * incoming travel direction of the perpendicular feeder, or `null` for a straight
+ * draw. The canonical curve sprite is authored *enters-West / leaves-South*, so the
+ * renderer rotates it by the feeder's direction (and mirrors a left-hand turn). */
+function beltCurveInDir(
+  x: number,
+  y: number,
+  out: Dir,
+  beltAt: (x: number, y: number) => Dir | undefined,
+  feedAt: (x: number, y: number) => Dir | undefined,
+): Dir | null {
+  // A source / inserter / splitter feeding this belt (its own supply) makes it a
+  // side-load, not a pure curve — matching the engine's `belt_is_pure_curve`.
+  for (const d of DIRS) {
+    if (feedAt(x + DELTA[d][0], y + DELTA[d][1]) === OPP[d]) return null;
+  }
+  // Count the belt feeders and remember the single perpendicular one. A pure curve
+  // has *exactly one* belt feeder and it is perpendicular; a straight-through feeder
+  // or a second belt feeder (a side-load junction — e.g. two belts merging onto one)
+  // means the flow does not simply turn here, so draw it straight.
+  let beltFeeders = 0;
+  let perpIn: Dir | null = null;
+  for (const inDir of DIRS) {
+    if (beltAt(x - DELTA[inDir][0], y - DELTA[inDir][1]) === inDir) {
+      beltFeeders += 1;
+      if (inDir !== out) perpIn = inDir;
+    }
+  }
+  return beltFeeders === 1 ? perpIn : null;
+}
+
+// A belt's scenario `tier` selects which of the three art tiers to play: the tread
+// scrolls faster the higher the tier. Only the belt carries a tier in the board
+// today; the inserter and assembler have tiered art but no engine tier yet, so they
+// fall back to tier 1 until one is resolved (see `entityTier`).
+const BELT_TIER_INDEX: Record<string, number> = {
+  slow: 0,
+  fast: 1,
+  express: 2,
+};
+
+/** The animated loop (frame indices into `sprite.frames`) and playback rate for
+ * `entity`, resolving its tier. An untiered sprite plays its whole row at `fps`. */
+function animFor(
+  entity: BoardEntity,
+  sprite: AtlasEntity,
+): { loop: number[]; fps: number } {
+  if (!sprite.tiers || sprite.tiers.length === 0) {
+    return { loop: sprite.frames.map((_, i) => i), fps: sprite.fps };
+  }
+  const raw =
+    entity.type === "belt" ? (BELT_TIER_INDEX[entity.tier ?? ""] ?? 0) : 0;
+  const idx = Math.max(0, Math.min(sprite.tiers.length - 1, raw));
+  const tier = sprite.tiers[idx]!;
+  return { loop: tier.loop, fps: tier.fps };
+}
+
+/** The belt's **curve** loop and rate for its tier — the parallel `curve` frames the
+ * belt sheet authors alongside its straight loop. Used when a belt is a bend (see
+ * [`beltCurveInDir`]); falls back to the straight loop if a tier has no curve set. */
+function beltCurveAnim(
+  entity: BoardEntity,
+  sprite: AtlasEntity,
+): { loop: number[]; fps: number } {
+  if (!sprite.tiers || sprite.tiers.length === 0) {
+    return { loop: sprite.frames.map((_, i) => i), fps: sprite.fps };
+  }
+  const idx = Math.max(
+    0,
+    Math.min(sprite.tiers.length - 1, BELT_TIER_INDEX[entity.tier ?? ""] ?? 0),
+  );
+  const tier = sprite.tiers[idx]!;
+  return { loop: tier.curve ?? tier.loop, fps: tier.fps };
+}
+
 /** The pixel bounding box of an entity's resolved footprint. */
 function footprintBox(entity: BoardEntity, cell: number) {
   const xs = entity.tiles.map((t) => t[0]);
@@ -228,11 +353,51 @@ export class Renderer {
     this.ctx.clearRect(0, 0, width, height);
     this.drawGrid(width, height, cell);
 
+    // A tile → belt-direction lookup, so a belt can tell whether its feeder is
+    // perpendicular (a curve) without re-walking the board per entity.
+    const beltDir = new Map<string, Dir>();
+    // Tiles a source/inserter/splitter feeds FROM (its own tile, with its heading),
+    // so a belt can tell a bend (fed only by a perpendicular belt) from a side-load.
+    const feedDir = new Map<string, Dir>();
+    for (const e of board.entities) {
+      if (e.type === "belt" && e.dir) beltDir.set(`${e.x},${e.y}`, e.dir);
+      else if (
+        (e.type === "source" ||
+          e.type === "inserter" ||
+          e.type === "splitter" ||
+          e.type === "lane-splitter") &&
+        e.dir
+      ) {
+        for (const [tx, ty] of e.tiles) feedDir.set(`${tx},${ty}`, e.dir);
+      }
+    }
+    const beltAt = (x: number, y: number) => beltDir.get(`${x},${y}`);
+    const feedAt = (x: number, y: number) => feedDir.get(`${x},${y}`);
+
+    // Which belt tiles are curves (sole perpendicular feeder), and the direction flow
+    // enters each from, so an item riding one can be placed on its arc rather than
+    // straight across the tile — the same detection the sprite drawing uses.
+    const curveDir = new Map<string, Dir>();
+    for (const e of board.entities) {
+      if (e.type === "belt" && e.dir) {
+        const ci = beltCurveInDir(e.x, e.y, e.dir, beltAt, feedAt);
+        if (ci) curveDir.set(`${e.x},${e.y}`, ci);
+      }
+    }
+    const curveAt = (x: number, y: number) => curveDir.get(`${x},${y}`);
+
     // Entities first, then items, so an item riding a belt sits on top of it.
     board.entities.forEach((entity, index) => {
-      this.drawEntity(entity, next.entities[index], elapsed, cell);
+      this.drawEntity(
+        entity,
+        next.entities[index],
+        elapsed,
+        cell,
+        beltAt,
+        feedAt,
+      );
     });
-    this.drawItems(board, prev, next, alpha, cell);
+    this.drawItems(board, prev, next, alpha, cell, curveAt);
     this.drawHeldItems(board, next, cell);
   }
 
@@ -259,21 +424,41 @@ export class Renderer {
     state: EntityState | undefined,
     elapsed: number,
     cell: number,
+    beltAt: (x: number, y: number) => Dir | undefined,
+    feedAt: (x: number, y: number) => Dir | undefined,
   ): void {
     const sprite = this.sheet.atlas.entities[entity.type];
     if (!sprite || sprite.frames.length === 0) return;
+
+    // A belt whose sole feeder is perpendicular is a curve: draw the curve frames,
+    // rotated to the feeder's heading (mirrored for a left-hand turn).
+    const curveIn =
+      entity.type === "belt" && entity.dir
+        ? beltCurveInDir(entity.x, entity.y, entity.dir, beltAt, feedAt)
+        : null;
+
+    // Resolve the loop and rate. A furnace picks its `off`/`smelting` state from
+    // whether it is actually smelting this tick; a bending belt plays its tier's
+    // curve loop; a tiered entity resolves its tier; everything else plays its row.
+    const { loop, fps } =
+      entity.type === "furnace" && sprite.states
+        ? this.furnaceAnim(state, sprite)
+        : curveIn
+          ? beltCurveAnim(entity, sprite)
+          : animFor(entity, sprite);
+    if (loop.length === 0) return;
 
     // An inserter's arm is driven by what it is actually doing, not by a clock:
     // a free-running loop makes every arm swing constantly, which reads as a
     // factory of machines flailing at nothing. Everything else runs its own sprite
     // cycle, which is presentation independent of the simulation's tick rate.
-    const index =
+    const within =
       entity.type === "inserter"
-        ? this.inserterFrame(entity, state, sprite.frames.length)
-        : sprite.loop && sprite.fps > 0
-          ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
+        ? this.inserterFrame(entity, state, loop.length)
+        : sprite.loop && fps > 0
+          ? Math.floor(elapsed * fps) % loop.length
           : 0;
-    const frame = sprite.frames[index]!;
+    const frame = sprite.frames[loop[within]!]!;
     const { cx, cy } = footprintBox(entity, cell);
 
     // Drawing the sprite CENTRED on its footprint reproduces the atlas's declared
@@ -282,7 +467,16 @@ export class Renderer {
     // assembler centred on its 3x3 lands flush.
     this.ctx.save();
     this.ctx.translate(cx, cy);
-    if (sprite.rotatable) this.ctx.rotate(TURN[entity.dir ?? "E"]);
+    if (curveIn) {
+      // Canonical curve is a right-hand (clockwise) turn authored enters-West /
+      // leaves-South. For a clockwise bend, rotate by the feeder's heading; for a
+      // left-hand bend, mirror across the flow and rotate the opposite half-turn.
+      const clockwise = CW[curveIn] === entity.dir;
+      this.ctx.rotate(clockwise ? TURN[curveIn] : TURN[curveIn] - Math.PI);
+      if (!clockwise) this.ctx.scale(-1, 1);
+    } else if (sprite.rotatable) {
+      this.ctx.rotate(TURN[entity.dir ?? "E"]);
+    }
     this.ctx.drawImage(
       this.sheet.image,
       frame.x,
@@ -295,6 +489,29 @@ export class Renderer {
       frame.h,
     );
     this.ctx.restore();
+  }
+
+  /**
+   * The furnace's loop and rate: the `smelting` burn while it is actively smelting
+   * this tick (`craft_left > 0`), otherwise the cold `off` idle. The furnace holds
+   * still; only which of its two loops plays changes, exactly as an assembler would
+   * signal work with `craft_left` — but here the renderer actually reads it.
+   */
+  private furnaceAnim(
+    state: EntityState | undefined,
+    sprite: AtlasEntity,
+  ): { loop: number[]; fps: number } {
+    const states = sprite.states ?? {};
+    const smelting = !!(
+      state &&
+      "furnace" in state &&
+      state.furnace.craft_left > 0
+    );
+    const chosen =
+      states[smelting ? "smelting" : "off"] ?? states.off ?? states.smelting;
+    if (!chosen)
+      return { loop: sprite.frames.map((_, i) => i), fps: sprite.fps };
+    return { loop: chosen.loop, fps: chosen.fps };
   }
 
   /**
@@ -331,7 +548,8 @@ export class Renderer {
     if (ins.swing_left > 0) {
       // Empty but mid-motion (the `return` phase): return frames half..frames-1 by
       // how far the return has run, `swing_left` counting the same `swing` ticks down.
-      const total = entity.swing && entity.swing > 0 ? entity.swing : ins.swing_left;
+      const total =
+        entity.swing && entity.swing > 0 ? entity.swing : ins.swing_left;
       const done = total > 0 ? 1 - ins.swing_left / total : 1;
       const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
       return Math.min(rest, half + Math.floor(clamped * (frames - half)));
@@ -347,7 +565,11 @@ export class Renderer {
    * sprite to draw) and `drawHeldItems` (where along the arc to place the carried
    * item) so the item stays in the claw the sprite draws.
    */
-  private deliveryFrame(entity: BoardEntity, swingLeft: number, half: number): number {
+  private deliveryFrame(
+    entity: BoardEntity,
+    swingLeft: number,
+    half: number,
+  ): number {
     const total = entity.swing ?? swingLeft ?? 1;
     const done = total > 0 ? 1 - swingLeft / total : 1;
     const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
@@ -360,10 +582,14 @@ export class Renderer {
     next: Snapshot,
     alpha: number,
     cell: number,
+    curveAt?: (x: number, y: number) => Dir | undefined,
   ): void {
-    const to = placeItems(board, next, cell);
+    const to = placeItems(board, next, cell, curveAt);
     const drawable: DrawItem[] = prev
-      ? tweenItems(matchItems(placeItems(board, prev, cell), to), alpha)
+      ? tweenItems(
+          matchItems(placeItems(board, prev, cell, curveAt), to),
+          alpha,
+        )
       : to.map((p) => ({ x: p.x, y: p.y, item: p.item }));
     for (const item of drawable) this.drawItem(item.item, item.x, item.y);
   }
@@ -378,13 +604,16 @@ export class Renderer {
    */
   private drawHeldItems(board: Board, snapshot: Snapshot, cell: number): void {
     const sprite = this.sheet.atlas.entities.inserter;
-    const frames = sprite ? sprite.frames.length : 12;
-    const half = Math.max(1, Math.floor(frames / 2));
     board.entities.forEach((entity, index) => {
       const state = snapshot.entities[index];
       if (!state || !("inserter" in state)) return;
       const held = state.inserter.held;
       if (!held) return;
+
+      // The arc is measured over the inserter tier's own swing cycle (12 frames),
+      // not the whole three-tier row, so `half` marks the true mid-swing.
+      const frames = sprite ? animFor(entity, sprite).loop.length : 12;
+      const half = Math.max(1, Math.floor(frames / 2));
 
       // Where along the delivery arc this frame sits: 0 at the pickup tile, 1 at the
       // drop tile. Quantised to the drawn frame so the item tracks the claw the
@@ -412,20 +641,25 @@ export class Renderer {
     const { items } = this.sheet.atlas;
     const index = itemFrame(items.ids, id);
     // An item the sheet has no icon for is skipped rather than drawn as some other
-    // item — a wrong icon is worse than a missing one.
+    // item — a wrong icon is worse than a missing one. (Frames 7-15 are provisional
+    // machine icons the engine does not yet emit, so this is how they stay unused.)
     if (index < 0) return;
     const frame = items.frames[index];
     if (!frame) return;
+    // Items ride a lane four to a tile, so they draw at a fixed half-cell footprint
+    // regardless of the source canvas — the icon art is 32x32 for fidelity, but a
+    // full-tile item would swamp its neighbours. Nearest-neighbour keeps it crisp.
+    const d = this.sheet.atlas.cellSize / 2;
     this.ctx.drawImage(
       this.sheet.image,
       frame.x,
       frame.y,
       frame.w,
       frame.h,
-      Math.round(x - frame.w / 2),
-      Math.round(y - frame.h / 2),
-      frame.w,
-      frame.h,
+      Math.round(x - d / 2),
+      Math.round(y - d / 2),
+      d,
+      d,
     );
   }
 }

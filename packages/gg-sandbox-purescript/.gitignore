@@ -1,0 +1,9 @@
+# The staged tree and Spago's own working directories. THIS PACKAGE COMMITS NOTHING: `build.sh`
+# writes the compiled library set and its manifest into $GG_ARTIFACTS_OUT_DIR — the `OUT_DIR` of
+# crates/gg-sandbox-artifacts/purescript — and `signatures.sh` writes the catalogue into
+# $GG_SIGNATURES_OUT_DIR, which is crates/gg's. (Spago's package STORE is not here either; it is a
+# pinned per-user prefix — see `gg_spago_cache` in scripts/gg-downloads.sh.)
+.build/
+.spago/
+output/
+node_modules/

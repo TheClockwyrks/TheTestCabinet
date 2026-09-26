@@ -1,8 +1,8 @@
 /// <reference path="../../../../gifenc.d.ts" />
 import * as THREE from "three";
-import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
+import type { AnimationSpec, ModelSpec } from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { VoxelRig } from "@clockwyrks/voxel-runtime/three";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import {
   AMBIENT_INTENSITY,
@@ -56,7 +56,7 @@ export function voxelGifTiming(periodMs: number): {
  * The minimal posable-rig surface the offscreen bake drives: a scene node to add
  * under the capture's centering pivot, a deterministic {@link seek} to an absolute
  * time, and a {@link dispose}. Both {@link VoxelRig} and
- * `@test-cabinet/voxel-runtime`'s `SkinnedVoxelRig` satisfy it, so the rigid and
+ * `@clockwyrks/voxel-runtime`'s `SkinnedVoxelRig` satisfy it, so the rigid and
  * skinned GIF encoders share one renderer/encoder core.
  */
 export interface PosableRig {

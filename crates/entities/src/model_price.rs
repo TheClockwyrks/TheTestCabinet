@@ -2,10 +2,12 @@
 //!
 //! A row is one price observation for a **canonical model id** (see
 //! `test_cabinet_core::model_id`), captured when a run completes or a periodic
-//! refresh runs. Observations are appended only when the price changes from the
-//! previous one, so the series is already deduplicated. The context window and
-//! release date OpenRouter reports ride along on each observation but do not, on
-//! their own, trigger a new row.
+//! refresh runs. Observations are appended when the price changes from the
+//! previous one — or when one of the catalog facts riding along on it does (the
+//! context window, the release date, or the accepted input modalities), so a model
+//! whose price has held still still records a newly-observed fact. The price
+//! *series* the catalog shows collapses consecutive-equal price triples, so a
+//! fact-only observation adds no visible price step.
 
 use sea_orm::entity::prelude::*;
 
@@ -35,6 +37,18 @@ pub struct Model {
     /// Model release date (RFC 3339) OpenRouter reported, or `NULL`.
     #[sea_orm(nullable)]
     pub released_at: Option<String>,
+    /// The input modalities OpenRouter reported the model accepts, as a
+    /// comma-separated lowercase list (`text,image,file`), or `NULL` when none was
+    /// observed. `NULL` and the empty string both mean **unknown**, not "text
+    /// only": a caller deciding whether to send an image treats an unannotated
+    /// model as "try it and find out" rather than refusing up front.
+    #[sea_orm(nullable)]
+    pub input_modalities: Option<String>,
+    /// The developer provider observed on the model's endpoints listing — the provider name
+    /// of its developer's own endpoint — or `NULL` when none has been observed. A curated
+    /// override lives on the model row and wins over this when both are set.
+    #[sea_orm(nullable)]
+    pub provider_pin: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

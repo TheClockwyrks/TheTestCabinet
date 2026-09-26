@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "BufferTarget": {
+      "description": "How deep a plan's or ladder's review buffer may go: the most runs the requesting\naccount may have outstanding (in flight, or finished and unreviewed by them)\nbefore a top-up stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the\nreviewer types can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` runs outstanding. `0` is a legitimate bound — \"never top\nthis up automatically\" — and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most runs the requester may have outstanding before a top-up stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a top-up emits every missing cell it can, however many runs are\nalready waiting on the reviewer. The per-cell target and the harness\nparallelism cap still apply; only the reviewer-backlog check is gone.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
+    },
     "CoverageAxis": {
       "description": "Which axis a coverage plan's cell loop nests on — and therefore the order its\nruns execute in, since a top-up emits cells in this order, `job.queue_seq` is\nmonotonic, and the dispatcher claims in ascending order.\n\nThe console labels these \"One case at a time\" and \"One model at a time\". They are\ndeliberately *not* described to reviewers as depth- or breadth-first: the choice\nis about what you want to be able to review together, not about tree traversal.",
       "oneOf": [
@@ -30,9 +63,28 @@
           "minimum": 0,
           "type": "integer"
         },
+        "engine": {
+          "description": "The engine this cell counts against, resolved: `none` where the pin names none.\nAlways concrete, because a run recorded with no engine is a `none` run and the\ntwo must land in one cell.",
+          "type": "string"
+        },
+        "ggConfigId": {
+          "description": "The gg configuration this cell's runs are launched from, as the member names it, or\nnull on a harness cell.",
+          "type": ["string", "null"]
+        },
+        "ggConfigName": {
+          "description": "That configuration's current display name — what the cell is labelled by, and the\nfirst gg segment of its [identity](crate::db::CellKey). Null on a harness cell, and\non a gg cell whose configuration no longer exists.",
+          "type": ["string", "null"]
+        },
+        "ggSlotModels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The model bound to each of the configuration's launch slots. Empty on a harness cell.",
+          "type": "object"
+        },
         "harness": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
-          "description": "The harness."
+          "description": "The harness — `gg` on a gg cell."
         },
         "inFlight": {
           "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally.",
@@ -45,7 +97,7 @@
           "type": "string"
         },
         "model": {
-          "description": "The model id.",
+          "description": "The model id: the one a harness cell's runs are launched with, and on a gg cell the\none its bound set's root agent runs.",
           "type": "string"
         },
         "pending": {
@@ -72,6 +124,10 @@
           "description": "Whether the pinned `version` is not the newest ingested one — a hint to the\nreviewer that they may want to bump the pin.",
           "type": "boolean"
         },
+        "unlaunchable": {
+          "description": "Why a top-up cannot launch this cell, or null when it can.\n\nA cell whose member cannot be resolved is still counted and still reported — it keeps\nits place in the matrix carrying the reason — because a plan that silently got\nsmaller is a plan whose missing runs nobody can explain.",
+          "type": ["string", "null"]
+        },
         "unreviewed": {
           "description": "How many of [`Self::completed`] the **requesting account** has not reviewed.\nThe only per-account number on the cell: it changes nothing about what the\ncell needs, but it occupies the review buffer, which is what makes an\notherwise mysteriously idle plan explicable.",
           "format": "uint32",
@@ -91,6 +147,7 @@
         "slug",
         "version",
         "variant",
+        "engine",
         "harness",
         "model",
         "desired",
@@ -110,10 +167,8 @@
   "description": "The coverage matrix `GET /coverage-plans/{id}/coverage` returns: every cell plus\nthe rollups the plan dashboard header shows.",
   "properties": {
     "bufferTarget": {
-      "description": "The buffer target in force for this plan (its own override, else the\naccount's setting, else the backend default).",
-      "format": "uint32",
-      "minimum": 0,
-      "type": "integer"
+      "$ref": "#/$defs/BufferTarget",
+      "description": "The buffer target in force for this plan (its own override, else the\naccount's setting, else the backend default). When it is `unbounded`,\n`runsOutstanding` never stops a top-up."
     },
     "cells": {
       "description": "Every `case × combination` cell, in the plan's own emission order — which\naxis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so\na reader knows what the order means without fetching the plan again.",

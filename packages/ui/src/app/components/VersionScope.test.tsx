@@ -1,19 +1,7 @@
-import {
-  act,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-} from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import type { TestCaseSummary } from "../data/testCases";
-import {
-  useVersionPick,
-  useVersionScope,
-  versionInScope,
-  VersionPicker,
-  type VersionPickState,
-} from "./VersionScope";
+import { useVersionScope, versionInScope } from "./VersionScope";
 
 // A case summary carrying only the version fields the hooks read.
 function testCase(versions: string[]): TestCaseSummary {
@@ -93,76 +81,5 @@ describe("useVersionScope", () => {
     // Another case's versions arrive without the hook remounting.
     rerender({ versions: ["v9.0.0", "v8.0.0"] });
     expect(result.current.specificVersion).toBe("v9.0.0");
-  });
-});
-
-describe("useVersionPick", () => {
-  it("defaults to the latest version and hides the picker for one version", () => {
-    const { result } = renderHook(() => useVersionPick(testCase(["v1.0.0"])));
-    expect(result.current.version).toBe("v1.0.0");
-    expect(result.current.show).toBe(false);
-  });
-
-  it("selects an older version", () => {
-    const { result } = renderHook(() =>
-      useVersionPick(testCase(["v2.0.0", "v1.0.0"])),
-    );
-    expect(result.current.show).toBe(true);
-    act(() => result.current.setVersion("v1.0.0"));
-    expect(result.current.version).toBe("v1.0.0");
-  });
-
-  it("falls back to the latest when the picked version leaves the case", () => {
-    const { result, rerender } = renderHook(
-      (props: { versions: string[] }) =>
-        useVersionPick(testCase(props.versions)),
-      { initialProps: { versions: ["v2.0.0", "v1.0.0"] } },
-    );
-    act(() => result.current.setVersion("v1.0.0"));
-    rerender({ versions: ["v9.0.0", "v8.0.0"] });
-    expect(result.current.version).toBe("v9.0.0");
-  });
-});
-
-describe("VersionPicker", () => {
-  // The picker's state, as the hook would hand it over. The non-empty tuple
-  // makes the latest (first) version a defined string, as the hook guarantees.
-  function pickState(
-    versions: [string, ...string[]],
-    setVersion = vi.fn(),
-  ): VersionPickState {
-    return {
-      version: versions[0],
-      setVersion,
-      versions,
-      show: versions.length > 1,
-    };
-  }
-
-  it("renders a labelled option per version", () => {
-    render(<VersionPicker state={pickState(["v2.0.0", "v1.0.0"])} />);
-    const select = screen.getByLabelText("Version");
-    expect(
-      [...select.querySelectorAll("option")].map((o) => o.textContent),
-    ).toEqual(["v2.0.0", "v1.0.0"]);
-    expect(select).toHaveValue("v2.0.0");
-  });
-
-  it("reports the newly selected version", () => {
-    const setVersion = vi.fn();
-    render(
-      <VersionPicker state={pickState(["v2.0.0", "v1.0.0"], setVersion)} />,
-    );
-    fireEvent.change(screen.getByLabelText("Version"), {
-      target: { value: "v1.0.0" },
-    });
-    expect(setVersion).toHaveBeenCalledWith("v1.0.0");
-  });
-
-  it("renders nothing for a case with a single version", () => {
-    const { container } = render(
-      <VersionPicker state={pickState(["v1.0.0"])} />,
-    );
-    expect(container).toBeEmptyDOMElement();
   });
 });

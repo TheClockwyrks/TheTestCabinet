@@ -1,0 +1,97 @@
+Build **Gantry**, a 3D crane-building puzzle that runs entirely in the browser.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your starting point
+
+{{#if (eq engine.slug "none")}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. What is missing is everything under `src/` and everything under `assets/`;
+neither directory exists yet. `specs/overview.md` states what you implement and
+which files stay as they are.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away, and `src/main.ts` already stands the engine up over the page's canvas and
+runs the game.
+
+What is missing is the game itself, `src/game.ts`, and everything under
+`assets/`, which does not exist yet. `specs/overview.md` states what the seeded
+stub gives you, what you write in its place, and which files stay as they are.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This build runs on no engine, so the layer beneath the game is yours as well,
+rendering the 3D yard on the installed `three` included. `specs/overview.md`
+states what Gantry needs from that layer and fixes nothing else about it.
+{{else}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the
+game and does not restate the engine.
+{{/if}}
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` states what you implement, which
+files stay as they are, the code quality the build is held to, and the commands
+that run over the finished repository. `specs/assets.md` states the models and
+sound you produce with the asset tools on this machine's `PATH` and commit with
+the build.
+
+## The build interface
+
+`npm ci` then `npm run build` must produce the static site, with no other manual
+step, into `dist/` at the project root, with an `index.html` at the root of that
+directory. That directory must run when served as-is from any base path, at the
+root of a static file server or mounted under a sub-path of one. The scripts
+that do this are already in `package.json`.
+
+## Driving the game in a browser
+
+{{#if (eq engine.slug "none")}}
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser, click a crane together,
+check for console errors, or exercise `window.__gantry`.
+{{else}}
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser, click a crane together, and
+check for console errors.
+{{/if}}
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on
+`PATH`; it lives in your project's `node_modules` like any other dependency.
+Launch Chromium with the `--no-sandbox` argument, since this container has no
+Chromium sandbox and a default launch fails.
+
+## The showcase
+
+The game ships with its store-page presentation: a `showcase/` directory at the
+project root holding a player-facing description of the game and a short
+carousel of media captured from the running game. `specs/showcase.md` defines
+its contents — the description, the `showcase.toml` carousel, and the media it
+names.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+directly from this repository's commits, so work you leave uncommitted is not
+published. When the build is complete, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with nothing
+uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
+build output, and coverage reports, so a clean tree means committing your
+source, your tests, your produced files under `assets/`, your `showcase/`
+directory, your `package-lock.json`, and your `README.md`.

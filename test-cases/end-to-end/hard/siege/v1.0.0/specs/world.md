@@ -69,11 +69,11 @@ but each must:
 The three redoubts sit at these positions along `X`, centered on the width
 (`Z ≈ 64`), each on whatever terrain height it lands on:
 
-| Redoubt | Position (`X`) | Health (HP) |
-| --- | --- | --- |
-| **A** (forward) | `≈ 160` | `1500` |
-| **B** (middle) | `≈ 300` | `2000` |
-| **C** (last stand) | `≈ 440` | `2500` |
+| Redoubt            | Position (`X`) | Health (HP) |
+| ------------------ | -------------- | ----------- |
+| **A** (forward)    | `≈ 160`        | `1500`      |
+| **B** (middle)     | `≈ 300`        | `2000`      |
+| **C** (last stand) | `≈ 440`        | `2500`      |
 
 A short **defender's back wall** closes the arena just behind C at `X = 512`.
 
@@ -91,11 +91,11 @@ fixed `X`, on the terrain surface. The spawn line **advances** each time a redou
 falls, so attackers never trickle in from impossibly far back once you have given
 ground:
 
-| Active phase | Defending | Scourge spawn line (`X`) |
-| --- | --- | --- |
-| A | Redoubt A | `≈ 24` |
-| B | Redoubt B | `≈ 160` (the fallen A line) |
-| C | Redoubt C | `≈ 300` (the fallen B line) |
+| Active phase | Defending | Scourge spawn line (`X`)    |
+| ------------ | --------- | --------------------------- |
+| A            | Redoubt A | `≈ 24`                      |
+| B            | Redoubt B | `≈ 160` (the fallen A line) |
+| C            | Redoubt C | `≈ 300` (the fallen B line) |
 
 Attackers spawn along this line spread across the width, then advance and path
 toward their target (`specs/ai.md`). Spawning is out of the player's direct sight

@@ -1,0 +1,321 @@
+# The obstacles sway and rotate, so the ball bounces off tilted, oriented faces.
+# The change applies to both Solo and Versus, so gyre is rated on the case's
+# common `single-player` and `versus` domains — it adds no domain of its own.
+slug = "gyre"
+name = "Gyre"
+description = "The obstacles sway and rotate, so the ball bounces off tilted, oriented faces."
+
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: gyre keeps the same single-ball serving as base, but its
+# field's moving, rotating obstacles and their oriented collision replace the static
+# ones (the `gyre` branch of `specs/playfield.md.hbs`), and its extra debug operation
+# and snapshot field are the `gyre` branch of `specs/instrumentation.md.hbs`. So gyre
+# declares no `spec` of its own.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/gyre"
+
+# The authored, *correct* static build of this variant, one per engine — see
+# `variants/base.toml` for what a reference implementation is and how it is
+# published. Under `none` the build carries its own runtime in `src/host.ts`;
+# under `simple-2d` it hands the same surfaces to the engine package resolved from
+# the repository's `packages/simple-2d`; under `structured-2d` it builds the same
+# game inside the framework of the engine package resolved from
+# `packages/structured-2d`. The game every one implements is identical, which is
+# what makes them comparable.
+[reference_implementation]
+none = "references/none/gyre"
+"simple-2d" = "references/simple-2d/gyre"
+"structured-2d" = "references/structured-2d/gyre"
+
+# This variant needs a starter project of its own under each engine that seeds
+# one: the seeded `src/constants.ts` under `simple-2d` and under `structured-2d`
+# documents the obstacle centers as BASE centers the live poses sway about, which
+# base's does not. The `setObstacleClock` operation and
+# the obstacle poses a snapshot reports are the gyre branch of
+# `specs/instrumentation.md.hbs`, and the build writes them. The table REPLACES the case's
+# `[workspaces]` rather than layering on it, so it names one directory per engine
+# exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/gyre/simple-2d"
+"structured-2d" = "workspaces/gyre/structured-2d"
+
+# The gyre-specific category, worth one point per item. It applies to the whole
+# game (both Solo and Versus). Its points pose the obstacles through the
+# `setObstacleClock` operation this variant's branch of the specs adds, then read
+# their live pose back against the sway and rotation formulas, and fire the same shot
+# at an upright and a tilted obstacle to read the oriented reflection. The `format` is inherited from the case manifest
+# (`[review] format = 2`). Every point carries `domains` and `failure_cap` on the
+# scale the case manifest sets out above its `[review]` table: the sway, the spin
+# and the oriented bounce ARE this variant, so missing them is a rule noticeably
+# wrong (`scuffed`); when the clock runs is a timing detail (`passable`).
+[[review.categories]]
+id = "gyre"
+title = "Gyre"
+[[review.categories.items]]
+id = "obstacles-sway"
+title = "Obstacles sway"
+description = "With the obstacle clock posed at two times a quarter period apart, each obstacle's center y differs from its base y by OBSTACLE_SWAY_AMP * sin(2*pi*t / OBSTACLE_SWAY_PERIOD) within 1 unit, with opposite signs for the two obstacles."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose the obstacle clock at two times and read each obstacle's
+# center back — both move well off their base y, in opposite directions. See
+# validation/<engine>/gyre/obstacles-sway.test.ts.
+validation = { script = "gyre/obstacles-sway.test.ts", outputs = [
+  { id = "sway", name = "The obstacles swaying vertically", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "obstacles-spin"
+title = "Obstacles spin"
+description = "With the obstacle clock posed at 0, 0.5 and 1.0 s, each obstacle's theta is OBSTACLE_SPIN_RATE * t within 0.01 radians."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose the obstacle clock at three times and read each
+# obstacle's rotation back — upright at the start, then rotating further as time
+# advances. See validation/<engine>/gyre/obstacles-spin.test.ts.
+validation = { script = "gyre/obstacles-spin.test.ts", outputs = [
+  { id = "spin", name = "The obstacles rotating about their centers", kind = "replay" },
+] }
+# The obstacle clock is checked as two separate points: that it runs through the
+# pre-serve countdown, and that it freezes with the game. Both start the match
+# with the menu keys and never pose the clock, because posing it holds it still.
+[[review.categories.items]]
+id = "clock-runs-countdown"
+title = "Obstacle clock runs during the countdown"
+description = "Across a span of countdown frames in a match started from the title, each obstacle's theta advances by OBSTACLE_SPIN_RATE times the elapsed game time, within 0.01 radians."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a match with the menu keys, read both obstacles'
+# rotation on two countdown frames a known span apart, and hold the turn between
+# them to the rate. See validation/<engine>/gyre/clock-runs-countdown.test.ts.
+validation = { script = "gyre/clock-runs-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The obstacles turning through the countdown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clock-frozen-paused"
+title = "Obstacle clock freezes while paused"
+description = "While paused, each obstacle's cx, cy and theta are unchanged across a paused stretch of 1.5 s of game time."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a match with the menu keys, pause it with a real
+# key, and read both obstacles' pose on the paused frame and again 180 frames
+# later. See validation/<engine>/gyre/clock-frozen-paused.test.ts.
+validation = { script = "gyre/clock-frozen-paused.test.ts", outputs = [
+  { id = "paused", name = "The obstacles held still behind the pause menu", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "oriented-bounce"
+title = "Oriented bounces"
+description = "The same level shot fired at an obstacle posed upright returns level, and fired at the obstacle posed at 45 degrees leaves along the reflection about the tilted face's normal, within 3 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose an obstacle upright then tilted ~45deg and fire the same
+# horizontal shot — the tilted face deflects it well off-axis while the upright face
+# returns it straight, proving the bounce tracks orientation. See
+# validation/<engine>/gyre/oriented-bounce.test.ts.
+validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
+  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "replay" },
+] }
+
+# Gyre plays base's game with the obstacles moving, so — like base — it contributes
+# base's single-ball gameplay points to the case's COMMON `gameplay` category
+# (reusing its id) and drives the same shared scripts, rather than declaring points
+# of its own. They are declared per variant because multi's launch, hold and scoring
+# are genuinely different rules; see base.toml for the fuller note.
+[[review.categories]]
+id = "gameplay"
+title = "Gameplay"
+[[review.categories.items]]
+id = "serve-initial"
+title = "Initial serve direction"
+description = "The first serve of a match leaves with vx < 0, toward player one."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: start fresh matches and read the first serve's horizontal
+# direction (toward player one). See validation/<engine>/gameplay/serve-initial.test.ts.
+validation = { script = "gameplay/serve-initial.test.ts", outputs = [
+  { id = "serve", name = "First serve toward player one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-after-p1"
+title = "Serve after scoring on player one"
+description = "After player two scores, the next serve leaves with vx < 0, toward player one."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive a real point out the left goal, then read the next
+# serve's horizontal direction (toward player one). See
+# validation/<engine>/gameplay/serve-after-p1.test.ts.
+validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
+  { id = "serve", name = "Serve toward player one after a point on player one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-after-p2"
+title = "Serve after scoring on player two"
+description = "After player one scores, the next serve leaves with vx > 0, toward player two."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive a real point out the right goal, then read the next
+# serve's horizontal direction (toward player two). See
+# validation/<engine>/gameplay/serve-after-p2.test.ts.
+validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
+  { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
+] }
+
+# The ball serves at a fixed speed and angle after a fixed pre-serve countdown.
+[[review.categories.items]]
+id = "serve-speed"
+title = "Serve speed"
+description = "A served ball leaves at SERVE_SPEED (520 units per second), within 1 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a fresh match, serve, and read the ball's launch speed.
+# See validation/<engine>/gameplay/serve-speed.test.ts.
+validation = { script = "gameplay/serve-speed.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-angle"
+title = "Serve angle"
+description = "A served ball leaves at an angle from horizontal whose magnitude is SERVE_ANGLE (12 degrees), within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a fresh match, serve, and read the launch velocity's
+# angle from horizontal. See validation/<engine>/gameplay/serve-angle.test.ts.
+validation = { script = "gameplay/serve-angle.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve angle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-sign-down"
+title = "Serve sign: a posed 1 serves downward"
+description = "With the ball's serveSign posed to 1, the serve leaves downward (vy > 0)."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: open a fresh match on an empty field, pose the ball's
+# serve sign to `1` through `setBallServeSign`, cut the hold, and read the launch
+# frame's vertical direction. See validation/<engine>/gameplay/serve-sign-down.test.ts.
+validation = { script = "gameplay/serve-sign-down.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving downward on a posed sign", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-sign-up"
+title = "Serve sign: a posed -1 serves upward"
+description = "With the ball's serveSign posed to -1, the serve leaves upward (vy < 0)."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: the same scenario with the sign posed to `-1`. See
+# validation/<engine>/gameplay/serve-sign-up.test.ts.
+validation = { script = "gameplay/serve-sign-up.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving upward on a posed sign", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-sign-drawn"
+title = "Serve sign is drawn"
+description = "Over thirty-two draws of drawBallServeSign, the ball's serveSign reads back as 1 or -1 every time, and the draws are not all the same sign."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: draw the sign thirty-two times through the operation that
+# performs parking's one draw and nothing else, reading the sign back off the
+# snapshot each time. Thirty-two draws all of one sign come up one time in 2^31
+# from a fair draw, so a fixed sign fails and a fair one passes; how the two signs
+# share the sample is the reviewer's to judge. See
+# validation/<engine>/gameplay/serve-sign-drawn.test.ts.
+validation = { script = "gameplay/serve-sign-drawn.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving on the last sign drawn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-length"
+title = "Countdown length"
+description = "From match start, the ball is served on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a match and advance until the ball serves, confirming
+# the hold lasts HOLD_TIME of simulated time on the validator's own clock. See
+# validation/<engine>/gameplay/countdown-length.test.ts.
+validation = { script = "gameplay/countdown-length.test.ts", outputs = [
+  { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
+] }
+# Scoring is checked per side — one point for each goal — so a build that scores on
+# only one edge is caught rather than averaged away by the other. Each side is TWO
+# points, because a goal does two separable things: it moves the score, and it puts
+# the match back on the countdown. A build that increments and then leaves the ball
+# where it went out is a build that plays one point and stops, which is nothing like
+# a build that never scores at all, so the increment carries the `broken` cap and the
+# restart carries `scuffed` — the game is still playable, but the rule that restarts
+# a rally is wrong. WHICH SIDE RECEIVES is not read here: `serve-after-p1` and
+# `serve-after-p2` above decide that rule from the serve's own direction, and reading
+# it twice would dock one defect two points.
+[[review.categories.items]]
+id = "scoring-p1"
+title = "Player one scores past the right goal"
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: drive a real ball out the right goal and confirm player one's
+# score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
+validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
+  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p1-countdown"
+title = "The rally restarts after player one scores"
+description = "On the frame a ball crosses the right goal edge, screen becomes countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the right goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/gameplay/scoring-p1-countdown.test.ts.
+validation = { script = "gameplay/scoring-p1-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The countdown opening after a point on player two", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2"
+title = "Player two scores past the left goal"
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: drive a real ball out the left goal and confirm player two's
+# score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
+validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
+  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2-countdown"
+title = "The rally restarts after player two scores"
+description = "On the frame a ball crosses the left goal edge, screen becomes countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the left goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/gameplay/scoring-p2-countdown.test.ts.
+validation = { script = "gameplay/scoring-p2-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The countdown opening after a point on player one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "match-win"
+title = "Match win at 11, lead by 2"
+description = "From 10-9, a point to 11-9 sets winner to left, screen to matchover, and leaves the score at 11-9."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score. See
+# validation/<engine>/gameplay/match-win.test.ts.
+validation = { script = "gameplay/match-win.test.ts", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deuce"
+title = "Deuce past 10-10"
+description = "From 10-10, a point to 11-10 leaves winner null and the screen on countdown, and a further point to 12-10 sets winner and screen to matchover."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
+# a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
+validation = { script = "gameplay/deuce.test.ts", outputs = [
+  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
+] }

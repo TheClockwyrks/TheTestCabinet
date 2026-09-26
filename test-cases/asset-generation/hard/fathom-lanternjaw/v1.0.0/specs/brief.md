@@ -4,7 +4,7 @@ You are drawing the **Lanternjaw**, a **sprite sheet** for a deep-sea maze-chase
 game. In that game the Lanternjaw is a **non-playable pursuer**, an
 anglerfish-style predator that hunts the player by **light** — but its whole trick
 is that, until it fixes on you, it **hides as the harmless bonus drifter**, a
-drifting amber jellyfish. Everything below describes the *enemy* — never the player
+drifting amber jellyfish. Everything below describes the _enemy_ — never the player
 character.
 
 The Lanternjaw has **two forms**, and this sheet holds both:
@@ -38,13 +38,13 @@ The sheet holds the **hunting form** as a four-direction swim (two frames per
 direction, a chomp) in frames 0–7, and the **jellyfish disguise** as an
 eight-frame sway loop in frames 8–15:
 
-| Frames | Contents |
-| --- | --- |
-| 0, 1 | **hunt down** — the amber bell over dark, gaping **jaws**; the two frames chomp (jaws close, then open) |
-| 2, 3 | **hunt up** |
-| 4, 5 | **hunt left** |
-| 6, 7 | **hunt right** |
-| 8–15 | the **jellyfish disguise** — an eight-frame tendril-sway loop, the harmless bonus drifter |
+| Frames | Contents                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------- |
+| 0, 1   | **hunt down** — the amber bell over dark, gaping **jaws**; the two frames chomp (jaws close, then open) |
+| 2, 3   | **hunt up**                                                                                             |
+| 4, 5   | **hunt left**                                                                                           |
+| 6, 7   | **hunt right**                                                                                          |
+| 8–15   | the **jellyfish disguise** — an eight-frame tendril-sway loop, the harmless bonus drifter               |
 
 In each **hunting** frame the predator faces its direction of travel: the amber
 **bell leads** (at the front, pointing the way it swims) with the dark **jaws
@@ -99,15 +99,15 @@ Reads, at a glance, as a **harmless drifting jellyfish** — the bonus drifter:
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Amber bell (bulb) | `#ffd166` |
-| Bell core / highlight (bright) | `#fff3c4` |
-| Tendrils & frilled skirt (dim amber) | `#d99a3a` |
-| Dark jaws / head body (slate) | `#243042` |
-| Belly / lighter underside | `#3a4a60` |
+| Role                                        | Hex       |
+| ------------------------------------------- | --------- |
+| Amber bell (bulb)                           | `#ffd166` |
+| Bell core / highlight (bright)              | `#fff3c4` |
+| Tendrils & frilled skirt (dim amber)        | `#d99a3a` |
+| Dark jaws / head body (slate)               | `#243042` |
+| Belly / lighter underside                   | `#3a4a60` |
 | Outline / jaw gape / tooth shadow (darkest) | `#0e1622` |
-| Tooth glint (pale) | `#cdd8e4` |
+| Tooth glint (pale)                          | `#cdd8e4` |
 
 The amber bell (`#ffd166` with a `#fff3c4` core) is shared by **both** forms and
 must be drawn identically wherever it appears. The hunting form adds the dark jaws

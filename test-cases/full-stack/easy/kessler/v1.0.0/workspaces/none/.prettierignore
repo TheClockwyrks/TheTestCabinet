@@ -1,0 +1,19 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage and browser-run reports, and the vendored runtime libraries.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+test-results/
+playwright-report/
+package-lock.json
+.vendor/
+assets/
+
+# Seeded reading material rather than this project's source: the
+# specification the run is graded against.
+specs/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

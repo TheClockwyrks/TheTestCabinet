@@ -1,0 +1,267 @@
+// fog/remembered-persists — revealed terrain is remembered.
+//
+// specs/sensing.md gives the remembered state as a tile "revealed earlier and not
+// lit this instant", reported `r` and "drawn dim: rock as dark stone, corridor as
+// faint open water, and any plankton on it as a faint mote", and it fixes how long
+// that lasts: "Once a tile has been revealed by any source it stays remembered for
+// the rest of the current maze, across losing a life included."
+//
+// So there are three claims and a build can hold any two: the tile turns `r` when
+// the light leaves it, it is STILL `r` a long stretch later, and it is still
+// DRAWN. The third is the one no `visibility` reading can answer, so it is read
+// off the canvas the build painted, against a tile in the same frame that nothing
+// has ever revealed.
+//
+// THE WATCHED TILE IS A ONE-TILE ALCOVE off the corridor the forager swims down.
+// It is inside the light pocket at the start, so the light reveals it; the forager
+// never enters it, so the plankton the maze laid on it is still there when the
+// reading is taken, which is the "any plankton on it as a faint mote" half of what
+// a remembered tile draws. Everything on the corridor itself is grazed away by a
+// forager swimming along it, and a tile whose contents the scenario ate is not the
+// tile this item is about.
+//
+// THE FOG CONTROL IS THE SAME DISTANCE AWAY. `D` is a sealed pocket the forager
+// can neither reach nor light, posed so that it stands almost exactly as far from
+// where the forager ends up as the alcove does. Both variants draw a distance-
+// dependent picture around the forager — under `kindle` the maze is drawn only
+// inside a circle of `KINDLE_VISION_MIN` (`192`) at `G = 0`, with a soft glow
+// filling it — so a comparison between two tiles at the same range is the one that
+// says something about the fog rather than about the range.
+//
+// AND THE LIGHT IS PUT BACK TO ITS NARROWEST BEFORE THE READING. The forager
+// grazes as it swims, and `G` drives `V` (specs/sensing.md), so a forager that
+// arrives bright is still lighting the tile it left. `setBrightness(0)` poses `G`
+// at the zero a dive opens on and arms the hold in full
+// (specs/instrumentation.md), so the light is `VISION_MIN` (`96`) for the whole
+// reading — narrower than the `131.9` the alcove stands at, and narrower than the
+// `192` the kindle circle covers at that same `G`.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  fail,
+} from "../assert";
+import { TILE, VISION_MIN } from "../constants";
+import { poseMaze } from "../fixtures";
+import {
+  captureReplay,
+  centerOf,
+  colorDistance,
+  createHarness,
+  sampleColor,
+  startPlaying,
+  ticksFor,
+  visibilityAt,
+  type Harness,
+} from "../harness";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
+import type { Tile } from "../maze";
+
+/**
+ * The board.
+ *
+ * `A` is the alcove the light reveals and the forager never enters, and the `#`
+ * above it is the rock face the same light lands on. `S` is where the forager
+ * starts, directly below the alcove. `D` is a sealed pocket four rows down and
+ * four columns along, which is where the forager ends up standing above.
+ *
+ * TWO REMEMBERED TILES ARE READ, because a remembered tile is drawn as two
+ * different things and a build can hold either alone: `A` is "corridor as faint
+ * open water, and any plankton on it as a faint mote" — its pellet survives
+ * because the forager never swims over it — and the rock above it is "rock as dark
+ * stone" (specs/sensing.md). Both must still be drawn.
+ */
+const ART = ["#", "A", "S.........", "", "", "", "    D.."] as const;
+
+/** How far along the corridor the spare plankton stands, in tiles. */
+const SPARE_TILES = 9;
+
+/** How many tiles along the corridor the forager stands before the reading. */
+const SWIM_TILES = 4;
+
+/** Ticks run after a pose, so the frame that is read was drawn under it. */
+const SETTLE_TICKS = 2;
+
+/**
+ * How long the tile is watched after it turns remembered, in ticks.
+ *
+ * "For the rest of the current maze" has no end this check can wait for, so it
+ * asks the same question again after a stretch of real simulation long enough for
+ * a build that decays its memory to have decayed it.
+ */
+const PERSIST_TICKS = ticksFor(1.5);
+
+/**
+ * The sensing floor the remembered tile owes against the unrevealed fog, as an RGB
+ * distance out of the `441` (`sqrt(3) * 255`) that separates black from white.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * Every palette is the build's (specs/overview.md fixes only that the trench is
+ * dark), so what is asserted is that a remembered tile is drawn as SOMETHING and
+ * not painted back into the fog.
+ */
+const DRAWN_MIN_DISTANCE = 8;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/** The mean color over a cluster at a tile's center. */
+function tileColor(snapshot: ReturnType<Harness["snapshot"]>, tile: Tile) {
+  const at = centerOf(snapshot, tile);
+  return sampleColor(h, at.x, at.y);
+}
+
+it("Revealed terrain is remembered", async () => {
+  startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const alcove: Tile = board.mark("A");
+  // The rock face directly above the alcove: the same light lands on it, so it is
+  // remembered too, and it draws terrain alone.
+  const rock: Tile = { tx: alcove.tx, ty: alcove.ty - 1 };
+  const start: Tile = board.mark("S");
+  const fog: Tile = board.mark("D");
+  h.debug.setForagerTile(start.tx, start.ty);
+  h.debug.setForagerDir("right");
+  h.debug.setBrightness(0);
+  // A plankton stands on the alcove, which is what a maze is laid out with on
+  // every corridor tile (specs/gameplay.md), and a second well down the corridor
+  // so that nothing here can be the mouthful that clears the maze. Neither is ever
+  // eaten: the forager is carried along its own row and never onto either.
+  h.debug.setPlankton(alcove.tx, alcove.ty, true);
+  h.debug.setPlankton(start.tx + SPARE_TILES, start.ty, true);
+  // The forager travels here, so the guard watches the board rather than the tile
+  // it was parked on.
+  const watch = await sceneGuard(h, { foragerParked: false });
+
+  await h.advance(SETTLE_TICKS);
+  const opened = h.snapshot();
+
+  const reading = await captureReplay(h, "memory", async () => {
+    // Carried clear of the tile its light revealed, rather than driven clear of
+    // it: what this point reads is a remembered tile, and whether a held movement
+    // action moves the forager is the movement points' subject. The board carries
+    // no plankton, so nothing about the move changes the light either.
+    await parkForager(h, { tx: start.tx + SWIM_TILES, ty: start.ty });
+    h.debug.setBrightness(0);
+    await h.advance(SETTLE_TICKS);
+    const moved = h.snapshot();
+
+    // The same question a stretch of real simulation later.
+    await h.advance(PERSIST_TICKS);
+    const later = h.snapshot();
+    return { moved, later };
+  });
+
+  requireSceneHeld(reading.later, watch);
+
+  // The antecedent: the light did reveal the alcove before the forager left.
+  const remembered = [
+    [
+      "alcove",
+      alcove,
+      "corridor as faint open water, and any plankton on it as a faint mote",
+    ],
+    ["rock face above it", rock, "rock as dark stone"],
+  ] as const;
+  for (const [name, tile] of remembered) {
+    assertEqual(
+      visibilityAt(opened, tile),
+      "l",
+      `the ${name} at (${tile.tx}, ${tile.ty}), within reach of where the ` +
+        "forager started, while its light was on it",
+    );
+  }
+
+  // The fixture's own geometry, from the specification's figures rather than from
+  // the build's: at `G = 0` the light reaches `VISION_MIN` and no further, and the
+  // alcove stands beyond that.
+  const alcoveCenter = centerOf(reading.moved, alcove);
+  const gap = Math.hypot(
+    alcoveCenter.x - reading.moved.forager.x,
+    alcoveCenter.y - reading.moved.forager.y,
+  );
+  assertGreaterThan(
+    gap,
+    VISION_MIN,
+    "the logical units between the forager and the alcove once it has swum on, " +
+      `which must exceed V at G = 0 (VISION_MIN = ${VISION_MIN})`,
+  );
+  // A build whose light still reaches that far is one `brightness/widens-vision`
+  // fails; this point cannot read a remembered tile through a light that never
+  // left it.
+  if (visibilityAt(reading.moved, alcove) === "l") {
+    fail(
+      `the forager's light to leave a tile ${gap.toFixed(1)} units away once it ` +
+        "has swum on",
+      `a reported radius of ${reading.moved.visionRadius}`,
+    );
+  }
+
+  for (const [name, tile] of remembered) {
+    assertEqual(
+      visibilityAt(reading.moved, tile),
+      "r",
+      `the ${name} at (${tile.tx}, ${tile.ty}) once the light has moved off it`,
+    );
+    assertEqual(
+      visibilityAt(reading.later, tile),
+      "r",
+      `the ${name} ${(PERSIST_TICKS / 120).toFixed(1)} s later, which stays ` +
+        "remembered for the rest of the maze",
+    );
+  }
+
+  // The control the drawn reading is measured against: a tile in the same frame
+  // that nothing has ever revealed. It is walled off from everything this
+  // scenario does, so a build that reports it revealed has light that does not
+  // stop at rock — which is fog/light-line-of-sight's verdict, and without a
+  // control there is nothing here to measure a remembered tile against.
+  if (visibilityAt(reading.later, fog) !== "u") {
+    fail(
+      `the sealed pocket at (${fog.tx}, ${fog.ty}) to stay unrevealed, as the ` +
+        "control this point measures a remembered tile against; no light, pulse " +
+        "or flare of this scenario reaches it, and specs/sensing.md has the " +
+        "light travel straight and stop at the rock it lands on",
+      `it reported "${visibilityAt(reading.later, fog)}"`,
+    );
+  }
+  const fogCenter = centerOf(reading.later, fog);
+  const fogGap = Math.hypot(
+    fogCenter.x - reading.later.forager.x,
+    fogCenter.y - reading.later.forager.y,
+  );
+  const fogColor = tileColor(reading.later, fog);
+  for (const [name, tile, drawn] of remembered) {
+    const center = centerOf(reading.later, tile);
+    const range = Math.hypot(
+      center.x - reading.later.forager.x,
+      center.y - reading.later.forager.y,
+    );
+    assertLessThan(
+      Math.abs(fogGap - range),
+      TILE,
+      `how much further the fog control stands from the forager than the ` +
+        `remembered ${name} does, in logical units, so the two are read at the ` +
+        `same range`,
+    );
+    assertGreaterThan(
+      colorDistance(tileColor(reading.later, tile), fogColor),
+      DRAWN_MIN_DISTANCE,
+      `the RGB distance, out of 441, between the remembered ${name} and the ` +
+        `unrevealed fog the same distance away: a remembered tile is drawn dim, ` +
+        `${drawn} (specs/sensing.md)`,
+    );
+  }
+});

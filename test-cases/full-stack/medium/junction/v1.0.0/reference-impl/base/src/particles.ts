@@ -1,5 +1,5 @@
 // Junction — the produced particle systems, played LIVE through
-// @test-cabinet/particle-runtime's canvas binding (specs/assets.md, ASSETS.md §3) — not
+// @clockwyrks/particle-runtime's canvas binding (specs/assets.md, ASSETS.md §3) — not
 // flat tints. Each system is simulated on its own offscreen 128×128 canvas (its authored
 // field size) and composited over the board, so — being simulated — it varies play to play.
 //
@@ -12,8 +12,8 @@
 //   Bursts — the ONE-SHOT dust (a lot developing) and fireworks (a milestone) puffs,
 //            spawned at an event position and retired when spent (mirrors valence `Bursts`).
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system
@@ -48,7 +48,10 @@ export class Haze {
     if (!ctx) return;
     // Smog reads right composited normally (not additively); the player clears its own
     // canvas each frame so it stays transparent where no particles live.
-    this.player = new ParticleCanvasPlayer(system, ctx, { composite: "source-over", clear: true });
+    this.player = new ParticleCanvasPlayer(system, ctx, {
+      composite: "source-over",
+      clear: true,
+    });
     this.canvas = canvas;
   }
 
@@ -62,7 +65,13 @@ export class Haze {
     const prevAlpha = ctx.globalAlpha;
     for (const p of patches) {
       ctx.globalAlpha = prevAlpha * Math.max(0, Math.min(1, p.alpha));
-      ctx.drawImage(this.canvas, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      ctx.drawImage(
+        this.canvas,
+        p.x - p.size / 2,
+        p.y - p.size / 2,
+        p.size,
+        p.size,
+      );
     }
     ctx.globalAlpha = prevAlpha;
   }
@@ -81,7 +90,9 @@ interface LiveBurst {
 // The one-shot dust / fireworks bursts.
 export class Bursts {
   private live: LiveBurst[] = [];
-  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
+  constructor(
+    private readonly systems: Record<FxKind, ParticleSystem | undefined>,
+  ) {}
 
   spawn(ev: FxEvent): void {
     if (ev.kind === "haze") return; // haze is the persistent field, not a burst
@@ -93,8 +104,12 @@ export class Bursts {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     // Additive for the bright fireworks; normal for the earthy dust.
-    const composite: GlobalCompositeOperation = ev.kind === "fireworks" ? "lighter" : "source-over";
-    const player = new ParticleCanvasPlayer(system, ctx, { composite, clear: true });
+    const composite: GlobalCompositeOperation =
+      ev.kind === "fireworks" ? "lighter" : "source-over";
+    const player = new ParticleCanvasPlayer(system, ctx, {
+      composite,
+      clear: true,
+    });
     const scale = Math.max(0.5, Math.min(2, ev.strength || 1));
     this.live.push({
       player,
@@ -112,12 +127,20 @@ export class Bursts {
       b.player.update(dt);
       b.age += dt * 1000;
     }
-    this.live = this.live.filter((b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0);
+    this.live = this.live.filter(
+      (b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0,
+    );
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
     for (const b of this.live) {
-      ctx.drawImage(b.canvas, b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
+      ctx.drawImage(
+        b.canvas,
+        b.x - b.size / 2,
+        b.y - b.size / 2,
+        b.size,
+        b.size,
+      );
     }
   }
 

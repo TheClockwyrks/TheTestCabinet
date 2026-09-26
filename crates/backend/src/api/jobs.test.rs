@@ -18,6 +18,18 @@ fn retryable_for_infrastructure_catastrophic_and_harness_error() {
     // neither is a fault to retry.
     assert!(!is_retryable(RunState::TimedOut));
     assert!(!is_retryable(RunState::Completed));
+    // An operator who killed a run does not want it started again — a cancel is a
+    // decision, not a fault.
+    assert!(!is_retryable(RunState::Canceled));
+}
+
+#[test]
+fn a_run_stopped_on_an_execution_ceiling_is_never_retried() {
+    // The harness stopped that run on a ceiling the run's own configuration armed,
+    // so the outcome is a property of the configuration: a fresh attempt runs the
+    // same capability set into the same bound, spends the same money doing it, and
+    // reports the same state.
+    assert!(!is_retryable(RunState::LimitExceeded));
 }
 
 #[test]
@@ -50,12 +62,302 @@ fn retry_count_falls_back_to_default_on_unparseable_request() {
 }
 
 #[test]
+fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_failed_job() {
+    // The engine hands back a record for a clean harness exit whatever it decided
+    // about the run. Its own outcomes — completed, catastrophic — are the model's
+    // and land as a succeeded job; a record it classified as the Test Cabinet's own
+    // failure (a dependency install that never succeeded) lands the way every other
+    // infrastructure failure does, failed with the record's reason.
+    let mut record = crate::db::tests::record("run-1");
+    record.status = test_cabinet_core::run_record::RunStatus {
+        state: RunState::Infrastructure,
+        detail: Some("dependency install failed: `npm ci` exited 1 after 3 attempts".to_string()),
+    };
+    assert_eq!(
+        succeeded_job_outcome(&record),
+        (
+            JobState::Failed,
+            Some("dependency install failed: `npm ci` exited 1 after 3 attempts")
+        )
+    );
+
+    for state in [RunState::Completed, RunState::Catastrophic] {
+        record.status = test_cabinet_core::run_record::RunStatus {
+            state,
+            detail: None,
+        };
+        assert_eq!(
+            succeeded_job_outcome(&record),
+            (JobState::Succeeded, None),
+            "{state:?}"
+        );
+    }
+}
+
+#[test]
 fn terminal_run_state_falls_back_when_no_record() {
     // With no record, the caller's fallback stands in (a `failed` report with no
     // record it could build is treated as our infrastructure).
     assert_eq!(
         terminal_run_state(None, RunState::Infrastructure),
         RunState::Infrastructure
+    );
+}
+
+// --- The models a launch asks the catalog about -----------------------------
+
+#[test]
+fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
+    // A gg run's catalog set is the run's own model plus each model its capability
+    // set binds to an agent, de-duplicated — so a subagent on a different model is
+    // priced (and window-resolved) too, and a shared model is asked about once.
+    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    let body = LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Gg,
+        model: "anthropic/claude-opus-4.8".to_string(),
+        orchestrator: None,
+        engine: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: Some(set),
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
+    };
+
+    assert_eq!(
+        launch_models(&body),
+        vec![
+            ("anthropic/claude-opus-4.8".to_string(), HarnessSlug::Gg),
+            ("openai/gpt-5.4-mini".to_string(), HarnessSlug::Gg),
+        ]
+    );
+}
+
+#[test]
+fn launch_models_of_a_third_party_harness_run_is_its_one_model() {
+    // No capability set: the run's single model, under the harness that will run it.
+    let body = LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness: HarnessSlug::Claude,
+        model: "claude-opus-4-8".to_string(),
+        orchestrator: None,
+        engine: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
+    };
+
+    assert_eq!(
+        launch_models(&body),
+        vec![("claude-opus-4-8".to_string(), HarnessSlug::Claude)]
+    );
+}
+
+// --- The list price a launch is scored at -------------------------------------
+
+/// A conventional launch body against `model`, for the price-resolution tests.
+fn launch_body_for(harness: HarnessSlug, model: &str) -> LaunchBody {
+    LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness,
+        model: model.to_string(),
+        orchestrator: None,
+        engine: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
+    }
+}
+
+#[tokio::test]
+async fn resolve_model_price_stamps_the_curated_list_price() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
+    let prices = resolve_model_price(&db, &body)
+        .await
+        .unwrap()
+        .expect("a priced OpenRouter-routed model resolves");
+    assert_eq!(prices.uncached_input, Some(3e-6));
+    assert_eq!(prices.output, Some(15e-6));
+}
+
+#[tokio::test]
+async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(crate::db::tests::model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an unpriced model refuses the launch");
+    assert!(reason.contains("`deepseek/deepseek-v4`"), "{reason}");
+    assert!(reason.contains("no list price"), "{reason}");
+
+    // And an id the catalog does not know at all refuses too.
+    let body = launch_body_for(HarnessSlug::Kilo, "unlisted/model");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an uncurated model refuses the launch");
+    assert!(reason.contains("not in the model catalog"), "{reason}");
+}
+
+/// A provider-native harness is priced from the list price like every other: a Claude
+/// Code run reports its own exact cost, but that is the billed figure, so its model is
+/// refused without a list price and stamped with one when it has it.
+#[tokio::test]
+async fn resolve_model_price_prices_a_provider_native_harness_from_the_list_price() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let body = launch_body_for(HarnessSlug::Claude, "claude-opus-4-8");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an uncurated native model refuses the launch");
+    assert!(reason.contains("`claude-opus-4-8`"), "{reason}");
+
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8"],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        resolve_model_price(&db, &body)
+            .await
+            .unwrap()
+            .expect("a priced native model is stamped")
+            .output
+            .is_some()
+    );
+}
+
+// --- The active-run list's display identity ---------------------------------
+
+/// A queued job row carrying only the columns `job_summary` reads.
+fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
+    job::Model {
+        id: "j1".to_string(),
+        state: "queued".to_string(),
+        request_json: "{}".to_string(),
+        test_case_slug: "pong".to_string(),
+        test_case_version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        test_type: TestType::EndToEnd.as_str().to_string(),
+        harness_slug: harness_slug.to_string(),
+        model_id: "claude-sonnet-4-5".to_string(),
+        gg_config_json: gg_config_json.map(str::to_string),
+        gg_preset: None,
+        gg_config_id: None,
+        engine_slug: None,
+        gg_models: None,
+        job_token: "t".to_string(),
+        record_id: None,
+        detail: None,
+        attempt: 0,
+        queue_seq: 0,
+        user_id: None,
+        origin: None,
+        created_at: "2026-06-17T20:40:00Z".to_string(),
+        updated_at: "2026-06-17T20:40:00Z".to_string(),
+        started_at: None,
+    }
+}
+
+#[test]
+fn job_summary_names_a_gg_jobs_configuration() {
+    // A third-party-harness job has no capability set, so the active-run list falls
+    // back to showing its model.
+    assert_eq!(job_summary(&queued_job("claude", None)).gg_preset, None);
+
+    // A gg job launched from a named configuration: the name comes straight off the
+    // stored capability set, so a live gg row is identified by its configuration
+    // before the run has produced a record.
+    let named = queued_job("gg", Some(r#"{"preset":"planning-A","agents":[]}"#));
+    assert_eq!(job_summary(&named).gg_preset.as_deref(), Some("planning-A"));
+
+    // A hand-assembled set records no preset — nothing to show, so the row keeps
+    // its model.
+    let hand_assembled = queued_job("gg", Some(r#"{"agents":[]}"#));
+    assert_eq!(job_summary(&hand_assembled).gg_preset, None);
+
+    // An unparseable set must not take the whole active-run listing down with it;
+    // the row degrades to its model instead.
+    let corrupt = queued_job("gg", Some("{not json"));
+    assert_eq!(job_summary(&corrupt).gg_preset, None);
+}
+
+/// The engine a job was enqueued on rides in its display identity, so a console can
+/// tell one cell's in-flight runs from another's before either has a record. Two rungs
+/// of a ladder that differ only by engine are two cells, and a live row filed under
+/// the wrong one is counted toward a figure it will never join.
+#[test]
+fn job_summary_carries_the_jobs_engine() {
+    // No engine on the job is the `none` engine, which the wire spells as an absent
+    // field — the same defaulting the launch request and the run record use.
+    assert_eq!(job_summary(&queued_job("claude", None)).engine, None);
+
+    let mut on_engine = queued_job("claude", None);
+    on_engine.engine_slug = Some("simple-2d".to_string());
+    assert_eq!(job_summary(&on_engine).engine.as_deref(), Some("simple-2d"));
+}
+
+/// The moment a run began rides in its display identity, so the in-progress row can
+/// show a start time and tick a duration off it. Everything else on the row that the
+/// launch already knew is displayed; a start time is the one field the run itself has
+/// to reach for the console to have.
+#[test]
+fn job_summary_carries_when_the_run_started() {
+    // A job that has not started carries none — queued, pending, and dispatched are all
+    // waiting, and the wire spells the absence by omitting the field.
+    assert_eq!(job_summary(&queued_job("claude", None)).started_at, None);
+
+    let mut started = queued_job("claude", None);
+    started.state = "running".to_string();
+    started.started_at = Some("2026-06-17T20:41:00Z".to_string());
+    assert_eq!(
+        job_summary(&started).started_at.as_deref(),
+        Some("2026-06-17T20:41:00Z")
     );
 }
 
@@ -120,6 +422,36 @@ fn a_top_up_launch_records_the_plan_or_ladder_that_asked_for_it() {
 }
 
 #[test]
+fn a_launchs_engine_is_lifted_onto_the_job_the_queue_counts_by() {
+    let attribution = attribution(&account("acct-1"), &LaunchQuery::default())
+        .expect("no origin is not an error");
+    let on = |engine: Option<&str>| {
+        let body = LaunchBody {
+            engine: engine.map(str::to_string),
+            ..launch_body()
+        };
+        build_new_job(
+            &body,
+            TestType::EndToEnd,
+            "2026-08-15T00:00:00Z",
+            &attribution,
+        )
+        .expect("the fixture body is valid")
+        .engine_slug
+    };
+
+    // The engine is a segment of the job's coverage cell, and the in-flight count is a
+    // grouped query — so it has to be a column rather than something read back out of
+    // `request_json` per row.
+    assert_eq!(on(Some("simple-2d")).as_deref(), Some("simple-2d"));
+    // A launch naming no engine asks for the engineless run, which is what a `NULL`
+    // column already counts as; writing the slug out would be a second spelling of one
+    // cell.
+    assert_eq!(on(None), None);
+    assert_eq!(on(Some("  ")), None);
+}
+
+#[test]
 fn an_unparseable_origin_is_rejected_rather_than_dropped() {
     // Silently dropping it would enqueue runs the plan can never halt, and the fault
     // would only surface much later as a plan that will not stop.
@@ -155,8 +487,8 @@ fn stream_event_names_are_the_ones_clients_listen_for() {
 fn the_stream_heartbeat_stays_under_the_usual_idle_timeouts() {
     // The heartbeat is what lets a client tell a healthy idle stream from a dead
     // one, so it has to arrive well inside the ~60s idle timeouts proxies and
-    // WKWebView impose — otherwise the connection is torn down between beats and
-    // the signal never lands. It must also stay comfortably under the client's own
+    // Safari's WebKit networking impose — otherwise the connection is torn down
+    // between beats and the signal never lands. It must also stay comfortably under the client's own
     // staleness window, or a healthy stream would be reopened for no reason.
     assert!(STREAM_HEARTBEAT <= std::time::Duration::from_secs(30));
 }

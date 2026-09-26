@@ -2,81 +2,85 @@
 title: Author an Asset-Generation Test Case
 ---
 
-Scaffold a new [asset-generation](/testing/asset-generation/overview/) test case —
-a sprite the model draws with the `draw` tool (or a sprite sheet with `draw-sheet`),
-one recorded operation at a time (or a new version of an existing one). This is the
-short version;
+## Scope
+
+Scaffold an [asset-generation](/testing/asset-generation/overview/) test case of
+`asset_kind` `sprite` or `sprite-sheet`: a 2D image a model draws with the `draw`
+or `draw-sheet` binary, one recorded operation at a time, to match a written
+brief. Read
 [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/)
-covers it in full, and [Manifests](/testing/asset-generation/manifests/) is the
+for the full procedure;
+[Sprite cases](/testing/asset-generation/manifests/sprite-cases/) is the
 authoritative schema.
 
-Building a playable game instead? See
-[Author an End-to-End Test Case](/quickstarts/authoring/author-an-end-to-end-test-case/) —
-that is a different test type with a `[build]` and reference mockups.
+The sibling asset kinds each have their own quickstart: 3D models and rigs, UI
+art, PBR materials, particle effects, and audio.
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version, not by editing a published one.
+A version lives at
+`test-cases/asset-generation/<difficulty>/<slug>/<version>/`. A version with runs
+recorded against it is frozen; revise a case by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, tool, output, the overall domain
-  variants/              # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs             # rendered into the harness instruction (NOT seeded)
-  specs/brief.md         # what to draw + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml         # manifest: type, asset_kind, canvas, tool, output
+  variants/              # one standalone TOML file per variant
+  prompt.hbs             # rendered into the harness instruction; not seeded
+  changelog.md           # required per-version entry; not seeded
+  description.md         # site blurb; not seeded
+  specs/brief.md         # what to draw and how the tool behaves; seeded
 ```
 
-There is **no target image** and **no `reference/` directory** — an
-asset-generation case declares no references and is reviewed by a human against
-its brief.
+The case is reviewed by a human against its brief, so it declares no
+`[[reference]]` and carries no target image.
 
 ## Steps
 
-1. Pick a catalog **slug** (e.g. `gloamfin`) and the **subject** to draw. It
-   should read clearly at the canvas size and need no in-game context.
-2. Write `specs/brief.md`: the subject, silhouette, **exact palette**, framing,
-   and how the tool behaves — including that its `--help` lists the operations.
-   Keep it
-   [self-contained](/testing/end-to-end/overview/#self-contained-specifications) —
-   the model sees only the seeded files. There is **no operations schema**.
-3. Write `prompt.hbs` using only the documented template variables
-   (`{{variant.*}}`, `{{#each specs}}`) — it renders in strict mode — and point the
+1. Pick a catalog slug and the subject to draw. It should read clearly at the
+   canvas size and need no in-game context.
+2. Write `specs/brief.md`: the subject, its silhouette, the exact palette,
+   framing, and how the tool behaves, including that `--help` lists the
+   operations. Keep it self-contained; the model sees only the seeded files.
+3. Write `prompt.hbs`. It renders in strict mode against `{{variant.*}}`,
+   `{{#each specs}}`, `{{workspace}}`, and `{{time_limit_hours}}`. Point the
    model at the binary's `--help`.
-4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
-   `type = "asset-generation"`, `asset_kind` (`"sprite"` — the default — or
-   `"sprite-sheet"`), a `variants` list of paths to standalone variant files under
-   `variants/` (a root key, so it must precede the first table header; first =
-   default), the `[canvas]`/`[tool]`/`[output]` tables, and the
-   single `overall` `[[domain]]` a human rates the drawing under — an
-   asset-generation case declares **no `[[review_item]]` checklist**; the sprite is
-   judged as a whole against its brief and that one rating is the run's. The
-   case declares **no `[[reference]]`**: it has no target image, and resolution
-   rejects any reference (common or per-variant). A sprite-sheet case also declares
-   a `[sheet]` table (the `[[sheet.frame]]` entries, each just an `index`, and the
-   named `[[sheet.sequence]]` animations). There is **no `[build]`** and **no
-   `[[check]]`**.
+4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`), the required
+   `changelog`, `type = "asset-generation"`, `asset_kind` (`"sprite"`, the
+   default, or `"sprite-sheet"`), the `variants` list, and the `[canvas]`,
+   `[tool]`, and `[output]` tables.
+5. A sprite-sheet case adds the `[sheet]` table: `[[sheet.frame]]` entries, each
+   carrying just an `index`, and named `[[sheet.sequence]]` animations, each
+   carrying a `slug`, an ordered `frames` list, and an `fps` rate.
+6. Declare the single `overall` `[[domain]]` a human rates the drawing under.
+   The drawing is judged as a whole against its brief on that one rating, so the
+   case declares no `[[review_item]]` checklist, no `[build]`, and no
+   `[[check]]`.
 
-[Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/)
-is the full procedure to follow; read it before you start. The single-sprite
-worked examples are the `spectra-*` cases; the sprite-sheet worked examples are
-`lanternjaw`, `drifter`, `gloamfin`, `flarefish`, `trench-walls`, and
-`flare-bloom` — read the one matching the kind you are authoring.
+Worked examples: `spectra-fighter`, `spectra-flux`, `spectra-prism`, and
+`spectra-shard` for single sprites; `lanternjaw`, `drifter`, `gloamfin`,
+`flarefish`, `trench-walls`, and `flare-bloom` for sprite sheets. Read the one
+matching the kind you are authoring.
 
 ## Validate
 
+Run these for every variant.
+
 ```sh
+npm run lint:specs
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-Render the prompt and inspect the seeded repository to confirm the manifest
-resolves and the seeded set (brief + the seeded `draw.config.json` and blank
-starting frame(s)) is self-contained.
+`prompt` catches strict-mode template and manifest errors. `seed` writes the
+seeded repository under `tmp/`, holding the brief, `draw.config.json`, an empty
+`layers.json`, and a blank starting frame per declared frame.
 
 ## Next steps
 
-- [Create a Single-Sprite Variant](/quickstarts/authoring/create-a-sprite-variant/) or
-  [Create a Sprite-Sheet Variant](/quickstarts/authoring/create-a-sprite-sheet-variant/)
-  (pick by the case's `asset_kind`) to add a brief variation.
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
+- [Create a Single-Sprite Variant](/quickstarts/authoring/create-a-sprite-variant/)
+  or
+  [Create a Sprite-Sheet Variant](/quickstarts/authoring/create-a-sprite-sheet-variant/),
+  picked by the case's `asset_kind`.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end
+  to end.

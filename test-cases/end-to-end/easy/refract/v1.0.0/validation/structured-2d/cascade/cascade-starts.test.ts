@@ -1,0 +1,74 @@
+// Refract — cascade/cascade-starts: choosing CASCADE from the title starts
+// the sequence.
+//
+// specs/modes/cascade.md "The sequence": starting Cascade from the main menu
+// sets state.mode to cascade, sets solvedCount to 0, sets tier to 1, generates
+// the first board, and moves to playing with every beam empty — and changes no
+// field the campaign uses, so from the fresh reset the harness opens on those
+// hold the resting values specs/instrumentation.md tables (boardIndex 0,
+// solvedBoards empty, unlockedCount 1, selectIndex 0). Whether campaign progress
+// survives the entry is campaign/campaign-progress-persists's question.
+//
+// The entry is the REAL path a player takes, since starting the sequence is
+// what this point decides: CASCADE is `TITLE_ITEMS[1]`, so the title's `menu-1`
+// pointer target is pressed and released at its center, which specs/controls.md
+// fixes as "the same as `confirm` with `state.menuIndex` at `i`". The pointer
+// rather than a key: the title's target ids are the specification's, while the
+// menu's key bindings are the build's own, and those get their checks in
+// screens/ where the binding is the subject.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  startCascade,
+  type Harness,
+} from "../harness";
+import { assertEveryBeamEmpty } from "./helpers";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("starts the sequence on CASCADE: playing, count 0, tier 1, a fresh board", async () => {
+  await startCascade(h);
+  // The first generated board, as the frame that landed it drew it.
+  captureStill(h, "board");
+
+  const snapshot = h.snapshot();
+  assertEqual(snapshot.mode, "cascade", "CASCADE sets the mode");
+  assertEqual(snapshot.screen, "playing", "the sequence opens on playing");
+  assertEqual(snapshot.solvedCount, 0, "solvedCount opens at 0");
+  assertEqual(snapshot.tier, 1, "tier opens at 1");
+
+  assertGreaterThanOrEqual(snapshot.board.cols, 1, "a board is present: cols");
+  assertGreaterThanOrEqual(snapshot.board.rows, 1, "a board is present: rows");
+  assertGreaterThan(
+    snapshot.board.nodes.length,
+    0,
+    "a board is present: nodes",
+  );
+  assertEveryBeamEmpty(
+    snapshot,
+    "the first board arrives with every beam empty",
+  );
+
+  // The campaign's fields, untouched by the entry: at their resting values,
+  // since nothing in this session has moved them (specs/instrumentation.md).
+  assertEqual(snapshot.boardIndex, 0, "boardIndex rests at 0");
+  assertDeepEqual(snapshot.solvedBoards, [], "solvedBoards rests empty");
+  assertEqual(snapshot.unlockedCount, 1, "unlockedCount rests at 1");
+  assertEqual(snapshot.selectIndex, 0, "selectIndex rests at 0");
+});

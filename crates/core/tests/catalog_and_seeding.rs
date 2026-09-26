@@ -7,8 +7,10 @@
 
 use std::path::{Path, PathBuf};
 
+use test_cabinet_core::engine::{EngineCatalog, EngineSelection};
 use test_cabinet_core::{
     FsRepoSeeder, RenderedReference, RepoSeeder, SeedRequest, TestCaseCatalog, TestType,
+    ensure_engine_supported,
 };
 
 /// The repository's `test-cases/` directory.
@@ -89,7 +91,7 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
     let seed_instrumentation = |variant_slug: &str| -> String {
         let variant = version.variant(variant_slug).expect("variant");
         let specs = version.seeded_specs(variant);
-        let workspace = version.workspace_for(variant);
+        let workspace = version.workspace_for(variant, "none");
 
         let seed_base = tempfile::tempdir().expect("temp dir");
         let fake_image = seed_base.path().join("title-source.png");
@@ -110,6 +112,9 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
                 references: &references,
                 live_preview: None,
                 prior_game_jam_entries: &[],
+                // These seeding tests exercise the engineless run: no engine is selected,
+                // so nothing is vendored and the workspace `package.json` is untouched.
+                engine: None,
             })
             .expect("seed carom v2.0.0");
 
@@ -265,19 +270,19 @@ fn resolves_carom_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Three variants are offered: base (fixed obstacles, one ball), multi (three
-    // independent balls), and gyre (swaying, rotating obstacles).
+    // Three variants are offered: base (fixed obstacles), gyre (swaying, rotating
+    // obstacles) and multi (three independent balls that collide with each other).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
+    assert_eq!(variant_slugs, ["base", "gyre", "multi"]);
     // Under the decomposed layout no variant seeds a spec of its own: the rules
-    // that differ per variant (multi's three balls, gyre's moving obstacles) are
-    // branches inside the common `.hbs` specs, rendered for the selected variant
-    // before they land. So multi's ball rules ride the common `specs/balls.md`
-    // (rendered from `specs/balls.md.hbs`) rather than a variant-specific file.
-    let multi = version.variant("multi").expect("multi variant");
+    // that differ per variant (gyre's moving obstacles) are branches inside the
+    // common `.hbs` specs, rendered for the selected variant before they land. So
+    // gyre's obstacle rules ride the common `specs/playfield.md` (rendered from
+    // `specs/playfield.md.hbs`) rather than a variant-specific file.
+    let gyre = version.variant("gyre").expect("gyre variant");
     assert!(
-        multi.specs.is_empty(),
-        "multi seeds no spec of its own; its rules branch inside the common .hbs specs"
+        gyre.specs.is_empty(),
+        "gyre seeds no spec of its own; its rules branch inside the common .hbs specs"
     );
     assert!(
         version
@@ -286,9 +291,22 @@ fn resolves_carom_from_its_manifest() {
             .any(|spec| spec.dest == Path::new("specs/balls.md")),
         "the common balls spec seeds to specs/balls.md for every variant"
     );
-    // What multi actually adds over the common case is its reviewer checklist: the
-    // `multi-ball` category (three balls, distinct spawns, ball-to-ball collision,
-    // …) rides along only when multi is the selected variant.
+    // What gyre actually adds over the common case is its reviewer checklist: the
+    // `gyre` category (swaying obstacles, spinning obstacles, oriented bounces)
+    // rides along only when gyre is the selected variant.
+    assert!(
+        version
+            .review_items_for(gyre)
+            .iter()
+            .any(|item| item.id == "gyre"),
+        "gyre contributes its gyre review category"
+    );
+    // Multi adds its own category the same way, and — because its launch, hold and
+    // scoring are different rules rather than the same rules differently arranged —
+    // it also contributes its own points to the COMMON `gameplay` category, which
+    // carries none of them. Each variant therefore states the version of them its
+    // own rules make true, and no two variants share a validator for them.
+    let multi = version.variant("multi").expect("multi variant");
     assert!(
         version
             .review_items_for(multi)
@@ -296,36 +314,113 @@ fn resolves_carom_from_its_manifest() {
             .any(|item| item.id == "multi-ball"),
         "multi contributes its multi-ball review category"
     );
-    // The `gameplay` and `game-over` views are common to every variant; the
-    // `title` view is variant-specific because the main menu differs per variant,
-    // so each variant declares its own `title` reference rather than the common
-    // set carrying it.
-    let common_views: Vec<&str> = version
-        .common_references
-        .iter()
-        .map(|v| v.view.as_str())
-        .collect();
-    assert_eq!(common_views, ["gameplay", "game-over"]);
+    for (variant, expected) in [
+        (gyre, "gameplay/scoring-p1.test.ts"),
+        (multi, "multi/scoring-p1.test.ts"),
+    ] {
+        let gameplay = version
+            .review_items_for(variant)
+            .into_iter()
+            .find(|item| item.id == "gameplay")
+            .expect("the gameplay category");
+        let scoring = gameplay
+            .sub_items
+            .iter()
+            .find(|sub| sub.id == "scoring-p1")
+            .expect("the scoring-p1 point");
+        assert_eq!(
+            scoring
+                .validation
+                .as_ref()
+                .expect("scoring-p1 is auto-validated")
+                .script_rel,
+            expected,
+            "`{}` should decide scoring-p1 with its own validator",
+            variant.slug
+        );
+    }
+    // This version retires the reference views along with the mockups behind them:
+    // every screen is left to the model's design and reviewed by a person, so
+    // neither the case nor a variant declares one.
     assert!(
-        multi.references.iter().any(|v| v.view == "title"),
-        "multi should declare its own title reference"
+        version.common_references.is_empty(),
+        "carom v3 declares no common reference views"
     );
-    // The full reference set for a variant is the common references plus its own,
-    // so every variant still offers the three views — with its variant-specific
-    // title menu.
-    let multi_views: Vec<String> = version
-        .references_for(multi)
-        .iter()
-        .map(|v| v.view.clone())
-        .collect();
-    assert_eq!(multi_views, ["gameplay", "game-over", "title"]);
+    assert!(
+        version
+            .variants
+            .iter()
+            .all(|variant| variant.references.is_empty()),
+        "carom v3 declares no per-variant reference views"
+    );
     // Validation is opt-in, and this version declares no reference-similarity
-    // checks: the reference screenshots are seeded as illustrative examples of the
-    // screens rather than layouts to reproduce, so every screen is left to the
-    // model's design and reviewed by a human rather than scored against a baseline.
+    // checks: with no reference views there is no baseline to score a screenshot
+    // against, and the objective points are decided by the vitest validators the
+    // review items name instead.
     assert!(
         version.checks.is_empty(),
         "carom declares no opt-in reference-similarity checks"
+    );
+    // Every objective point this version grades names a validator, and each one is
+    // a TypeScript test file that exists on disk — the property the whole rewrite
+    // turns on, asserted over the real catalog rather than a fixture.
+    // Carom grades on the categorized checklist (`[review] format = 2`), so a
+    // resolved `ReviewItem` is a CATEGORY and the graded points are its sub-items.
+    // Both levels are walked, because either may carry a validator.
+    let mut scripted = 0usize;
+    for variant in &version.variants {
+        for item in version.review_items_for(variant) {
+            let validations = item.validation.iter().map(|v| (item.id.clone(), v)).chain(
+                item.sub_items
+                    .iter()
+                    .filter_map(|sub| sub.validation.as_ref().map(|v| (sub.id.clone(), v))),
+            );
+            for (id, validation) in validations {
+                // A per-engine validator names a suite inside every supported
+                // engine's validator project rather than one host file, so it is
+                // checked against each project rather than against a single path.
+                assert!(
+                    validation.script.is_none(),
+                    "carom point `{id}` should declare its validator per engine"
+                );
+                // A validator scoped with `engines` decides its point only on the
+                // engines it names — the behavior the others leave to the engine —
+                // so its suite ships in those projects and in no other. Both
+                // directions are asserted: present where it is covered, absent
+                // where it is not.
+                for engine in version.engine_slugs() {
+                    let suite = version
+                        .root
+                        .join("validation")
+                        .join(&engine)
+                        .join(&validation.script_rel);
+                    if validation.covers(&engine) {
+                        assert!(
+                            suite.is_file(),
+                            "carom point `{id}` names no validator for engine `{engine}`: {}",
+                            suite.display()
+                        );
+                    } else {
+                        assert!(
+                            !suite.exists(),
+                            "carom point `{id}` is scoped away from engine `{engine}`, so its \
+                             validator project should not ship the suite: {}",
+                            suite.display()
+                        );
+                    }
+                }
+                assert!(
+                    validation.script_rel.ends_with(".test.ts"),
+                    "carom point `{id}` should be decided by a vitest validator, not `{}`",
+                    validation.script_rel
+                );
+                scripted += 1;
+            }
+        }
+    }
+    assert!(
+        scripted >= 70,
+        "carom should decide its objective points with validators, found {scripted}"
     );
 }
 
@@ -340,7 +435,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     // the standard mode.
     let base = version.variant("base").expect("base variant");
     let specs = version.seeded_specs(base);
-    let workspace = version.workspace_for(base);
+    let workspace = version.workspace_for(base, "none");
 
     // Stand in for a rendered reference screenshot. The seeder copies the file
     // verbatim, so its bytes do not need to be a real PNG for this contract test
@@ -364,6 +459,9 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             references: &references,
             live_preview: None,
             prior_game_jam_entries: &[],
+            // These seeding tests exercise the engineless run: no engine is selected,
+            // so nothing is vendored and the workspace `package.json` is untouched.
+            engine: None,
         })
         .expect("seed carom");
 
@@ -426,7 +524,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     // seeder vendors it to, plus a `.gitignore` that ignores `dist/` (as every
     // real case does for its own build output).
     let manifest = format!(
-        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n{DEMO_HEAD}"
+        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n{DEMO_HEAD}"
     );
     let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
     let workspace = dir
@@ -435,31 +533,31 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     std::fs::create_dir_all(&workspace).expect("workspace dir");
     std::fs::write(
         workspace.join("package.json"),
-        r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+        r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"file:./.vendor/packages/@clockwyrks/particle-runtime"}}"#,
     )
     .expect("workspace package.json");
     std::fs::write(workspace.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
 
     // A fake host package store: particle-runtime (with a `dist/`) depending on
-    // run-record via the relative sibling `file:` the staging script writes, so the
-    // vendoring closure must follow the edge and copy run-record too.
+    // asset-contract via the relative sibling `file:` the staging script writes, so the
+    // vendoring closure must follow the edge and copy asset-contract too.
     let store = tempfile::tempdir().expect("store dir");
-    let pr = store.path().join("@test-cabinet/particle-runtime");
-    let rr = store.path().join("@test-cabinet/run-record");
+    let pr = store.path().join("@clockwyrks/particle-runtime");
+    let ac = store.path().join("@clockwyrks/asset-contract");
     std::fs::create_dir_all(pr.join("dist")).expect("pr dist");
-    std::fs::create_dir_all(rr.join("dist")).expect("rr dist");
+    std::fs::create_dir_all(ac.join("dist")).expect("ac dist");
     std::fs::write(
         pr.join("package.json"),
-        r#"{"name":"@test-cabinet/particle-runtime","version":"0.0.0","dependencies":{"@test-cabinet/run-record":"file:../run-record"}}"#,
+        r#"{"name":"@clockwyrks/particle-runtime","version":"0.0.0","dependencies":{"@clockwyrks/asset-contract":"file:../asset-contract"}}"#,
     )
     .expect("pr manifest");
     std::fs::write(pr.join("dist/index.js"), "// runtime").expect("pr dist file");
     std::fs::write(
-        rr.join("package.json"),
-        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+        ac.join("package.json"),
+        r#"{"name":"@clockwyrks/asset-contract","version":"0.0.0"}"#,
     )
-    .expect("rr manifest");
-    std::fs::write(rr.join("dist/index.js"), "// types").expect("rr dist file");
+    .expect("ac manifest");
+    std::fs::write(ac.join("dist/index.js"), "// types").expect("ac dist file");
 
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
     let base = version.variant("base").expect("base variant");
@@ -471,41 +569,44 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             test_case: &version,
             variant: base,
             specs: &specs,
-            workspace: version.workspace_for(base),
+            workspace: version.workspace_for(base, "none"),
             references: &[],
             live_preview: None,
             prior_game_jam_entries: &[],
+            // These seeding tests exercise the engineless run: no engine is selected,
+            // so nothing is vendored and the workspace `package.json` is untouched.
+            engine: None,
         })
         .expect("seed demo");
 
-    // The declared package and its transitive `@test-cabinet` closure are vendored
+    // The declared package and its transitive `@clockwyrks` closure are vendored
     // into the repo at the path the case's `package.json` depends on.
-    let vendor = seeded.path.join(".tcab/packages/@test-cabinet");
+    let vendor = seeded.path.join(".vendor/packages/@clockwyrks");
     assert!(
         vendor.join("particle-runtime/package.json").is_file(),
         "the declared package is vendored"
     );
     assert!(
-        vendor.join("run-record/package.json").is_file(),
-        "the transitive @test-cabinet dependency is vendored too"
+        vendor.join("asset-contract/package.json").is_file(),
+        "the transitive @clockwyrks dependency is vendored too"
     );
     let vendored_dist = vendor.join("particle-runtime/dist/index.js");
     assert!(vendored_dist.is_file(), "the package's dist is vendored");
 
     // The workspace `package.json` is seeded verbatim — the seeder never rewrites it.
     let pkg = std::fs::read_to_string(seeded.path.join("package.json")).expect("read package.json");
-    assert!(pkg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"));
+    assert!(pkg.contains("file:./.vendor/packages/@clockwyrks/particle-runtime"));
 
     // The vendored tree is in the initial commit, dist included: the case's
     // `.gitignore` ignores `dist/`, so this only holds if seeding force-adds
-    // `.tcab/`. Without it the published repo would be missing the package code.
+    // `.vendor/`. Without it the published repo would be missing the package code.
     let tracked = git_tracked_files(&seeded.path);
     assert!(
-        tracked.contains(".tcab/packages/@test-cabinet/particle-runtime/dist/index.js"),
+        tracked.contains(".vendor/packages/@clockwyrks/particle-runtime/dist/index.js"),
         "the vendored dist must be committed despite the `dist/` gitignore rule; tracked:\n{tracked}"
     );
     assert!(
-        tracked.contains(".tcab/packages/@test-cabinet/run-record/package.json"),
+        tracked.contains(".vendor/packages/@clockwyrks/asset-contract/package.json"),
         "the whole vendored closure is committed"
     );
 }
@@ -902,7 +1003,7 @@ fn resolves_lattice_performance_from_its_manifest() {
     // The per-scenario sandbox limits resolve: a `fuel_limit` (not a per-tick
     // budget) and a memory cap.
     let sandbox = version.sandbox.expect("performance case has a [sandbox]");
-    assert_eq!(sandbox.fuel_limit, Some(5_000_000_000));
+    assert_eq!(sandbox.fuel_limit, Some(40_000_000_000));
     assert_eq!(sandbox.fuel_per_tick, None);
     assert_eq!(sandbox.max_memory_bytes, 268_435_456);
 
@@ -923,24 +1024,24 @@ fn resolves_lattice_performance_from_its_manifest() {
     assert_eq!(version.cases.len(), 11, "8 smoke + 3 stress scored cases");
     assert_eq!(smoke.len(), 8, "the eight smoke tests");
     assert_eq!(stress.len(), 3, "small/medium/large stress scenarios");
-    // A smoke test declares no runway, so its run ceiling is exactly the 5B pass line.
+    // A smoke test declares no runway, so its run ceiling is exactly the 40B pass line.
     for case in &smoke {
         assert_eq!(
-            case.fuel_ceiling, 5_000_000_000,
+            case.fuel_ceiling, 40_000_000_000,
             "a smoke test runs at the pass line (no runway)"
         );
     }
     // Each stress case's run ceiling resolves as `fuel_limit * fuel_runway` (10/5/2),
-    // which widens the runway but leaves the 5B pass line untouched. Order is manifest
+    // which widens the runway but leaves the 40B pass line untouched. Order is manifest
     // order: small, medium, large.
     assert_eq!(
         stress.iter().map(|c| c.fuel_ceiling).collect::<Vec<_>>(),
-        vec![50_000_000_000, 25_000_000_000, 10_000_000_000],
+        vec![400_000_000_000, 200_000_000_000, 80_000_000_000],
         "runway ceilings resolve from fuel_limit * fuel_runway"
     );
     for case in &version.cases {
         // A runway only ever widens: the run ceiling is at least the pass line.
-        assert!(case.fuel_ceiling >= 5_000_000_000);
+        assert!(case.fuel_ceiling >= 40_000_000_000);
         assert!(
             case.input.is_file(),
             "scored case input {} should exist",
@@ -1051,4 +1152,333 @@ fn asset_generation_cases_are_reviewed_on_one_overall_rating() {
         checked > 100,
         "expected the bundled asset-generation catalog, checked only {checked} cases"
     );
+}
+
+/// The sibling `game-jams/` directory. Discovery folds it into the same catalog as
+/// `test-cases/` (see `TestCaseCatalog::case_folders`), so an audit of "every
+/// committed case manifest" has to count it too.
+fn jam_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../game-jams")
+}
+
+/// Directory names under a version that hold build output rather than definitions:
+/// a reference implementation's installed dependencies and its bundle, the
+/// git-ignored screenshot cache, and the per-build scratch directory. Every one is
+/// git-ignored, holds no committed manifest, and is rewritten wholesale by any
+/// build running beside the suite, so the walk stops at them and reads the
+/// committed catalog alone.
+const BUILD_OUTPUT_DIRS: [&str; 4] = ["node_modules", "dist", ".rendered", ".vendor"];
+
+/// Every committed case manifest on disk: `test-case.toml` under `test-cases/`
+/// and `game-jam.toml` under `game-jams/`, one per version directory.
+///
+/// Walked from the filesystem rather than from the catalog, so the two can be
+/// compared: if discovery ever stops reaching a folder, the counts diverge here
+/// instead of the catalog quietly shrinking.
+///
+/// Every filesystem error is a panic naming the path it happened on, and a
+/// directory entry is classified by its own type rather than by following it. A
+/// walk that skipped what it could not read would answer a short list, and the
+/// callers that compare a count against it would report a catalog disagreeing with
+/// itself while the read that actually failed went unnamed.
+fn on_disk_manifests() -> Vec<PathBuf> {
+    fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
+        let entries =
+            std::fs::read_dir(dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        for entry in entries {
+            let entry =
+                entry.unwrap_or_else(|err| panic!("read an entry of {}: {err}", dir.display()));
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .unwrap_or_else(|err| panic!("type of {}: {err}", path.display()));
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            if file_type.is_dir() {
+                if !BUILD_OUTPUT_DIRS.contains(&name) {
+                    walk(&path, found);
+                }
+            } else if name == "test-case.toml" || name == "game-jam.toml" {
+                found.push(path);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(&catalog_root(), &mut found);
+    walk(&jam_root(), &mut found);
+    found.sort();
+    found
+}
+
+/// Every version directory carrying a `.frozen` marker: the versions that have runs
+/// recorded against them and so can never be edited again. Their manifests are the
+/// backward-compatibility contract — whatever the manifest grammar grows, these
+/// exact files must keep resolving.
+fn frozen_version_dirs() -> Vec<PathBuf> {
+    on_disk_manifests()
+        .into_iter()
+        .filter_map(|manifest| {
+            let dir = manifest.parent()?.to_path_buf();
+            dir.join(".frozen").exists().then_some(dir)
+        })
+        .collect()
+}
+
+/// The catalog walk must reach **every** committed manifest, not merely a
+/// non-empty subset of them.
+///
+/// `every_catalog_case_and_variant_resolves` asserts the catalog is non-empty and
+/// that what it lists resolves; on its own that would still pass if discovery
+/// silently stopped reaching a whole folder. Comparing the number of resolved
+/// `(case, version)` pairs against the number of manifest files on disk closes
+/// that gap: exactly one manifest lives in each version directory, so the two
+/// counts must be equal.
+#[test]
+fn the_catalog_walk_reaches_every_committed_manifest() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let resolved: usize = catalog
+        .list()
+        .expect("list catalog")
+        .iter()
+        .map(|case| case.versions.len())
+        .sum();
+
+    let on_disk = on_disk_manifests();
+    assert_eq!(
+        resolved,
+        on_disk.len(),
+        "the catalog lists {resolved} case versions but {} manifests are committed \
+         on disk — discovery is skipping one",
+        on_disk.len()
+    );
+}
+
+/// Every frozen version directory must still resolve, by the folder name and
+/// version string that name it on disk.
+///
+/// This is the backward-compatibility gate for the manifest grammar. A frozen
+/// directory cannot be edited to keep up with a new field, so every one of them
+/// declares the *old* spellings: the bare `engines = [...]` list (or no `engines`
+/// key at all) rather than `[[engine]]` tables, and no `[toolchain]` table. Each
+/// must therefore resolve to unbounded engine support and to no toolchain — the
+/// two states that leave a frozen case behaving exactly as it did before either
+/// feature existed.
+#[test]
+fn every_frozen_version_still_resolves_unchecked_and_ungated() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+
+    let frozen = frozen_version_dirs();
+    assert!(
+        !frozen.is_empty(),
+        "no frozen version directories found — the audit would prove nothing"
+    );
+
+    for dir in &frozen {
+        let version_name = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("version directory name");
+        // The catalog accepts a folder name as an id, so a frozen directory can be
+        // addressed exactly as it sits on disk without parsing its manifest first.
+        let folder = dir
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .expect("case folder name");
+
+        let version = catalog
+            .resolve(folder, version_name)
+            .unwrap_or_else(|err| panic!("resolve frozen {}: {err:?}", dir.display()));
+
+        // No frozen manifest declares a `[toolchain]` table, so none of them is
+        // toolchain-checked and none can be gated by one.
+        assert!(
+            version.toolchain.is_none(),
+            "frozen {} resolved with a toolchain it cannot have declared",
+            dir.display()
+        );
+        // Every engine a frozen manifest declares came from the bare list, which
+        // carries no range — so the version half of the run gate short-circuits and
+        // the case never consults the host package store.
+        for engine in &version.engines {
+            assert!(
+                !engine.is_bounded(),
+                "frozen {} declares a version range for `{}`, which the bare \
+                 `engines` list cannot express",
+                dir.display(),
+                engine.slug
+            );
+        }
+    }
+}
+
+/// Every case in the catalog must pass the real run gate for every engine it
+/// declares — the same `ensure_engine_supported` a run applies before any
+/// container work — and must refuse the engines it does not.
+///
+/// The engine catalogue is resolved with its **default** package store, which on a
+/// host that has staged nothing holds no version for `simple-2d`. A case declaring
+/// no version range must be admitted regardless, so a frozen bare-slug case still
+/// runs on a machine that has never staged a package; a case declaring a RANGE is
+/// checked against the staged version, and where the host has staged nothing that
+/// half of the gate has nothing to answer with, which is not the case's fault and
+/// is skipped here rather than asserted either way.
+///
+/// The engineless run is asserted per case rather than universally: a version that
+/// declares no engine supports it, and a version built against a runtime does not
+/// (its workspace `package.json` depends on a package an engineless run vendors
+/// nothing into). Both halves are checked, so the gate is held to the resolved set
+/// rather than to a blanket rule.
+#[test]
+fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let engines = EngineCatalog::new();
+
+    let mut checked = 0usize;
+    for case in &catalog.list().expect("list catalog") {
+        for version_name in &case.versions {
+            let version = catalog
+                .resolve(&case.slug, version_name)
+                .unwrap_or_else(|err| panic!("resolve {}@{version_name}: {err:?}", case.slug));
+
+            // The engineless run: admitted exactly when the resolved set carries it.
+            let none = engines
+                .resolve(&EngineSelection::none())
+                .expect("resolve the engineless engine");
+            let engineless = ensure_engine_supported(&version, &none);
+            if version.supports_engine(test_cabinet_core::NONE_SLUG) {
+                engineless.unwrap_or_else(|err| {
+                    panic!(
+                        "{}@{version_name} supports the engineless run but the gate \
+                         refuses it: {err:?}",
+                        case.slug
+                    )
+                });
+            } else {
+                assert!(
+                    engineless.is_err(),
+                    "{}@{version_name} does not support the engineless run, so the gate \
+                     must refuse it",
+                    case.slug
+                );
+            }
+
+            for support in &version.engines {
+                let engine = engines
+                    .resolve(&EngineSelection::new(&support.slug))
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "{}@{version_name} declares engine `{}`, which the catalogue \
+                             cannot resolve: {err:?}",
+                            case.slug, support.slug
+                        )
+                    });
+                // A declared RANGE is answered from the host package store. Where the
+                // host has staged nothing there is no version to compare, so the gate
+                // reports the version as unknown — a property of this machine, not of
+                // the manifest, and the half this walk cannot assert.
+                if support.is_bounded() && engine.version().is_none() {
+                    continue;
+                }
+                ensure_engine_supported(&version, &engine).unwrap_or_else(|err| {
+                    panic!(
+                        "{}@{version_name} declares engine `{}` but the run gate refuses \
+                         it: {err:?}",
+                        case.slug, support.slug
+                    )
+                });
+            }
+            checked += 1;
+        }
+    }
+
+    assert_eq!(
+        checked,
+        on_disk_manifests().len(),
+        "the engine gate was exercised over {checked} versions, but the repository \
+         commits {} case manifests",
+        on_disk_manifests().len()
+    );
+}
+
+/// A resolved version's stored shape must stay byte-compatible with what the
+/// definition store already holds.
+///
+/// The backend serializes a resolved `TestCaseVersion` into its definition store
+/// and reads it back, so the two fields the manifest grammar grew have to be
+/// invisible on the wire for every case that does not use them: an unbounded
+/// `engines` entry must serialize as the plain slug string the case declared, and
+/// `toolchain` must be absent rather than written as an explicit null.
+/// A version that DOES use them is held to the round trip instead — what it wrote
+/// must read back as what it was — so the new spellings are proved to survive the
+/// store without pretending nothing in the catalog uses them. Serializing the real
+/// catalog rather than a hand-built literal is what makes this a statement about
+/// the definitions actually shipped.
+#[test]
+fn the_stored_shape_of_every_committed_version_is_unchanged() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+
+    let mut checked = 0usize;
+    for case in &catalog.list().expect("list catalog") {
+        for version_name in &case.versions {
+            let version = catalog
+                .resolve(&case.slug, version_name)
+                .unwrap_or_else(|err| panic!("resolve {}@{version_name}: {err:?}", case.slug));
+
+            let stored = serde_json::to_value(&version).expect("serialize the resolved version");
+            let object = stored
+                .as_object()
+                .expect("a version serializes to an object");
+
+            // A version that declares no `[toolchain]` table must not gain the key at
+            // all — a stored definition of an untouched case gains no field.
+            assert_eq!(
+                object.contains_key("toolchain"),
+                version.toolchain.is_some(),
+                "{}@{version_name} stores a `toolchain` key that does not match what it \
+                 declared",
+                case.slug
+            );
+
+            // An engine declared with no version range must still serialize as the
+            // bare slug string the case declared; only a declared RANGE may widen
+            // into an object.
+            let engines = object
+                .get("engines")
+                .and_then(|value| value.as_array())
+                .unwrap_or_else(|| panic!("{}@{version_name} stores no engines array", case.slug));
+            assert_eq!(engines.len(), version.engines.len());
+            for (entry, support) in engines.iter().zip(&version.engines) {
+                assert_eq!(
+                    entry.is_string(),
+                    !support.is_bounded(),
+                    "{}@{version_name} stores engine entry {entry} in a shape that does \
+                     not match whether `{}` declared a version range",
+                    case.slug,
+                    support.slug
+                );
+            }
+
+            // And the whole thing must read back as what it was.
+            let round_tripped: test_cabinet_core::TestCaseVersion =
+                serde_json::from_value(stored).expect("deserialize the stored version");
+            assert_eq!(
+                round_tripped.engines, version.engines,
+                "{}@{version_name} does not survive the definition store round trip",
+                case.slug
+            );
+            assert_eq!(
+                round_tripped.toolchain.is_some(),
+                version.toolchain.is_some(),
+                "{}@{version_name} loses its toolchain across the definition store round \
+                 trip",
+                case.slug
+            );
+            checked += 1;
+        }
+    }
+
+    assert_eq!(checked, on_disk_manifests().len());
 }

@@ -1,0 +1,35 @@
+{
+  "name": "@clockwyrks/structured-3d",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The Structured 3D engine: the runtime a produced 3D game is built inside. An engine is created over a canvas and bound to one game definition, and it owns the gameplay framework the game subclasses — a game instance that outlives every level, worlds built from level descriptions, the game mode and game state that decide a match, actors assembled from components, and the controllers that possess and drive pawns — together with the frame loop and its replaceable clock, engine-owned rendering over three.js with its layer-ordered pipeline, its four render modes, its shadows, its collision overlay, and the 2D screen layer composited over the picture, volumetric collision detection reported as events and manifolds, the letterboxed device-pixel-ratio-aware canvas fit and the camera whose frustum projects world units into the logical design field, named input actions read only through a player controller, an audio cue bus with its positional cues and its first-gesture unlock, asset resolution under a fixed root with its texture and model decoders, a diagnostics overlay, the debug surface a game instance returns from its initialize, and an opt-in recorder whose recordings are video of the frames the pipeline drew, timestamped in simulated time — leaving the game to write only its own rules and behavior. Everything it does is observed by subscribing to its events rather than by reading a log it accumulates.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "three": "~0.185.0"
+  },
+  "devDependencies": {
+    "@types/three": "~0.185.0",
+    "jsdom": "^26",
+    "three": "~0.185.0",
+    "typescript": "^6",
+    "vitest": "^5"
+  }
+}

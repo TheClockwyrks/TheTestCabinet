@@ -1,14 +1,13 @@
-// The two service-client interfaces the console is written against. Each has a
-// transport implementation per app:
-//   - HTTP  (apps/web): `fetch` against the backend / worker REST APIs.
-//   - Tauri (apps/desktop, a later item): `invoke` + Tauri events.
-// The console never imports a transport; it only depends on these interfaces and
-// reads them from context (see context.tsx).
+// The two service-client interfaces the console is written against. The HTTP
+// transport (`@clockwyrks/ui/transport`, mounted by apps/web) implements them with
+// `fetch` against the backend REST API. The console never imports a transport; it
+// only depends on these interfaces and reads them from context (see context.tsx).
 import type {
   Account,
   AssetPreview,
   AuthResult,
   BackendIdentity,
+  AestheticRating,
   DomainRating,
   HarnessConfigEntry,
   HarnessEvent,
@@ -17,10 +16,18 @@ import type {
   LaunchOrigin,
   LogoFetchResult,
   Model,
+  ModelAccuracy,
   ModelInput,
+  ModelListing,
+  ModelProbe,
+  ModelProbeDetail,
+  ModelCandidates,
+  ModelProbeProviders,
+  ModelProbeTriggerInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  ProviderStats,
   PublishEnqueued,
   PublishProgress,
   PublishResult,
@@ -36,11 +43,43 @@ import type {
   Specification,
   StoredRun,
   TestCase,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "./types";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { BulkCancelOut } from "@test-cabinet/run-record/jobs-api";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type {
+  CabinetStatsResponse,
+  TestCaseGroupOut,
+} from "@clockwyrks/run-record/backend-api";
+import type {
+  BulkCancelOut,
+  GgRunRequest,
+  LaunchAck,
+} from "@clockwyrks/run-record/jobs-api";
+import type {
+  GgConfig,
+  GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
+  GgProgramLanguage,
+} from "@clockwyrks/run-record/gg";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type {
+  GgDashboard,
+  GgDashboardInput,
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryBatch,
+  GgQueryBatchResponse,
+  GgQueryResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
+} from "@clockwyrks/run-record/gg-query";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -54,7 +93,11 @@ import type {
   CoverageSettingsInput,
   HaltResult,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
+import type {
+  Comparison,
+  ComparisonInput,
+} from "@clockwyrks/run-record/comparison";
 import type {
   LadderClimberInput,
   LadderInput,
@@ -66,7 +109,7 @@ import type {
   LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -114,6 +157,25 @@ export class NotSupportedError extends Error {
   }
 }
 
+// One arm run a comparison publish could not enqueue, with why (e.g. an
+// infrastructure failure, or a review-less run with no automated verdicts to
+// stand in for the review) — so a partially-published comparison never reads as
+// if every run behind it is inspectable.
+export interface SkippedComparisonRun {
+  runId: string;
+  reason: string;
+}
+
+// The result of `BackendClient.publishComparison`: which of the comparison's
+// arm runs were enqueued for publishing (one ordinary publish job each) and
+// which were skipped. Mirrors the backend's `ComparisonPublishOutcome`
+// (`crates/backend/src/api/comparisons.rs`), which is not part of the
+// generated contract (it derives only `Serialize`, not `TS`).
+export interface ComparisonPublishOutcome {
+  enqueued: string[];
+  skipped: SkippedComparisonRun[];
+}
+
 // The backend: the canonical source of test-case definitions, container image
 // references, and published results. Every runner and reporter resolves the
 // catalog from here — never from a worker. Mirrors the backend HTTP API
@@ -141,6 +203,59 @@ export interface BackendClient {
   fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
+  /** What OpenRouter publishes about a model, so the config form can fill itself
+   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer). */
+  lookupOpenrouterModel?(slug: string, token: string): Promise<ModelListing>;
+
+  // Model probes — responses-as-code readiness checks of a catalog model. The
+  // reads are open (probe results are console-only catalog context, like the
+  // rest of the model detail); the trigger and the provider enumeration are
+  // Bearer-gated mutations/third-party reaches and optional, so a transport
+  // without them (the static site) hides the affordance — the `createModel?`
+  // pattern.
+  /** The model's probe history, newest first (`GET /models/{slug}/probes`). */
+  listModelProbes(slug: string): Promise<ModelProbe[]>;
+  /** One probe with its items, raw replies, and the request as sent
+   * (`GET /model-probes/{id}`). */
+  getModelProbe(id: string): Promise<ModelProbeDetail>;
+  /** Trigger a probe; resolves to the row, already `running`
+   * (`POST /models/{slug}/probes`, Bearer). */
+  triggerModelProbe?(
+    slug: string,
+    input: ModelProbeTriggerInput,
+    token: string,
+  ): Promise<ModelProbe>;
+  /** The providers OpenRouter lists for the model, so a probe can be pinned to
+   * one (`GET /models/{slug}/probe-providers`, Bearer). */
+  listModelProbeProviders?(
+    slug: string,
+    token: string,
+  ): Promise<ModelProbeProviders>;
+  /** The provider candidate list the next gg enqueue of the model would build,
+   * read from OpenRouter's endpoints listing now, for an agent that sets no
+   * reasoning (`GET /models/{slug}/candidates`, Bearer). Optional like the
+   * provider enumeration: a third-party reach the static site cannot make. */
+  getModelCandidates?(slug: string, token: string): Promise<ModelCandidates>;
+
+  // Provider & accuracy statistics — deployment-wide folds over stored gg runs
+  // (and, for providers, the probe corpus). Open reads, but optional: the static
+  // site's snapshot transport has no aggregation endpoints, so a host without
+  // them renders the unavailable state rather than an empty chart.
+  /** Per-provider health across recorded gg runs plus probe evidence
+   * (`GET /stats/providers`). */
+  getProviderStats?(): Promise<ProviderStats>;
+  /** Per-model RaC and tool-calling accuracy across recorded gg runs
+   * (`GET /stats/model-accuracy`). */
+  getModelAccuracy?(): Promise<ModelAccuracy>;
+  /**
+   * The cabinet's whole-of-corpus headline figures (`GET /stats/cabinet`) — the
+   * home page's totals band and activity chart. An open read over every stored
+   * run, whatever its state or publication. Required rather than optional like
+   * the gg stats folds above: the one transport here is the backend's, which
+   * always serves it — the static site supplies the gallery-level
+   * `getCabinetStats` from its own local fold instead of a client.
+   */
+  getCabinetStats(): Promise<CabinetStatsResponse>;
 
   // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
   // list enumerates every harness with its current knobs (today: max parallelism);
@@ -157,12 +272,35 @@ export interface BackendClient {
   ): Promise<HarnessConfigEntry[]>;
 
   listTestCases(): Promise<TestCase[]>;
+  /**
+   * The repo-defined test-case groups (`GET /test-case-groups`), already in
+   * display order — the home page renders one leaderboard per group. An open
+   * read of ingested catalog data, like {@link listTestCases}; distinct from the
+   * per-account coverage groups (`listCoverageGroups`).
+   */
+  listTestCaseGroups(): Promise<TestCaseGroupOut[]>;
   listVersions(slug: string): Promise<string[]>;
-  resolveVersion(slug: string, version: string): Promise<VersionInfo>;
+  /**
+   * Resolve one exact case version, with each variant's `prompt` rendered for
+   * `engine`.
+   *
+   * `engine` is required rather than defaulted because a case's prompt template
+   * branches on the selected engine, so the rendering is only correct for the
+   * caller that names one: a run surface passes the engine its run recorded, and
+   * a case surface passes `DEFAULT_ENGINE_SLUG` for the engineless rendering.
+   */
+  resolveVersion(
+    slug: string,
+    version: string,
+    engine: string,
+  ): Promise<VersionInfo>;
+  /** One variant's seeded spec bodies, rendered for `engine` — the spec analogue
+   * of the rendered prompt, with the same requirement that a caller name one. */
   readSpecs(
     slug: string,
     version: string,
     variant: string,
+    engine: string,
   ): Promise<Specification>;
 
   // Published runs (the read side a reporter/gallery consumes).
@@ -185,10 +323,18 @@ export interface BackendClient {
    * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
    *   its presence selects this mode) with an optional `limit`, `state` (including
    *   `any`, the published + unpublished union the console listings draw from), the
-   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`), the
-   *   `latestVersions` current-version restriction, a free-text `q`, and
-   *   `sort`/`dir`. Resolves the windowed summaries plus the `total` count of
-   *   all matching rows (`nextCursor` is `null`).
+   *   equality filters
+   *   (`testCase`/`model`/`harness`/`variant`/`version`/`engine`/`ggConfigId`,
+   *   the last narrowing to the runs launched from one gg configuration by its
+   *   id),
+   *   the `versions` list (exact versions, any of which match — the case-detail
+   *   Runs tab's anchored version scope; like `version` it silences
+   *   `latestVersions`), the `testCases` list (case slugs, any of which match —
+   *   the home page's group-leaderboard slice; it ANDs with `testCase`, so naming
+   *   both narrows to their intersection), the `aesthetic` tier (an unrated run
+   *   never matches), the `latestVersions` current-version restriction, a
+   *   free-text `q`, and `sort`/`dir`. Resolves the windowed summaries plus the
+   *   `total` count of all matching rows (`nextCursor` is `null`).
    */
   listRunSummaries(opts?: {
     before?: string;
@@ -196,11 +342,16 @@ export interface BackendClient {
     offset?: number;
     state?: string;
     testCase?: string;
+    testCases?: string[];
     model?: string;
     harness?: string;
     variant?: string;
     version?: string;
+    versions?: string[];
+    engine?: string;
+    ggConfigId?: string;
     latestVersions?: boolean;
+    aesthetic?: string;
     q?: string;
     sort?: RunSort;
     dir?: SortDir;
@@ -221,6 +372,22 @@ export interface BackendClient {
     id: string,
     onProgress?: ProgressCallback,
   ): Promise<RunEventStreams>;
+
+  /**
+   * A run's stored **code-analysis document** (`GET /runs/{id}/code-analysis`), or `null`
+   * when the run has none. Backs the run-detail Code tab's explorer: the bounded summary
+   * rides on the record, and this is the unbounded tier behind it — every authored file,
+   * every function with its complexity, every import edge, cycle and clone group.
+   *
+   * Not harness-specific: analysing a directory involves no harness-specific work, so the
+   * tab is offered on every run that carries an analysis. A `null` means the run predates
+   * the analyzer — [the corpus is not
+   * backfilled](https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version)
+   * — not that anything failed. Optional so a transport that cannot reach per-run media
+   * omits it and the tab falls back to the summary alone, which is the same pattern the
+   * other console-only reads use.
+   */
+  readCodeAnalysis?(id: string): Promise<CodeAnalysisDocument | null>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`
@@ -321,8 +488,9 @@ export interface BackendClient {
   /**
    * Refill a plan's review buffer (`POST /coverage-plans/{id}/topup`, Bearer): the
    * server walks the plan's cells in its configured order, skips the ones already at
-   * their (globally counted) target, and enqueues whole cells until this account has
-   * `bufferTarget` runs outstanding — in flight, or finished and unreviewed by them.
+   * their (globally counted) target, and enqueues whole cells until this account's
+   * `bufferTarget` is full — in flight, or finished and unreviewed by them — or every
+   * missing cell when that target is unbounded.
    *
    * There is no background scheduler, so this call **is** the scheduler: the console
    * makes it when a plan is opened and after a review lands. It is idempotent (each
@@ -501,6 +669,201 @@ export interface BackendClient {
     token: string,
   ): Promise<LadderRungOutcome>;
 
+  // The operator's saved gg configurations (console-only, Bearer). gg is its own
+  // run mode — a named capability set stands where a third-party run's harness
+  // does — so these back the account section's gg tab and the new-run form's
+  // configuration picker. Optional for the same reason the coverage calls are: the
+  // static site's read-only transport omits them.
+  /** The operator's saved gg configurations (`GET /gg/configs`). */
+  listGgConfigs?(token: string): Promise<GgConfig[]>;
+  /**
+   * Register a configuration (`POST /gg/configs`), returning it with its new id.
+   */
+  createGgConfig?(input: GgConfigInput, token: string): Promise<GgConfig>;
+  /** Update a configuration in place (`PUT /gg/configs/{id}`). */
+  updateGgConfig?(
+    id: string,
+    input: GgConfigInput,
+    token: string,
+  ): Promise<GgConfig>;
+  /** Delete a configuration (`DELETE /gg/configs/{id}`). */
+  deleteGgConfig?(id: string, token: string): Promise<void>;
+
+  // The operator's saved gg **agents** (console-only, Bearer): agent profiles
+  // authored on their own, which a configuration imports and may override locally.
+  // Data only, and gg never sees them — the console resolves an import into the
+  // configuration's own agent list before anything is stored or launched. Optional
+  // for the same reason the configuration calls are.
+  /** The operator's saved gg agents (`GET /gg/agents`). */
+  listGgAgents?(token: string): Promise<GgSavedAgent[]>;
+  /** Save an agent (`POST /gg/agents`), returning it with its new id. */
+  createGgAgent?(
+    input: GgSavedAgentInput,
+    token: string,
+  ): Promise<GgSavedAgent>;
+  /** Update a saved agent in place (`PUT /gg/agents/{id}`). */
+  updateGgAgent?(
+    id: string,
+    input: GgSavedAgentInput,
+    token: string,
+  ): Promise<GgSavedAgent>;
+  /** Delete a saved agent (`DELETE /gg/agents/{id}`). */
+  deleteGgAgent?(id: string, token: string): Promise<void>;
+
+  // The gg **analysis** query surface (console-only, Bearer). The corpus is *not*
+  // account-scoped — a gg run belongs to the deployment, exactly as the run listings
+  // and the coverage matrix already treat runs — so the token gates reaching the
+  // surface rather than filtering what it returns. Optional like the calls above:
+  // the static site's read-only transport omits them and will answer the same two
+  // questions from a shipped snapshot with the mirrored browser evaluator instead.
+  /**
+   * Evaluate one TCQ query over every recorded gg run (`POST /gg/query`).
+   *
+   * The **compiled** query is the wire form: the client parses and compiles the
+   * source text, so the server needs neither a parser nor a clock (a relative
+   * `now-30d` is already absolute milliseconds by the time it is sent).
+   */
+  runGgQuery?(query: GgQuery, token: string): Promise<GgQueryResponse>;
+  /**
+   * Evaluate a whole dashboard's worth of queries against **one** read of the
+   * document index (`POST /gg/query/batch`), results in request order.
+   *
+   * A board is one request, not one per panel. The panels of a board almost always
+   * share a filter and differ only in their aggregation, so answering them
+   * separately re-scans the same corpus N times — and because the index refreshes on
+   * a timer, two panels of the same board can come back from two different corpora,
+   * which reads as a data bug rather than as a stale cache.
+   */
+  runGgQueryBatch?(
+    batch: GgQueryBatch,
+    token: string,
+  ): Promise<GgQueryBatchResponse>;
+  /**
+   * The corpus's field catalog (`GET /gg/fields`): every dotted field, its kind, its
+   * **document count** and its top values.
+   *
+   * What makes the language discoverable at all — the sidebar and the completer both
+   * read it, and the document count is what makes a deliberately sparse `tool.*`
+   * field visible *before* a query returns nothing rather than after.
+   */
+  getGgFields?(token: string): Promise<GgFieldCatalog>;
+
+  // The operator's saved **views** over that corpus (console-only, Bearer). The
+  // asymmetry is the model: the corpus is deployment-wide, a view over it is
+  // personal — so these carry the token as an owner filter while the query calls
+  // above carry it only as a gate. Both store query **source text**, so a relative
+  // `now-30d` re-resolves on every run and a later grammar addition never
+  // invalidates something already saved.
+  /** The operator's saved queries (`GET /gg/saved-queries`). */
+  listGgSavedQueries?(token: string): Promise<GgSavedQuery[]>;
+  /** Save a query (`POST /gg/saved-queries`), returning it with its new id. */
+  createGgSavedQuery?(
+    input: GgSavedQueryInput,
+    token: string,
+  ): Promise<GgSavedQuery>;
+  /** Update a saved query in place (`PUT /gg/saved-queries/{id}`). */
+  updateGgSavedQuery?(
+    id: string,
+    input: GgSavedQueryInput,
+    token: string,
+  ): Promise<GgSavedQuery>;
+  /** Delete a saved query (`DELETE /gg/saved-queries/{id}`). */
+  deleteGgSavedQuery?(id: string, token: string): Promise<void>;
+  /** The operator's dashboards (`GET /gg/dashboards`). */
+  listGgDashboards?(token: string): Promise<GgDashboard[]>;
+  /**
+   * One dashboard by id (`GET /gg/dashboards/{id}`), so a board is deep-linkable
+   * without loading every board the account owns.
+   */
+  getGgDashboard?(id: string, token: string): Promise<GgDashboard>;
+  /** Create a dashboard (`POST /gg/dashboards`), returning it with its new id. */
+  createGgDashboard?(
+    input: GgDashboardInput,
+    token: string,
+  ): Promise<GgDashboard>;
+  /** Update a dashboard in place (`PUT /gg/dashboards/{id}`). */
+  updateGgDashboard?(
+    id: string,
+    input: GgDashboardInput,
+    token: string,
+  ): Promise<GgDashboard>;
+  /** Delete a dashboard (`DELETE /gg/dashboards/{id}`). */
+  deleteGgDashboard?(id: string, token: string): Promise<void>;
+
+  /**
+   * The **index** of gg's model-facing reference (`GET /gg/reference`): every tool's
+   * description and parameter schema exactly as they go on the wire, gg's own
+   * families, and a line per program language whose responses-as-code surface can be
+   * fetched with {@link ggReferenceApi}.
+   *
+   * Everything here is language-independent. The signatures are not — the eleven SDK
+   * arms are deliberately idiomatic rather than transliterations of one another — so
+   * they are a document per arm rather than eleven copies of the tools.
+   *
+   * The one `/gg` read that takes **no token** — the document is static, identical
+   * for every caller and carries no account or run data, so it is documentation of
+   * the harness rather than anything of the operator's. Optional like the calls
+   * above only because the static site's read-only transport has no backend behind
+   * it at all; where a backend exists this always resolves.
+   */
+  ggReference?(): Promise<GgReference>;
+
+  /**
+   * One program language's whole responses-as-code surface
+   * (`GET /gg/reference/{language}`): the modules it is divided into, and every
+   * function and type in it carrying the bytes gg's own documentation view renders.
+   *
+   * Fetched when a reader picks an arm, not with the index: an arm's document is
+   * ~90 KB and a reader reads one of them. Ungated for the same reason
+   * {@link ggReference} is, and optional for the same one.
+   *
+   * A language the deployment's gg does not register answers `404`; a deployment
+   * with no reference documents at all answers `503` with a message written to be
+   * shown to whoever is looking at it.
+   */
+  ggReferenceApi?(language: GgProgramLanguage): Promise<GgReferenceApi>;
+
+  // The operator's saved harness/gg-config/model comparisons (console-only,
+  // Bearer) — the A/B-testing capability that fixes every controlled variable and
+  // varies exactly one dimension (the harness, a gg configuration, or the model)
+  // across a set of arms (docs/comparisons/experiments.md). Per-account, like the
+  // coverage plans and gg configurations above, and optional for the same reason:
+  // the static site's read-only transport omits them (a published comparison is
+  // read there off the snapshot, never this live endpoint).
+  /** The operator's saved comparisons, each fully aggregated (`GET /comparisons`). */
+  listComparisons?(token: string): Promise<Comparison[]>;
+  /** One comparison by id, fully aggregated (`GET /comparisons/{id}`). */
+  getComparison?(id: string, token: string): Promise<Comparison>;
+  /** Create a comparison (`POST /comparisons`), returning it with its new id. */
+  createComparison?(input: ComparisonInput, token: string): Promise<Comparison>;
+  /** Update a comparison's controls/arms/`N` in place (`PUT /comparisons/{id}`). */
+  updateComparison?(
+    id: string,
+    input: ComparisonInput,
+    token: string,
+  ): Promise<Comparison>;
+  /** Delete a comparison (`DELETE /comparisons/{id}`). */
+  deleteComparison?(id: string, token: string): Promise<void>;
+  /**
+   * Publish a comparison to the public site (`POST /comparisons/{id}/publish`,
+   * `crates/backend/src/api/comparisons.rs::publish_comparison`). Marks the
+   * comparison published (the next snapshot folds it in) and best-effort
+   * enqueues one ordinary publish job per publishable arm run — publishing a run
+   * is a real pod/repo/deploy, so this is never a bulk flag flip (see
+   * docs/comparisons/publishing.md). Resolves the outcome: which run ids were
+   * enqueued and which were skipped (with why) — a partially-published
+   * comparison must never read as if every run is inspectable. This response
+   * shape is backend-internal (hand-typed here, not part of the generated
+   * `@clockwyrks/run-record` contract, since the Rust type derives only
+   * `Serialize`) — mirrors how `PublishStreamLine` below is hand-typed for the
+   * same reason. The comparison itself is *not* returned; re-fetch (or
+   * optimistically flip `published`) to see the updated record.
+   */
+  publishComparison?(
+    id: string,
+    token: string,
+  ): Promise<ComparisonPublishOutcome>;
+
   /**
    * The signed-in account's own submitted reviews, newest-first, with a numbered
    * pager (`GET /account/reviews`). Backs the account page's Reviews tab; each entry
@@ -561,8 +924,7 @@ export interface BatchLaunchResult {
 
 // A worker: a runner that executes a test case and produces a run record. It
 // owns run jobs and publishing; it does NOT serve the catalog. Mirrors the
-// worker HTTP API (components/worker/overview.md). In Tauri the "local worker"
-// is the embedded core behind this same interface.
+// worker HTTP API (components/worker/overview.md).
 export interface WorkerClient {
   /**
    * The worker's identity, including the backend it is bound to, for the
@@ -574,8 +936,7 @@ export interface WorkerClient {
   /**
    * Submit a run; resolves to the job id (`POST /jobs`, Bearer). The backend
    * attributes the enqueued run to the launching account, so a signed-in
-   * account's `token` is required on the service-driven path (the embedded
-   * in-process worker ignores it). A missing/invalid token is rejected `401`.
+   * account's `token` is required. A missing/invalid token is rejected `401`.
    *
    * `origin` names the coverage plan or ladder this run is being launched *on behalf
    * of* ({@link LaunchOrigin}). It is what puts the run inside that plan's or
@@ -610,6 +971,19 @@ export interface WorkerClient {
     token?: string | null,
     origin?: LaunchOrigin | null,
   ): Promise<BatchLaunchResult[]>;
+
+  /**
+   * Launch a **gg** run; resolves to the enqueue ack (`POST /gg/runs`, Bearer).
+   * gg is its own run mode — configured by a {@link GgRunRequest.capabilitySet}
+   * (which capabilities are on, their implementations/params, and the model-slot
+   * bindings) rather than a `(harness, model, orchestrator)` tuple — so it does
+   * not go through {@link launchRun}. The backend gates it on the same signed-in
+   * account as `POST /jobs` (a missing/invalid `token` is rejected `401`) and
+   * requires the capability set to bind a model to the `primary` slot. The ack's
+   * `jobId` is what the console tracks the in-flight run under and streams live
+   * from the existing `GET /jobs/{id}/live` relay — gg needs no new live route.
+   */
+  launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;
@@ -784,6 +1158,21 @@ export interface WorkerClient {
   deleteRun?(id: string, token: string): Promise<void>;
 
   /**
+   * One page of the stored runs whose records the backend cannot decode (`GET
+   * /runs/unreadable`), with the total the cabinet holds. Every other listing
+   * filters these out, so this is the only surface they are reachable from; the
+   * console's Unreadable tab reads it and offers {@link deleteRun} per row.
+   * `limit` and `offset` page it, and `total` counts every unreadable run, so a
+   * pager sized from it offers only pages that hold rows.
+   * Optional: a read-only transport with no such listing omits it, and the console
+   * hides the tab where it is absent.
+   */
+  listUnreadableRuns?(opts?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<UnreadableRunPage>;
+
+  /**
    * Kill an in-flight run (`POST /jobs/{id}/cancel`, Bearer): the backend moves it
    * to the terminal `canceled` state and closes its live stream, and the driver
    * tears its sandbox down and exits. The backend **refuses a run that already
@@ -826,18 +1215,16 @@ export interface WorkerClient {
   /**
    * The URL to load one of a produced run's proof-of-implementation media files
    * (`<proof-id>.<ext>`) from, or null when this worker cannot serve it. Optional:
-   * a worker reachable over HTTP needs no override — the gallery resolves the file
-   * against the worker's base URL — but the built-in Tauri worker has no HTTP base,
-   * so it implements this to return its custom proof URI scheme.
+   * without it the gallery resolves the file against the worker's base URL. The
+   * HTTP transport implements it to point at the artifact service, which serves a
+   * pre-publish run's media apart from the control-plane backend.
    */
   proofMediaUrl?(runId: string, file: string): string | null;
   /**
    * The URL to load one of an asset-generation run's media files — a single
    * sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a
    * sprite sheet's per-frame `regenerated-<index>.png` (etc.) — or null when this
-   * worker cannot serve it. Optional, mirroring
-   * {@link proofMediaUrl}: the Tauri worker implements it to return its custom
-   * `tcab-asset://` scheme.
+   * worker cannot serve it. Optional, mirroring {@link proofMediaUrl}.
    */
   assetMediaUrl?(runId: string, file: string): string | null;
   /**
@@ -848,6 +1235,14 @@ export interface WorkerClient {
    * and {@link assetMediaUrl}: a worker reachable over HTTP needs no override.
    */
   validationMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to load one of a run's showcase files — a carousel media file, or an
+   * image the description references by bare relative path (`file` is the plain
+   * name in the produced tree's `showcase/`) — or null when this worker cannot
+   * serve it. Optional, mirroring {@link proofMediaUrl} and {@link assetMediaUrl}:
+   * a worker reachable over HTTP needs no override.
+   */
+  showcaseMediaUrl?(runId: string, file: string): string | null;
   /**
    * The URL to download a run's entire produced tree from as one gzip tar, or null
    * when this worker cannot serve it. Unlike the media resolvers above this is not
@@ -863,9 +1258,19 @@ export interface WorkerClient {
 
 // The reviewer's input when saving a review.
 export interface ReviewDocumentInput {
-  // The reviewer's rating for each of the case's scoring domains.
+  // The reviewer's FUNCTIONAL rating for each of the case's scoring domains — on a
+  // legacy run only. A validator-rated run refuses any (its functional rating is
+  // the validators'), so the editor sends none there.
   ratings: DomainRating[];
+  // The reviewer's RUN-WIDE aesthetic tier — required on a validator-rated run,
+  // one tier for the whole build. A legacy run refuses any, so the editor sends
+  // null there.
+  aesthetic: AestheticRating | null;
   writeup: string;
+  // The reviewer's per-point verdicts. On a legacy run, the full checklist. On a
+  // validator-rated run, the reviewer's OVERRIDES only: the verdicts that differ
+  // from the validators' (plus any points the validators left undecided), each
+  // binary pass/fail — points not listed keep the validators' verdicts.
   checklist: ReviewVerdict[];
   // A note explaining what changed, required when this submission edits an existing
   // review (a first submission needs none). The backend enforces it — it alone knows

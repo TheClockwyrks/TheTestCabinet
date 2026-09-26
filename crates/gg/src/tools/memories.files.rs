@@ -1,0 +1,439 @@
+//! The **file-shaped** memory tools: `create_memory`, `read_memory`, `edit_memory` and
+//! `search_memories` — the surface the [markdown](crate::memories::MemoryStrategy::Markdown) and
+//! [keyword-search](crate::memories::MemoryStrategy::KeywordSearch) strategies offer in place of
+//! the [scratchpad](super)'s always-in-context notes.
+//!
+//! The four are one family because they share one premise: a memory's **body is not in the
+//! window**. That is what makes them worth having (a run may hold far more memory than it could
+//! afford to carry) and it is also what shapes each call:
+//!
+//! * `create_memory` writes the whole body at once, since the model has it in hand.
+//! * `read_memory` is how a body gets into context *at all* — under markdown from a slug the
+//!   pinned index showed, under keyword-search from a slug a search returned.
+//! * `edit_memory` revises by **search/replace** rather than by rewriting: the model would
+//!   otherwise have to hold the whole memory in the reply just to change a line of it, and a
+//!   quoted search string is a check that it is editing the text it thinks it is.
+//! * `search_memories` exists only where there is no index to read.
+//!
+//! Only one strategy's tools are ever offered, so `create_memory` can read the store to decide
+//! whether it needs a `description` (the index entry) or merely accepts one.
+
+use async_trait::async_trait;
+use serde_json::{Value, json};
+
+use super::super::{
+    ApiData, MemoryHitData, Tool, ToolContext, ToolOutcome, optional_str, required_str,
+    required_str_array, saturating_u32,
+};
+use super::{
+    CREATE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, SEARCH_MEMORIES_TOOL, bounds_note,
+    failure_for, usage_data, usage_note,
+};
+use crate::memories::{MemoryBinding, MemoryChange, MemoryCode, MemoryHit};
+use crate::model::ToolDefinition;
+
+// ---------------------------------------------------------------------------
+// create_memory
+// ---------------------------------------------------------------------------
+
+/// Creates a memory file: a slug, a description, and the initial contents.
+pub struct CreateMemoryTool {
+    store: MemoryBinding,
+}
+
+impl CreateMemoryTool {
+    /// A tool creating memories in `store`.
+    pub fn new(store: MemoryBinding) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl Tool for CreateMemoryTool {
+    fn name(&self) -> &str {
+        CREATE_MEMORY_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        let store = self.store.lock();
+        let caps = store.caps();
+        let indexed = store.strategy().has_index();
+        drop(store);
+
+        // With an index in front of the model, how to find a memory again is the index's business;
+        // without one, the only handle on the contents is the words they contain.
+        let searchable = if indexed {
+            ""
+        } else {
+            " Include words you would later search for."
+        };
+        ToolDefinition::new(
+            CREATE_MEMORY_TOOL,
+            format!(
+                "Record a new memory{}.{searchable}",
+                bounds_note(&[
+                    (caps.max_count, "memories"),
+                    (caps.max_len_per_memory, "characters of contents each"),
+                    (caps.max_len_index, "characters of index"),
+                ])
+            ),
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Slug naming the memory."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": if indexed {
+                            "One-line summary, shown in your memory index."
+                        } else {
+                            "One-line summary, shown with search results."
+                        }
+                    },
+                    "contents": {
+                        "type": "string",
+                        "description": "Contents, as markdown."
+                    }
+                },
+                "required": if indexed { json!(["name", "description", "contents"]) } else { json!(["name", "contents"]) },
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        let name = match required_str(&args, "name") {
+            Ok(name) => name,
+            Err(error) => return error.into(),
+        };
+        let description = match optional_str(&args, "description") {
+            Ok(description) => description.unwrap_or_default(),
+            Err(error) => return error.into(),
+        };
+        let contents = match required_str(&args, "contents") {
+            Ok(contents) => contents,
+            Err(error) => return error.into(),
+        };
+        // The native schema declares no code fields, so a tool-calling run can never create one.
+        self.create(name, description, contents, MemoryCode::default())
+    }
+}
+
+impl CreateMemoryTool {
+    /// Create a memory — the **standard, typed** `create_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn create(
+        &self,
+        name: String,
+        description: String,
+        contents: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
+        let mut store = self.store.lock();
+        match store.create(self.store.author(), &name, &description, &contents, code) {
+            Ok(MemoryChange::Written) => ToolOutcome::ok(
+                format!("Created memory `{name}`. {}", usage_note(&store)),
+                format!("created memory `{name}`"),
+            )
+            .with_data(usage_data(&store)),
+            Ok(_) => unreachable!("create yields Written"),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// read_memory
+// ---------------------------------------------------------------------------
+
+/// Reads one memory's contents back into the model's context.
+pub struct ReadMemoryTool {
+    store: MemoryBinding,
+}
+
+impl ReadMemoryTool {
+    /// A tool reading memories from `store`.
+    pub fn new(store: MemoryBinding) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl Tool for ReadMemoryTool {
+    fn name(&self) -> &str {
+        READ_MEMORY_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        let indexed = self.store.lock().strategy().has_index();
+        ToolDefinition::new(
+            READ_MEMORY_TOOL,
+            if indexed {
+                "Read a memory's contents, by the slug your memory index lists it under."
+            } else {
+                "Read a memory's contents, by the slug `search_memories` returned."
+            },
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The memory to read."
+                    }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        let name = match required_str(&args, "name") {
+            Ok(name) => name,
+            Err(error) => return error.into(),
+        };
+        self.read(name)
+    }
+}
+
+impl ReadMemoryTool {
+    /// Read a memory — the **standard, typed** `read_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    ///
+    /// The contents *are* the result, exactly as a skill's body is: there is nothing to say about
+    /// a memory that the memory does not already say, and a wrapper around it would be prose a
+    /// program has to strip back off.
+    pub(crate) fn read(&self, name: String) -> ToolOutcome {
+        let store = self.store.lock();
+        match store.read(&name) {
+            Ok(memory) => {
+                ToolOutcome::ok(memory.body().to_string(), format!("read memory `{name}`"))
+            }
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("read_memory: {err}")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// edit_memory
+// ---------------------------------------------------------------------------
+
+/// Revises a memory by replacing one exact occurrence of a string.
+pub struct EditMemoryTool {
+    store: MemoryBinding,
+}
+
+impl EditMemoryTool {
+    /// A tool editing memories in `store`.
+    pub fn new(store: MemoryBinding) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl Tool for EditMemoryTool {
+    fn name(&self) -> &str {
+        EDIT_MEMORY_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            EDIT_MEMORY_TOOL,
+            "Replace `old_string` with `new_string` in a memory. To append, replace its last \
+             line with that line plus the new text.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The memory to revise."
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "Text to replace, matching exactly and occurring once."
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "Replacement text; empty to cut the old text out."
+                    }
+                },
+                "required": ["name", "old_string", "new_string"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        let name = match required_str(&args, "name") {
+            Ok(name) => name,
+            Err(error) => return error.into(),
+        };
+        let old_string = match required_str(&args, "old_string") {
+            Ok(old) => old,
+            Err(error) => return error.into(),
+        };
+        // The replacement may legitimately be empty — that is how text is cut out — so it is read
+        // as an optional string rather than a required one and defaults to "".
+        let new_string = match optional_str(&args, "new_string") {
+            Ok(new) => new.unwrap_or_default(),
+            Err(error) => return error.into(),
+        };
+        self.edit(name, old_string, new_string)
+    }
+}
+
+impl EditMemoryTool {
+    /// Revise a memory — the **standard, typed** `edit_memory` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn edit(&self, name: String, old_string: String, new_string: String) -> ToolOutcome {
+        let mut store = self.store.lock();
+        match store.edit(self.store.author(), &name, &old_string, &new_string) {
+            Ok(MemoryChange::Updated) => ToolOutcome::ok(
+                format!("Edited memory `{name}`. {}", usage_note(&store)),
+                format!("edited memory `{name}`"),
+            )
+            .with_data(usage_data(&store)),
+            Ok(_) => unreachable!("edit yields Updated"),
+            Err(err) => ToolOutcome::failed(failure_for(&err), format!("edit_memory: {err}")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// search_memories
+// ---------------------------------------------------------------------------
+
+/// Finds the memories that mention a set of keywords, best first.
+pub struct SearchMemoriesTool {
+    store: MemoryBinding,
+}
+
+impl SearchMemoriesTool {
+    /// A tool searching `store`.
+    pub fn new(store: MemoryBinding) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl Tool for SearchMemoriesTool {
+    fn name(&self) -> &str {
+        SEARCH_MEMORIES_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        let caps = self.store.lock().caps();
+        ToolDefinition::new(
+            SEARCH_MEMORIES_TOOL,
+            format!(
+                "Find the memories mentioning any of `keywords`, best first{}. Matching is \
+                 case-insensitive substring matching over each memory's slug, description and \
+                 contents.",
+                bounds_note(&[(caps.max_results, "results")])
+            ),
+            json!({
+                "type": "object",
+                "properties": {
+                    "keywords": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Individual specific words to look for."
+                    }
+                },
+                "required": ["keywords"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        let keywords = match required_str_array(&args, "keywords") {
+            Ok(keywords) => keywords,
+            Err(error) => return error.into(),
+        };
+        self.search(keywords)
+    }
+}
+
+impl SearchMemoriesTool {
+    /// Search the memories — the **standard, typed** `search_memories` API function both the JSON
+    /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
+    pub(crate) fn search(&self, keywords: Vec<String>) -> ToolOutcome {
+        let store = self.store.lock();
+        let hits = match store.search(&keywords) {
+            Ok(hits) => hits,
+            Err(err) => {
+                return ToolOutcome::failed(failure_for(&err), err.to_string());
+            }
+        };
+        // The store's lock is released before the results are rendered: the hits are owned, and
+        // holding a mutex across a page of string formatting is a habit worth not having.
+        let held = store.count();
+        drop(store);
+
+        if hits.is_empty() {
+            // An empty *store* and a search that matched nothing are different situations with
+            // different next moves — create the memory, or search for other words — so they read
+            // differently rather than sharing one "no results" line.
+            let output = if held == 0 {
+                "You have no memories yet.".to_string()
+            } else {
+                format!("No memory matches those keywords ({held} in total).")
+            };
+            return ToolOutcome::ok(output, "searched memories (no matches)")
+                .with_data(ApiData::MemoryHits(Vec::new()));
+        }
+
+        let output = hits
+            .iter()
+            .map(render_hit)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_string();
+        ToolOutcome::ok(
+            format!(
+                "{} of {held} memories match, best first:\n\n{output}",
+                hits.len()
+            ),
+            format!("searched memories ({} matches)", hits.len()),
+        )
+        .with_data(ApiData::MemoryHits(
+            hits.iter().map(hit_data).collect::<Vec<_>>(),
+        ))
+    }
+}
+
+/// One search hit as the prose result renders it: the slug and description to decide on, the
+/// numbers it was ranked by, and the excerpt that shows why it matched.
+fn render_hit(hit: &MemoryHit) -> String {
+    let described = if hit.description.is_empty() {
+        format!("- `{}`", hit.name)
+    } else {
+        format!("- `{}` — {}", hit.name, hit.description)
+    };
+    format!(
+        "{described} ({} keyword{}, {} occurrence{})\n  {}",
+        hit.matched,
+        if hit.matched == 1 { "" } else { "s" },
+        hit.occurrences,
+        if hit.occurrences == 1 { "" } else { "s" },
+        hit.excerpt
+    )
+}
+
+/// The structured form of one hit, for a program that ranks or filters the results itself.
+fn hit_data(hit: &MemoryHit) -> MemoryHitData {
+    MemoryHitData {
+        name: hit.name.clone(),
+        description: hit.description.clone(),
+        matched: saturating_u32(hit.matched),
+        occurrences: saturating_u32(hit.occurrences),
+        excerpt: hit.excerpt.clone(),
+    }
+}
+
+#[cfg(test)]
+#[path = "memories.files.test.rs"]
+mod tests;

@@ -2,237 +2,274 @@
 title: Authoring an End-to-End Test Case
 ---
 
+## Overview
+
 An [end-to-end](/testing/end-to-end/overview/) test case is a single game a model
-is asked to build, so authoring one is mostly an exercise in writing a precise,
-**self-contained specification**. This guide is the full procedure.
-[End-to-End Tests](/testing/end-to-end/overview/) is the authoritative schema —
-every manifest field, what is seeded, how templates render, and the rules
-enforced at resolution — and you should read it first. This guide is the
-practical procedure and the spec-writing craft that sit on top of it.
+is asked to build from a self-contained specification. This guide is the
+procedure. [End-to-End Tests](/testing/end-to-end/overview/) is the authoritative
+schema for every manifest field, what is seeded, how templates render, and the
+rules enforced at resolution.
 
-Authoring an [asset-generation](/testing/asset-generation/overview/) case — where
-the model draws a sprite with a drawing tool rather than building a game — is a
-different test type with its own manifest; see
-[Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/).
-
-The editorial rules for the seeded specs and the prompt — what may and may not
-appear in them, and how they should read — live in
+The editorial rules for the seeded specs and the prompt live in
 [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/).
-Read it before writing step 3 and step 4 below; this guide covers the structure,
-that one covers the wording.
+Read it before writing steps 3 and 4.
 
-The worked example throughout the project is the **Carom** case
-(`test-cases/end-to-end/easy/carom/v1.0.0/`). Read its files
-alongside this guide; a new case should look like it.
+The worked example is the Carom case under `test-cases/end-to-end/easy/carom/`.
+Read its newest version alongside this guide.
 
-## What a case is, and what gets seeded
+## Case layout
 
-A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
-**immutable**: once a run references a version, that version is frozen, because a
-run must always reference an exact, reproducible input. Revise a case by adding a
-new version, never by editing a published one. Revisions are expected — both to
-refine a case and to vary details between benchmark sweeps so training-data
-contamination matters less.
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`.
+Versioning is per-case and immutable: once a run references a version, that
+version is frozen. Revise a case by adding a new version.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: common specs, references, checks, domains, review items
+  test-case.toml         # manifest: specs, references, checks, domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
+  workspaces/            # one starter project per engine, seeded to the run root
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
+  changelog.md           # per-version site-facing entry (NOT seeded)
   README.md              # human overview (NOT seeded)
-  specs/                 # the specification, decomposed by concern — SEEDED
-  reference/             # mockup SOURCE — rendered to screenshots, NOT seeded
-  assets/                # sprites etc. the model must use — SEEDED (omit if none)
+  specs/                 # the specification, decomposed by concern (SEEDED)
+  references/            # reference implementations, one per engine (NOT seeded)
+  showcase/              # per-variant demo media captured from a reference (NOT seeded)
+  validation/            # the validators review points are decided by (NOT seeded)
+  assets/                # sprites the model must use, SEEDED (omit if none)
 ```
 
-A run receives only the **selected variant's** seeded specs, the case's assets,
-and the **rendered reference screenshots**. Everything marked *NOT seeded* is
-authoring- or site-side only. The prompt is rendered and handed to the harness as
-its instruction; it is never written to the run's disk. The reference **source**
-is deliberately withheld so a model cannot copy the UI in place of building it
-from the spec.
+The baseline media captured from the reference implementations is committed to
+the `cold-storage` submodule under the same path, in
+`validation-baseline/<engine>/<variant>/` (see [where baselines
+live](/components/core/validation/#where-baselines-live)).
+
+A run receives the selected variant's seeded specs, the case's assets, and the
+workspace for the run's engine; an engine run also receives the vendored
+engine and its documentation at `engine/`. The prompt is rendered and handed
+to the harness as its instruction; it is never written to the run's disk.
+
+A workspace is one starter project per supported
+[engine](/components/core/engines/). An engine's workspace vendors the engine
+and the entry stub it requires. The engineless (`none`) workspace provides
+configuration only: a `package.json`, tool configuration, and an `index.html`,
+with no source code, so the model owns the code it is judged on. See
+[Writing workspaces and reference implementations](/guides/authoring/writing-workspaces-and-references/)
+for what each project holds and the toolchain the two share.
 
 ## Procedure
 
 ### 1. Choose the game and confirm it qualifies
 
-Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-requirements)):
+Confirm the concept satisfies every
+[design requirement](/testing/end-to-end/overview/#design-requirements): inspired
+by rather than a clone of an existing game, playable with no API keys and no
+backend, specifiable precisely enough that a validator can decide every
+review point from the spec, and built through the fixed build interface. The case must
+mandate the [instrumentation](/testing/end-to-end/instrumentation/) a run is
+validated through, framed in the seeded spec as a debugging feature of the game.
 
-- be **inspired by but not a clone** of an existing game — original name, look,
-  and assets;
-- need **no API keys** and **no backend** to build, run, or play, because the
-  produced game must stay a self-contained static build the gallery can embed;
-- be **specifiable precisely enough** that at least one view can be compared
-  against a reference automatically;
-- **mandate the [instrumentation](/testing/end-to-end/instrumentation/)** a run is
-  validated through — a debug API on a case-specific global, a deterministic core,
-  and a read-only debug overlay — as a hard requirement, framed in the seeded spec
-  as an ordinary debugging feature of the game rather than anything to do with
-  grading;
-- either need **no assets** or **pre-provide** them — an end-to-end case is about
-  building the game, never producing its art (generating an asset is its own
-  [test type](/testing/asset-generation/overview/)).
+An end-to-end case either needs no assets or pre-provides them. Producing art is
+its own [test type](/testing/asset-generation/overview/); a case whose model both
+builds the game and produces its art is
+[full-stack](/guides/authoring/authoring-a-full-stack-test-case/).
 
-Pick an original **in-game title** for the build (e.g. `Carom`); its catalog
-**slug** is the kebab-cased title (e.g. `carom`). Then pick a `version` (`vX.Y.Z`).
+Pick an original in-game title for the build. Its catalog slug is the kebab-cased
+title, and its version is a `vX.Y.Z` string.
 
 ### 2. Lay the foundations before the detail
 
-In the overview spec, fix the three things every other spec leans on, so the rest
-of the specification refers back instead of re-deriving them:
+In the overview spec, fix the three things every other spec leans on:
 
-- the **coordinate system** — a fixed logical play area, origin, and axis
-  directions;
-- the **palette and type** — canonical colors and a system font stack;
-- the **states/screens** the build must have.
+- the coordinate system: a fixed logical play area, origin, and axis directions;
+- what must be visible on the field and on each screen, leaving palette, type,
+  and layout to the build;
+- the states and screens the build must have.
 
 ### 3. Decompose the specification by concern
 
-Split the spec into focused, seeded files that cross-reference each other **by
-name**, mirroring Carom: `overview`, `playfield` (geometry), `physics`
-(simulation and the signature mechanic), `flow` (scoring, state machine,
-controls, HUD, out-of-scope), and one or more **mode** specs under
-`specs/modes/`. Common specs are seeded for every variant; mode specs are
-typically variant-only.
+Split the spec into focused, seeded files that cross-reference each other by
+name. Common specs are seeded for every variant; a mode spec is typically
+variant-only and seeded to a stable destination.
 
-This is the substance of the work. A few rules dominate:
+A few rules dominate this step.
 
-- **Be self-contained.** A run seeds only the selected variant's specs plus the
-  assets, in an isolated container with no access to these docs, the harness, or
-  the reference source. The seeded set must be complete and consistent on its
-  own: no links outside it, no common spec referencing a variant-only spec, and
-  no dependence on the reference **source** mockups (you may point at the seeded
-  **screenshots**). See
-  [Self-Contained Specifications](/testing/end-to-end/overview/#self-contained-specifications).
-- **Specify *what*, not *how*.** Leave the language, framework, bundler, and
-  rendering approach to the model — state them as free choices — and pin down
-  observable behavior and exact values instead. Describe the bounce, not the
-  function that computes it. The test rewards a model that builds the game from
-  the spec; a spec that dictates the implementation just measures whether it can
-  follow instructions. (The one thing that is *not* a free choice is the
-  build-and-serve interface — see step 6.)
-- **Be precise and testable.** Every visual detail a model needs — palette,
-  layout, measurements, screen contents — must be written into the spec in real
-  numbers; the screenshots illustrate the target, they do not replace it. Vague
-  prose is the most common failure.
-- **Call out the "simple" requirements explicitly.** Models trip over obvious
-  things. When a requirement is simple enough that a model *should* get it right
-  but a real run still got it wrong, state it as a hard, observable requirement
-  rather than leaving it implied — describe the end state to satisfy, still
-  without prescribing how.
+- Be self-contained. The seeded set must be complete and consistent on its own:
+  no links outside it, no common spec referencing a variant-only spec, and no
+  dependence on the reference source. See
+  [self-contained specs](/testing/end-to-end/overview/#self-contained-specifications).
+- Specify what, never how. Pin down observable behavior and exact values, and
+  leave how to implement them to the build, per
+  [Never help the model](/guides/authoring/writing-case-specifications/#never-help-the-model).
+  The seeded workspace fixes the project itself: TypeScript, the build
+  interface, and the toolchain commands of step 6. An engine run additionally
+  takes rendering, input, and audio from its engine. Within that project the
+  architecture and the code are the model's own.
+- Be precise and testable. Every behavior a validator checks is written as an
+  exact value or an explicit bound, and every validator is derived from the
+  spec. Appearance is stated as what must be present. See
+  [What is specified and what is validated](/guides/authoring/writing-case-specifications/#what-is-specified-and-what-is-validated).
+- State the simple requirements explicitly. When a requirement is one a model
+  should get right but a real run got wrong, write it as a hard, observable
+  requirement describing the end state to satisfy.
 
 ### 4. Write `prompt.hbs`
 
-A short instruction that tells the model its **task** and points it at the seeded
-specs — not a second copy of the specification. State each requirement in **one
-place**: the prompt carries the task and the prompt-level, operational detail (the
-workspace path, how to verify, how to commit) plus the **fixed build/serve
-interface** the harness enforces; the *details* of every other hard requirement
-live in the specs, and the prompt points to them rather than restating them. If the
-same sentence appears in both the prompt and the overview, cut it from the prompt
-and let the spec own it. The template renders in **strict mode**, so use only the
-documented variables — `{{workspace}}`, `{{variant.slug}}`/`{{variant.name}}`/
-`{{variant.description}}`, and `{{#each specs}}` — and any other reference is a
-render error. Keep run-specific detail (container paths, which variant) in the
-prompt, never in the specs, which is exactly why the prompt carries `/work` and a
-spec never does. See [Prompt template](/testing/end-to-end/overview/#prompt-template).
+A short instruction that gives the model its task, points at the seeded specs,
+and carries the operational detail: the workspace path, commit expectations, and
+the fixed build interface. The template renders in strict mode, and the available
+variables are `{{workspace}}`, `{{variant.slug}}`, `{{variant.name}}`,
+`{{variant.description}}`, `{{engine.slug}}`, `{{engine.name}}`,
+`{{engine.docs}}`, `{{#each specs}}` (each with `dest`, `path`, and `name`),
+and `{{time_limit_hours}}`. Any other reference is a render error.
 
-### 5. Author the reference mockups
+Run-specific detail belongs in the prompt and never in a spec, which is why the
+prompt carries `/work` and a spec does not. See
+[Prompt template](/testing/end-to-end/overview/#prompt-template).
 
-Build each view as self-contained static HTML on the fixed logical stage, sharing
-a `theme.css` that is the source of truth for the palette and field furniture
-(the specs reference the same colors). The harness renders these to screenshots
-at the logical viewport, per variant, under the git-ignored **`reference/.rendered/`**
-cache (a regenerated build output). Author the **source**; never seed it, and never
-hand-create the screenshots.
+### 5. Author the reference implementations
 
-(A `media`-based case is the exception: it has no HTML mockup — its reference
-screenshots are captured from its playable reference-impl and **committed** under
-`reference/screenshots/`, which is tracked wholesale. See that case's
-`reference/README.md`.)
+Author one correct build per supported engine, by convention under
+`references/<engine>/`, and declare the set in each variant's
+`[reference_implementation]` table. Each is a complete, conformant
+implementation of the variant on that engine: it is built with the case's own
+`[build]` commands, passes the same four toolchain gates a run is held to,
+and is never seeded into a run. See
+[The reference implementation](/guides/authoring/writing-workspaces-and-references/#the-reference-implementation).
+
+The reference implementations are what
+[`tcab capture-baselines`](/components/cli/overview/#commands) drives to
+produce the committed baseline media in cold storage, what
+[`tcab publish-reference`](/components/cli/overview/#commands) deploys for the
+case page's Play tab, and what step 7 verifies the validators against.
+
+Reference views (`[[reference]]` mockups and `media`) are retained so shipped
+versions keep resolving; a new case declares none.
 
 ### 6. Write the manifest and declare variants
 
-Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
+Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
 
-- **Metadata** — `name`, `difficulty` (`easy`/`medium`/`hard`), and `tags` are
-  all required (`tags` may be empty); they are site-facing and have no bearing on
-  execution. `description` is an optional site-only path that is never seeded.
-- **`[build]`** is required: `install` and `build` commands, stated explicitly
-  with no defaults, so a case always records exactly how its implementation is
-  built. `npm ci` is conventional because it requires a committed lockfile and
-  installs exactly what it pins; the build must emit a static site into `dist/`,
-  `build/`, or `out/`. This build-and-serve interface is the one thing that is
-  **not** a free choice — the harness load check and the per-run deploy build
-  every case the same hardcoded way — so state it as a hard requirement in the
-  spec and prompt: a Node project with a root `package.json`, built with only
-  Node and npm-installed dependencies, emitting an `index.html` at the root of
-  the output directory. Because a finished run is also played back from a
-  **per-run sub-path** (`/runs/<id>/build/`), a build that loads files at runtime
-  by URL must keep working under any base path (e.g. Vite's `base: './'`); see
-  [Design Requirements](/testing/end-to-end/overview/#design-requirements).
-- **Common `[[spec]]` and `[[reference]]`** lists — seeded for every variant. A
-  `.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
-  defaults to its `source` (a trailing `.hbs` stripped), so most specs just name
-  their `source`.
-- A **`variants`** list — an ordered array of paths to standalone variant files
-  under `variants/` (the first is the default; at least one is required). Because
-  `variants` is a root key, it must appear **before the first table header**. See
+- Metadata. `slug`, `name`, `difficulty` (`easy`, `medium`, or `hard`), and
+  `tags` are required; `tags` may be empty. `changelog` is a required site-only
+  path recording what changed in this version, and `description` is an optional
+  one; both stay out of the seeded set.
+- `[build]` is required and states `install` and `build` explicitly. The
+  build emits a static site into `dist/`, `build/`, or `out/` with an
+  `index.html` at its root. `npm ci` is conventional because it requires a
+  committed lockfile. A finished run is also played back from the per-run
+  sub-path `/runs/<id>/build/`, so a build that loads files at runtime by URL
+  must keep working under any base path.
+- The starter project uses the per-engine spelling: `engines` and `[[engine]]`
+  declare the supported engines and the version range each is pinned at, and
+  `[workspaces]` names one starter directory per engine. This spelling is what
+  makes the version validator-rated. The single `workspace` key is the legacy
+  spelling, kept resolving for shipped versions. See
+  [The starter project](/testing/end-to-end/manifests/#the-starter-project).
+- `[toolchain]` is required of a new version and declares the TypeScript
+  commands run over the produced implementation: a gating `typecheck` plus the
+  recorded `lint`, `format`, and `test`.
+- `variants` is an ordered array of paths to standalone variant files under
+  `variants/`. The first is the default, at least one is required, and because it
+  is a root key it must appear before the first table header. See
   [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/).
-- Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
-  view's baseline must resolve for **every** variant.
-- A common **`[[proof]]`** list — the evidence the build must submit that its
-  features work. Declare it two ways that must agree: a seeded `proof.md` spec
-  that tells the build to capture screenshots and/or short `.webm` clips (the
-  format Playwright records natively) at fixed paths under `proof/`, and one
-  `[[proof]]` per file whose `dest` matches that
-  path exactly. If the two drift, the build writes a file the validator never
-  checks, or vice versa. Proofs are recorded present/missing but never fail a run.
-  See [Proofs](/testing/end-to-end/evaluation/#proofs).
-- A common **`[[review_item]]`** list — the major, observable requirements a
-  reviewer must check by playing the build (a variant adds its own for the mode it
-  introduces). These are reporter-side and **not seeded**; the reviewer records a
-  verdict for each before a run can be published. An item may **pair** an expected
-  `reference` view with the submitted `proof` so the reviewer compares the two
-  side by side. See
-  [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#work-the-checklist).
+- Common `[[spec]]` entries are seeded for every variant. A `.hbs` source is
+  rendered; anything else is seeded verbatim. A spec's `dest` defaults to its
+  `source` with a trailing `.hbs` stripped.
+- `[[reference]]`, `[[check]]`, and `[[proof]]` are retained so shipped
+  versions keep resolving; a new case declares none. The media a reviewer
+  compares is captured by the case's validators from scenarios the case
+  controls.
+- `[instrumentation]` declares the debug-API handle the build installs its
+  automation surface on. It is required because every review point declares a
+  `validation` script.
+- The checklist uses exactly one of two grammars. The categories grammar
+  (`[review]` with `format = 2` and `[[review.categories]]`) groups each graded
+  point under a named category; the top-level `[[review_item]]` arrays are the
+  alternative. Each point is one observable behavior, stated in the spec exactly
+  or by explicit bounds, and carries a `validation` script under
+  `validation/<engine>/` for each engine it covers, which is every engine the
+  case supports unless the validation's `engines` key names fewer. A case on the
+  engine format is
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so each
+  point also declares the `domains` its failure lowers and a `failure_cap`, the
+  best functional rating those domains keep while it fails: `broken` for a
+  gameplay-critical requirement, otherwise `scuffed`, `passable`, or `great`. A
+  point may pair an expected `reference` view with a submitted `proof`.
+  Checklist entries are reporter-side and stay out of the seeded set.
+- `[[domain]]` entries are the scoring domains. The validators rate each on the
+  functional scale through the failure caps, and the run's functional rating is
+  the worst across the effective set. A reviewer rates the run's aesthetics as
+  a whole: how the build looks, sounds, and feels to play.
 
-### 7. Write the non-seeded docs
+### 7. Author the validators and capture baselines
 
-`description.md` (site blurb) and `README.md` (human overview, slug-vs-title
-note). These never reach a run; keep them honest about what is seeded.
+Every graded point carries a `validation` script, shipped under
+`validation/<engine>/` with the script path relative to that directory, for each
+engine it covers. Give a point an `engines` list to scope it to the engines
+where the behavior is the model's own work; omitting the key covers every
+supported engine. Design the suites per
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/):
+one requirement per validator, every assertion traced to the spec, scenarios
+posed through the shared harness and the debug API.
+
+Run each engine's suite against that engine's reference implementation with
+`tcab validate`, which exits `0` only when every declared point held; a validator
+that fails there is a broken validator, not a failing build. Then confirm each
+validator discriminates by breaking the rule it covers in a scratch copy of the
+reference and confirming exactly the expected check fails. When the suites pass, run
+[`tcab capture-baselines`](/components/cli/overview/#commands) with the
+`cold-storage` submodule checked out. Commit the media it writes there, push it
+to that repository's `master`, and commit the moved submodule pointer beside the
+case.
+
+### 8. Write the non-seeded docs
+
+`description.md` (site blurb), `changelog.md` (what changed in this version), and
+`README.md` (human overview). These never reach a run.
 
 ## Validate your work
 
-There is no separate authoring linter — you validate a case by resolving and
-seeding it. For **every** variant:
+A case is validated by resolving and seeding it. For every variant:
 
 ```sh
-tcab prompt --test-case <slug> --version <version> --variant <variant>
-tcab seed   --test-case <slug> --version <version> --variant <variant>
+tcab prompt --test-case <slug> --version <version> --variant <variant> --engine <engine>
+tcab seed   --test-case <slug> --version <version> --variant <variant> --engine <engine>
 ```
 
-`prompt` renders the instruction (catching strict-mode template errors and
-manifest problems); `seed` writes the seeded repository to disk (under `tmp/` by
+`prompt` renders the instruction, catching strict-mode template errors and
+manifest problems. `seed` writes the seeded repository to disk (under `tmp/` by
 default) so you can read exactly what the model would receive and confirm the
-seeded set is self-contained. Lint the specs and prose with `npm run lint:specs`
-(markdownlint + cspell; see [Building](/development/building/)).
+seeded set is self-contained.
 
-When the case is ready, exercise it end to end with
-[Run a Test Case](/quickstarts/development/run-a-test-case/). A backend the case is already
-ingested into keeps serving the old definition until you **force a re-ingest**,
-so after editing a case re-ingest it before running — see
+Repeat both for every engine the case supports; `--engine` defaults to
+`none`. Each engine renders its own branch of the spec templates, so every
+combination is read against the seeded output rather than the sources.
+
+Lint the specs and prose from the repository root:
+
+```sh
+npm run lint:specs   # markdownlint-cli2 + cspell
+```
+
+If `cspell` flags a legitimate domain term, add it to
+`.cspell/project-words.txt`.
+
+When the case is ready, exercise it with
+[Run a Test Case](/quickstarts/development/run-a-test-case/). A backend that
+already holds the version keeps serving it until a forced re-ingest, so re-ingest
+an edited case before running it. See
 [Running the Local Service Stack](/guides/development/running-the-local-service-stack/).
 
 ## Next steps
 
-- [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
-  — the editorial rules and the revision checklist for the seeded set.
-- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
-  deterministic core, and overlay your case must mandate so a run can be
-  validated automatically.
-- [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/) — add
-  more modes.
-- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a
-  run of your case.
+- [Specs and prompts](/guides/authoring/writing-case-specifications/) gives the
+  editorial rules and the revision checklist for the seeded set.
+- [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API,
+  render-free core, and overlay your case must mandate.
+- [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/)
+  gives the design rules for that API and the validators that drive it.
+- [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/)
+  adds more modes.
+- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)
+  assesses a run of your case.

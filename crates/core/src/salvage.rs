@@ -1,0 +1,154 @@
+//! Rescuing a **dying** run container's [capture journal](crate::gg_session_journal)
+//! before the container is torn down.
+//!
+//! Every other post-session read of a run goes through the collected working tree: the
+//! engine copies `/work` out, stops the container, and hands the tree to the
+//! [post-run stages](crate::post_run). A run that *hangs* or *runs past its cap* never
+//! gets there. Its session ends in an [`Err`](crate::Error) — [`HarnessHung`] or
+//! [`RunTimedOut`] — and the engine's error path stops the container and returns
+//! immediately, without collecting anything. So the one run whose record would be most
+//! worth reading is precisely the one that has none.
+//!
+//! [`HarnessHung`]: crate::Error::HarnessHung
+//! [`RunTimedOut`]: crate::Error::RunTimedOut
+//!
+//! This module closes that gap with the narrowest possible copy:
+//! [`ArtifactCollector::collect_file`] pulls the single journal file out of the container
+//! into a scratch directory shaped exactly like a collected tree, and the ordinary
+//! [record assembly stage](crate::gg_session_assembly::GgSessionAssembler) folds it into the
+//! run tree's `replay.json.gz` as if the run had ended normally. The assembled record
+//! reports itself
+//! [`SessionKilled`](crate::gg_session_record::GgSessionTruncationReason::SessionKilled), because a
+//! journal cut off mid-session carries no terminating line — which is the honest
+//! description of what happened.
+//!
+//! # Why only the journal, and not the tree
+//!
+//! Salvaging the *implementation tree* from a hung container was considered and
+//! deliberately rejected. It would change what a hung run **means** to validation,
+//! publishing and the review worklist: a hung run would suddenly carry a half-written
+//! build that reviewers could open, score and publish, with no way to tell it apart from
+//! one the model finished. The journal has no such problem — it is a diagnostic that
+//! renders no verdict and reaches no score — so it is the only thing rescued here.
+//!
+//! # Why a failure here is never a failure
+//!
+//! This runs on a path that is *already* failing a run. Anything it does must be
+//! subordinate to reporting that failure accurately, so every outcome short of success is
+//! swallowed: an unreachable container, a run that never recorded, a scratch directory
+//! that cannot be made. The absent artifact is the signal. Turning a diagnosable timeout
+//! into an unexplained collection error would destroy the very information the salvage
+//! exists to preserve.
+
+use std::path::Path;
+
+use tempfile::TempDir;
+
+use crate::execution::{ArtifactCollector, ContainerHandle, WORKSPACE_DIR};
+use crate::gg_session_journal::GG_SESSION_JOURNAL_PATH;
+
+/// The absolute in-container path a recording gg session writes its journal to.
+///
+/// [`GG_SESSION_JOURNAL_PATH`] is workspace-relative because that is how every host-side
+/// reader wants it — joined onto a collected tree. Salvage is the one caller that needs
+/// the container's own view of it, since it copies the file *before* any tree exists.
+pub fn journal_container_path() -> String {
+    format!("{WORKSPACE_DIR}/{GG_SESSION_JOURNAL_PATH}")
+}
+
+/// Copy the capture journal out of a still-running `handle` into a fresh scratch directory
+/// **under `beside`**, laid out like a collected working tree with the journal at its usual
+/// relative path.
+///
+/// Returns the scratch directory on success — the caller keeps it alive for as long as it
+/// reads from it, and its contents vanish with it. `None` means there is nothing to
+/// assemble, for any reason at all: the collector cannot reach the container, the run
+/// wrote no journal, or the copy produced an empty file (a session that died before its
+/// header line reached disk assembles into nothing, so it is reported as absent rather
+/// than handed on to fail).
+///
+/// # Why `beside` rather than `/tmp`
+///
+/// The copy is a whole journal, bounded only by
+/// [`replay_max_bytes`](crate::gg::GgRunLimits) — 256 MiB by default — so it has to land on
+/// a volume known to have room for it. That volume is the one the run tree is already being
+/// written to, which is why the caller passes its output directory rather than this
+/// reaching for [`std::env::temp_dir`]. It is the same rule the assembly's segment files
+/// follow, and for the same reason (spelled out in
+/// [`gg_session_assembly`](crate::gg_session_assembly)): a container's `/tmp` is routinely a
+/// small `tmpfs`, and filling it would either fail the copy or take the pod down with it —
+/// on the one path where the failure being reported has to stay diagnosable.
+pub(crate) async fn salvage_journal_tree(
+    collector: &dyn ArtifactCollector,
+    handle: &ContainerHandle,
+    beside: &Path,
+) -> Option<TempDir> {
+    if let Err(err) = std::fs::create_dir_all(beside) {
+        tracing::warn!(
+            error = %err,
+            dir = %beside.display(),
+            "could not prepare the directory to salvage into",
+        );
+        return None;
+    }
+    let scratch = match tempfile::Builder::new()
+        .prefix(".session-salvage-")
+        .tempdir_in(beside)
+    {
+        Ok(scratch) => scratch,
+        Err(err) => {
+            tracing::warn!(error = %err, "could not create a scratch directory to salvage into");
+            return None;
+        }
+    };
+    let dest = scratch.path().join(GG_SESSION_JOURNAL_PATH);
+    // The journal lives under `.gg/`, so the scratch tree needs that directory before the
+    // collector can write into it — a collector copies a file, it does not build a tree.
+    if let Some(parent) = dest.parent()
+        && let Err(err) = std::fs::create_dir_all(parent)
+    {
+        tracing::warn!(error = %err, "could not prepare the salvage scratch tree");
+        return None;
+    }
+
+    let container_path = journal_container_path();
+    match collector.collect_file(handle, &container_path, &dest).await {
+        Ok(true) => {}
+        Ok(false) => {
+            // The overwhelmingly common case for a hung *third-party* harness run and for
+            // any gg run that never started capturing. Debug, not warn: there is nothing
+            // wrong here.
+            tracing::debug!(
+                path = %container_path,
+                "no capture journal to salvage from the run container",
+            );
+            return None;
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "salvaging the capture journal failed");
+            return None;
+        }
+    }
+
+    match std::fs::metadata(&dest) {
+        Ok(meta) if meta.len() > 0 => {
+            tracing::info!(
+                bytes = meta.len(),
+                "salvaged the capture journal from the run container",
+            );
+            Some(scratch)
+        }
+        Ok(_) => {
+            tracing::debug!("the salvaged capture journal was empty; nothing to assemble");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "the salvaged capture journal could not be read back");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "salvage.test.rs"]
+mod tests;

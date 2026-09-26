@@ -1,0 +1,340 @@
+# Refract
+
+## Overview
+
+Refract is a puzzle game of light, played in the browser on a dark optical
+bench. Each board is a lattice of optical nodes. The player draws one beam of
+light per channel, each beam running between that channel's two emitters,
+threading every lens of that channel and spending the charge in every crystal it
+crosses.
+
+Refract's defining idea is that a beam is drawn rather than fired. The player
+presses on a node and traces, and the beam follows the pointer from node to
+node while the rules silently refuse any move that would break them. A board is
+solved when every beam is complete and every crystal is exactly spent.
+
+Refract has its own name, look, and rules, and its assets, branding, and design
+are original to it.
+
+The specification spans several files under `specs/`. `specs/board.md` gives the
+board, its cell geometry, and the notation boards are written in;
+`specs/beams.md` the rules every beam obeys; `specs/controls.md` the pointer and
+keyboard input and the targets every screen is worked through; `specs/state.md` what the game's state carries;
+`specs/instrumentation.md` the debug and automation surface; `specs/ui.md` the
+screens, the menus, and the audio cues; `specs/campaign-boards.md` the fixed set
+of boards; and `specs/modes/campaign.md` and `specs/modes/cascade.md` the two
+modes the game is played in. Read all of them and build the game they describe
+as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, input from both the
+keyboard and the pointer, with the pointer carrying a mouse, a pen, and a touch
+alike, audio cues, and the debug overlay. Where this
+specification speaks of the runtime it means that layer, and it states only what
+Refract needs from it. How the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the screens are driven by,
+the pointer the board and the screens are worked with, audio cues, asset
+loading, the canvas fit, and the debug overlay. Read its documentation before you start. This
+specification states only what is specific to Refract.
+
+The pointer reaches the game from the engine already in the stage's logical
+units, with its press and release edges and the device driving it, and the
+engine takes the browser's own gestures on the canvas so a touch drag arrives
+whole. `specs/controls.md` states what Refract does with them.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework
+as much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed
+order. It owns the frame loop and the delta time the game is given, rendering
+and the camera, the canvas fit, the input actions the screens are driven by, the
+pointer the board and the screens are worked with, audio cues, asset loading, and
+the debug overlay. Read its documentation before you start. This specification states
+only what is specific to Refract.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both. The pointer reaches the game from
+the engine already in those units, as ordered samples carrying its press and
+release edges and the device driving it, and the engine takes the browser's own
+gestures on the canvas so a touch drag arrives whole. `specs/controls.md` states
+what Refract does with them.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested
+with Vitest, linted with ESLint, and formatted with Prettier. That toolchain is
+fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard and pointer input, audio, the diagnostics overlay, the
+debug and automation surface, the figures this specification fixes, and the game
+itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification
+does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test drives the game over its own clock for a counted number of
+frames, so it needs no browser, and `@napi-rs/canvas` is installed for a test
+that wants a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<RefractState, RefractDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<RefractState>`) and returns the next state, advanced against
+the frame's delta time in seconds, and `render` is handed that next state,
+read-only again, and draws it. The engine holds the state by value and replaces
+it with what each `update` returns, so a frame builds the next state from the
+current one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them.
+
+`src/game.ts` also declares and exports `RefractState` and the types it is built
+from, exactly as `specs/state.md` states them, and `RefractDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the bench
+itself. The seeded stub exports a placeholder; replace it with the color your
+bench uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test stands the engine up over its own canvas and clock and
+advances the game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `GameDefinition<RefractDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its
+game state live for the whole session. The instance's `initialize` registers
+the actions, defines the cues, and returns the debug surface. The level's game
+mode runs the screens and the rules, and it adds a single player in its
+`beginPlay`, possessing nothing; that player's controller is where the actions
+and the pointer are read. The mode's `gameStateClass` is `RefractState`, so the
+world's game state is the state `specs/state.md` declares. The actors,
+components, and controllers you write draw that state and drive it. As seeded,
+the definition is a stub whose instance throws
+`"not implemented"`. Implement it.
+
+`src/game.ts` also declares and exports `RefractState` and the types it is built
+from, exactly as `specs/state.md` states them, and `RefractDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the bench
+itself. The seeded stub exports a placeholder; replace it with the color your
+bench uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test stands the engine up over a canvas from `@napi-rs/canvas`
+and a surface and clock of its own, then advances the game a counted number of
+frames with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is at
+the root of any static file server. The scripts that do this are already in
+`package.json`.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser.
+Aim for a game a person would enjoy playing.
+
+The build ships both of the game's modes, and the player chooses between them
+from the title menu. Campaign plays a fixed set of boards in order, and Cascade
+plays generated boards without end. `specs/modes/campaign.md` and
+`specs/modes/cascade.md` state each one. The board geometry, the beam rules, the
+controls, and the debug surface the other spec files describe are the same in
+both.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard and pointer input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input
+  actions, the pointer, audio, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, the pointer, audio, and the debug overlay from it, and writing
+  the game inside its framework of game modes, actors, components, and
+  controllers.
+{{/if}}
+- Ship both modes, Campaign and Cascade, each reachable from the title menu.
+- Render real graphics on the canvas, drawn as shapes and text.
+- Draw everything in code. The build ships no art or audio files and fetches
+  nothing at runtime.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `RefractState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `RefractState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions and sizes in this specification are given in the game's own
+logical units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`, 16:9). The
+origin `(0, 0)` is the top-left; `x` increases to the right and `y` increases
+downward. The stage center is `(STAGE_CX, STAGE_CY)` (`640, 360`). Where the
+board sits within the stage, and where each cell's center falls, are given in
+`specs/board.md`.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's: the uniform scale that preserves the aspect
+  ratio, the letterboxed centering, and the device pixel ratio. The complete
+  stage is therefore on screen at every window size, on load and at any pixel
+  density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale. The
+  pointer position the game is given is in those same units, so a hit test
+  against a cell center needs no conversion.
+
+Every rate in this specification is per second and every duration is in seconds,
+integrated against the delta time the runtime hands each update.
+
+## Visual design
+
+The bench is dark. Choose the colors and the typography, decide how a node is
+drawn and how a beam is rendered along the cells it links, and decide what sits
+behind the board and how the board answers a beam as it grows.
+
+`specs/board.md` states what a player must read at a glance from a node and a
+beam, and `specs/ui.md` states the same for screen text.
+
+The palette, type, glow, and every other aspect of the look are yours.

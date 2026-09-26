@@ -35,6 +35,19 @@ const DEFAULT_COALESCE_MS: u64 = 60_000;
 /// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
 /// reading a just-superseded generation finishes against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
+/// The default interval between artifact reclamation sweeps, in hours, when
+/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
+/// so a few passes a day reclaim it well within the volume's headroom while keeping
+/// the artifact service's listing load negligible.
+const DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS: u64 = 6;
+/// The default grace window before a run-less tree is swept, in hours, when
+/// `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` is unset.
+///
+/// A driver uploads a run's tree *before* it reports the run terminal, so a tree
+/// with no run row is the normal state of a run that is still finishing. The window
+/// has to exceed the longest upload-to-report gap, which is seconds; a day of it
+/// leaves the sweep correct under any restart or clock skew a deployment can produce.
+const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
@@ -80,6 +93,14 @@ pub struct Config {
     /// supplies it from the same secret the dispatcher reads. Per-job driver
     /// tokens are minted at enqueue and need no configuration.
     pub service_token: Option<String>,
+    /// The OpenRouter API key the backend's own completion calls are billed to
+    /// (`TCAB_OPENROUTER_API_KEY`) — today only the [model
+    /// probes](crate::probe). Distinct from the runners' `OPENROUTER_API_KEY`,
+    /// which is injected into run containers, never into the backend. `None`
+    /// leaves every keyless OpenRouter read (the public catalog) working and
+    /// makes a probe trigger fail with a structured `openrouter_key_missing`
+    /// error.
+    pub openrouter_api_key: Option<String>,
     /// R2 upload configuration, or `None` when snapshot upload is disabled
     /// because the R2 variables were not all supplied (only valid in dev: see
     /// [`Config::from_env`]).
@@ -108,14 +129,59 @@ pub struct Config {
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
     /// the backend image.
     pub reference_browser: Option<String>,
-    /// The public base URL of the **artifact service** (`TCAB_ARTIFACTS_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so it can resolve a pre-publish
-    /// run's `links.playable_build` (and its proof/asset media) against the data
-    /// plane. `None` when artifacts are not served separately (e.g. a single-box
-    /// dev setup with no artifact service) — the console then leaves those links
-    /// unresolved. This is the one data-plane URL the control plane exposes; the
-    /// artifact bytes themselves never transit the backend.
-    pub artifacts_url: Option<String>,
+    /// The directory holding gg's projected reference documents (`TCAB_GG_REFERENCE`) —
+    /// `index.json` plus one `<language>.json` per program language, exactly as
+    /// `gg reference --out` writes them. Served by
+    /// [`GET /gg/reference`](crate::api) and its per-arm child.
+    ///
+    /// A **path**, not an embedded artifact, and that is the whole design of this
+    /// surface: the documents are what gg itself renders for a model, so they are
+    /// produced by the gg binary and shipped beside the backend binary rather than
+    /// committed into this crate and compiled in. The backend must never depend on
+    /// `test-cabinet-gg` (`oxc`, `tiktoken-rs`, and a build that reflects eleven
+    /// language SDKs' catalogues from eleven installed toolchains — `api/gg_reference.rs`
+    /// spells out what is *not* the reason, wasmtime being already in this binary),
+    /// so a file read at run time is how the projection crosses that boundary — the
+    /// same shape `TCAB_BROWSER_DRIVER` already uses for the bundled Playwright
+    /// driver, which the backend also ships beside itself and never links.
+    ///
+    /// The backend image bakes them in and points this at `/opt/gg-reference`. A
+    /// developer running the binary from a checkout gets the default below and fills
+    /// it with `scripts/gg-reference.sh`; until they do, the reference endpoints
+    /// answer `503` naming that script, and nothing else about the backend is
+    /// affected.
+    pub gg_reference: PathBuf,
+    /// The **advertised** base URL of the **artifact service**
+    /// (`TCAB_ARTIFACTS_PUBLIC_URL`), reported to the console via `GET /config` so it
+    /// can resolve a pre-publish run's `links.playable_build` (and its proof/asset
+    /// media) against the data plane. `None` when artifacts are not served separately
+    /// (e.g. a single-box dev setup with no artifact service) — the console then
+    /// leaves those links unresolved.
+    ///
+    /// Advertised only: it is whatever a *browser* can resolve, which in a
+    /// port-forwarded development cluster is a loopback address no backend pod can
+    /// reach. Every call the backend makes itself goes through
+    /// [`artifacts_internal_url`](Self::artifacts_internal_url).
+    pub artifacts_public_url: Option<String>,
+    /// The base URL of the **artifact service** as the backend itself reaches it
+    /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
+    /// hands its driver Jobs.
+    ///
+    /// This is what every backend-originated artifact call uses: pruning a deleted
+    /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
+    /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
+    /// all three, which is correct for a single-box dev setup with no artifact
+    /// service and is warned about at startup for a deployment that advertises a
+    /// public URL without supplying this one.
+    pub artifacts_internal_url: Option<String>,
+    /// How often the artifact reclamation sweep runs
+    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
+    /// leaving the delete-time prune as the only reclamation.
+    pub artifact_sweep_interval: Duration,
+    /// How old a tree with no run row must be before a sweep deletes it
+    /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
+    /// uploaded its tree but not yet reported terminal is protected from the sweep.
+    pub artifact_sweep_grace: Duration,
     /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can POST adversarial
     /// matches/tournaments and stream live tournament progress against the data
@@ -127,10 +193,10 @@ pub struct Config {
     /// The base URL of the deployment's **Grafana** (`TCAB_GRAFANA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so a run can link out to the traces
     /// it emitted. `None` when the deployment runs no observability stack (the local
-    /// and desktop setups, and any overlay that omits the observability component) —
-    /// the console then simply hides the link.
+    /// setup, and any overlay that omits the observability component) — the console
+    /// then simply hides the link.
     ///
-    /// Unlike `artifacts_url` and `arena_url` this is not a data-plane URL: the
+    /// Unlike `artifacts_public_url` and `arena_url` this is not a data-plane URL: the
     /// backend never calls Grafana, and Grafana never calls the backend. It is
     /// advertised here purely because `GET /config` is already how the console
     /// learns per-environment URLs, and threading one more through the console
@@ -154,7 +220,7 @@ pub struct Config {
     /// published reference frames (see `test_cabinet_core::asset_reference`), whose
     /// keys the client builds itself from the case triple and a frame index. Joining
     /// them onto a base is the client's job; the backend only advertises the base,
-    /// exactly as it does for `artifacts_url` and `arena_url`.
+    /// exactly as it does for `artifacts_public_url` and `arena_url`.
     ///
     /// The static gallery reaches the same base under its own build-time name
     /// (`TCAB_SNAPSHOT_URL`, see `.env.site.example`); it bakes the value in at build
@@ -190,6 +256,7 @@ impl Config {
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
         let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
         let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
+        let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
 
         let r2 = R2Config::from_env();
         let deploy_hook_url = std::env::var("TCAB_SITE_DEPLOY_HOOK_URL")
@@ -210,19 +277,25 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
+        let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
+
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
 
-        let artifacts_url =
-            nonempty("TCAB_ARTIFACTS_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
+        let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
+        let arena_url = base_url("TCAB_ARENA_PUBLIC_URL");
+        let grafana_url = base_url("TCAB_GRAFANA_PUBLIC_URL");
+        let snapshot_url = base_url("TCAB_SNAPSHOT_PUBLIC_URL");
 
-        let arena_url =
-            nonempty("TCAB_ARENA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifact_sweep_interval_hours = std::env::var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS);
 
-        let grafana_url =
-            nonempty("TCAB_GRAFANA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
-
-        let snapshot_url =
-            nonempty("TCAB_SNAPSHOT_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+        let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
 
         Ok(Self {
             bind,
@@ -233,12 +306,21 @@ impl Config {
             store,
             auth_url,
             service_token,
+            openrouter_api_key,
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
-            artifacts_url,
+            gg_reference,
+            artifacts_public_url,
+            artifacts_internal_url,
+            artifact_sweep_interval: Duration::from_secs(
+                artifact_sweep_interval_hours.saturating_mul(3600),
+            ),
+            artifact_sweep_grace: Duration::from_secs(
+                artifact_sweep_grace_hours.saturating_mul(3600),
+            ),
             arena_url,
             grafana_url,
             snapshot_url,
@@ -248,7 +330,7 @@ impl Config {
 
     /// Whether this backend runs single-box: the control plane, the dispatcher,
     /// and every driver share one machine's lifecycle. Inferred from a SQLite
-    /// database URL — the local/desktop deployment — as opposed to the
+    /// database URL — the local deployment — as opposed to the
     /// `postgres://` of a remote deployment whose backend can restart
     /// independently while drivers keep running.
     ///
@@ -268,6 +350,28 @@ fn env_or(key: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+/// Resolve where gg's projected reference documents live: `explicit`
+/// (`TCAB_GG_REFERENCE`) when an operator named a directory, and otherwise a path
+/// derived from the checkout.
+///
+/// The default has to be *defined everywhere*, because this variable is unset in every
+/// deployment shape but one — the backend image bakes it, and nothing else sets it. So it
+/// is derived from `TCAB_BACKEND_CHECKOUT`, which is the one unconditionally required
+/// variable ([`Config::from_env`]), rather than from the working directory: a backend
+/// started by systemd or a container has a working directory nobody chose, whereas the
+/// checkout is by definition the tree this backend was pointed at. `target/` under it is
+/// where `scripts/gg-reference.sh` writes, and where every other build output in this
+/// repository already goes.
+///
+/// A pure function taking the resolved value rather than reading the environment itself,
+/// so the derivation is testable without mutating process-global state (see
+/// `config.test.rs`) — the same reason the caller passes `checkout` in.
+fn gg_reference_dir(explicit: Option<String>, checkout: &std::path::Path) -> PathBuf {
+    explicit
+        .map(PathBuf::from)
+        .unwrap_or_else(|| checkout.join("target").join("gg-reference"))
+}
+
 /// Read a required environment variable, erroring with its name when unset.
 fn require(key: &'static str) -> Result<String, ConfigError> {
     std::env::var(key)
@@ -279,6 +383,13 @@ fn require(key: &'static str) -> Result<String, ConfigError> {
 /// Read a non-empty environment variable, returning `None` when unset or empty.
 fn nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+/// Read a service base URL, normalized so callers can join a rooted path onto it
+/// with a plain `format!`: unset or empty is `None`, and a trailing `/` is trimmed
+/// so `{base}/runs/{id}` never doubles the separator.
+fn base_url(key: &str) -> Option<String> {
+    nonempty(key).map(|url| url.trim_end_matches('/').to_string())
 }
 
 #[cfg(test)]

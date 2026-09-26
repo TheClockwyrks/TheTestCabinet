@@ -7,15 +7,18 @@ mod tests;
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use test_cabinet_core::content_labels::{self, ContentLabels};
+use test_cabinet_core::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
 use test_cabinet_core::{
-    AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec,
+    shippable_package_description,
 };
 
 use crate::error::ApiError;
@@ -39,12 +42,22 @@ use super::AppState;
 /// The metadata is read from each case's **latest visible version**, which is the
 /// one a listing describes. A case whose latest manifest cannot be read is
 /// skipped rather than failing the whole catalog — one unreadable sidecar should
-/// cost that case's card, not every case's.
+/// cost that case's card, not every case's. A store the running build cannot read
+/// at all is the other case entirely: it answers `503` naming the repair, because
+/// a listing of whichever versions happen to still parse is a wrong answer that
+/// looks like a right one (see
+/// [`needs_reingest`](crate::store::DefinitionStore::needs_reingest)).
 ///
 /// Experimental versions are omitted unless the deployment has opted in via
 /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
 /// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
+    if state.store.needs_reingest() {
+        return Err(ApiError::unavailable(
+            "the definition store holds no version in a record format this build can read; \
+             re-ingest the catalog",
+        ));
+    }
     let mut cases = Vec::new();
     for (slug, versions) in state
         .store
@@ -59,7 +72,10 @@ pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogRespon
         let manifest = match state.store.read_manifest(&slug, latest) {
             Ok(manifest) => manifest,
             Err(error) => {
-                tracing::warn!(
+                // The store is one this build reads, so a manifest inside it that
+                // does not read back is a defect in what ingest wrote, not a state
+                // to expect.
+                tracing::error!(
                     %slug,
                     version = %latest,
                     %error,
@@ -77,6 +93,19 @@ pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogRespon
 /// manifest of its latest one. Split out from [`catalog`] so the metadata a card
 /// renders can be covered without standing up a store.
 fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) -> CatalogCase {
+    // The catalog preview: the latest version's first variant (manifest order)
+    // that declares a showcase. `None` when no variant of the latest version has
+    // one — the card renders its placeholder stage.
+    let showcase = manifest.variants.iter().find_map(|variant| {
+        variant
+            .showcase
+            .as_ref()
+            .map(|showcase| CatalogShowcaseOut {
+                version: manifest.version.clone(),
+                variant: variant.slug.clone(),
+                media: showcase.media.iter().map(showcase_media_out).collect(),
+            })
+    });
     CatalogCase {
         slug,
         versions,
@@ -86,6 +115,7 @@ fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) 
         difficulty: manifest.difficulty.clone(),
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
+        showcase,
     }
 }
 
@@ -107,13 +137,59 @@ pub async fn versions(
     Ok(Json(VersionsResponse { slug, versions }))
 }
 
+/// The [engine](test_cabinet_core::engine) a version's templated text is rendered
+/// for: `?engine=<slug>` on [`resolve_version`] and [`variant_specs`].
+///
+/// A case version's `prompt.hbs` and its `.hbs` specs branch on the selected
+/// engine, so the same stored template renders into different text depending on
+/// which runtime the build is written against. The engine is therefore a
+/// *rendering* input, not part of a version's identity — a version makes no claim
+/// about an engine — which is why it rides as a query parameter here while the
+/// `validation-baseline` route carries it as a path segment (there it names a
+/// distinct stored directory).
+///
+/// A surface showing a **run** passes the engine that run recorded, so it reads
+/// the text that run's harness actually received. A surface showing a **case**
+/// passes nothing and gets the engineless form: a case is not a run, and nothing
+/// has selected an engine yet.
+#[derive(Debug, Default, Deserialize)]
+pub struct EngineQuery {
+    /// The engine slug to render for, or absent for the engineless form. An
+    /// unknown slug is a client error rather than a silent fallback.
+    #[serde(default)]
+    pub engine: Option<String>,
+}
+
+impl EngineQuery {
+    /// Resolve the requested slug against the built-in engine catalogue.
+    ///
+    /// `None` (the parameter was omitted) renders engineless. An explicit
+    /// [`NONE_SLUG`](test_cabinet_core::engine::NONE_SLUG) resolves to the built-in
+    /// engineless engine, which renders identically — a run that named `none` and a
+    /// surface that named nothing see the same text.
+    fn resolve(&self) -> Result<Option<ResolvedEngine>, ApiError> {
+        let Some(slug) = self.engine.as_deref() else {
+            return Ok(None);
+        };
+        EngineCatalog::new()
+            .resolve(&EngineSelection::new(slug))
+            .map(Some)
+            .map_err(|err| ApiError::bad_request(err.to_string()))
+    }
+}
+
 /// `GET /test-cases/{slug}/versions/{version}` — the full resolved manifest a
 /// runner needs, with store-relative keys and references resolved to rendered
 /// screenshot URLs.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine each variant's
+/// `prompt` is rendered for; omitting it renders the engineless form.
 pub async fn resolve_version(
     State(state): State<AppState>,
     Path((slug, version)): Path<(String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<VersionResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -150,6 +226,7 @@ pub async fn resolve_version(
         &manifest,
         &reference_builds,
         &reference_sheets,
+        engine.as_ref(),
     )?))
 }
 
@@ -177,10 +254,15 @@ pub async fn artifact(
 /// [`artifact`] route serves. A plain spec is returned verbatim. A render error is
 /// exceptional (the same template renders at run time), so it surfaces as an
 /// internal error rather than silently dropping the spec.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine the bodies are
+/// rendered for; omitting it renders the engineless form.
 pub async fn variant_specs(
     State(state): State<AppState>,
     Path((slug, version, variant)): Path<(String, String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<SpecsResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -219,6 +301,7 @@ pub async fn variant_specs(
                 &selected.name,
                 selected.description.as_deref(),
                 voxel,
+                engine.as_ref(),
             )?;
             Ok(SpecDocumentOut {
                 dest: spec.dest.clone(),
@@ -267,21 +350,44 @@ pub async fn reference(
     Ok(bytes_response(&file, bytes))
 }
 
-/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
-/// — a case variant's committed **baseline** validation media (`{file}` is the flat
-/// `<item>__<output>.<ext>`). This is the invariant counterpart to a run's *actual*
-/// validation media (served run-scoped by the artifact service): synthesized once at
-/// `tcab publish-reference` time from the reference implementation and committed under
-/// the version folder, so the reviewer UI resolves it case-scoped (by
-/// slug/version/variant/item/output), not from any run tree. The content type follows
-/// the extension.
+/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
+/// — one reference build's committed **baseline** validation media (`{file}` is the
+/// flat `<item>__<output>.<ext>`). This is the invariant counterpart to a run's
+/// *actual* validation media (served run-scoped by the artifact service): synthesized
+/// once at `tcab capture-baselines` time from the reference implementation and
+/// committed under the version folder, so the reviewer UI resolves it case-scoped (by
+/// slug/version/engine/variant/item/output), not from any run tree. The content type
+/// follows the extension.
+///
+/// The engine is part of the address because a variant has one reference
+/// implementation per engine: the run being reviewed selected an engine, and the
+/// expected-behavior media it is compared against has to have come from the same one.
 pub async fn validation_baseline(
+    State(state): State<AppState>,
+    Path((slug, version, engine, variant, file)): Path<(String, String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_validation_baseline(&slug, &version, &engine, &variant, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}` — one
+/// media file of a variant's authored **showcase** (`{file}` is the plain file
+/// name the carousel declares — a `.png` still, a `.webm` clip, or a `.json.gz`
+/// replay recording). The case-side counterpart of [`run_showcase`], served
+/// case-scoped because the showcase is authored material committed with the
+/// version, not run output. The content type follows the extension. The store
+/// resolves only a file the variant's stored showcase actually lists — and never
+/// `showcase.toml`, which is authoring input.
+pub async fn case_showcase(
     State(state): State<AppState>,
     Path((slug, version, variant, file)): Path<(String, String, String, String)>,
 ) -> Result<Response, ApiError> {
     let bytes = state
         .store
-        .read_validation_baseline(&slug, &version, &variant, &file)
+        .read_case_showcase(&slug, &version, &variant, &file)
         .map_err(ApiError::from)?;
     Ok(bytes_response(&file, bytes))
 }
@@ -371,6 +477,38 @@ pub async fn put_run_asset(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/showcase/{file}` — one of a published run's
+/// [showcase](test_cabinet_core::RunShowcase) files (`{file}` is the plain file
+/// name in the produced tree's `showcase/` — a carousel media file, or an image
+/// the description references), mirrored into the backend store by the driver so
+/// it reaches the public snapshot. The content type follows the extension; a
+/// `.json.gz` replay serves as JSON travelling gzip-framed, so a browser inflates
+/// it before the player sees it.
+pub async fn run_showcase(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_showcase(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/showcase/{file}` — store one of a published run's showcase
+/// files, uploaded by the publisher alongside the run record.
+pub async fn put_run_showcase(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_showcase(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// `GET /runs/{id}/controller.wasm` — an adversarial run's pushed controller wasm,
 /// served so the arena can resolve and pit a pushed implementation from any host.
 pub async fn run_controller(
@@ -398,13 +536,94 @@ pub async fn put_run_controller(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/replay` — a gg run's stored
+/// [session record](test_cabinet_core::gg_session_record), the capture of its non-deterministic
+/// inputs, served as JSON so a replay driver can re-run the session.
+///
+/// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
+/// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
+/// the workspace `reqwest`) gets them decoded here.
+pub async fn run_replay(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let bytes = state.store.read_run_replay(&id).map_err(ApiError::from)?;
+    run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes)
+}
+
+/// `POST /runs/{id}/replay` — store a gg run's session record, mirrored in by the driver from the
+/// collected run tree. The raw request body is the bytes.
+///
+/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
+/// status post that creates the run row, so there is nothing here to patch, and the store keeps the
+/// body opaque: it is never parsed.
+pub async fn put_run_replay(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_replay(&id, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
+/// `GET /runs/{id}/code-analysis` — a run's stored
+/// [code-analysis](test_cabinet_core::code_analysis) document: the unbounded tier of the
+/// static read of the code its model wrote, with every file, symbol, import edge, cycle and
+/// clone group.
+///
+/// Served through [`run_artifact_response`] exactly as the session record is: a browser (the
+/// per-run Code tab) gets the stored gzip moved verbatim, and a gzip-unaware client on the
+/// workspace `reqwest` gets it decoded here.
+///
+/// Offered for every harness's runs. The gg-only constraint binds on the *aggregate* query
+/// surface, not on a per-run document that costs nothing harness-specific to produce.
+pub async fn run_code_analysis(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_code_analysis(&id)
+        .map_err(ApiError::from)?;
+    run_artifact_response(&headers, crate::store::CODE_ANALYSIS_ARTIFACT, bytes)
+}
+
+/// `POST /runs/{id}/code-analysis` — store a run's code-analysis document, mirrored in by
+/// the driver from the collected run tree. The raw request body is the bytes.
+///
+/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the
+/// terminal status post that creates the run row, so there is nothing here to patch. The
+/// lifted `run.code_analyzer_version` column is set from the record on the ordinary insert,
+/// which is why this handler never touches the database and why a document arriving for a
+/// run that does not exist yet is not an error.
+pub async fn put_run_code_analysis(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_code_analysis(&id, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
-/// prompt the way a real run receives it.
+/// prompt the way a run on `engine` receives it.
 fn version_response(
     manifest: &StoredManifest,
-    reference_builds: &std::collections::HashMap<String, String>,
+    reference_builds: &std::collections::HashMap<
+        String,
+        std::collections::BTreeMap<String, String>,
+    >,
     reference_sheets: &std::collections::HashMap<String, Vec<u32>>,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
         view: r.view.clone(),
@@ -423,12 +642,9 @@ fn version_response(
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
-                prompt: render_variant_prompt(manifest, v)?,
+                prompt: render_variant_prompt(manifest, v, engine)?,
                 specs: v.specs.iter().map(spec_out).collect(),
-                workspace: v
-                    .workspace
-                    .as_ref()
-                    .map(|files| files.iter().map(workspace_out).collect()),
+                workspace: v.workspace.as_ref().map(workspaces_out),
                 references: v
                     .references
                     .iter()
@@ -438,12 +654,13 @@ fn version_response(
                 review_items: v.review_items.iter().map(review_item_out).collect(),
                 domains: v.domains.iter().map(domain_out).collect(),
                 voxel: v.voxel.clone(),
-                reference_build: reference_builds.get(&v.slug).cloned(),
+                reference_builds: reference_builds.get(&v.slug).cloned().unwrap_or_default(),
                 reference_sheet: reference_sheets
                     .get(&v.slug)
                     .map(|frames| ReferenceSheetOut {
                         frames: frames.clone(),
                     }),
+                showcase: v.showcase.as_ref().map(showcase_out),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -459,10 +676,26 @@ fn version_response(
         changelog: manifest.changelog.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
         test_type: manifest.test_type,
+        engine_format: manifest.engine_format,
+        engines: manifest
+            .engines
+            .iter()
+            .map(|engine| EngineOut {
+                slug: engine.slug.clone(),
+                min_version: engine.min_version.as_ref().map(|v| v.to_string()),
+                max_version: engine.max_version.as_ref().map(|v| v.to_string()),
+            })
+            .collect(),
         build: manifest.build.as_ref().map(|build| BuildOut {
             install: build.install.clone(),
             build: build.build.clone(),
             module: build.module.clone(),
+        }),
+        toolchain: manifest.toolchain.as_ref().map(|toolchain| ToolchainOut {
+            typecheck: toolchain.typecheck.clone(),
+            lint: toolchain.lint.clone(),
+            format: toolchain.format.clone(),
+            test: toolchain.test.clone(),
         }),
         canvas: manifest.canvas.as_ref().map(|canvas| CanvasOut {
             width: canvas.width,
@@ -492,6 +725,7 @@ fn version_response(
         r#match: manifest.r#match.clone(),
         replay: manifest.replay.clone(),
         asset_kind: manifest.asset_kind,
+        asset_dimension: manifest.asset_dimension,
         sheet: manifest.sheet.clone(),
         voxel: manifest.voxel.clone(),
         model: manifest.model.clone(),
@@ -499,6 +733,7 @@ fn version_response(
         material: manifest.material.clone(),
         particle: manifest.particle.clone(),
         audio: manifest.audio.clone(),
+        audio_packs: manifest.audio_packs.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         packages: manifest
@@ -506,7 +741,7 @@ fn version_response(
             .iter()
             .map(|name| package_out(name))
             .collect(),
-        workspace: manifest.workspace.iter().map(workspace_out).collect(),
+        workspace: workspaces_out(&manifest.workspace),
         init: manifest.init.clone(),
         assets: manifest
             .assets
@@ -550,15 +785,16 @@ fn version_response(
 }
 
 /// Render a variant's prompt the way a real run receives it: the version's
-/// `prompt.hbs` template rendered against the variant and its seeded specs (the
-/// common specs followed by the variant's own, matching seed order). The
-/// in-container workspace path is the engine's fixed default, so this preview is
-/// identical to the run-time instruction. A template error is exceptional (the
-/// same template renders at run time), so surface it as an internal error rather
-/// than silently dropping the prompt.
+/// `prompt.hbs` template rendered against the variant, its seeded specs (the
+/// common specs followed by the variant's own, matching seed order), and the
+/// selected `engine`. The in-container workspace path is the engine's fixed
+/// default, so this rendering is identical to the run-time instruction. A template
+/// error is exceptional (the same template renders at run time), so surface it as
+/// an internal error rather than silently dropping the prompt.
 fn render_variant_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String, ApiError> {
     let spec_dests: Vec<String> = manifest
         .common_specs
@@ -575,13 +811,18 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        // The dimension decides which asset-generation binaries the full-stack
+        // directive names, so the gallery shows the tools the run really gets.
+        manifest.asset_dimension,
         manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // The gallery preview shows the standing prompt, with no prior game-jam
-        // entries in play, so it never carries the distinctness section.
+        // A version's prompt is the standing one, with no prior game-jam entries in
+        // play, so it never carries the distinctness section. Those are a property of
+        // the run, seeded from earlier entries by the same model.
         0,
+        engine,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }
@@ -611,9 +852,13 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(review_validation_out),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
         validation: item.validation.as_ref().map(review_validation_out),
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
     }
 }
 
@@ -622,6 +867,8 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
 fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> ReviewValidationOut {
     ReviewValidationOut {
         script: validation.script.clone(),
+        per_engine: validation.per_engine,
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()
@@ -692,6 +939,26 @@ fn package_out(name: &str) -> PackageOut {
     }
 }
 
+/// Map a variant's stored showcase to its wire shape.
+fn showcase_out(showcase: &crate::store::StoredShowcase) -> ShowcaseOut {
+    ShowcaseOut {
+        description: showcase.description.clone(),
+        media: showcase.media.iter().map(showcase_media_out).collect(),
+    }
+}
+
+/// Map one stored showcase media entry to its wire shape. The store-relative
+/// `key` deliberately stays behind: a client addresses the bytes by the showcase
+/// route (`/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`),
+/// never by artifact key.
+fn showcase_media_out(media: &crate::store::StoredShowcaseMedia) -> ShowcaseMediaOut {
+    ShowcaseMediaOut {
+        file: media.file.clone(),
+        name: media.name.clone(),
+        kind: media.kind,
+    }
+}
+
 /// Map a stored workspace file to the wire `{source, dest}` shape.
 fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
     WorkspaceOut {
@@ -700,44 +967,173 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
     }
 }
 
-/// Build a raw-bytes response with a best-effort content type and length.
+/// Map a stored starter project to the wire shape: one file list per
+/// [engine](test_cabinet_core::engine) slug.
+fn workspaces_out(
+    workspace: &crate::store::StoredWorkspace,
+) -> std::collections::BTreeMap<String, Vec<WorkspaceOut>> {
+    workspace
+        .0
+        .iter()
+        .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
+        .collect()
+}
+
+/// Build a raw-bytes response for a stored file, labelled from its name.
+///
+/// A name carries both answers a response has to give: what the resource is, and how
+/// the body is framed. `<name>.json.gz` is a JSON document travelling gzip-framed and
+/// is labelled as such, so a browser inflates it before any script sees it; every
+/// other name describes bytes that are already the resource (see
+/// [`labels_for`]).
 fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
-    let content_type = content_type_for(path);
+    labelled_response(labels_for(path), bytes)
+}
+
+/// Build a raw-bytes response under labels the caller already knows.
+///
+/// [`run_artifact_response`] is the one route whose framing is not implied by the
+/// name it serves under: it stores the document gzipped under a `.json` name and
+/// decides per request whether to hand that framing on, so it states the labels
+/// rather than deriving them.
+fn labelled_response(labels: ContentLabels, bytes: Vec<u8>) -> Response {
     let len = bytes.len();
-    (
+    let mut response = (
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_TYPE, labels.content_type.to_string()),
             (header::CONTENT_LENGTH, len.to_string()),
         ],
         Body::from(bytes),
     )
-        .into_response()
+        .into_response();
+    if let Some(encoding) = labels.content_encoding {
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static(encoding),
+        );
+    }
+    response
 }
 
-/// A best-effort content type from a path's extension.
-fn content_type_for(path: &str) -> &'static str {
+/// Serve one of a run's [run-tree artifacts](crate::store::DefinitionStore::run_artifact_path)
+/// — the whole-run analysis documents (`replay`, and code analysis to follow) — content
+/// negotiating on the **request's** `Accept-Encoding`.
+///
+/// Negotiating on the request rather than keying on what happens to be stored is the whole
+/// point of the convention. The workspace HTTP client (`reqwest`, built without its `gzip`
+/// feature so the workspace stays free of a second TLS/compression stack) neither advertises
+/// the encoding nor decodes it, while every browser advertises it unconditionally. Serving
+/// the stored bytes verbatim would break the CLI and the replay driver; decompressing
+/// unconditionally would throw away the ~10× the console's fetch gets for free.
+///
+/// Records captured before the convention are stored as plain JSON, so the stored bytes are
+/// sniffed rather than assumed. Nothing here ever compresses on demand: compression happens
+/// once, where the artifact is written, and this route only ever *removes* it.
+fn run_artifact_response(
+    headers: &HeaderMap,
+    name: &str,
+    stored: Vec<u8>,
+) -> Result<Response, ApiError> {
+    let mut response = if !is_gzip(&stored) {
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), stored)
+    } else if accepts_gzip(headers) {
+        labelled_response(ContentLabels::gzipped(JSON_CONTENT_TYPE), stored)
+    } else {
+        let mut plain = Vec::new();
+        std::io::Read::read_to_end(
+            &mut flate2::read::GzDecoder::new(std::io::Cursor::new(&stored)),
+            &mut plain,
+        )
+        .map_err(|e| {
+            ApiError::internal(format!(
+                "decoding stored `{name}` artifact for a client that does not accept gzip: {e}"
+            ))
+        })?;
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), plain)
+    };
+    // The body genuinely varies by request header, so say so — a shared cache in front
+    // of the backend must not hand a browser's gzipped copy to the gzip-unaware CLI.
+    response.headers_mut().insert(
+        header::VARY,
+        header::HeaderValue::from_static("accept-encoding"),
+    );
+    Ok(response)
+}
+
+/// Whether the bytes are a gzip member, by its two-byte magic (RFC 1952 §2.3.1).
+///
+/// Both a gzip stream and the JSON it frames are self-describing enough that this
+/// cannot be ambiguous: a JSON document never begins `0x1f 0x8b`.
+fn is_gzip(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x1f, 0x8b])
+}
+
+/// Whether the request advertised gzip in `Accept-Encoding`.
+///
+/// Deliberately narrow: this decides between handing over bytes already in hand and
+/// decompressing them, so it accepts `gzip` (or the `*` wildcard) and honours an explicit
+/// `q=0`, which is how a client *refuses* an encoding — RFC 9110 §12.5.3. Anything it does
+/// not understand means "not advertised", which is always the safe answer: the caller gets
+/// plain JSON.
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    let Some(value) = headers
+        .get(header::ACCEPT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+    value.split(',').any(|entry| {
+        let mut parts = entry.split(';');
+        let coding = parts.next().unwrap_or_default().trim();
+        if !coding.eq_ignore_ascii_case("gzip") && coding != "*" {
+            return false;
+        }
+        // `;q=0` (and `q=0.0`, `q=0.000`) is a refusal; any other quality is acceptance.
+        !parts.any(|param| {
+            let param = param.trim();
+            let Some(q) = param
+                .strip_prefix("q=")
+                .or_else(|| param.strip_prefix("Q="))
+            else {
+                return false;
+            };
+            q.trim().parse::<f32>().is_ok_and(|q| q <= 0.0)
+        })
+    })
+}
+
+/// The content type and body framing for a stored file, from its name.
+fn labels_for(path: &str) -> ContentLabels {
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
     match ext.to_ascii_lowercase().as_str() {
-        "md" | "txt" => "text/plain; charset=utf-8",
-        "hbs" => "text/plain; charset=utf-8",
-        "html" => "text/html; charset=utf-8",
-        "json" => "application/json",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "mp4" => "video/mp4",
-        "svg" => "image/svg+xml",
-        "css" => "text/css",
-        "js" | "mjs" => "text/javascript",
-        "wasm" => "application/wasm",
-        _ => "application/octet-stream",
+        "md" | "txt" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "hbs" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "html" => ContentLabels::plain("text/html; charset=utf-8"),
+        "json" => ContentLabels::plain(JSON_CONTENT_TYPE),
+        // A gzipped document served as it is stored — a validator's draw-command
+        // recording (`<name>.json.gz`), which is JSON travelling gzip-framed and is
+        // labelled that way, so the browser inflates it before the player sees it.
+        "gz" => content_labels::for_gz(path),
+        "png" => ContentLabels::plain("image/png"),
+        "jpg" | "jpeg" => ContentLabels::plain("image/jpeg"),
+        "webp" => ContentLabels::plain("image/webp"),
+        "gif" => ContentLabels::plain("image/gif"),
+        "mp4" => ContentLabels::plain("video/mp4"),
+        "webm" => ContentLabels::plain("video/webm"),
+        "svg" => ContentLabels::plain("image/svg+xml"),
+        "css" => ContentLabels::plain("text/css"),
+        "js" | "mjs" => ContentLabels::plain("text/javascript"),
+        "wasm" => ContentLabels::plain("application/wasm"),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
+
+/// The content type every JSON response this module serves carries.
+const JSON_CONTENT_TYPE: &str = "application/json";
 
 // --- Wire shapes (§1.2) -----------------------------------------------------
 
@@ -772,6 +1168,29 @@ pub struct CatalogCase {
     pub tags: Vec<String>,
     /// The short plain-text abstract a card shows, when the case declares one.
     pub summary: Option<String>,
+    /// The case's catalog **showcase preview**, when its latest visible version
+    /// has one: the first variant (manifest order) of that version that declares
+    /// a showcase, with the media list a card's preview stage loops. `null` when
+    /// no variant of the latest version declares one. Only the addressing rides
+    /// here (the description lives on the resolved version's variant); each
+    /// media file is fetched from
+    /// `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+    pub showcase: Option<CatalogShowcaseOut>,
+}
+
+/// A case's catalog showcase preview: which version and variant the media
+/// belongs to, plus the carousel entries themselves — everything a listing card
+/// needs to address the media without resolving the full version.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CatalogShowcaseOut {
+    /// The version the showcase was read from (the case's latest visible one).
+    pub version: String,
+    /// The variant that declares it.
+    pub variant: String,
+    /// The media carousel, in declared order.
+    pub media: Vec<ShowcaseMediaOut>,
 }
 
 #[derive(Serialize)]
@@ -803,8 +1222,22 @@ pub struct VersionResponse {
     changelog: String,
     max_runtime_seconds: u64,
     test_type: TestType,
+    /// Whether the version is on the **engine manifest format**, which (with the
+    /// test type) makes it **validator-rated**: a run's functional rating and score
+    /// are decided by its validators — every review point declares its `failureCap`
+    /// and `domains` — and a reviewer rates only the aesthetic channel. `false` on
+    /// every legacy version, whose runs are reviewed exactly as before.
+    engine_format: bool,
+    /// The engines a run of this version may select. Never empty — a version that
+    /// declares none supports the engineless run.
+    engines: Vec<EngineOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     build: Option<BuildOut>,
+    /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
+    /// table. Absent for every version that predates it, which is what leaves those
+    /// versions unchecked and ungated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    toolchain: Option<ToolchainOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     canvas: Option<CanvasOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -828,6 +1261,10 @@ pub struct VersionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     replay: Option<StoredReplay>,
     asset_kind: AssetKind,
+    /// Which full-stack run image the version's runs execute in. Always serialized
+    /// (never skipped) because the runner deserializes this body into the resolved
+    /// version it resolves the run image from.
+    asset_dimension: AssetDimension,
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -842,13 +1279,18 @@ pub struct VersionResponse {
     particle: Option<ParticleSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order.
+    /// The driver reads it to stage the run container's palette, so it is served for
+    /// every test type, not just the audio kinds — always present, empty for a
+    /// version that declares none, like the other list-valued keys beside it.
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     /// The Test Cabinet runtime packages this case ships into every run, each with
     /// a UI-only description. Shown on the console's Inputs tab; empty for a case
     /// that declares none.
     packages: Vec<PackageOut>,
-    workspace: Vec<WorkspaceOut>,
+    workspace: std::collections::BTreeMap<String, Vec<WorkspaceOut>>,
     init: Option<String>,
     assets: Vec<AssetOut>,
     variants: Vec<VariantOut>,
@@ -876,6 +1318,20 @@ struct BuildOut {
     build: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     module: Option<String>,
+}
+
+/// The case's declared TypeScript toolchain, served so a backend-driven run can run
+/// it: the gating `typecheck` and the recorded `lint`/`format`/`test`.
+#[derive(Serialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ToolchainOut {
+    typecheck: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    test: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -944,6 +1400,29 @@ struct SpecDocumentOut {
     kind: SpecKind,
 }
 
+/// One [engine](test_cabinet_core::engine) a run of this version may select, with
+/// the version range the case accepts it at. A launcher offers exactly this set,
+/// and the runner holds a run's selection against it before any container work.
+///
+/// Always the table spelling, so one shape answers both readers: a case that pins
+/// nothing carries the slug alone and omits the bounds.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct EngineOut {
+    slug: String,
+    /// The lowest engine version a run may select, inclusive. Absent when the case
+    /// pinned no floor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    min_version: Option<String>,
+    /// The version support stops at, exclusive. Absent when the range is unbounded
+    /// above, which is the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    max_version: Option<String>,
+}
+
 /// A runtime package a case ships into its runs, exposed for the console's Inputs
 /// tab: its npm name and the UI-only description of what it provides (never seeded
 /// into a run).
@@ -965,7 +1444,7 @@ struct AssetOut {
 /// One held-out scored case of a performance case: the store-relative keys of the
 /// `input` scenario fed to the engine and the `expected` oracle state its output
 /// is checked against. Mirrors core's wire `CaseBody`, so a resolved version
-/// round-trips its scored set through to the runner's [`materialize_version`].
+/// round-trips its scored set through to the runner's [`materialize_version`](test_cabinet_core::backend_client::materialize_version).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -999,7 +1478,7 @@ struct VariantOut {
     /// The variant's prompt, rendered as a real run receives it.
     prompt: String,
     specs: Vec<SpecOut>,
-    workspace: Option<Vec<WorkspaceOut>>,
+    workspace: Option<std::collections::BTreeMap<String, Vec<WorkspaceOut>>>,
     references: Vec<ReferenceOut>,
     proofs: Vec<ProofOut>,
     review_items: Vec<ReviewItemOut>,
@@ -1010,16 +1489,19 @@ struct VariantOut {
     /// (the size axis behind a case's half/base/double variants). `None` inherits
     /// the case's common [`VersionResponse::voxel`].
     voxel: Option<VoxelSpec>,
-    /// The absolute URL of this variant's authored **reference implementation** — the
-    /// correct, deployed static build (the case-variant analogue of a run's
-    /// `playableBuild`), served on the console's "Reference" tab. `None` when the
-    /// variant declares no `reference_implementation`, or has one but it has not been
-    /// deployed yet. Written out-of-band by `tcab publish-reference` and read from the
+    /// The absolute URLs of this variant's authored **reference implementations** —
+    /// the correct, deployed static builds (the case-variant analogue of a run's
+    /// `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
+    /// built for and served on the console's "Reference" tab, which lets a reader
+    /// switch between them. Empty when the variant declares no
+    /// `reference_implementation`, or has one that has not been deployed yet.
+    /// Written out-of-band by `tcab publish-reference` and read from the
     /// `case_reference_build` table — never resolved from the manifest and never
     /// seeded into a run.
-    reference_build: Option<String>,
+    #[serde(default)]
+    reference_builds: std::collections::BTreeMap<String, String>,
     /// This variant's published **reference sheet** — the asset-generation analogue of
-    /// [`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not
+    /// [`Self::reference_builds`]. An asset case's reference is a `draw.sh` script, not
     /// a site, so what is recorded is which of its rendered frames were published to
     /// the public snapshot bucket. `None` when the variant declares no
     /// `reference_implementation`, or has one that has not been published yet.
@@ -1031,6 +1513,37 @@ struct VariantOut {
     /// the case triple and its index (see `test_cabinet_core::asset_reference`), so
     /// the client builds them against the `snapshotUrl` from `GET /config`.
     reference_sheet: Option<ReferenceSheetOut>,
+    /// The variant's authored **showcase**, when it declares one: the description
+    /// plus the media carousel captured from the reference implementation, shown
+    /// on the case's Play tab. `null` when the variant declares none. Each media
+    /// file is fetched from
+    /// `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+    showcase: Option<ShowcaseOut>,
+}
+
+/// A variant's authored showcase as the resolved version serves it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ShowcaseOut {
+    /// The showcase description — the authored `showcase.md`, verbatim markdown.
+    description: String,
+    /// The media carousel, in declared order.
+    media: Vec<ShowcaseMediaOut>,
+}
+
+/// One entry of a served showcase carousel: the file name the showcase route
+/// addresses the bytes by, its caption, and the kind of media it holds.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ShowcaseMediaOut {
+    /// The media file's name in the showcase directory (a plain file name).
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// Whether the file is a still image, a video clip, or a replay recording.
+    pub kind: test_cabinet_core::MediaKind,
 }
 
 /// One variant's published reference frames.
@@ -1073,6 +1586,16 @@ struct ReviewItemOut {
     /// and run it against the build's debug API. Absent for a human-judged item.
     #[serde(skip_serializing_if = "Option::is_none")]
     validation: Option<ReviewValidationOut>,
+    /// On a validator-rated version, a whole-item point's **failure cap**: the
+    /// highest functional rating its `domains` may reach while its validator fails.
+    /// Absent on a legacy version and on a sub-divided item (whose caps sit on its
+    /// sub-items).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// whole-item point lowers. Empty on a legacy version and on a sub-divided item.
+    domains: Vec<String>,
 }
 
 /// The `[instrumentation]` handle in the §1.2 wire shape.
@@ -1097,6 +1620,17 @@ struct InstrumentationOut {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReviewValidationOut {
     script: String,
+    /// Whether `script` names a suite inside a validator project — one per engine,
+    /// and it ships in the project of every engine
+    /// [`ReviewValidationOut::engines`] covers — rather than one file under the
+    /// version folder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Omitted when the case declares no restriction, which leaves the point active
+    /// on every engine the case supports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    engines: Vec<String>,
     outputs: Vec<ReviewOutputOut>,
 }
 
@@ -1134,6 +1668,15 @@ struct SubReviewItemOut {
     /// Absent for a human-judged sub-item.
     #[serde(skip_serializing_if = "Option::is_none")]
     validation: Option<ReviewValidationOut>,
+    /// On a validator-rated version, this point's **failure cap**: the highest
+    /// functional rating its `domains` may reach while its validator fails. Absent on
+    /// a legacy version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// point lowers. Empty on a legacy version.
+    domains: Vec<String>,
 }
 
 #[derive(Serialize)]

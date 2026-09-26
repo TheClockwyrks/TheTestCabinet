@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { harnesses } from "../data/harnesses";
+import { recordedHarnesses } from "../data/harnesses";
 import { useModels } from "../data/useModels";
 import { useTestCases } from "../data/useTestCases";
 import type { RunFacetName, RunFilterState } from "./useRunFilters";
@@ -66,10 +66,14 @@ export function RunFilters({
             options={options[facet]}
           />
         ))}
-        {/* The toggle is moot once an exact version is picked — that version is
-            either current or deliberately not — so it steps aside rather than
-            sitting there contradicting the version beside it. */}
-        {!state.facets.version && (
+        {/* The toggle belongs to the pages that filter by version here: a page
+            that scopes versions some other way (the case-detail Runs tab scopes
+            them relative to its anchored coordinate) leaves the facet out and
+            gets no toggle either. It is also moot once an exact version is
+            picked — that version is either current or deliberately not — so it
+            steps aside rather than sitting there contradicting the version
+            beside it. */}
+        {facets.includes("version") && !state.facets.version && (
           <label className={styles.toggle}>
             <input
               type="checkbox"
@@ -165,7 +169,9 @@ function useFacetOptions(
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((testCase) => ({ value: testCase.slug, label: testCase.name })),
       version: versions.map((version) => ({ value: version, label: version })),
-      harness: harnesses.map((harness) => ({
+      // Recorded identities, not the launchable catalog: a gg run records
+      // `harnessSlug: "gg"` and must be filterable like any other harness.
+      harness: recordedHarnesses.map((harness) => ({
         value: harness.slug,
         label: harness.displayName,
       })),

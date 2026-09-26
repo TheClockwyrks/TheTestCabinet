@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true }
+cuid2 = { workspace = true }
 time = { workspace = true }
 dotenvy = { workspace = true }
 
@@ -51,6 +51,11 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 percent-encoding = { workspace = true }
+# Gzip decoding for the run-tree artifact routes. The store keeps a run's analysis
+# documents exactly as they were uploaded (gzipped), so serving a client that does
+# not advertise `Accept-Encoding: gzip` — every caller built on the workspace
+# `reqwest`, which has no `gzip` feature — means decoding them here.
+flate2 = { workspace = true }
 
 # Contract codegen for the backend HTTP API + snapshot wire types. See
 # `crates/core`'s `contract` feature; this turns on core's too so the shared
@@ -66,6 +71,11 @@ contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+# Tests only. A `CodeAnalysisSummary` has ~95 required leaves, so the honest way to get
+# one for a fixture is to run the real analyzer over a two-line tree rather than to write
+# out a literal that would drift from the contract on the next field added. The backend
+# itself never analyses anything — the driver does, at the post-run seam.
+test-cabinet-code-analysis = { path = "../code-analysis" }
 
 [lints]
 workspace = true

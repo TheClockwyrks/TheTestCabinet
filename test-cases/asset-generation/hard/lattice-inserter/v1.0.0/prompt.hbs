@@ -1,21 +1,32 @@
-Draw the **Lattice inserter**, a 12-frame **sprite sheet** of an animated
-swing-arm machine, using only the drawing tool.
+Draw the **Lattice inserter**, a 36-frame **sprite sheet** of an animated
+swing-arm machine in three upgrade tiers, using only the drawing tool.
 
 The inserter is a renderer sprite for **Lattice**, a top-down factory simulation
 drawn **flat** — you are looking *down* on the machine, consistent with the
 assembler, **not** drawing a side elevation and with **no faux-3D height**. You
 are drawing one inserter mounted on the centre tile, viewed in its canonical
 orientation: it **takes hold of an item on the tile to its left**, swings in an
-arc **across the floor**, and **releases it onto the tile to its right**. Across
-the twelve frames the arm sweeps from left to right holding, then swings back
-empty, so the animation loops seamlessly. Draw the arm and hand only — **no
-item** — but **leave a clear slot at the hand** for the renderer to draw the cargo
-into; the design of the gripping hand is yours, as long as holding versus empty
-reads from the hand itself and the slot stays clear. The pivot base sits at the
-centre of the frame; the arm sweeps across the ground plane, not up the screen.
-The renderer rotates this one sprite for the other facings, so you draw this one
-orientation only. The brief's **The style** and **The item slot** sections are the
-things to get right.
+arc **across the floor**, and **releases it onto the tile to its right**. You draw
+it at **three tiers**, each a twelve-frame swing cycle:
+
+- **Tier 1 — frames 0–11:** the base machine, with an **amber** arm and hand.
+- **Tier 2 — frames 12–23:** a reinforced, faster machine with a **red-orange** arm
+  and more mechanical detail.
+- **Tier 3 — frames 24–35:** the most advanced, fastest machine with a **blue-cyan**
+  arm, the densest detail, and a subtle energy glow.
+
+Across each tier's twelve frames the arm sweeps from left to right holding (the
+first six frames), then swings back empty (the last six), so the cycle loops
+seamlessly. Draw the arm and hand only — **no item** — but **leave a clear slot at
+the hand** for the renderer to draw the cargo into; the design of the gripping hand
+is yours, as long as holding versus empty reads from the hand itself and the slot
+stays clear. The pivot base sits at the centre of the frame; the arm sweeps across
+the ground plane, not up the screen. The renderer rotates this one sprite for the
+other facings, so you draw this one orientation only. The three tiers share one
+grey-blue base, reach, and item slot, differing only in arm accent color,
+mechanical detail, and playback speed, so they read as one inserter progressively
+upgraded. The brief's **The style** and **The item slot** sections are the things
+to get right.
 
 ## How drawing works
 
@@ -49,9 +60,13 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the inserter sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a fixed grey-blue base with an amber swing
-arm and gripping hand, the hand holding as it sweeps an arc from the left pickup
-to the right drop over frames 0→5 and empty as it swings back over frames 6→11 —
-no item drawn, but a clear slot left at the hand for the renderer's cargo — so the
-loop reads as one continuous grip-swing-release-return cycle. When you are
-satisfied, stop: the recorded per-frame action logs are your finished submission.
+`frames/<index>.png` matches the brief: a fixed grey-blue base with a swing arm and
+gripping hand in the tier's accent color, the hand holding as it sweeps an arc from
+the left pickup to the right drop over the first six frames of each tier's cycle
+and empty as it swings back over the last six — no item drawn, but a clear slot
+left at the hand for the renderer's cargo — so each tier's loop reads as one
+continuous grip-swing-release-return cycle. The three tiers share one base, reach,
+and item slot, differing only in arm accent color (amber, red-orange, blue-cyan),
+mechanical detail, and playback speed, so they read as one inserter progressively
+upgraded. When you are satisfied, stop: the recorded per-frame action logs are your
+finished submission.

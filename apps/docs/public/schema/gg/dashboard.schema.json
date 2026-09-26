@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "GgDashboardPanel": {
+      "description": "One panel of a [dashboard](GgDashboard): a heading, a query, and how wide it sits.",
+      "properties": {
+        "query": {
+          "description": "The panel's query, as TCQ **source text**. A copy, even when the panel was\nbuilt from a saved query — see the module docs.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The panel's heading.",
+          "type": "string"
+        },
+        "width": {
+          "description": "How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans.\nA width outside `1..=12` is rejected on save, not corrected into range.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["title", "query", "width"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/dashboard.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An operator's saved dashboard: panels of TCQ over one board-level range.",
+  "properties": {
+    "description": {
+      "description": "A one-line note on what the board is for. Empty when unset.",
+      "type": "string"
+    },
+    "id": {
+      "description": "The dashboard's opaque id (minted on create).",
+      "type": "string"
+    },
+    "name": {
+      "description": "The operator-chosen display name.",
+      "type": "string"
+    },
+    "panels": {
+      "description": "The board's panels, in render order, at most [`MAX_DASHBOARD_PANELS`].",
+      "items": {
+        "$ref": "#/$defs/GgDashboardPanel"
+      },
+      "type": "array"
+    },
+    "rangeId": {
+      "description": "The board-level time range, as the picker's token. **One per board** — a panel\nnever gets its own.",
+      "type": "string"
+    },
+    "updatedAt": {
+      "description": "RFC 3339 of when the dashboard was last saved.",
+      "type": "string"
+    }
+  },
+  "required": ["id", "name", "description", "panels", "rangeId", "updatedAt"],
+  "title": "GgDashboard",
+  "type": "object"
+}

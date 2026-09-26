@@ -1,0 +1,70 @@
+// spin/moving-solo-ai — the AI paddle, chasing as it strikes, imparts spin
+// (Solo).
+//
+// specs/balls.md: on a paddle hit, `spin = clamp(spin + paddleVy *
+// SPIN_FROM_PADDLE, ...)`, with `paddleVy` the paddle's integrated velocity.
+// specs/modes/single-player.md fixes the AI's velocity while it chases a ball
+// far from its target: `sign(diff) * AI_SPEED`. The real AI is handed its
+// paddle above the lane with a ball arriving while it is still sweeping down,
+// so it strikes moving at `AI_SPEED` and the ball leaves with spin of magnitude
+// `AI_SPEED * SPIN_FROM_PADDLE` (476), signed by the paddle's direction.
+//
+// Ten percent is the room for the frame of the contact: the ball approaches at
+// 500 units per second, two sub-steps a frame, so the contact may resolve in
+// the first sub-step and the second decays the spin a fraction of a percent;
+// and the AI's own per-frame integration decides where in the frame it stands.
+//
+// The field is emptied to this ball alone, and NEITHER paddle is taken: the AI
+// moves its paddle only while that paddle is the AI's, so a check about the
+// AI's own swing must leave it alone. The human paddle is merely parked off
+// the lane, and in Solo with no key held nothing moves it.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import { AI_SPEED, SPIN_FROM_PADDLE } from "../constants";
+import {
+  arrangeAiMovingHit,
+  captureReplay,
+  createHarness,
+  drivePaddleHit,
+  type Harness,
+} from "../harness";
+
+const EXPECTED_SPIN = AI_SPEED * SPIN_FROM_PADDLE;
+const SPIN_TOLERANCE = EXPECTED_SPIN * 0.1;
+
+/** Frames of the return flight recorded after the contact, for the replay. */
+const RETURN_TICKS = 90; // 0.75 s
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(async () => {
+  await harness.dispose();
+});
+
+it("imparts AI_SPEED * SPIN_FROM_PADDLE, signed by the AI paddle's direction", async () => {
+  await arrangeAiMovingHit(harness);
+
+  const contact = await captureReplay(harness, "curve", async () => {
+    const rebound = await drivePaddleHit(harness, "right");
+    await harness.advance(RETURN_TICKS);
+    return rebound;
+  });
+
+  assertEqual(contact.hit, true);
+  // The AI starts above the lane and sweeps down, so it strikes moving down.
+  assertGreaterThan(contact.paddle.vy, 0);
+  assertEqual(Math.sign(contact.ball.spin), Math.sign(contact.paddle.vy));
+  assertLessThanOrEqual(
+    Math.abs(Math.abs(contact.ball.spin) - EXPECTED_SPIN),
+    SPIN_TOLERANCE,
+  );
+});

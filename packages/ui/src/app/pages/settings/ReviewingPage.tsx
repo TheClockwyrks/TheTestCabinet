@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { CoverageSettings } from "@test-cabinet/run-record/coverage";
+import { Panel } from "@clockwyrks/ui";
+import type {
+  BufferTarget,
+  CoverageSettings,
+} from "@clockwyrks/run-record/coverage";
+import { Switch } from "../../components/Switch";
+import {
+  BUFFER_TARGET_CEILING,
+  UNBOUNDED_BUFFER,
+  boundedBuffer,
+  bufferBound,
+  sameBufferTarget,
+} from "../account/bufferTarget";
 import { LoadingState } from "../../components/LoadingState";
+import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import styles from "./ReviewingPage.module.scss";
 
-// The Reviewing settings tab (`/settings/reviewing`, web/desktop only): the
+// The Reviewing settings tab (`/settings/reviewing`, web console only): the
 // account-wide preferences that govern how much reviewing work the cabinet puts in
 // front of you. Today that is the review buffer — how many runs the reviewer is
 // willing to have outstanding (in flight, or finished and waiting on their review)
@@ -16,7 +28,8 @@ import styles from "./ReviewingPage.module.scss";
 // It is a property of the *reviewer* rather than of any one plan, which is why it
 // sits in Settings rather than on the Coverage tab; a plan or ladder that wants a
 // different depth overrides it in its own editor. `0` is a legitimate value meaning
-// "never top me up automatically".
+// "never top me up automatically", and "No limit" is a third instruction of its
+// own: every plan and ladder runs through everything unless it says otherwise.
 export function ReviewingPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -25,6 +38,7 @@ export function ReviewingPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   useEffect(() => {
     if (!backend?.getCoverageSettings || !token) {
@@ -52,7 +66,7 @@ export function ReviewingPage() {
   }, [backend, token]);
 
   const saveBuffer = useCallback(
-    async (bufferTarget: number) => {
+    async (bufferTarget: BufferTarget) => {
       if (!backend?.setCoverageSettings || !token) return;
       setBusy(true);
       setError(null);
@@ -72,7 +86,7 @@ export function ReviewingPage() {
       <SettingsLayout tab="reviewing">
         <Panel>
           <p className={styles.muted}>
-            Sign in to change your reviewing settings — they are saved to your
+            Sign in to change your reviewing settings. They are saved to your
             account. Use the account control in the top bar to register or log
             in.
           </p>
@@ -85,7 +99,9 @@ export function ReviewingPage() {
     <SettingsLayout tab="reviewing">
       {error && (
         <Panel className={styles.errorPanel}>
-          <p className={styles.error}>{error}</p>
+          <p ref={errorRef} className={styles.error} role="alert">
+            {error}
+          </p>
         </Panel>
       )}
 
@@ -108,8 +124,8 @@ export function ReviewingPage() {
   );
 }
 
-// The review-buffer control: a number field with Save, disabled until the draft is
-// both valid and different from what is saved.
+// The review-buffer control: a number field and a no-limit switch with Save,
+// disabled until the draft is both valid and different from what is saved.
 function BufferSetting({
   settings,
   busy,
@@ -117,55 +133,85 @@ function BufferSetting({
 }: {
   settings: CoverageSettings;
   busy: boolean;
-  onSave: (bufferTarget: number) => void;
+  onSave: (bufferTarget: BufferTarget) => void;
 }) {
-  const [draft, setDraft] = useState(String(settings.bufferTarget));
+  const [draft, setDraft] = useState(() => draftOf(settings.bufferTarget));
   // Re-sync when the saved value changes underneath (a save returns the stored
   // settings, which may have been clamped).
   useEffect(() => {
-    setDraft(String(settings.bufferTarget));
+    setDraft(draftOf(settings.bufferTarget));
   }, [settings.bufferTarget]);
 
-  const parsed = Math.floor(Number(draft));
-  const valid = draft.trim() !== "" && Number.isFinite(parsed) && parsed >= 0;
-  const dirty = valid && parsed !== settings.bufferTarget;
+  const parsed = Math.floor(Number(draft.runs));
+  const valid =
+    draft.unbounded ||
+    (draft.runs.trim() !== "" && Number.isFinite(parsed) && parsed >= 0);
+  const target: BufferTarget | null = !valid
+    ? null
+    : draft.unbounded
+      ? UNBOUNDED_BUFFER
+      : boundedBuffer(parsed);
+  const dirty =
+    target !== null && !sameBufferTarget(target, settings.bufferTarget);
 
   return (
     <section className={styles.setting}>
       <div className={styles.label}>
         <h2 className={styles.title}>Review buffer</h2>
         <p className={styles.description}>
-          Runs your plans may leave outstanding before a top-up stops.
+          Runs your plans may leave outstanding before a top-up stops. With no
+          limit, a top-up enqueues every missing run at once.
         </p>
       </div>
       <form
         className={styles.form}
         onSubmit={(e) => {
           e.preventDefault();
-          if (busy || !dirty) return;
-          onSave(Math.min(parsed, 500));
+          if (busy || !dirty || target === null) return;
+          onSave(target);
         }}
       >
         <input
           className={styles.input}
           type="number"
           min={0}
-          max={500}
+          max={BUFFER_TARGET_CEILING}
           step={1}
           inputMode="numeric"
           aria-label="Review buffer"
-          value={draft}
-          disabled={busy}
-          onChange={(e) => setDraft(e.target.value)}
+          value={draft.runs}
+          disabled={busy || draft.unbounded}
+          onChange={(e) => setDraft({ ...draft, runs: e.target.value })}
         />
+        <label className={styles.toggle}>
+          <Switch
+            checked={draft.unbounded}
+            disabled={busy}
+            ariaLabel="No limit"
+            onChange={(unbounded) => setDraft({ ...draft, unbounded })}
+          />
+          <span>No limit</span>
+        </label>
         <button
           className={styles.primary}
           type="submit"
           disabled={busy || !dirty}
         >
-          {dirty ? "Save buffer" : "Saved"}
+          {dirty || !valid ? "Save buffer" : "Saved"}
         </button>
       </form>
     </section>
   );
+}
+
+/** The form's two fields, as the saved target fills them in. A saved bound stays in
+ *  the number while no-limit is switched on, so switching it back off restores it;
+ *  a saved no-limit has no bound to show, so switching it off leaves the number to
+ *  be typed. */
+function draftOf(target: BufferTarget): { runs: string; unbounded: boolean } {
+  const bound = bufferBound(target);
+  return {
+    runs: bound === null ? "" : String(bound),
+    unbounded: bound === null,
+  };
 }

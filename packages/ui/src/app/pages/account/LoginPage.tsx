@@ -1,5 +1,5 @@
 import { Navigate, useSearchParams } from "react-router";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { useAuth } from "../../../client/auth";
 import { routes } from "../../routes";

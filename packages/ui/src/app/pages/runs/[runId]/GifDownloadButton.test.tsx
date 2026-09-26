@@ -72,7 +72,7 @@ describe("GifDownloadButton", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Failed — retry" }),
+        screen.getByRole("button", { name: "Failed, retry" }),
       ).toBeEnabled(),
     );
     expect(downloadBlob).not.toHaveBeenCalled();

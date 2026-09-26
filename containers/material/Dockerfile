@@ -7,33 +7,38 @@
 # uniforms, assembling `material.json`, and rendering the lit 3D preview (see the
 # asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/material-binaries.md`). Both are
-# built from `crates/paint`. Because `pbr` renders a lit 3D preview of the material on
-# a test surface through `wgpu`, this image ships the Mesa software-Vulkan runtime, like
+# built from `crates/paint`. Because `pbr` renders a lit 3D preview of the material on a
+# test surface through `wgpu`, this image ships the Mesa software-Vulkan runtime, like
 # the voxel family and unlike the pure-2D `ui` image.
 #
 # The binaries are baked in rather than installed at run time because, unlike a harness
 # CLI, they are part of The Test Cabinet itself and core validates the emitted
 # maps/`material.json` with the same library they use. Building from one commit keeps
 # them in lockstep (a run records the orchestrator commit and the image digest, so a
-# mismatch is auditable). The build context is the repository root so the compile stage
-# can see `crates/` — see `containers/build.sh`.
+# mismatch is auditable). The baked-in tooling is compiled by the shared builder
+# (`containers/tools/Dockerfile`) — see `containers/build.sh`.
 
 # `BASE_IMAGE` is the base image to extend. Declared BEFORE the first `FROM` so it is a
 # global build arg the run-image `FROM` below can consume; `build.sh` passes the base
 # image it just built.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
-# --- Stage 1: compile the `texture` and `pbr` binaries from this repository -
-FROM docker.io/library/rust:1.97.1-bookworm AS paint-build
-WORKDIR /build
-# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
-# the workspace graph; `-p test-cabinet-paint --bin texture --bin pbr` compiles only
-# these two binaries and their dependencies. The glibc target matches the bookworm-based
-# base image below — do not statically link musl here.
-COPY . .
-RUN cargo build --release -p test-cabinet-paint --bin texture --bin pbr
+# `TOOLS_IMAGE` is the shared asset-tooling builder that compiles every run
+# image's baked-in binaries — ONE cargo pass over the whole dependency graph,
+# rather than a per-image `cargo build` that recompiles that graph from scratch
+# (`containers/tools/Dockerfile` has the numbers). Declared BEFORE the first
+# `FROM` for the same reason `BASE_IMAGE` is: an `ARG` after a `FROM` is scoped
+# to that stage. `build.sh` passes the tools image it just built, so the baked-in
+# binaries always come from this same invocation's compile.
+ARG TOOLS_IMAGE=test-cabinet-tools:latest
 
-# --- Stage 2: the base run image, plus Mesa + `texture` + `pbr` -------------
+# Resolve the tooling builder to a named stage. `COPY --from=` cannot interpolate
+# a build arg directly ("variable expansion is not supported for --from"), so it
+# has to arrive through a `FROM`; the `COPY --from=tools` lines below then name
+# this stage.
+FROM ${TOOLS_IMAGE} AS tools
+
+# --- The run image: the base, plus Mesa + `texture` + `pbr` -----------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -58,9 +63,10 @@ USER node
 ENV VK_LOADER_DRIVERS_SELECT=lvp*
 ENV XDG_RUNTIME_DIR=/tmp
 
-# Bake in the two binaries compiled in stage 1. `/usr/local/bin` is on PATH and
+# Bake in the two binaries from the tools image. `/usr/local/bin` is on PATH and
 # root-owned (COPY writes as root regardless of the inherited `USER node`); the
-# unprivileged run user only executes them. The base image already sets `USER node`,
-# `WORKDIR /work`, and the keep-alive CMD, so nothing else is needed here.
-COPY --from=paint-build /build/target/release/texture /usr/local/bin/texture
-COPY --from=paint-build /build/target/release/pbr /usr/local/bin/pbr
+# unprivileged run user only executes them. The base image already sets `USER
+# node`, `WORKDIR /work`, and the keep-alive CMD, so nothing else is needed
+# here.
+COPY --from=tools /out/texture /usr/local/bin/texture
+COPY --from=tools /out/pbr /usr/local/bin/pbr

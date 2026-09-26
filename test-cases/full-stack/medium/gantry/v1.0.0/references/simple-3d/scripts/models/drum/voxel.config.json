@@ -1,0 +1,9 @@
+{
+  "width": 16,
+  "height": 24,
+  "depth": 16,
+  "background": "#101418",
+  "actions": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/drum/actions.json",
+  "preview": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/drum/preview.png",
+  "mesh": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/drum/mesh.glb"
+}

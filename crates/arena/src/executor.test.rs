@@ -2,7 +2,6 @@
 //! `503`, and recovers once a permit frees.
 
 use axum::http::StatusCode;
-use std::time::Duration;
 
 use super::*;
 
@@ -64,9 +63,11 @@ async fn acquire_holds_a_permit_until_dropped() {
     );
     assert!(executor.acquire().is_err());
 
-    // Dropping the permit frees the slot.
+    // Dropping the permit frees the slot — immediately, on the dropping thread, because that is
+    // where an `OwnedSemaphorePermit` returns its permit to the semaphore. Nothing is scheduled and
+    // there is nothing to wait for, so the next acquire is asserted directly rather than after a
+    // sleep long enough to hide a genuine regression on a fast machine and short enough to fail on
+    // a loaded one.
     drop(permit);
-    // Give the runtime a moment to register the released permit.
-    tokio::time::sleep(Duration::from_millis(10)).await;
     assert!(executor.acquire().is_ok());
 }

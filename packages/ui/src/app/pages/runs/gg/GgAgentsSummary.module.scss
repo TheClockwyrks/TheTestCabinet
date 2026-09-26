@@ -1,0 +1,818 @@
+@use "../../../styles/tokens" as t;
+
+// The gg Agents panel: the run read per configured agent, as one collapsible row per agent.
+// It borrows the Dashboard's card, stat, and chip styles (`GgDashboard.module.scss`) so the
+// two panels read as one surface — this stylesheet owns only what is new here: the rows and
+// their opened detail, the instance chips, and the context-spend bars.
+
+// The panel is a single Dashboard card wrapping the list, so it sits on the same surface the
+// Dashboard's own cards do.
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// --- The agent rows ------------------------------------------------------------
+
+// The panel is one card holding the list, rather than a card per agent: closed rows are a
+// list to read down, and boxing each one would break the column the eye follows.
+.agentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agentRow {
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 50%, transparent);
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// The closed row: caret, identity, then the figures pushed to the trailing edge so they line
+// up down the list. Wraps rather than scrolling sideways when the pane is too narrow to hold
+// the identity and the figures on one line — each figure carries its own label, so a wrapped
+// row still says what its numbers are.
+.agentSummary {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+  padding: t.$space-sm t.$space-xs;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: t.$radius-sm;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-border 22%, transparent);
+  }
+}
+
+.caret {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+}
+
+// The agent's identity: its name and badges on one line, the model it is bound to under
+// them. Two lines rather than one so a long model id annotates the name instead of shunting
+// the figures along the row.
+.rowIdentity {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rowNameLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  // Wider than the gap between the badges themselves: the name is what the row is called
+  // and the badges qualify it, so the pair should not read as one run-on label.
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.rowName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.rowModel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The figures group. Each cell has the same minimum width, so the columns align down the list
+// the way a table's would while still being free to wrap as a group.
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 4.5rem;
+}
+
+.figureValue {
+  color: t.$color-text;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+// A figure that is an absence rather than a quantity (an agent that never ran) — stated, but
+// not as loudly as a real number.
+.figureValueMuted {
+  color: t.$color-text-muted;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+.figureLabel {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.figureSub {
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// The opened detail, inset under its row so it reads as belonging to it rather than as the
+// next thing in the list.
+//
+// Everything the detail renders is a direct child of this container — the capabilities, the
+// instance chips, the six content readings (the figures, Tokens, Cost, the modules, the
+// context spend, the tools), and on the branch for an agent that never ran, the one line
+// saying so. Nothing is nested a level deeper to be spaced by something else, so this `gap`
+// is the *only* thing standing between any two of them: one `$space-md`, everywhere, with no
+// boundary tighter or looser than its neighbours. That uniformity is load-bearing rather than
+// incidental. The six readings are peers of one another, and a boundary that is visibly wider
+// than the one above it groups the sections either side of it into a subheading the layout
+// never actually has. It survives only as long as nothing here contributes a margin at a
+// child boundary — every one of them above is margin-free, and the two spend widgets are
+// `cardBare` (no chrome, no outer margin) whose own vertical steps, `.ringRow` and
+// `.ringSpaced`, sit between a widget's *own* parts, which is a different boundary and
+// rightly a smaller one.
+.agentDetail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-xs t.$space-md (t.$space-xs + 0.75rem);
+}
+
+.never {
+  color: t.$color-text-muted;
+  font-style: italic;
+  margin: 0;
+}
+
+// The agent's configured capabilities, leading its detail — what it was allowed to do is the
+// first thing to know about what it then did.
+.capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+}
+
+// --- What the agent was offered -------------------------------------------------
+//
+// The offered surface is chips rather than ranked rows, and that is the same decision the
+// capabilities above it make for the same reason: it is a *set*, and the reading is what is
+// and is not in it. Laid out as rows, forty tools would be forty full-width lines of mostly
+// small numbers, which is a list nobody reads to the end of — and the entry a reader is
+// looking for is precisely the one with nothing beside it. Wrapped chips put the whole
+// surface in a few lines, where the dim ones stand out at a glance.
+
+.surfaceApis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One namespaced object of a code agent's surface: what a program calls *through*, then what
+// it may call *on* it. The description sits on the same line as the object rather than above
+// its functions, so the chips below belong unambiguously to the name beside it.
+.surfaceApi {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.surfaceApiHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.surfaceObject {
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  font-weight: 600;
+}
+
+.surfaceObjectDesc {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  min-width: 0;
+}
+
+// The documentation arm this profile's instances ran under, sitting on the surface card's
+// own label row. Lower-case against the label's uppercase and un-tracked, because it is a
+// configured VALUE (`return+parameters+errors`) rather than a heading, and reading it as one
+// would make it look like a second section rather than a qualifier on the first.
+.surfaceMode {
+  margin-left: t.$space-xs;
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.surfaceEntries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+// One offered thing. The instance chip's shape, since both are "here is one member of a set
+// this agent has" — but never a control: there is nowhere for an offered tool to go.
+.surfaceEntry {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+
+  // Offered and not used — a real `0×`, dimmed, never dropped. Telling this apart from a call
+  // that has no row here at all is the reason the section exists, so it is drawn the way a
+  // deleted memory is on the module views: still there, plainly not live.
+  &[data-uncalled] {
+    color: t.$color-text-muted;
+    border-style: dashed;
+    opacity: 0.72;
+  }
+}
+
+.surfaceEntryCalls {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+// "read_file 3×" — the tool a shared figure belongs to, named on the chip. Set in the tool
+// vocabulary's own monospace so it reads as a different kind of name from the function beside
+// it: the figure is the tool's, and a chip that showed it bare would claim it for the
+// function.
+.surfaceEntryGate {
+  font-family: monospace;
+  margin-right: 0.25em;
+  opacity: 0.8;
+}
+
+// "2/3" — offered to some of the profile's instances but not all. Accented rather than
+// muted: it is the one reading here that is neither a quantity nor an absence but a fact
+// about the run that a reader should stop on.
+.surfaceEntryPartial {
+  color: t.$color-accent-2;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+// --- Instances ----------------------------------------------------------------
+
+.instances {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.instanceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+}
+
+button.instanceChip {
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+.instanceName {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.instanceMeta {
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The summed figures --------------------------------------------------------
+
+// The figures span the detail's full width and share it evenly, so they read as a row of
+// columns rather than a left-hugging cluster with dead space beside it — and so the same
+// figures line up under one another when two agents are open at once.
+//
+// Capped at four per line rather than letting them fit as many as the pane allows. There are
+// seven of them, and on a wide pane a plain `auto-fit` put all seven on one line: seven
+// value-over-label pairs in a row is a ticker tape, read left to right and remembered as
+// none of them, where 4 + 3 is two short groups the eye takes in whole. The cap is written
+// as a floor on each track rather than as a fixed `repeat(4, …)` so it stays *responsive*:
+// the min is the width one of four tracks would have (the full width less the three gutters
+// between them, quartered), which no fifth track can fit beside, but never less than 7rem —
+// so a narrow pane still drops to three, two, or one column instead of overflowing.
+//
+// The epsilon is what keeps that a cap of four rather than a coin toss. `auto-fit` takes the
+// largest whole number of tracks that does not overflow, and four tracks at exactly
+// `(100% − gutters) / 4` come to exactly 100%: on any container width that is not a whole
+// multiple of four layout units, the quarter rounds *up* and four tracks no longer fit, so
+// the grid silently drops to three and the seven figures land 3 + 3 + 1 — the ticker tape
+// this rule exists to prevent, only worse. A pixel of slack per track is invisible (four of
+// them across the whole row) and puts the four-track case a whole layout unit clear of the
+// boundary in either direction, while still leaving a fifth track far too wide to fit.
+$stats-gutters: t.$space-lg * 3;
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(7rem, calc((100% - #{$stats-gutters} - 1px) / 4)), 1fr)
+  );
+  gap: t.$space-md t.$space-lg;
+}
+
+// --- A section within the card (context spend, tools) ---------------------------
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.sectionNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 60ch;
+}
+
+// --- The attribution bars -------------------------------------------------------
+
+.attrList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// Name (with its meta line) · bar · figures. The name column is bounded so one deep path
+// cannot squeeze the bars every other row is read against.
+.attrRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, 18rem) 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.attrIdentity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// A long path is truncated rather than wrapped — every row carries its full text as a
+// tooltip, and a wrapping path would make the bars beside it jump line to line.
+.attrName {
+  color: t.$color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attrMeta {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attrBar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+  min-width: 2rem;
+}
+
+.attrBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+}
+
+.attrFigures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 4.5rem;
+}
+
+.attrValue {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attrShare {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.moreButton {
+  align-self: flex-start;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+  }
+}
+
+// --- The modules section --------------------------------------------------------
+//
+// What a profile's instances *hold*, as against what they did. Every row leads with the
+// same three things in the same place — the kind, how its stores are distributed, and the
+// figures — so the distinction the section exists for (one store for the agent, or one per
+// instance?) is read down a column rather than out of five differently-shaped paragraphs.
+
+.modules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One module kind. Boxed, unlike the attribution rows, because a row can carry a whole
+// store's contents inside it — without a frame the memories of an agent-scoped store would
+// read as the next thing in the section rather than as what that row is *about*.
+//
+// The whole box is also the target that opens this kind on the Modules tab. It is a
+// `<section>` and not a `<button>` on purpose — a row can hold a store's holder chips, its
+// id, and the agent-scoped header's own links, and a button may not contain a button — so
+// the mouse target is the box's own `onClick` and the keyboard's is `.moduleRowOverlay`
+// stretched across its inset, which is what `position: relative` is for. See `ModuleRow` for
+// why the target is split that way.
+.moduleRow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 55%, transparent);
+  border-radius: t.$radius-sm;
+  min-width: 0;
+
+  // Only where both halves of the target were actually attached — with no nav channel to
+  // travel down there is nothing to click, and promising otherwise is worse than saying
+  // nothing. The hover and focus treatment is the Dashboard's `.agentRowButton`'s, since
+  // the two are the same promise ("this whole row goes somewhere") made on two panels.
+  // `focus-within` rather than `focus-visible`: the overlay is one of several focusable
+  // things in the row, and the box should light up for whichever of them the keyboard is
+  // on.
+  &[data-clickable] {
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      border-color 0.12s ease;
+
+    &:hover,
+    &:focus-within {
+      background: color-mix(in srgb, t.$color-accent 8%, transparent);
+      border-color: color-mix(in srgb, t.$color-accent 40%, transparent);
+    }
+
+    // `cursor` inherits, and no UA stylesheet sets one on a form control or a `<summary>`,
+    // so anything in the row that does not state its own would wear the row's "this goes
+    // somewhere" pointer while doing something else entirely. Every control a row renders
+    // today does state one — `button.storeId` and `button.storeHolder` below, the sharing
+    // badge's `help`, and `GgPanels`' `.projAgentLink` / `.moduleHolderChip` inside an
+    // agent-scoped store's read-out — and these two rules cover the shapes that would not,
+    // since a row is a container for markup this stylesheet does not own.
+    input,
+    select,
+    textarea {
+      cursor: auto;
+    }
+
+    summary {
+      cursor: pointer;
+    }
+  }
+
+  // The one distribution whose contents belong to the agent is the one worth finding at a
+  // glance, so it — and only it — carries an accent edge.
+  &[data-sharing="agent"] {
+    border-left: 2px solid t.$color-accent;
+  }
+
+  // …and the affordance above repaints `border-color`, which is the four-sided shorthand
+  // and would take that edge with it — an agent-scoped row would quietly stop being marked
+  // as one for exactly as long as you were pointing at it. Restated here, at a specificity
+  // that outranks the hover rule, so the accent edge survives being hovered.
+  &[data-sharing="agent"][data-clickable] {
+    &:hover,
+    &:focus-within {
+      border-left-color: t.$color-accent;
+    }
+  }
+}
+
+// The row's *keyboard* target: a button with no text, stretched over the row's inset, which
+// is how a region that already contains buttons gets one tab stop standing for the whole of
+// it without nesting one button inside another. Its accessible name comes from `aria-label`
+// — there is nothing to read inside it — and its focus ring is drawn on the row's edge,
+// which is the only visible thing it does.
+//
+// `pointer-events: none` is the load-bearing declaration. The mouse is served by the row's
+// own handler, so the overlay has no business intercepting a pointer, and every defect that
+// followed from its doing so goes away with it: text under it stays selectable (the
+// divergence notes are the most copy-worthy prose in the section), a `title` under it stays
+// readable, and nothing beneath it — an agent-scoped store's whole read-out, a store id's
+// tooltip, the holder chips — has to be raised back out of its way with a stacking-order
+// rule that has to be kept in sync with the markup by hand. It stays in the tab order and
+// still fires on activation, which is what it is for.
+.moduleRowOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 0;
+  border: none;
+  border-radius: inherit;
+  background: none;
+  font: inherit;
+
+  &:focus-visible {
+    outline: 2px solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.moduleRowHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs t.$space-sm;
+  min-width: 0;
+}
+
+.moduleRowIcon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+}
+
+.moduleRowKind {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// The distribution, as a badge. Agent-scoped is accented and everything else is quiet:
+// the badge's job is to make one case findable, not to color-code five.
+.sharingBadge {
+  font-size: 0.72rem;
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text-muted;
+  white-space: nowrap;
+  cursor: help;
+
+  &[data-sharing="agent"] {
+    color: t.$color-accent;
+    border-color: color-mix(in srgb, t.$color-accent 55%, transparent);
+  }
+
+  &[data-sharing="mixed"] {
+    color: t.$color-warning;
+    border-color: color-mix(in srgb, t.$color-warning 55%, transparent);
+  }
+}
+
+// The counts, pushed to the trailing edge so they line up down the section the way the
+// closed rows' figures do.
+.moduleRowFacts {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.moduleRowLine {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 80ch;
+}
+
+// A legal disagreement between what the configuration asked for and what the run did (see
+// `GgModuleDivergence`). Marked, not alarmed: every one of these is a correct outcome, and
+// being loud about them is the point of the section — but they are notes, never errors.
+.divergence {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 80ch;
+  border-left: 2px solid color-mix(in srgb, t.$color-warning 70%, transparent);
+  padding-left: t.$space-sm;
+}
+
+.divergenceHead {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// The framed agent-scoped store: the whole risk of putting store-shaped state on a
+// profile's row is a reader taking one instance's notes for the agent's, so the frame and
+// its label say which it is, above the contents rather than beside them.
+.agentScoped {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent 6%, transparent);
+  min-width: 0;
+}
+
+.agentScopedLabel {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+}
+
+// The instance-scoped usage line: the figures that say whether the capability is being used
+// at all — how many of the N stores were ever written to, and what one costs a window per
+// turn. One line of text and nothing beside it, so it is a plain flex child of the row rather
+// than a footer row of its own: comparing the N is what clicking the row does.
+.moduleRowMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The store list (handed on, run-global, split) ------------------------------
+
+.stores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// id · holders · what is in it · what it costs. Wraps rather than scrolling: a store id and
+// a holder list are both operator-authored lengths.
+.storeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.storeId {
+  font: inherit;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+button.storeId {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+}
+
+.storeHolders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.storeHolder {
+  font: inherit;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+}
+
+button.storeHolder {
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+.storeContents {
+  color: t.$color-text-muted;
+}
+
+.storeCost {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

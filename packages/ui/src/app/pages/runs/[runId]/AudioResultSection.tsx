@@ -27,9 +27,9 @@ export function AudioResultSection({ view }: { view: AudioResultView }) {
     <>
       <h3 className={`${styles.section} ${styles.leadHeading}`}>Audio clip</h3>
       <p className={styles.secondary}>
-        The emitted clip is the scored artifact — play it against the brief. The
-        rendered waveform and spectrogram are the honest visual substitute for the
-        sound.
+        The emitted clip is the scored artifact. Play it against the brief. The
+        rendered waveform and spectrogram are the honest visual substitute for
+        the sound.
       </p>
 
       {view.clipUrl ? (

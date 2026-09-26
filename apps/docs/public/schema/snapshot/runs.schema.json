@@ -1,5 +1,54 @@
 {
   "$defs": {
+    "CodeSummaryOut": {
+      "description": "The code analysis as a summary card carries it: three ranking-relevant figures,\nplus the provenance a reader needs before comparing two of them.\n\nThe full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)\nis ninety-odd leaves and already rides on the record inside the per-run document;\nthis is the part a *list* sorts on, so it stays small — the same bargain\n[`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.\n\n**The provenance fields are not decoration.** Two things make a bare figure\ndishonest here. Analysis is [never backfilled], so an absent `code` on a card means\n*not measured*, and among the cards that do carry one an\n[`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored\nbasis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)\ntree basis measured a different population than the exact one — the silent-degradation\nrisk the basis fields exist for. And a\n[truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is\nexcluded from aggregation by default, so a view that ranks it beside complete ones\nranks a partial figure that looks complete. Carrying all four alongside the numbers is\nwhat lets a card say so without fetching the record.\n\n[never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version",
+      "properties": {
+        "analyzerVersion": {
+          "description": "The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)\nthat produced these figures, so a corpus spanning two generations is visible\nrather than reading as a step change in the models.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "authoredBasis": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeAuthoredBasis",
+          "description": "How the authored set was resolved — how much of this tree is actually the\nmodel's work."
+        },
+        "codeLines": {
+          "description": "How much code the model wrote: non-blank, non-comment lines across the\nauthored set.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "giniCodeLines": {
+          "description": "The Gini coefficient of code lines across files — zero when every file is the\nsame size, approaching one when a single file holds everything. The one number\nthat answers \"did the model split the work?\".",
+          "format": "double",
+          "type": "number"
+        },
+        "meanCognitive": {
+          "description": "Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic\nbecause cyclomatic is blind to nesting, and nesting is what makes generated code\nunreadable.",
+          "format": "double",
+          "type": "number"
+        },
+        "treeBasis": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeTreeBasis",
+          "description": "Which state of the tree was measured."
+        },
+        "truncated": {
+          "description": "Whether a tree-wide cap stopped the analysis short. A truncated result is\nexcluded from aggregation by default.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "analyzerVersion",
+        "authoredBasis",
+        "treeBasis",
+        "truncated",
+        "codeLines",
+        "giniCodeLines",
+        "meanCognitive"
+      ],
+      "type": "object"
+    },
     "LinksOut": {
       "description": "A run's outbound links as the snapshot carries them.",
       "properties": {
@@ -67,8 +116,30 @@
     "RunSummary": {
       "description": "The denormalized summary card for one published run.",
       "properties": {
+        "aesthetic": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/AestheticRating"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's aggregate **aesthetic** rating: the worst run-wide tier across\nits reviews, or `None` when no review has rated the aesthetic channel — a\nvalidator-rated run nobody has reviewed yet, and every legacy run (its\nreviews carry no aesthetic ratings, so it never shows the badge)."
+        },
         "caseName": {
           "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ranking-relevant slice of the run's [code\nanalysis](test_cabinet_core::code_analysis), lifted onto the card so a\n\"which model writes the tightest code?\" ordering can be computed from the\nbounded summary set without loading every run's full record. See\n[`CodeSummaryOut`], which also explains why the provenance rides along with\nthe figures.\n\n`None` means the run was **never analysed** — not that it wrote no code. The\ncorpus is [not backfilled], so every run that finished before the analyzer\nshipped carries `None` forever, and any view that renders this must say\n\"not measured\" rather than draw a zero.\n\nCatalog-free (the figures are already on the record), so\n[`RunSummary::from_stored`] fills it.\n\n[not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version"
         },
         "documentKey": {
           "description": "Where this run's full document lives: its content-addressed\n`documents/runs/<id>/<digest>.json` key. The digest is over the document's own\nbytes, so the key cannot be composed from the run id — the summary index is how\na reader learns it, and following it is the only supported way to reach a run's\nrecord from the snapshot.\n\n`None` on a console card, which has no published document at all;\n[`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.\nAlways `Some` in `runs.json`.",
@@ -109,10 +180,10 @@
               "type": "null"
             }
           ],
-          "description": "The run's overall rating: the worst rating any reviewer gave any domain.\n`None` when the run carries no reviews yet (an unrated console run); the\nsnapshot only contains reviewed runs, so it is always `Some` there."
+          "description": "The run's **functional** rating. On a legacy run the worst rating any\nreviewer gave any domain, `None` while the run carries no reviews (an\nunrated console run). On a [validator-rated](Self::validator_rated) run the\nvalidators' decision as overridden by its reviews — each failing scored\npoint caps its domains at its declared failure cap, each review's overrides\noverlay the validators' verdicts, the run gets the worst across the\nreviews' effective ratings (the validators' own figure while unreviewed),\ncomposed with the toolchain gate — which is `Some` from the moment the run\ncompletes, with or without a review. A published run always has one."
         },
         "reviewCount": {
-          "description": "How many reviews the run carries. The site averages their scores; the\naggregate sits between the harshest and most generous review.",
+          "description": "How many reviews the run carries. The site averages their scores on a\nlegacy run; the aggregate sits between the harshest and most generous\nreview. On a validator-rated run it counts the aesthetic reviews.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -139,6 +210,10 @@
         },
         "validationLoaded": {
           "type": "boolean"
+        },
+        "validatorRated": {
+          "description": "Whether the run is **validator-rated**: its case version is on the engine\nmanifest format and not a game jam, so [`rating`](Self::rating) and\n[`score`](Self::score) are decided by the validators (present without any\nreview, with each review's overrides folded in), its reviewers supply the\n[`aesthetic`](Self::aesthetic) channel and any verdict overrides, and it\npublishes with zero reviews. `false` for every legacy run, whose card reads\nexactly as it always has. Lifted here so every consumer can branch on it\nwithout a catalog.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -151,6 +226,7 @@
         "metrics",
         "validationLoaded",
         "state",
+        "validatorRated",
         "reviewCount",
         "links"
       ],
@@ -159,6 +235,22 @@
     "SubjectOut": {
       "description": "The run subject as a summary card carries it (the slug enum, not a string).",
       "properties": {
+        "engineSlug": {
+          "description": "The slug of the [engine](test_cabinet_core::engine) the produced build was\nwritten against (`none` when it supplied its own runtime). Lifted onto the\ncard because the engine is a *run dimension* selected alongside the variant,\nand a result is only comparable with another result on the same engine — so\nevery listing that shows the variant has to be able to show this beside it.",
+          "type": "string"
+        },
+        "engineVersion": {
+          "description": "The version of the engine runtime vendored into the run repository. `None`\nfor an engine that vendors no runtime (`none` has no package), and for runs\nrecorded before engine selection existed.",
+          "type": ["string", "null"]
+        },
+        "ggConfigId": {
+          "description": "The **id** of the gg configuration this run was launched from — the\n[`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the\nrun's capability set. Lifted onto the card beside the\n[name](Self::gg_preset) because it is what identifies the run's [coverage\ncell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a\nlisting narrowed to one configuration's runs matches on: a name is display text\nthat is rewritten freely and is unique to nothing. `None` for every\nthird-party-harness run and for a gg run assembled by hand.",
+          "type": ["string", "null"]
+        },
+        "ggPreset": {
+          "description": "The name of the gg **configuration** this run was launched from — the\n[`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's\ncapability set. Lifted onto the card because a gg run has no single harness\nmodel to identify it by ([`model_id`](Self::model_id) is only its\nrepresentative primary-slot model, one of several per-agent bindings), so the\nrun log shows the configuration in that cell instead. `None` for every\nthird-party-harness run (which carries no capability set) and for a gg run\nassembled by hand rather than from a named configuration.",
+          "type": ["string", "null"]
+        },
         "harnessSlug": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug"
         },
@@ -188,6 +280,7 @@
         "testType",
         "variant",
         "harnessSlug",
+        "engineSlug",
         "modelId"
       ],
       "type": "object"

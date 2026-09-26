@@ -1,4 +1,4 @@
-import { useGalleryData } from "./galleryContext";
+import { useGalleryData, useGalleryDataOptional } from "./galleryContext";
 import type { CatalogStatus } from "./galleryContext";
 import type { ModelSummary } from "./models";
 
@@ -30,4 +30,18 @@ export function useFindModel(): (
 ) => ModelSummary | undefined {
   const { modelForId } = useGalleryData();
   return modelForId;
+}
+
+/**
+ * Like {@link useFindModel}, but resolves to a resolver only when a gallery
+ * provider is actually in scope, and to `undefined` otherwise. For consumers that
+ * enrich their view with the catalog when it is present but must still render
+ * without it — the gg run views (live monitor, finished-run tab) derive a run's
+ * per-class cost from catalog prices when they can, yet also render in a bare
+ * harness context that never mounts the provider.
+ */
+export function useFindModelOptional():
+  | ((modelId: string, harnessSlug?: string) => ModelSummary | undefined)
+  | undefined {
+  return useGalleryDataOptional()?.modelForId;
 }

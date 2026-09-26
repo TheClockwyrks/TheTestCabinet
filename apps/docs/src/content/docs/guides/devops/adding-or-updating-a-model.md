@@ -2,138 +2,274 @@
 title: Adding or Updating a Model
 ---
 
-The model catalog is the list of subjects a run can be attributed to — the
-Anthropic, OpenAI, Google, and other models the suite drives through a
-[harness](/components/core/harnesses/). This guide covers how the catalog is
-owned and served, how a model comes to appear, and how to curate one. If you just
-need the steps, the [Add or Update a Model](/quickstarts/devops/add-or-update-a-model/)
-quickstart is faster.
+## Overview
+
+The model catalog is the list of subjects a run can be attributed to: the models
+the suite drives through a [harness](/components/core/harnesses/). This guide
+covers how the catalog is owned and served, how a model comes to appear, and how
+to curate one. The
+[Add or Update a Model](/quickstarts/devops/add-or-update-a-model/) quickstart is
+the same task reduced to its steps.
 
 ## Where the catalog lives
 
-The catalog is **owned by the backend**, not by files in the repo. Model records,
-their aliases, and their price history live in the backend store (the `model`,
-`model_alias`, and `model_price` tables). The backend serves the catalog at
-`GET /models`, and it is also baked into the public R2 snapshot (as `models.json`,
-pointed to by the snapshot `index.json`'s `modelsKey`) so the static gallery
-renders model metadata and prices without a backend round-trip.
+The catalog is owned by the backend. Model records, their aliases, and their
+billed-rate history live in the backend store as the `model`, `model_alias`, and
+`model_price` tables. The backend serves the catalog at `GET /models` and bakes
+it into the public R2 snapshot as `models.json`, pointed to by the snapshot
+`index.json`'s `modelsKey`, so the static gallery renders model metadata and
+rates without a backend round-trip.
 
-There is no on-disk model dataset anymore — no `models/<slug>.toml`/`.md` files,
-no bundled `models.json`, and no `tcab catalog` build step. Curating a model is
-an in-app edit that takes effect immediately, with no recompile or release.
+Curating a model is an in-app edit that takes effect immediately, with no
+recompile and no release.
 
-## Curated vs. derived models
+## Curated and derived models
 
-Every model that has at least one recorded run **appears in the Models section
-automatically**, whether or not anyone has curated it:
+Every model with at least one recorded run appears in the Models section
+automatically:
 
-- A **derived** (uncurated) model shows under its canonical model id, resolved
-  from the run record. The `openrouter/` routing prefix is stripped for the
-  harnesses that require it (OpenCode and Kilo Code), and a trailing OpenRouter
-  variant tag such as `:free` is stripped for OpenRouter-accessed harnesses
-  (every harness except Codex, Claude Code, and Antigravity). This normalization
-  keeps the same underlying model from splitting into phantom duplicate entries.
-- A **curated** model is one someone has configured in the app: it carries a
-  Test-Cabinet-defined display name, provider, logo, description, OpenRouter
-  slug, and one or more aliases. Its aliases are what attribute runs to it, so a
-  curated entry absorbs the derived ids it covers.
+- A derived model shows under its canonical model id, resolved from the run
+  record. The `openrouter/` routing prefix is stripped for the harnesses that
+  emit it (OpenCode and Kilo Code), and a trailing OpenRouter variant tag such as
+  `:free` is stripped for the OpenRouter-routed harnesses (every harness except
+  Codex, Claude Code, and Antigravity). That normalization collapses one
+  underlying model onto a single entry.
+- A curated model carries a Test-Cabinet-defined display name, provider, logo,
+  description, OpenRouter slug, and one or more aliases. Its aliases attribute
+  runs to it, so a curated entry absorbs the derived ids it covers.
 
 ## Curating a model in the app
 
-Curated configuration is edited in the **web console** or **desktop app**, in the
-**Models** section. Because it is a write, it **requires sign-in**.
+Curated configuration is edited in the Models section of the web console. It is
+a write, so it requires sign-in.
 
-A model record has these fields, all set in the app:
+A model record has these fields:
 
-- **Display name** — the Test-Cabinet name shown across the site and consoles. It
-  is **required** and never auto-generated; adding a model always goes through the
-  form and an explicit **Save**.
-- **Aliases** — one or more run-record model ids this entry covers, **each paired
-  with the harness family it is usable with**. Different harnesses report the same
-  model under different ids, so one curated model usually carries several aliases
-  across families (see below).
-- **Provider** — e.g. Anthropic, OpenAI, Google.
-- **Provider logo** — supplied as an [svgl.app](https://svgl.app) `https://` URL.
-  The backend fetches and sanitizes the SVG server-side; you don't paste markup.
-- **Description** — markdown prose shown on the model's page.
-- **OpenRouter slug (for pricing)** — the id OpenRouter lists the model under,
-  used only for the comparable-cost lookup. This is separate from the aliases; a
-  model can have it even if you never run it through an OpenRouter harness.
+- Display name, the Test-Cabinet name shown across the site and the web console. It is
+  required and never auto-generated.
+- Aliases, one or more run-record model ids this entry covers, each paired with
+  the harness family it is usable with. An alias is globally unique: an id
+  belongs to at most one curated model.
+- Provider, for example Anthropic, OpenAI, or Google.
+- Provider logo, supplied as an [svgl.app](https://svgl.app) `https://` URL. The
+  backend fetches and sanitizes the SVG server-side.
+- Description, markdown prose shown on the model's page.
+- OpenRouter slug, the id OpenRouter lists the model under, used to observe the
+  model's billed rate. It is separate from the aliases, so a model can carry it
+  without ever being run through an OpenRouter harness.
+- List price: the model developer's published uncached input, cached input, and
+  output rates per Mtok, with the date the figures were taken. An operator
+  enters them from the developer's own pricing page, and they are what a run's
+  comparable cost is priced from. Fill from OpenRouter seeds the three rates
+  from the official endpoint's listing, for confirmation or correction against
+  the pricing page. The three rates are saved together with their date or not
+  at all, and a blank set on an existing model keeps the stored one.
+- Developer provider, the OpenRouter provider name of the model developer's own
+  endpoint. Blank takes the provider whose `provider_name` on the endpoints
+  listing matches the author segment of the model id, ignoring case and
+  punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
+  endpoint's rates are the billed rate the catalog records.
+- Native quantization, the level every provider a gg run uses must serve the
+  model at. Blank takes the highest level any endpoint of the model declares.
+- Price ceiling, the input and output rates in USD per million tokens a provider
+  must be at or below when OpenRouter lists no developer endpoint. It is unused
+  while the developer endpoint is listed, since that endpoint's own rates are
+  the ceiling.
+- Banned providers, the providers a gg run of the model never uses.
+- Unknown-quantization providers, the providers accepted despite declaring
+  `unknown` quantization. Every other `unknown` endpoint is left out.
 
-### Why one model needs several aliases, and why each carries a family
+The last five fields decide a gg run's
+[candidate list](/gg/overview/#the-candidate-list). See
+[Choosing the providers a gg run uses](#choosing-the-providers-a-gg-run-uses).
 
-Aliases exist because a single model is reported under different ids depending on
-the harness that ran it:
+### Alias harness families
 
-- **Most harnesses** route through OpenRouter and report the slug unchanged.
-- **OpenCode and Kilo Code** also route through OpenRouter but prefix the slug
-  with their own `openrouter/` provider id.
-- **Anthropic and OpenAI** run through Claude Code and Codex, which report a
-  **provider-native** id (e.g. `claude-sonnet-5`) rather than an OpenRouter slug.
+A single model is reported under different ids depending on the harness that ran
+it. Most harnesses route through OpenRouter and report the slug unchanged.
+OpenCode and Kilo Code prefix it with `openrouter/`, and Claude Code, Codex, and
+Antigravity report a provider-native id.
 
-A slug is only meaningful to the harnesses that speak its namespace — a Claude
-Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
-(`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
-harnesses. So each alias is tagged with a **harness family**:
+A slug is meaningful only to the harnesses that speak its namespace, so each
+alias is tagged with a harness family:
 
-- **Claude Code** — provider-native Anthropic ids.
-- **Codex** — provider-native OpenAI ids.
-- **Antigravity** — provider-native Google ids.
-- **Others (OpenRouter)** — OpenRouter ids (`provider/model`), shared by every
-  OpenRouter-routed harness (Cline, Goose, Kilo Code, OpenCode, Pi).
+- Claude Code, for provider-native Anthropic ids.
+- Codex, for provider-native OpenAI ids.
+- Antigravity, for provider-native Google ids.
+- Others (OpenRouter), for OpenRouter ids (`provider/model`), shared by Cline,
+  Goose, Kilo Code, OpenCode, Pi, and gg.
 
-For example, Claude Opus 4.8 carries `claude-opus-4-8` under **Claude Code** and
-`anthropic/claude-opus-4.8` under **Others**. Listing every form a model can
-appear under as an alias is what maps each run record's `subject.modelId` back to
-the one curated entry; the family additionally lets the **New Run** and
-**Coverage** forms offer a harness only the slugs it can actually launch — the
-model dropdown filters to the slugs in the selected harness's family. See
-[Harnesses](/components/core/harnesses/) for the reporting details.
+Claude Opus 4.8, for example, carries `claude-opus-4-8` under Claude Code and
+`anthropic/claude-opus-4.8` under Others. Listing every form maps each run
+record's `subject.modelId` back to the one curated entry. The family also lets
+the New Run and Coverage forms filter the model dropdown to the slugs the
+selected harness can launch. See [Harnesses](/components/core/harnesses/) for the
+reporting details.
+
+## Filling the form in from OpenRouter
+
+The form's first field is the OpenRouter slug, and Fill from OpenRouter beside it
+looks the slug up in OpenRouter's catalog and fills in the display fields:
+
+- Display name and Provider, split out of OpenRouter's own `Provider: Model`
+  name, so `Anthropic: Claude Sonnet 4.5` becomes the name Claude Sonnet 4.5
+  under the provider Anthropic. A name carrying no such prefix falls back to the
+  slug's author segment.
+- Description, as OpenRouter publishes it. OpenRouter truncates long blurbs
+  itself, so what lands in the field is what it serves.
+
+The fill also seeds the three list-price rates from the official provider's
+endpoint in the model's endpoints listing, the same endpoint the developer provider
+follows. The figures are a seed: confirm or correct them against the developer's
+pricing page, and enter the date they were taken.
+
+When the id list is still untouched, the fill also claims the slug as the entry's
+first alias under Others (OpenRouter). A list you have already put an id into is
+left alone.
+
+Fill replaces the display fields rather than filling only the blanks, and runs
+only on an explicit press. Nothing persists until Save, so leaving the page
+discards a fill you did not want.
+
+Fill leaves one thing alone: the provider logo comes from svgl.app and is picked
+by hand. The context window, release date, and input modalities are recorded by
+the backend itself. A slug OpenRouter does not list reports inline and changes
+nothing.
 
 ## Two ways to add a model
 
-1. **Blank form.** In the Models section, click **Add model** and fill the form
-   from scratch.
-2. **Seed from a run.** When a run of an unknown (derived) model appears, open it
-   and click **Add this model**: the form is pre-seeded from that run's model id
-   as a starting alias, already tagged with the family of the harness that ran it
-   (you can change the family). You still fill in the display name and the rest,
-   and **Save**.
+1. Blank form. In the Models section, click Add model and fill the form, usually
+   by entering the OpenRouter slug and pressing Fill from OpenRouter, then
+   adjusting.
+2. Seed from a run. Open a run of a derived model and click Add this model. The
+   form is pre-seeded from that run's model id as a starting alias, already
+   tagged with the family of the harness that ran it.
 
-Either way, adding always goes through the form and an explicit Save — the
-display name is required, so nothing is created implicitly.
+Either way, adding goes through the form and an explicit Save, and the display
+name is required.
 
-## Prices are recorded as a history
+## Price history
 
-Comparable cost is still computed from OpenRouter's per-token prices exactly as
-before (see [Metrics](/components/core/metrics/#cost)). What changed is *who*
-fetches them and that they are **retained as a per-model history** instead of a
-single committed number:
+A run's comparable cost is computed from the list price curated on the model's
+catalog entry, entered from the developer's pricing page (see
+[Metrics](/components/core/metrics/#cost)). The comparable cost is a published
+statistic, so a launch naming a model with no list price is refused at enqueue
+with the reason named.
 
-- The **backend** fetches a model's current OpenRouter price **when a run
-  completes**, and again on a **24-hour periodic refresh**.
-- An observation is appended to the price history **only when the price changed**,
-  so the table doesn't grow on every identical fetch.
-- Fetching at run-completion time means **promotional pricing** (e.g. a
-  launch-week discount) is captured as it was when the run actually ran.
-- A `:free`-tagged OpenRouter run is priced at the model's **base rate**, never
-  `$0` — the free variant is a routing tag, not a genuinely free run.
+Beside the list price the backend retains a per-model history of the official
+endpoint's billed rate:
 
-The history is what a run's **comparable cost** is priced against, so a run keeps
-the rate it actually ran at. It is not charted in the console: a model's price
-changes rarely enough that a chart of it was almost always two or three points,
-so the model's **Stats** tab shows the latest per-Mtok rates and nothing else.
+- The backend observes the official endpoint's current billed rate when a run
+  completes, and again on a 24-hour periodic refresh.
+- It records a first observation the moment a model first appears: when you save
+  it here with an OpenRouter slug, when a run that binds it is enqueued (on every
+  enqueue path — the run form, a gg launch, a coverage top-up, an automatic
+  retry), and at backend startup for every known model still missing one. The
+  startup pass is what prices a freshly seeded deployment's curated catalog
+  before its first run. All of this seeding is missing-only, so a model already
+  on record is left to the two paths above. A model on record with no developer
+  provider counts as missing.
+- Each observation carries the model's developer provider, read from the model's
+  endpoints listing beside the rate.
+- An observation is appended only when something changed: the billed rate, or one
+  of the catalog facts riding along on it. The stored history collapses
+  consecutive-equal rates, so an observation recorded for a fact change adds no
+  spurious rate step.
+- A `:free`-tagged OpenRouter run observes the model's base rate. The free
+  variant is a routing tag rather than a free run.
+
+The observed billed rate never rewrites the list price and never changes what a
+run is scored at. The model's Stats tab shows the latest list price and billed
+rate side by side with the difference, so a discount, a price change, or a
+listing error is visible on the model rather than silently in the runs.
+
+## Catalog facts recorded with each observation
+
+Each billed-rate observation carries the model's context window, release date,
+and input modalities as OpenRouter reported them at that moment, which makes the
+catalog the single store of those facts.
+
+The context window is what a [gg](/gg/overview/) run's window-fullness accounting
+and [compaction](/gg/compaction/) trigger are measured against. When a gg run is
+enqueued the backend looks the window up here for every model the run's
+capability set binds and pushes the figures onto the launch, so gg keeps no model
+table of its own.
+
+A model with no observation yet is seeded at enqueue by the launch-time
+billed-rate fetch. Should that not answer, the launch falls back to a per-model
+lookup for that one model. If neither can answer, the launch is rejected: gg
+assumes no default window, because a run measured against a guessed one reports
+the wrong thing while looking healthy. See
+[Runs with no resolved window](/gg/context-visibility/#runs-with-no-resolved-window).
+
+The input modalities (`text`, `image`, `file`, …) are shown on the model's Stats
+tab under Specs as both the raw list and a plain Vision line reading either
+"accepts images" or "text only". They travel to a gg run on the same launch as
+the context window and decide whether the agent may be shown the reference images
+a test case's specs ship. See
+[Reading images](/gg/filesystem/#reading-images).
+
+An unknown modality list is recorded as unknown and the run proceeds. gg treats
+an unannotated model optimistically and recovers if the provider refuses the
+image, so an empty list in the console means the modalities have yet to be
+observed.
+
+## Choosing the providers a gg run uses
+
+OpenRouter is a gg run's gateway and bill, and gg chooses which of a model's
+providers serves each request. The backend builds each bound model's candidate
+list when the run is enqueued, from the model's endpoints listing read at that
+moment, filtered and ordered as
+[the candidate list](/gg/overview/#the-candidate-list) describes. The list rides
+on the launch, and gg moves down it when a provider fails a request past its
+retries or keeps missing its own cache.
+
+The model's Stats tab shows the list the next enqueue would build, with each
+candidate's quantization, prices and recorded fault rate, or the reason it would
+refuse. The list shown assumes an agent that sets no reasoning; an enqueue whose
+agents set one also drops the providers that do not support `reasoning`.
+
+A provider's fault rate is its stalls, its unexpected cache misses and the turns
+that ended on its failed model calls (`model_retry_exhausted`, `model_timeout`,
+`model_parse`), over its calls, across every recorded gg run of the model. A
+provider no recorded run used has a rate of zero. The rate orders the
+candidates; it removes none. Removing a provider for good is the ban list's job.
+
+A model with no candidate refuses the enqueue with the reason, which names the
+filter that emptied the list. The usual fixes are on the model's form: set the
+developer provider when the listing spells it differently, set the native level
+when the observed one is wrong, name a provider under unknown-quantization
+providers when its endpoint is known to serve the native level, or set a price
+ceiling when OpenRouter lists no developer endpoint.
 
 ## Updating an existing model
 
-Open the model in the **Models** section, click **Edit**, change any field
-(display name, aliases, provider, logo, description, OpenRouter slug), and
-**Save**. There is nothing to regenerate or commit — the change is live at once,
-and the snapshot picks it up on the next publish.
+Open the model in the Models section, click Edit, change any field, and Save. The
+change is live at once, and the snapshot picks it up on the next publish.
+
+## Probing a model
+
+A model probe is a responses-as-code readiness check, run from the model's
+Probes tab. It answers whether the model can drive [gg](/gg/overview/)'s RaC
+mode at all: the backend replays gg's RaC opening request against the model's
+OpenRouter slug — the `submit_program` tool offered and forced, as gg sends
+it — across cases that pair two scenarios with several task prompts, per
+program-language arm. A baseline case checks that the model calls the functions
+whose documentation views are open; a missing-docview case checks that it opens
+a missing function's documentation and stops rather than calling the function
+unread. A model can hold the call shape and still fail either discipline and
+waste every RaC run; the verdict says whether to run the model in RaC mode or
+keep it out.
+
+Run a probe when a new model is introduced, and again after pinning a new
+provider or before committing to a language arm, since providers can serve the
+same model differently. The steps are in
+the [Probe a Model](/quickstarts/devops/probe-a-model/) quickstart, and the wire
+contract is at [Model probes](/components/backend/api/#model-probes).
 
 ## Next steps
 
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) — the model is a valid
-  `--model` argument.
-- [Harnesses](/components/core/harnesses/) — how each harness reports the model id
-  that an alias maps back to a curated entry.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) accepts the model
+  as a valid `--model` argument.
+- [Harnesses](/components/core/harnesses/) documents how each harness reports the
+  model id an alias maps back to a curated entry.

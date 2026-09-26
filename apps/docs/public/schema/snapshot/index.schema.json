@@ -6,7 +6,19 @@
     "casesPrefix": {
       "type": "string"
     },
+    "comparisonsKey": {
+      "description": "Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).",
+      "type": "string"
+    },
+    "comparisonsPrefix": {
+      "description": "The prefix each published comparison's own document lives under\n(`<prefix>/comparisons/<id>.json`).",
+      "type": "string"
+    },
     "generatedAt": {
+      "type": "string"
+    },
+    "ggRunsKey": {
+      "description": "Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the\npayload the public Discover surface evaluates in the browser.",
       "type": "string"
     },
     "modelsKey": {
@@ -32,6 +44,10 @@
     },
     "snapshotId": {
       "type": "string"
+    },
+    "testCaseGroupsKey": {
+      "description": "Where this snapshot's test-case-group set lives\n(`<prefix>/test-case-groups.json`). Optional on the wire because it\npostdates the other keys: a snapshot written before groups existed carries\nnone, and a reader treats the absent key as an empty group set.",
+      "type": ["string", "null"]
     }
   },
   "required": [
@@ -42,7 +58,10 @@
     "runsKey",
     "runDocumentsPrefix",
     "casesPrefix",
-    "modelsKey"
+    "modelsKey",
+    "comparisonsKey",
+    "comparisonsPrefix",
+    "ggRunsKey"
   ],
   "title": "SnapshotIndex",
   "type": "object"

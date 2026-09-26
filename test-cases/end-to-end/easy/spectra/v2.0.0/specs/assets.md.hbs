@@ -1,0 +1,133 @@
+# Spectra — The seeded art
+
+Spectra's art is supplied with the project, under `assets/`. Four PNGs cover the
+ship and the three drones, and one particle system covers the burst a destroyed
+drone pops with. The build draws each of those elements from the seeded file rather
+than from art of its own. Everything else the game shows is drawn in code, and the
+last section of this file lists it.
+
+## The four sprites
+
+Each sprite is a single PNG, not a sheet: one file per entity, drawn on a
+`SPRITE_SIZE` (`64`) square canvas in straight alpha, so only its drawn pixels are
+opaque and each composites cleanly over the dark field. There is no frame data;
+these are single stills.
+
+| Sprite | File | What it is | The band it depicts |
+| --- | --- | --- | --- |
+| Fighter | `fighter.png` | The resonator-fighter, hull pointing up | Cyan, ring core |
+| Shard | `shard.png` | The fixed-band crystalline drone | Magenta, diamond |
+| Flux | `flux.png` | The oscillating drone, caught mid-shimmer | Both bands at once |
+| Prism | `prism.png` | The two-band drone, shell around core | Cyan shell, magenta core |
+
+The names are `SPRITES` in the order above.
+
+## How they are drawn
+
+Each entity is drawn from its own sprite, centered on the entity's position and
+scaled to that entity's footprint: `SHIP_W` by `SHIP_H` for the ship, `SHARD_SIZE`
+for a Shard, `FLUX_SIZE` for a Flux, `PRISM_SIZE` for a Prism with its shell intact,
+and `PRISM_CORE_SIZE` for one with only its core left.
+
+The art is pixel art. It is sampled without smoothing, so it stays crisp at every
+scale the stage is fitted to and never blurs. Any glow around the ship, a drone, or
+a bullet is drawn in code around the sprite rather than baked into it.
+
+## Both bands from one silhouette
+
+The two bands are cyan, whose shape accent is the ring, and magenta, whose accent is
+the diamond. The ship, the Shards, the Fluxes, and the Prisms each appear in both
+bands over a run, and each sprite is seeded in one band-state only.
+
+The other band-state is the same silhouette carrying the other band's color and the
+other band's accent. The hull, the crystal, and the shell form never change; only
+the band color and the accent do. Whether the tint is composited over the seeded
+PNG at draw time or a per-band copy is baked once at load time is yours; what is
+fixed is that the shape on screen is the seeded silhouette and that the band always
+reads correctly, never a cyan diamond or a magenta ring.
+
+### The ship
+
+`fighter.png` is the ship tuned to cyan. The magenta ship is the same hull with its
+core recolored magenta and the accent swapped to the diamond. The core's band always
+agrees with the polarity indicator `specs/ui.md` states. The lives readout may reuse
+the fighter sprite at a small size.
+
+### The Shard
+
+`shard.png` is the magenta Shard. A cyan Shard is the same crystal in cyan with the
+ring accent.
+
+### The Flux
+
+`flux.png` is the Flux mid-shimmer, showing both bands at once. It is drawn during
+the shimmer part of a band window. During the held part the Flux is settled on one
+band, and it is drawn as the same body in that band's single color and accent, so a
+shimmering Flux and a holding Flux are visibly different. `specs/drones.md` states
+which part of the window the Flux is in.
+
+### The Prism
+
+`prism.png` is a cyan shell around a magenta core. The magenta-shell Prism is the
+same two-layer construction with the two bands swapped. When the shell is broken,
+only the core is drawn: the inner layer alone, at `PRISM_CORE_SIZE`, so a Prism with
+its shell intact and one with only its core left are told apart at a glance.
+
+## The drone-burst
+
+`drone-burst.json` is a particle system: a description of emitters, forces, and
+per-particle curves on a `BURST_FIELD` (`128`) square field, authored as a one-shot
+that bursts at the start and decays to an empty field by the end. It is
+`BURST_SYSTEM`.
+
+It is played, not hand-coded and not replaced. The runtime that plays it,
+`@clockwyrks/particle-runtime`, is already a dependency of the project. Play it
+with the package's pure `ParticleSimulator` and draw the particles the simulation
+reports; the package's own types are the authoritative API. Each particle the
+simulation reports carries its position on the field, its size, its color, its
+opacity, its velocity, and its stretch, and the build composites them additively
+over the field so the burst reads as light.
+
+| Rule | Requirement |
+| --- | --- |
+| When | One burst starts in the moment a drone is destroyed, by a bullet or by a discharge wave alike. A Prism struck by bullets starts one when its shell breaks and a second when its core is destroyed; a Prism the discharge wave destroys whole starts exactly one. |
+| Where | Centered on the destroyed drone's center. |
+| How large | The system's `BURST_FIELD` square is scaled to the popped drone's own footprint, so a Prism's burst is larger than a Shard's. |
+| How long | A burst plays for `BURST_DURATION` (`0.7`) seconds and is then gone. Nothing loops or lingers. |
+| How many | At most `MAX_BURSTS` (`24`) bursts play at once. |
+| How it varies | Each burst scatters at random, so successive bursts in a run scatter differently while the flash, the ring, and the two-band sparks read the same. |
+
+## How they are loaded
+
+{{#if (eq engine.slug "none")}}
+The build loads the four sprites and the burst system itself. Every URL it requests
+resolves against the page rather than against the origin root, so the produced site
+runs unchanged whether it is served from the root of a static host or mounted under
+a sub-path. `vite.config.ts` serves the `assets/` tree from the project root in
+development and copies the same tree into `dist/assets/` when the site is built, so
+each file reaches the produced site under the name this file gives it.
+{{else}}
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and decodes
+the file. The build loads each sprite and the burst system through that loader
+rather than requesting a URL of its own, writing the path relative to that root:
+`shard.png`, `drone-burst.json`.
+
+The produced site serves every seeded file under that root, so a path the loader
+resolves reaches the seeded file at whatever base path the site is served from.
+{{/if}}
+
+## What is drawn in code
+
+No seeded file covers the following. Each is rendered by the build, and the spec
+named beside it fixes its behavior.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| Every bullet, the player's and the drones' alike, in its band's color and accent | `specs/ship.md`, `specs/swarm.md` |
+| The starfield behind the play field, and the field itself | `specs/field.md` |
+| The discharge wave | `specs/resonance.md` |
+| The field-wide mark a spectral inversion carries | `specs/ui.md` |
+| The HUD, every screen, every menu, every banner, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |

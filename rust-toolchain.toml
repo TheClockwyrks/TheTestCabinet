@@ -5,6 +5,29 @@
 # `RUST_VERSION` in .devcontainer/docker-compose.yml and
 # containers/base-wasm/Dockerfile and the `rust:<version>-bookworm` builder tags
 # under containers/ — they must all stay on the same compiler.
+#
+# ONE MORE THING MOVES WITH IT, and there is nothing to do about it. gg's Rust
+# program-language arm compiles a model's program against a set of `.rlib` files, and
+# an `.rlib` is a compiler-version-private format — `rustc` refuses one built by any
+# other release outright, with E0514. So a bump here invalidates that whole set.
+#
+# It used to be a set committed under crates/gg/src/sandbox/checkers/, which made a
+# bump here an instruction: re-run packages/gg-sandbox-rust/build.sh in the same
+# commit, with a test failing by name until somebody did. The set is generated now —
+# `crates/gg-sandbox-artifacts/rust` cuts it into a cargo `OUT_DIR` — and THIS FILE IS
+# IN THAT CRATE'S RERUN SET, precisely because of the paragraph above. Change the
+# channel and the next `cargo build` re-cuts the rlibs with the compiler this file now
+# names. E0514 is unreachable, there is nothing to re-run by hand, and there is nothing
+# to commit.
 [toolchain]
 channel = "1.97.1"
 components = ["rustfmt", "clippy"]
+# `targets` is deliberately NOT listed here, even though gg's Rust arm compiles a model's
+# program to the wasm target `packages/gg-sandbox-rust/rust-version.sh` names, and its tests
+# drive a real `rustc` doing so. A target named in this file is fetched by rustup on the
+# FIRST cargo invocation of every checkout —
+# including inside `containers/tools` and the other `rust:<version>-bookworm` builder
+# images, none of which cross-compile anything — so it would turn several image builds into
+# network-dependent ones to serve one crate's tests. It is installed explicitly instead, by
+# scripts/ci/install-rust-wasm.sh, exactly as the PureScript, Java and Kotlin arms'
+# toolchains are.

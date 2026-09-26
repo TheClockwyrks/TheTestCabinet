@@ -50,12 +50,22 @@
   color: t.$color-negative;
 }
 
-// The number field beside its save action, wrapping on narrow viewports.
+// The number field, its no-limit switch, and the save action in a row, wrapping on
+// narrow viewports.
 .form {
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
   align-items: center;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
 }
 
 .input {

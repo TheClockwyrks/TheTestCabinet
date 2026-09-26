@@ -1,0 +1,22 @@
+[package]
+name = "gg-artifact-java"
+description = "Build the Java arm's SDK jar into this build's OUT_DIR, for crates/gg to embed."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+# The `links` key is what makes this crate's output reachable. It is not a native library — nothing
+# here links against anything — but it is the only cargo channel that carries a value from one build
+# script to a DEPENDENT's build script, which is exactly the shape of the problem: this crate's
+# build script produces bytes and `crates/gg`'s build script has to learn where they landed. See
+# `gg-artifact-build`'s header for the whole chain, and for the `[build-dependencies]` trap.
+links = "gg-artifact-java"
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[build-dependencies]
+gg-artifact-build = { path = "../build-support" }

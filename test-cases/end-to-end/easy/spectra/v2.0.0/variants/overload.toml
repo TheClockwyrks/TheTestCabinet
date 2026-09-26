@@ -1,0 +1,265 @@
+# The second Spectra variant: OVERLOAD — the same game, with one rule inverted.
+# A shot of the wrong band is no longer wasted: it CHARGES the drone it hits, and
+# the third charge overloads it into a reaction that differs by kind. Every path
+# here resolves against the version folder, exactly like the main manifest.
+slug = "overload"
+name = "Overload"
+description = "The same swarm, with mistakes that bite back: a wrong-band shot charges the drone, and the third one overloads it."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The rule the two modes disagree about lives in a COMMON spec that branches on this
+# variant's slug when it is rendered: `specs/mode.md.hbs` becomes Overload, whose
+# main-menu entry is OVERLOAD and which owns the charge, the telegraph drawn on the
+# drone, the three overload reactions and their figures, and the tenth cue. Two other
+# common specs branch on the slug for what that rule implies —
+# `specs/state.md.hbs` for the drone's `charge` field and
+# `specs/instrumentation.md.hbs` for `setDroneCharge` and the field the snapshot
+# reports. Everything else in the seeded set is identical under both modes and is
+# declared commonly in `test-case.toml`, so there is no spec of any kind to put here.
+
+# What the game looks like played correctly, shown before anyone runs it: the same
+# sustained stretch of real play as the other mode, with the charge telegraph filling
+# on the drones a wrong-band shot found and one drone of each kind tipping over into
+# its own reaction. Captured from `references/none/overload` driven through this
+# case's own validator harness — see `variants/base.toml` for why the showcase is
+# taken from the engineless reference — with every outcome arising from the game's
+# own rules under scripted key input. `showcase/overload/showcase.toml` lists the
+# media; `showcase/overload/showcase.md` carries the description, and
+# `showcase/capture/README.md` says how each file was produced.
+showcase = "showcase/overload"
+
+# The authored, *correct* static build of this variant, one directory per engine —
+# see `variants/base.toml` for what a reference implementation is, how it is built
+# and published, and why it is never seeded into a run. It is the same game as the
+# base build with the charge model added.
+[reference_implementation]
+none = "references/none/overload"
+"simple-2d" = "references/simple-2d/overload"
+"structured-2d" = "references/structured-2d/overload"
+
+# This variant needs a starter project of its own under each engine that seeds one:
+# the seeded `src/constants.ts` carries the overload group (`OVERLOAD_AT`,
+# `OVERLOAD_DIVE_SCALE`, `OVERLOAD_FLUX_SPREAD`, `OVERLOAD_FLUX_SPREAD_ANGLE` and
+# `OVERLOAD_PRISM_ESCORTS`), a `TITLE_ITEMS` whose first entry is OVERLOAD rather
+# than LAUNCH, and a tenth cue, none of which the base workspaces carry.
+#
+# The table REPLACES the case's `[workspaces]` rather than layering onto it, so it
+# must name EVERY engine the case supports — including `none`, whose starter project
+# is the same one either mode is built from, because it seeds no `src/` at all and
+# therefore has no constants to differ in.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/overload/simple-2d"
+"structured-2d" = "workspaces/overload/structured-2d"
+
+# No `[[domain]]`. Overload changes only what a mismatched shot does, which is the
+# common `polarity` domain's own subject, so every point below is rated within the
+# common set rather than adding a domain an overload run has and a base run does not.
+
+# --- Overload --------------------------------------------------------------
+# Overload's difference is that a mismatched shot charges the drone instead of being
+# wasted, and that a charged drone reacts when it overloads. Each point poses the drone
+# through `setDroneCharge` and tips it over with a REAL mismatched shot, so the pose is
+# the precondition and the shot is the trigger; posing the overload itself would grade
+# the debug surface rather than the rule.
+#
+# The three kinds react differently, so each reaction is graded on its own, and the cue
+# an overload plays is graded here rather than in the common `audio` category because
+# specs/mode.md owns it and a base run has no such cue.
+[[review.categories]]
+id = "overload"
+title = "Overload"
+[[review.categories.items]]
+id = "mismatch-charges"
+title = "A mismatched shot charges the drone"
+description = "A wrong-band shot into a drone at charge 0 leaves it alive at charge 1."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "overload/mismatch-charges.test.ts", outputs = [
+  { id = "charged", name = "The drone alive at charge one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "charge-advances"
+title = "Successive mismatches advance the charge"
+description = "Two wrong-band shots carry the charge 0 to 1 to 2."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "overload/charge-advances.test.ts", outputs = [
+  { id = "advanced", name = "The drone carried to charge two", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overloads-at-three"
+title = "The third charge overloads the drone"
+description = "A wrong-band shot into a drone at OVERLOAD_AT minus one triggers its overload reaction."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "overload/overloads-at-three.test.ts", outputs = [
+  { id = "overloaded", name = "The reaction the third charge triggered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "charge-resets"
+title = "An overload resets the charge"
+description = "The drone's charge is 0 immediately after it overloads."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "overload/charge-resets.test.ts", outputs = [
+  { id = "reset", name = "The drone back at charge zero", kind = "image" },
+] }
+[[review.categories.items]]
+id = "charge-recharges"
+title = "A drone can be charged again"
+description = "A wrong-band shot after an overload carries the charge back to 1."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "overload/charge-recharges.test.ts", outputs = [
+  { id = "recharged", name = "The drone back at charge one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shimmer-takes-no-charge"
+title = "A shimmering Flux takes no charge"
+description = "A shot of either band during a Flux's shimmer neither destroys it nor changes its charge."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "overload/shimmer-takes-no-charge.test.ts", outputs = [
+  { id = "unchanged", name = "The shimmering Flux at its unchanged charge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "match-still-destroys"
+title = "A matching shot still destroys"
+description = "A matching shot destroys a drone whatever charge it carries."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "overload/match-still-destroys.test.ts", outputs = [
+  { id = "destroyed", name = "The field the matching shot cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mismatch-scores-nothing"
+title = "A mismatched shot scores nothing"
+description = "A wrong-band shot adds nothing to the score."
+domains = ["polarity", "arcade"]
+failure_cap = "passable"
+validation = { script = "overload/mismatch-scores-nothing.test.ts", outputs = [
+  { id = "score", name = "The score unchanged by the wrong-band shot", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overload-scores-nothing"
+title = "An overload scores nothing"
+description = "The shot that overloads a drone adds nothing to the score."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "overload/overload-scores-nothing.test.ts", outputs = [
+  { id = "score", name = "The score unchanged by the overloading shot", kind = "image" },
+] }
+# The three drones are posed in one frame, so the item declares one output.
+[[review.categories.items]]
+id = "telegraph-drawn"
+title = "The charge is shown on the drone"
+description = "A drone that takes its first charge repaints more of its own footprint than that footprint repaints on its own across one frame. Where on the drone the charge is shown, and how far along it reads, are not asserted: specs/mode.md fixes only that it is shown on the drone, so a build that rings it, tints its core or crowns it all pass."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "overload/telegraph-drawn.test.ts", outputs = [
+  { id = "charges", name = "Three drones at charge zero, one and two", kind = "image" },
+] }
+[[review.categories.items]]
+id = "telegraph-clears"
+title = "The telegraph empties on overload"
+description = "A drone that has just overloaded paints no telegraph."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "overload/telegraph-clears.test.ts", outputs = [
+  { id = "cleared", name = "The overloaded drone drawn with no telegraph", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shard-plunges"
+title = "An overloaded Shard plunges"
+description = "An overloaded Shard enters phase diving in the frame it overloads and descends toward the ship's x."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "overload/shard-plunges.test.ts", outputs = [
+  { id = "plunge", name = "The overloaded Shard plunging", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "shard-plunge-faster"
+title = "The plunge is faster than a dive"
+description = "That plunge travels OVERLOAD_DIVE_SCALE times the normal dive distance in a second, within 15%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "overload/shard-plunge-faster.test.ts", outputs = [
+  { id = "faster", name = "The ground one second of plunge covers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-flips"
+title = "An overloaded Flux flips its band"
+description = "An overloaded Flux reports the opposite stored band in the frame it overloads, with its band clock returned to 0, so the window it was in is over and the next update does not undo the flip."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "overload/flux-flips.test.ts", outputs = [
+  { id = "flipped", name = "The overloaded Flux on its new band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-sprays-count"
+title = "An overloaded Flux sprays"
+description = "An overloaded Flux puts exactly OVERLOAD_FLUX_SPREAD enemy bullets on the field, all carrying its new band."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "overload/flux-sprays-count.test.ts", outputs = [
+  { id = "spray", name = "The bullets the overloaded Flux sprayed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-spray-angle"
+title = "The spray is fanned"
+description = "Successive bullets of that spray leave on headings OVERLOAD_FLUX_SPREAD_ANGLE apart, within 15%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "overload/flux-spray-angle.test.ts", outputs = [
+  { id = "fan", name = "The fanned headings of the spray", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-bursts"
+title = "An overloaded Prism bursts both bands"
+description = "An overloaded Prism puts exactly one cyan and one magenta enemy bullet on the field."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "overload/prism-bursts.test.ts", outputs = [
+  { id = "both", name = "One cyan and one magenta bullet from the burst", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-spawns-escort"
+title = "An overloaded shell grows the swarm"
+description = "A Prism overloaded while its shell stands adds OVERLOAD_PRISM_ESCORTS Shards beside it."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "overload/prism-spawns-escort.test.ts", outputs = [
+  { id = "escort", name = "The Shards the overloaded shell added", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-core-no-escort"
+title = "An overloaded core grows nothing"
+description = "A Prism overloaded once its shell is gone bursts but adds no Shard."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "overload/prism-core-no-escort.test.ts", outputs = [
+  { id = "none", name = "The burst that added no Shard", kind = "image" },
+] }
+[[review.categories.items]]
+id = "plays-its-cue"
+title = "An overload plays its own cue"
+description = "A distinct cue plays in the frame a drone overloads — the tenth cue, which specs/mode.md owns and the common audio group therefore cannot grade."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "overload/plays-its-cue.test.ts", outputs = [
+  { id = "overload", name = "The overload the cue played on", kind = "image" },
+] }
+# specs/resonance.md fills the meter only on an absorbed same-band bullet and a
+# matching kill, and under this mode neither of those is what a mismatch is; `base`
+# grades the same implication as `sortie.mismatch-fills-no-resonance`.
+[[review.categories.items]]
+id = "fills-no-resonance"
+title = "An overload fills nothing"
+description = "A wrong-band shot leaves the resonance meter unchanged, and so does the shot that overloads a drone."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "overload/fills-no-resonance.test.ts", outputs = [
+  { id = "meter", name = "The meter unchanged by the charge and the overload", kind = "image" },
+] }

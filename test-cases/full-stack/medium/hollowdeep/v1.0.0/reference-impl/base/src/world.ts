@@ -39,7 +39,11 @@ export function kindAt(world: World, tx: number, ty: number): TileKind | null {
 }
 
 // The in-bounds 4-connected neighbors (up, down, left, right) of a tile.
-export function neighbors4(world: World, tx: number, ty: number): { tx: number; ty: number }[] {
+export function neighbors4(
+  world: World,
+  tx: number,
+  ty: number,
+): { tx: number; ty: number }[] {
   const out: { tx: number; ty: number }[] = [];
   if (tx > 0) out.push({ tx: tx - 1, ty });
   if (tx < world.w - 1) out.push({ tx: tx + 1, ty });
@@ -90,18 +94,36 @@ export function centerCameraOn(world: World, tx: number, ty: number): void {
 
 // World-pixel -> screen (matches src/particles.ts). Screen coords live inside the colony
 // view rectangle, offset by VIEW_X0/VIEW_Y0 and scaled by the camera zoom.
-export function worldToScreen(cam: Camera, wx: number, wy: number): { x: number; y: number } {
-  return { x: VIEW_X0 + (wx - cam.x) * cam.zoom, y: VIEW_Y0 + (wy - cam.y) * cam.zoom };
+export function worldToScreen(
+  cam: Camera,
+  wx: number,
+  wy: number,
+): { x: number; y: number } {
+  return {
+    x: VIEW_X0 + (wx - cam.x) * cam.zoom,
+    y: VIEW_Y0 + (wy - cam.y) * cam.zoom,
+  };
 }
 
 // Screen -> tile coordinates (inverse of worldToScreen, floored to the tile grid).
-export function screenToTile(cam: Camera, sx: number, sy: number): { tx: number; ty: number } {
+export function screenToTile(
+  cam: Camera,
+  sx: number,
+  sy: number,
+): { tx: number; ty: number } {
   const wx = (sx - VIEW_X0) / cam.zoom + cam.x;
   const wy = (sy - VIEW_Y0) / cam.zoom + cam.y;
   return { tx: Math.floor(wx / TILE), ty: Math.floor(wy / TILE) };
 }
 
 // Screen -> world-pixel (for the free-floating hover cursor / drag rectangle).
-export function screenToWorld(cam: Camera, sx: number, sy: number): { x: number; y: number } {
-  return { x: (sx - VIEW_X0) / cam.zoom + cam.x, y: (sy - VIEW_Y0) / cam.zoom + cam.y };
+export function screenToWorld(
+  cam: Camera,
+  sx: number,
+  sy: number,
+): { x: number; y: number } {
+  return {
+    x: (sx - VIEW_X0) / cam.zoom + cam.x,
+    y: (sy - VIEW_Y0) / cam.zoom + cam.y,
+  };
 }

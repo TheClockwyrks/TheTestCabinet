@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 
 use test_cabinet_core::MediaKind;
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating};
+use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -17,7 +17,10 @@ use test_cabinet_core::validation::{
 };
 
 use crate::db::StoredReview;
-use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
+use crate::store::{
+    StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredShowcase, StoredShowcaseMedia,
+    StoredVariant, StoredWorkspace, StoredWorkspaceFile,
+};
 
 /// The per-run document object for `run_id`.
 ///
@@ -72,7 +75,11 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
                 orchestrator_slug: "one-shot".to_string(),
+                engine_slug: "none".to_string(),
+                engine_version: None,
                 model_id: "claude-sonnet-4-5".to_string(),
+                gg_capability_set: None,
+                gg_summary: None,
             },
             tooling: RunTooling::default(),
             environment: RunEnvironment {
@@ -96,7 +103,12 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 detail: None,
             },
             game_jam_readme: None,
+            tool_calls: Default::default(),
             game_jam_prior_entries: Vec::new(),
+            seed_commit: None,
+            code_analysis: None,
+            toolchain: None,
+            showcase: None,
         },
         reviews: vec![StoredReview {
             reviewer: crate::db::Reviewer {
@@ -108,12 +120,17 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
             }],
+            aesthetics: vec![],
+            aesthetic: None,
             writeup: "Plays well.".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
             edited_at: None,
             revisions: Vec::new(),
         }],
+        rating: None,
+        aesthetic: None,
+        validator_rated: false,
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
             playable_build: Some("https://abc.pages.dev".to_string()),
@@ -147,6 +164,8 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
 
 fn manifest() -> StoredManifest {
     StoredManifest {
+        toolchain: None,
+        engine_format: false,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),
@@ -157,6 +176,9 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -173,6 +195,7 @@ fn manifest() -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
+        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -180,9 +203,10 @@ fn manifest() -> StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![],
-        workspace: vec![],
+        workspace: Default::default(),
         init: None,
         assets: vec![],
         packages: vec![],
@@ -197,6 +221,7 @@ fn manifest() -> StoredManifest {
             review_items: vec![],
             domains: vec![],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -257,6 +282,70 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     let summary = RunSummary::from_stored(&unrated);
     assert_eq!(summary.rating, None);
     assert_eq!(summary.review_count, 0);
+}
+
+#[test]
+fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    // A third-party-harness run has no capability set at all, so its card names no
+    // configuration and the run log falls back to showing its model.
+    let plain = stored_run("r1", "2026-06-17T21:40:00Z");
+    assert_eq!(RunSummary::from_stored(&plain).subject.gg_preset, None);
+
+    // A gg run launched from a named configuration: the name rides on the card so
+    // the run log can identify the row without loading the whole record (a gg run
+    // has no single harness model to name it by).
+    let mut named = stored_run("r2", "2026-06-17T21:41:00Z");
+    named.record.subject.harness_slug = HarnessSlug::Gg;
+    named.record.subject.gg_capability_set = Some(GgCapabilitySet {
+        preset: Some("planning-A".to_string()),
+        ..GgCapabilitySet::default()
+    });
+    assert_eq!(
+        RunSummary::from_stored(&named).subject.gg_preset.as_deref(),
+        Some("planning-A")
+    );
+
+    // A gg run assembled by hand records no preset; the card carries none rather
+    // than inventing one, and the run log falls back to the model.
+    let mut hand_assembled = stored_run("r3", "2026-06-17T21:42:00Z");
+    hand_assembled.record.subject.harness_slug = HarnessSlug::Gg;
+    hand_assembled.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&hand_assembled).subject.gg_preset,
+        None
+    );
+}
+
+#[test]
+fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    // The id is what a listing narrowed to one configuration's runs matches on, so the
+    // card carries it beside the name a person reads. Two cards may show one name; the
+    // ids tell them apart.
+    let mut launched = stored_run("r1", "2026-06-17T21:40:00Z");
+    launched.record.subject.harness_slug = HarnessSlug::Gg;
+    launched.record.subject.gg_capability_set = Some(GgCapabilitySet {
+        preset: Some("planning-A".to_string()),
+        preset_id: Some("cfg-a".to_string()),
+        ..GgCapabilitySet::default()
+    });
+    let subject = RunSummary::from_stored(&launched).subject;
+    assert_eq!(subject.gg_config_id.as_deref(), Some("cfg-a"));
+    assert_eq!(subject.gg_preset.as_deref(), Some("planning-A"));
+
+    // A gg run assembled by hand belongs to no configuration, so it carries no id.
+    let mut hand_assembled = stored_run("r2", "2026-06-17T21:41:00Z");
+    hand_assembled.record.subject.harness_slug = HarnessSlug::Gg;
+    hand_assembled.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&hand_assembled)
+            .subject
+            .gg_config_id,
+        None
+    );
 }
 
 #[test]
@@ -349,9 +438,19 @@ async fn snapshot_emits_the_composed_model_catalog() {
             harness_family: HarnessFamily::Openrouter,
         }],
         price: None,
+        list_price: None,
+        list_price_as_of: None,
         price_history: vec![],
         context_length: None,
         released_at: None,
+        input_modalities: vec![],
+        provider_pin: Some("Anthropic".to_string()),
+        provider_pin_set_by_hand: false,
+        native_quantization: None,
+        max_input_price: None,
+        max_output_price: None,
+        banned_providers: vec![],
+        unknown_quantization_providers: vec![],
     };
     let snapshot = SnapshotBuilder::new(vec![], vec![], store)
         .with_models(vec![model])
@@ -371,6 +470,39 @@ async fn snapshot_emits_the_composed_model_catalog() {
     // The index points at the catalog file.
     let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
     assert_eq!(index["modelsKey"], format!("{prefix}/models.json"));
+}
+
+#[tokio::test]
+async fn snapshot_emits_the_test_case_group_set() {
+    let (_tmp, store) = empty_store();
+    let group = crate::api::TestCaseGroupOut {
+        slug: "tower-defense".to_string(),
+        name: "Tower Defense".to_string(),
+        summary: Some("Mazes and waves.".to_string()),
+        cases: vec!["meltdown".to_string(), "valence".to_string()],
+    };
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_test_case_groups(vec![group])
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let groups = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/test-case-groups.json"))
+        .expect("test-case-groups.json present");
+    let body: serde_json::Value = serde_json::from_slice(&groups.bytes).unwrap();
+    assert_eq!(body["groups"][0]["slug"], "tower-defense");
+    assert_eq!(body["groups"][0]["cases"][1], "valence");
+    // The index names the file under its optional key (absent only on snapshots
+    // written before groups existed).
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    assert_eq!(
+        index["testCaseGroupsKey"],
+        format!("{prefix}/test-case-groups.json")
+    );
 }
 
 #[tokio::test]
@@ -595,6 +727,224 @@ async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
 }
 
 #[tokio::test]
+async fn per_run_file_exports_showcase_media_and_names_it_by_key() {
+    let (_tmp, store) = empty_store();
+    // The store holds the whole mirrored directory: the carousel entry, the
+    // description file, and an image the description references that the carousel
+    // does NOT list — which must still publish, or the description renders broken.
+    store
+        .write_run_showcase("s1", "title.png", b"png:title")
+        .unwrap();
+    store
+        .write_run_showcase("s1", "showcase.md", b"# My Game\n![B](banner.png)")
+        .unwrap();
+    store
+        .write_run_showcase("s1", "banner.png", b"png:banner")
+        .unwrap();
+
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game\n![B](banner.png)".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    // Every stored file is exported under the run's content-stable media prefix
+    // (NOT this snapshot's prefix) with a content type that follows the extension.
+    let title_key = "media/runs/s1/showcase/title.png".to_string();
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == title_key)
+        .expect("carousel image exported");
+    assert_eq!(title.content_type, "image/png");
+    assert_eq!(title.bytes, b"png:title");
+    let banner = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/s1/showcase/banner.png")
+        .expect("description-referenced image exported even when not in the carousel");
+    assert_eq!(banner.bytes, b"png:banner");
+
+    // The per-run document names each file by its recorded name + key; the store
+    // listing is sorted, so the set is stable.
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
+    assert_eq!(files, vec!["banner.png", "showcase.md", "title.png"]);
+    let title_meta = media.iter().find(|m| m["file"] == "title.png").unwrap();
+    assert_eq!(title_meta["key"], title_key);
+}
+
+#[tokio::test]
+async fn per_run_file_omits_showcase_media_when_the_record_carries_none() {
+    let (_tmp, store) = empty_store();
+    // Bytes sitting in the store without a captured showcase on the record are not
+    // published: the record decides, exactly as it does for code analysis.
+    store
+        .write_run_showcase("s1", "title.png", b"png:title")
+        .unwrap();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("s1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let parsed = run_document_json(&snapshot, "s1");
+    assert_eq!(parsed["showcaseMedia"].as_array().unwrap().len(), 0);
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("/showcase/"))
+    );
+}
+
+#[tokio::test]
+async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
+    // A `.webm` carousel clip publishes as an iOS-playable `.mp4` under the mp4
+    // key, while the per-run doc keeps the recorded `.webm` name the UI requests —
+    // the validation-media convention.
+    let Some(webm) = make_test_webm() else {
+        eprintln!("skipping: ffmpeg/libvpx unavailable");
+        return;
+    };
+    let (_tmp, store) = empty_store();
+    store.write_run_showcase("s1", "clip.webm", &webm).unwrap();
+
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "clip.webm".to_string(),
+            name: "Gameplay".to_string(),
+            kind: MediaKind::Video,
+        }],
+    });
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/clip.webm")),
+        "the raw showcase webm must not be published",
+    );
+    let clip = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/s1/showcase/clip.mp4")
+        .expect("showcase video published as mp4");
+    assert_eq!(clip.content_type, "video/mp4");
+
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "clip.webm");
+    assert_eq!(media[0]["key"], "media/runs/s1/showcase/clip.mp4");
+}
+
+#[tokio::test]
+async fn existing_showcase_media_is_referenced_without_rereading_the_store() {
+    // A key already in the bucket is referenced without touching the source bytes:
+    // stage NO bytes in the store, hand the builder the key as already-existing, and
+    // the meta still names it.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    let key = "media/runs/s1/showcase/title.png".to_string();
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot.objects.iter().any(|o| o.key == key),
+        "an existing showcase key must not be re-uploaded",
+    );
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "title.png");
+    assert_eq!(media[0]["key"], key);
+}
+
+#[tokio::test]
+async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
+    // The backend store is ephemeral, and an image the description references
+    // without listing in the carousel is named nowhere else on the record — the
+    // builder must extract its name from the description text or a store loss
+    // silently breaks the published page's image forever (the write-once media
+    // convention never heals it). Stage NOTHING in the store and hand the image's
+    // key as already-in-bucket: the meta naming it proves the extracted name
+    // reached the lookup.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game\n![B](banner.png)".to_string(),
+        media: vec![],
+    });
+    let key = "media/runs/s1/showcase/banner.png".to_string();
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "banner.png");
+    assert_eq!(media[0]["key"], key);
+}
+
+#[test]
+fn description_image_references_extracts_only_flat_relative_names() {
+    // Bare relative names come back (percent-escapes decoded, angle-bracketed
+    // and titled destinations handled, duplicates folded); everything the
+    // renderer would not resolve against the showcase — absolute, anchored,
+    // schemed — and every name the flat namespace refuses is skipped.
+    let description = "\
+# My Game\n\
+![Banner](banner.png)\n\
+![Same again](banner.png)\n\
+![Encoded](my%20shot.png)\n\
+![Bracketed](<two words.png> \"With a title\")\n\
+![Titled](titled.png \"The title\")\n\
+![Absolute](/logo.png)\n\
+![Anchor](#top)\n\
+![External](https://example.com/x.png)\n\
+![Data](data:image/png;base64,AAAA)\n\
+![Traversal](../escape.png)\n\
+![Dotted](shot..final.png)\n\
+![Manifest](showcase.toml)\n";
+    assert_eq!(
+        description_image_references(description),
+        vec!["banner.png", "my shot.png", "two words.png", "titled.png"],
+    );
+}
+
+#[tokio::test]
 async fn case_metadata_inlines_specs_and_description() {
     // A case with a common spec (`spec/rules.md`, seeded into every variant) and a
     // variant-scoped one (`spec/base.md` on `base`). Write their source bytes into
@@ -615,7 +965,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // A declared runtime package: its UI-only description is looked up from core's
     // registry at snapshot time (never stored), so the static gallery's Inputs tab
     // can show it.
-    m.packages = vec!["@test-cabinet/particle-runtime".to_string()];
+    m.packages = vec!["@clockwyrks/particle-runtime".to_string()];
 
     let (_tmp, store) = empty_store();
     for (key, body) in [("spec/rules.md", "# Rules"), ("spec/build.py", "# build")] {
@@ -666,7 +1016,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // core's registry at snapshot time.
     assert_eq!(
         parsed["packages"][0]["name"],
-        "@test-cabinet/particle-runtime"
+        "@clockwyrks/particle-runtime"
     );
     assert!(
         parsed["packages"][0]["description"]
@@ -674,6 +1024,110 @@ async fn case_metadata_inlines_specs_and_description() {
             .is_some_and(|d| !d.is_empty()),
         "package description should be inlined from core's registry"
     );
+}
+
+#[tokio::test]
+async fn case_metadata_carries_a_point_s_validator_engine_scoping() {
+    // The published case metadata is the static gallery's whole picture of a case,
+    // and the gallery renders a run's checklist from it. A point whose validator
+    // names engines is not on the checklist of a run built on any other, so the
+    // scoping has to travel with the point — otherwise a visitor is shown a point
+    // the run was never graded on.
+    let mut m = manifest();
+    m.common_review_items = vec![crate::store::StoredReviewItem {
+        id: "overlay".to_string(),
+        title: "Debug overlay".to_string(),
+        text: "The overlay draws over the field.".to_string(),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        failure_cap: None,
+        domains: vec![],
+        sub_items: vec![crate::store::StoredSubReviewItem {
+            id: "toggle".to_string(),
+            title: "It toggles".to_string(),
+            description: None,
+            weight: 1,
+            reference: None,
+            proof: None,
+            validation: Some(crate::store::StoredReviewValidation {
+                script: "hud/toggle.test.ts".to_string(),
+                per_engine: true,
+                engines: vec!["none".to_string()],
+                outputs: vec![],
+            }),
+            failure_cap: None,
+            domains: vec![],
+        }],
+        validation: Some(crate::store::StoredReviewValidation {
+            script: "hud/overlay.test.ts".to_string(),
+            per_engine: true,
+            engines: vec!["none".to_string(), "simple-2d".to_string()],
+            outputs: vec![],
+        }),
+    }];
+
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let item = &parsed["commonReviewItems"][0];
+    assert_eq!(item["validation"]["engines"][0], "none");
+    assert_eq!(item["validation"]["engines"][1], "simple-2d");
+    assert_eq!(item["subItems"][0]["validation"]["engines"][0], "none");
+    // Only the scoping travels: the script and its outputs are the driver's, and
+    // the public snapshot has no business publishing them.
+    assert!(item["validation"].get("script").is_none());
+    assert!(item["validation"].get("outputs").is_none());
+}
+
+#[tokio::test]
+async fn case_metadata_omits_the_validator_of_a_human_judged_point() {
+    // A point with no validator carries no `validation` at all, so a client cannot
+    // mistake "no validator" for "a validator that covers nothing".
+    let mut m = manifest();
+    m.common_review_items = vec![crate::store::StoredReviewItem {
+        id: "feel".to_string(),
+        title: "It feels good".to_string(),
+        text: "The paddle feels responsive.".to_string(),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        failure_cap: None,
+        domains: vec![],
+        sub_items: vec![],
+        validation: None,
+    }];
+
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["commonReviewItems"][0].get("validation").is_none());
 }
 
 #[tokio::test]
@@ -702,6 +1156,7 @@ async fn case_metadata_renders_template_specs_per_variant() {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        showcase: None,
     });
 
     let (_tmp, store) = empty_store();
@@ -747,6 +1202,61 @@ async fn case_metadata_renders_template_specs_per_variant() {
             "raw handlebars leaked into the rendered spec: {text}"
         );
     }
+}
+
+#[tokio::test]
+async fn case_metadata_renders_the_prompt_and_specs_for_every_declared_engine() {
+    // A run's Inputs surface on the static site reads the rendering for the engine
+    // its run recorded. The engineless pair stays at the top level (what a reader
+    // browsing the case sees, and what a run on `none` was handed); every other
+    // declared engine rides in `engineRenderings`.
+    let mut m = manifest();
+    m.prompt_template = "Built on {{engine.name}}.".to_string();
+    m.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+    ];
+    m.common_specs = vec![crate::store::StoredSpec {
+        source: "spec/field.md.hbs".to_string(),
+        dest: "spec/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    }];
+
+    let (_tmp, store) = empty_store();
+    let path = store
+        .version_dir(&m.slug, &m.version)
+        .join("spec/field.md.hbs");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "Write the loop yourself: {{engine.slug}}.\n").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let variant = &parsed["variants"][0];
+
+    assert_eq!(variant["prompt"], "Built on None.");
+    assert_eq!(
+        variant["seededInputs"][0]["text"],
+        "Write the loop yourself: none.\n"
+    );
+    let engine = &variant["engineRenderings"]["simple-2d"];
+    assert_eq!(engine["prompt"], "Built on Simple 2D.");
+    assert_eq!(
+        engine["seededInputs"][0]["text"],
+        "Write the loop yourself: simple-2d.\n"
+    );
+    // The engineless engine is the top-level pair, so duplicating it here would
+    // double every spec body in the document for no reader.
+    assert!(variant["engineRenderings"]["none"].is_null());
 }
 
 #[tokio::test]
@@ -989,6 +1499,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![
@@ -1045,6 +1556,145 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
 }
 
 #[tokio::test]
+async fn per_run_file_exports_the_recordings_shared_image_store_the_record_cannot_name() {
+    // A recording's image entries name flat `img.<id>.<ext>` files beside it rather
+    // than carrying base64 of their pixels — the same file for a sprite every one of a
+    // run's recordings draws. Those files back no verdict and are named by their own
+    // bytes, so they are on no output declaration: the record-driven loop cannot see
+    // them, and the listing is what carries them. A published replay whose store did
+    // not travel resolves nothing and draws holes.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
+        .unwrap();
+    store
+        .write_run_validation("v1", "img.9f2c1ab4.png", b"png:sprite")
+        .unwrap();
+    store
+        .write_run_validation("v1", "img.7ee01d33.bin", b"rgba")
+        .unwrap();
+
+    let run = validation_run("v1", "spin", true, false);
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    // Published under the very name it is served under — no published-extension and
+    // no transcode branch, because that identity is what lets an entry inside a
+    // recording resolve through the resolver the recording itself came from.
+    let sprite = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/img.9f2c1ab4.png")
+        .expect("the stored bitmap exported");
+    assert_eq!(sprite.content_type, "image/png");
+    assert_eq!(sprite.bytes, b"png:sprite");
+
+    let pixels = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/img.7ee01d33.bin")
+        .expect("the stored pixel buffer exported");
+    assert_eq!(pixels.content_type, "application/octet-stream");
+    assert_eq!(pixels.bytes, b"rgba");
+
+    // The per-run document names the store beside the declared output, under the same
+    // flat file names, so every console's `(runId, file) => url` resolver reaches both
+    // with no new plumbing.
+    let parsed = run_document_json(&snapshot, "v1");
+    let mut files: Vec<&str> = parsed["validationMedia"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["file"].as_str().unwrap())
+        .collect();
+    files.sort_unstable();
+    assert_eq!(
+        files,
+        vec!["img.7ee01d33.bin", "img.9f2c1ab4.png", "spin__still.png"],
+    );
+    // A declared output is published once, by the record-driven loop, and is not
+    // published a second time by the listing that follows it.
+    assert_eq!(
+        parsed["validationMedia"].as_array().unwrap().len(),
+        3,
+        "the union is a union, not a concatenation",
+    );
+}
+
+#[tokio::test]
+async fn per_run_validation_ignores_a_stored_file_that_is_neither_declared_nor_a_store_file() {
+    // The listing exists for one thing: the shared image store, which no record can
+    // name. Everything else in the directory is either already on the record or is not
+    // media at all, so the filter is what keeps a stray file out of the published set
+    // — a scratch file publishing as an unlabelled blob is a leak, not a degradation.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
+        .unwrap();
+    store
+        .write_run_validation("v1", "notes.txt", b"scratch")
+        .unwrap();
+    // The prefix alone is not enough: the store holds a PNG bitmap and a headerless
+    // RGBA buffer and nothing else, so a name this side cannot label a content type
+    // for stays where it is.
+    store
+        .write_run_validation("v1", "img.9f2c1ab4.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+
+    let run = validation_run("v1", "spin", true, false);
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let parsed = run_document_json(&snapshot, "v1");
+    let media = parsed["validationMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "spin__still.png");
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("/validation/notes.txt")
+                || o.key.contains("/validation/img.9f2c1ab4.json.gz")),
+    );
+}
+
+#[tokio::test]
+async fn a_published_recording_carries_its_framing_onto_the_object() {
+    // R2 hands back what the object records, so a recording published without its
+    // framing declared would reach the gallery as an opaque gzip blob. The compound
+    // `.json.gz` suffix is what says the gzip frames a document rather than being one.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__replay.json.gz", &[0x1f, 0x8b, 0x08, 0x00])
+        .unwrap();
+
+    let mut run = validation_run("v1", "spin", false, false);
+    run.record.validation.debug_scripts[0].outputs = vec![DebugScriptOutput {
+        id: "replay".to_string(),
+        name: "Replay".to_string(),
+        kind: MediaKind::Replay,
+        actual_present: true,
+    }];
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let replay = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/spin__replay.json.gz")
+        .expect("replay validation media exported");
+    assert_eq!(replay.content_type, "application/json");
+    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
+    assert_eq!(replay.bytes, vec![0x1f, 0x8b, 0x08, 0x00]);
+}
+
+#[tokio::test]
 async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdict_id() {
     // A per-sub-item driver's media is addressed by the composite verdict id
     // `<item>.<sub>`, so a sub-item's proof does not collide with its siblings' or the
@@ -1064,6 +1714,7 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {
@@ -1093,14 +1744,17 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
 }
 
 #[tokio::test]
-async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() {
-    // A committed baseline still under the version's `validation-baseline/<variant>/`
-    // dir (copied into the store verbatim at ingest).
+async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_file() {
+    // A committed baseline still under the version's
+    // `validation-baseline/<engine>/<variant>/` dir (copied into the store verbatim at
+    // ingest). The walk is over the engines the manifest declares crossed with its
+    // variants, which is exactly the set of reference builds the case has.
     let m = manifest();
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1115,7 +1769,7 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     // The PNG bytes are exported under the content-stable case-media prefix, keyed
     // by a digest of their own bytes — not under this snapshot's prefix.
     let key = format!(
-        "media/cases/pong/v1.0.0/validation-baseline/base/{}-spin__still.png",
+        "media/cases/pong/v1.0.0/validation-baseline/none/base/{}-spin__still.png",
         content_digest(b"png:baseline-still")
     );
     let obj = snapshot
@@ -1126,7 +1780,10 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     assert_eq!(obj.content_type, "image/png");
     assert_eq!(obj.bytes, b"png:baseline-still");
 
-    // The case metadata names it, carrying the variant and the flat requested name.
+    // The case metadata names it, carrying the reference build it came from — engine
+    // and variant — and the flat requested name. The static gallery keys its lookup
+    // off all three, so a run resolves the baseline of the build it was compared
+    // against rather than of whichever engine happened to be captured last.
     let case = snapshot
         .objects
         .iter()
@@ -1135,9 +1792,357 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     let baselines = parsed["validationBaselines"].as_array().unwrap();
     assert_eq!(baselines.len(), 1);
+    assert_eq!(baselines[0]["engine"], "none");
     assert_eq!(baselines[0]["variant"], "base");
     assert_eq!(baselines[0]["file"], "spin__still.png");
     assert_eq!(baselines[0]["key"], key);
+}
+
+#[tokio::test]
+async fn case_metadata_exports_the_baselines_shared_image_store_too() {
+    // The baseline walk enumerates the whole committed directory rather than the
+    // outputs some record declares, and that is what carries a baseline recording's
+    // shared image store along with the recordings that name it. A store file takes
+    // the verbatim branch (it is not a `.webm`) and publishes under its requested
+    // name — but WITHOUT the content digest every other case-scoped media key
+    // carries. That name is a hash of its own bytes already, so a digest would add
+    // nothing a re-publish could change, and a key a consumer can compose is what
+    // lets the gallery carry one URL prefix per subject instead of an entry per
+    // image: a busy reference's store runs to a file per unique image its whole
+    // baseline corpus drew, and the static site inlines those tables into the chunk
+    // every visitor downloads.
+    let m = manifest();
+    let (_tmp, store) = empty_store();
+    let baseline_dir = store
+        .version_dir(&m.slug, &m.version)
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join("base");
+    std::fs::create_dir_all(&baseline_dir).unwrap();
+    std::fs::write(baseline_dir.join("spin__serve.json.gz"), b"\x1f\x8bgz").unwrap();
+    std::fs::write(baseline_dir.join("img.9f2c1ab4.png"), b"png:sprite").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let key = "media/cases/pong/v1.0.0/validation-baseline/none/base/img.9f2c1ab4.png";
+    let obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("the baseline's stored bitmap exported");
+    // The declared output beside it keeps its digest: the exemption is the store's
+    // alone, and a recording is re-captured under one name across versions.
+    assert!(
+        snapshot.objects.iter().any(|o| o.key
+            == format!(
+                "media/cases/pong/v1.0.0/validation-baseline/none/base/{}-spin__serve.json.gz",
+                content_digest(b"\x1f\x8bgz")
+            )),
+        "a declared baseline output is still keyed by a digest of its bytes"
+    );
+    assert_eq!(obj.content_type, "image/png");
+    assert_eq!(obj.bytes, b"png:sprite");
+
+    // Named in the case metadata by its flat file name — the very name the entry
+    // inside the baseline recording spells — so the gallery's lookup resolves it.
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let baselines = parsed["validationBaselines"].as_array().unwrap();
+    let stored = baselines
+        .iter()
+        .find(|b| b["file"] == "img.9f2c1ab4.png")
+        .expect("the store file is named beside the recording that draws it");
+    assert_eq!(stored["engine"], "none");
+    assert_eq!(stored["variant"], "base");
+    assert_eq!(stored["key"], key);
+}
+
+/// A stored showcase whose carousel is `files`, each entry keyed under the
+/// variant's `showcase/base/` dir the way ingest writes it.
+fn stored_showcase(files: &[(&str, MediaKind)]) -> StoredShowcase {
+    StoredShowcase {
+        description: "A demo game.".to_string(),
+        media: files
+            .iter()
+            .map(|(file, kind)| StoredShowcaseMedia {
+                file: file.to_string(),
+                name: format!("Caption for {file}"),
+                kind: *kind,
+                key: format!("showcase/base/{file}"),
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn case_metadata_exports_variant_showcases_and_names_media_by_key() {
+    // A variant's authored showcase: the description and carousel reach the case
+    // document, and each media file is published under the content-stable,
+    // digest-keyed case-media prefix — exactly as a validation baseline is.
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[
+        ("title.png", MediaKind::Image),
+        ("rally.json.gz", MediaKind::Replay),
+    ]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("title.png"), b"png:title").unwrap();
+    std::fs::write(showcase_dir.join("rally.json.gz"), b"\x1f\x8bgz:rally").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let png_key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:title")
+    );
+    let png = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == png_key)
+        .expect("showcase still exported under the case-media prefix");
+    assert_eq!(png.content_type, "image/png");
+    assert_eq!(png.bytes, b"png:title");
+    // A replay recording travels gzip-framed, labelled so the player is handed
+    // the JSON inside.
+    let replay_key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-rally.json.gz",
+        content_digest(b"\x1f\x8bgz:rally")
+    );
+    let replay = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == replay_key)
+        .expect("showcase recording exported");
+    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let showcase = &parsed["variants"][0]["showcase"];
+    assert_eq!(showcase["description"], "A demo game.");
+    let media = showcase["media"].as_array().unwrap();
+    assert_eq!(media.len(), 2);
+    assert_eq!(media[0]["file"], "title.png");
+    assert_eq!(media[0]["name"], "Caption for title.png");
+    assert_eq!(media[0]["kind"], "image");
+    assert_eq!(media[0]["key"], serde_json::json!(png_key));
+    assert_eq!(media[1]["kind"], "replay");
+    assert_eq!(media[1]["key"], serde_json::json!(replay_key));
+}
+
+#[tokio::test]
+async fn a_variant_without_a_showcase_exports_null() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["showcase"].is_null());
+}
+
+#[tokio::test]
+async fn showcase_webm_is_transcoded_to_mp4_with_the_authored_name_kept() {
+    let Some(webm) = make_test_webm() else {
+        eprintln!("skipping: ffmpeg/libvpx unavailable");
+        return;
+    };
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[("play.webm", MediaKind::Video)]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("play.webm"), &webm).unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // Published as an iOS-playable mp4, keyed by a digest of the **source** bytes
+    // (decided before the transcode, so an unchanged clip skips the ffmpeg run on
+    // the next refresh); the metadata keeps the authored `.webm` name.
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-play.mp4",
+        content_digest(&webm)
+    );
+    let clip = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("showcase clip published as mp4");
+    assert_eq!(clip.content_type, "video/mp4");
+    assert_eq!(&clip.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let media = &parsed["variants"][0]["showcase"]["media"][0];
+    assert_eq!(media["file"], "play.webm");
+    assert_eq!(media["kind"], "video");
+    assert_eq!(media["key"], serde_json::json!(key));
+}
+
+#[tokio::test]
+async fn existing_showcase_media_is_referenced_without_re_uploading() {
+    // A showcase file already in the bucket under its content key is referenced by
+    // the metadata but not re-uploaded — the same dedup a validation baseline gets.
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[("title.png", MediaKind::Image)]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("title.png"), b"png:title").unwrap();
+
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:title")
+    );
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    assert!(
+        !snapshot.objects.iter().any(|o| o.key == key),
+        "an already-published showcase file must not be re-uploaded",
+    );
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["showcase"]["media"][0]["key"],
+        serde_json::json!(key)
+    );
+}
+
+#[tokio::test]
+async fn case_metadata_exports_workspace_files_engineless_and_per_engine() {
+    // The starter workspace reaches the case document as lazy addressing — dest +
+    // published object key — for the engineless set on the variant itself and for
+    // each declared engine's set on its rendering, with the bytes published once
+    // under the content-addressed files prefix with a text content type.
+    let mut m = manifest();
+    m.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+    ];
+    m.workspace = StoredWorkspace(std::collections::BTreeMap::from([
+        (
+            "none".to_string(),
+            vec![StoredWorkspaceFile {
+                source: "workspaces/none/src/main.ts".to_string(),
+                dest: "src/main.ts".to_string(),
+            }],
+        ),
+        (
+            "simple-2d".to_string(),
+            vec![
+                StoredWorkspaceFile {
+                    source: "workspaces/simple-2d/src/main.ts".to_string(),
+                    dest: "src/main.ts".to_string(),
+                },
+                StoredWorkspaceFile {
+                    source: "workspaces/simple-2d/package.json".to_string(),
+                    dest: "package.json".to_string(),
+                },
+            ],
+        ),
+    ]));
+    let (_tmp, store) = empty_store();
+    for (key, body) in [
+        // The two engines' `main.ts` are byte-identical, so they collapse onto one
+        // published object.
+        ("workspaces/none/src/main.ts", "console.log(1)"),
+        ("workspaces/simple-2d/src/main.ts", "console.log(1)"),
+        ("workspaces/simple-2d/package.json", "{}"),
+    ] {
+        let path = store.version_dir(&m.slug, &m.version).join(key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, body).unwrap();
+    }
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // `main.ts` is published exactly once even though both engines seed it: the
+    // key is a digest of the bytes plus the base name, and identical bytes share
+    // one object. A TypeScript source deliberately serves as plain text.
+    let main_key = format!(
+        "files/cases/pong/v1.0.0/workspace/{}-main.ts",
+        content_digest(b"console.log(1)")
+    );
+    let main_objects: Vec<_> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key == main_key)
+        .collect();
+    assert_eq!(main_objects.len(), 1, "identical bytes publish one object");
+    assert_eq!(main_objects[0].content_type, "text/plain; charset=utf-8");
+    let package_key = format!(
+        "files/cases/pong/v1.0.0/workspace/{}-package.json",
+        content_digest(b"{}")
+    );
+    let package = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == package_key)
+        .expect("workspace package.json exported");
+    assert_eq!(package.content_type, "application/json");
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    // The variant-level set is the engineless (`none`) workspace…
+    let engineless = parsed["variants"][0]["workspaceFiles"].as_array().unwrap();
+    assert_eq!(engineless.len(), 1);
+    assert_eq!(engineless[0]["dest"], "src/main.ts");
+    assert_eq!(engineless[0]["key"], serde_json::json!(main_key));
+    // …and each engine rendering carries its own.
+    let rendering = &parsed["variants"][0]["engineRenderings"]["simple-2d"];
+    let files = rendering["workspaceFiles"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0]["dest"], "src/main.ts");
+    assert_eq!(files[0]["key"], serde_json::json!(main_key));
+    assert_eq!(files[1]["dest"], "package.json");
+    assert_eq!(files[1]["key"], serde_json::json!(package_key));
 }
 
 /// Generate a tiny real `.webm` clip with ffmpeg, or `None` if ffmpeg (or a VP8
@@ -1507,19 +2512,29 @@ async fn media_absent_from_the_bucket_is_still_uploaded_from_the_source() {
 }
 
 #[tokio::test]
-async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
-    // The reference-implementation URL lives in the `case_reference_build` table
+async fn a_variant_carries_its_reference_build_urls_when_they_are_supplied() {
+    // The reference-implementation URLs live in the `case_reference_build` table
     // (written out-of-band by `tcab publish-reference`), not the manifest, so the
-    // caller hands the builder a `(slug, version)` → (variant → URL) map. It must
-    // land on the matching variant's `referenceBuild`, and a variant absent from the
-    // map (here there is none — the case has a single `base` variant) exports null.
+    // caller hands the builder a `(slug, version)` → (variant → engine → URL) map.
+    // A variant has one build per engine and they must land side by side, because
+    // the site's Reference tab is what lets a reader switch between them.
     let (_tmp, store) = empty_store();
     let mut builds = std::collections::HashMap::new();
     builds.insert(
         ("pong".to_string(), "v1.0.0".to_string()),
         std::collections::HashMap::from([(
             "base".to_string(),
-            "https://carom-v1-0-0-base.test-cabinet-references.pages.dev".to_string(),
+            std::collections::BTreeMap::from([
+                (
+                    "none".to_string(),
+                    "https://carom-v1-0-0-base-none.test-cabinet-references.pages.dev".to_string(),
+                ),
+                (
+                    "simple-2d".to_string(),
+                    "https://carom-v1-0-0-base-simple-2d.test-cabinet-references.pages.dev"
+                        .to_string(),
+                ),
+            ]),
         )]),
     );
 
@@ -1536,16 +2551,20 @@ async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert_eq!(
-        parsed["variants"][0]["referenceBuild"],
-        "https://carom-v1-0-0-base.test-cabinet-references.pages.dev"
+        parsed["variants"][0]["referenceBuilds"]["none"],
+        "https://carom-v1-0-0-base-none.test-cabinet-references.pages.dev"
+    );
+    assert_eq!(
+        parsed["variants"][0]["referenceBuilds"]["simple-2d"],
+        "https://carom-v1-0-0-base-simple-2d.test-cabinet-references.pages.dev"
     );
 }
 
 #[tokio::test]
-async fn a_variant_without_a_reference_build_exports_null() {
-    // No reference build supplied for this case → the variant's `referenceBuild` is
-    // serialized as JSON null (the default), never omitted, so the site can rely on
-    // the key's presence.
+async fn a_variant_without_a_reference_build_exports_an_empty_map() {
+    // No reference build supplied for this case → the variant's `referenceBuilds` is
+    // serialized as an empty object, never omitted, so the site can rely on the
+    // key's presence.
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
         .build(now())
@@ -1558,7 +2577,10 @@ async fn a_variant_without_a_reference_build_exports_null() {
         .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
-    assert!(parsed["variants"][0]["referenceBuild"].is_null());
+    assert_eq!(
+        parsed["variants"][0]["referenceBuilds"],
+        serde_json::json!({})
+    );
 }
 
 #[tokio::test]
@@ -1636,6 +2658,7 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1842,4 +2865,942 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
         generation_timestamp("2026-07-27T0437Z-6898b393"),
         Some(time::macros::datetime!(2026 - 07 - 27 04:37:00 UTC))
     );
+}
+
+// ── run-tree artifacts and the public snapshot ──────────────────────────────
+
+#[tokio::test]
+async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
+    // R7, and owner decision Q1. The **session record** is never published: it is a
+    // private, whole-run capture of everything the model was sent, so it never goes to
+    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
+    // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
+    // now, but only when the run **record** says the run was analysed — the store
+    // holding one is not the authority, exactly as it is not for proofs. This run's
+    // record carries none, so neither artifact becomes an object.
+    //
+    // This is the regression that would be silent: adding a new sibling object to the
+    // snapshot is a two-line change, and nothing else in the builder would notice.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_artifact("r1", "replay", b"prompt sk-ant-leaked-key-from-the-env")
+        .unwrap();
+    store
+        .write_run_artifact("r1", "code-analysis", b"{\"files\":1}")
+        .unwrap();
+
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    for object in snapshot
+        .objects
+        .iter()
+        .chain(std::iter::once(&snapshot.index))
+    {
+        assert!(
+            !object.key.contains("replay") && !object.key.contains("code-analysis"),
+            "run-tree artifact published as `{}`",
+            object.key
+        );
+        let body = String::from_utf8_lossy(&object.bytes);
+        assert!(
+            !body.contains("sk-ant-leaked-key-from-the-env"),
+            "run-tree artifact bytes leaked into `{}`",
+            object.key
+        );
+    }
+}
+
+#[tokio::test]
+async fn every_published_run_document_is_scrubbed_on_its_way_out() {
+    // The other half of R7: whatever *is* published for a run must go through
+    // `scrub_json`. Today that is the one `PerRun` document, so a leaked provider key
+    // anywhere in a run's captured text — here the failure detail, but the scrub walks
+    // the whole document including the events blob — is redacted before it becomes an
+    // object. Any new per-run field inherits that for free; a new sibling *object*
+    // would not, which is what the test above pins.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.record.status.detail =
+        Some("harness exited: ANTHROPIC_API_KEY=sk-ant-api03-notreal-value".to_string());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let body = String::from_utf8(run_document(&snapshot, "r1").bytes.clone()).unwrap();
+    assert!(!body.contains("sk-ant-api03-notreal-value"));
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+/// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
+/// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
+/// from the contract the moment a metric is added.
+fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
+    let tree = TempDir::new().expect("temp dir");
+    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
+    std::fs::write(
+        tree.path().join("src/main.ts"),
+        "export function boot(): number {\n  return 1;\n}\n",
+    )
+    .expect("a source file");
+    test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
+        root: tree.path(),
+        seed_commit: None,
+        tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
+        // A hand-built fixture tree with no run behind it, so nothing is known to have
+        // been seeded into its root and the floor removes only what the host owns
+        // outright.
+        root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
+    })
+    .summary
+}
+
+/// A published run that carries a real code analysis, plus its stored unbounded document.
+/// The document is written as **gzip**, which is what the driver actually mirrors from the
+/// run tree's `code-analysis.json.gz`.
+fn analysed_run(store: &DefinitionStore, id: &str, document: serde_json::Value) -> StoredRun {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(&serde_json::to_vec(&document).expect("serialize the document"))
+        .expect("gzip the document");
+    store
+        .write_run_code_analysis(id, &encoder.finish().expect("finish the gzip stream"))
+        .expect("store the run's code-analysis document");
+
+    let mut run = stored_run(id, "2026-06-17T21:40:00Z");
+    run.record.code_analysis = Some(code_analysis_summary());
+    run
+}
+
+/// The snapshot-relative key a run's code-analysis object is published under, for the
+/// current analyzer generation.
+fn code_analysis_key(run_id: &str) -> String {
+    format!(
+        "media/runs/{run_id}/code-analysis/v{}.json",
+        test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION
+    )
+}
+
+#[tokio::test]
+async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_document() {
+    // The two tiers, and the seam between them. The **card** in `runs.json` carries the
+    // ranking-relevant slice plus its provenance, so an ordering over the whole corpus
+    // costs one file; the **per-run document** carries the full bounded summary on the
+    // record (as it always has) and now a `codeAnalysisKey` pointing at the unbounded
+    // document published as its own object.
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(
+        &store,
+        "r1",
+        serde_json::json!({ "analyzerVersion": 1, "files": [{ "path": "src/main.ts" }] }),
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let runs_index = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs.json"))
+        .expect("the runs index");
+    let index: serde_json::Value = serde_json::from_slice(&runs_index.bytes).unwrap();
+    let card = &index["runs"][0]["code"];
+    assert_eq!(card["analyzerVersion"], 1);
+    assert_eq!(card["authoredBasis"], "allFiles");
+    assert_eq!(card["treeBasis"], "preValidation");
+    assert_eq!(card["truncated"], false);
+    assert_eq!(
+        card["codeLines"], 3,
+        "the card carries the ranking figures, not just the provenance",
+    );
+    assert!(card["giniCodeLines"].is_number());
+    assert!(card["meanCognitive"].is_number());
+
+    let parsed = run_document_json(&snapshot, "r1");
+    assert_eq!(
+        parsed["record"]["codeAnalysis"]["treeBasis"], "preValidation",
+        "the bounded summary still rides inside the document `scrub_json` walked",
+    );
+    assert_eq!(
+        parsed["codeAnalysisKey"],
+        code_analysis_key("r1"),
+        "the per-run document points at the unbounded tier by its generation-keyed key",
+    );
+
+    let document = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == code_analysis_key("r1"))
+        .expect("the unbounded code-analysis document is published as its own object");
+    assert_eq!(document.content_type, "application/json");
+    let body: serde_json::Value = serde_json::from_slice(&document.bytes).unwrap();
+    assert_eq!(
+        body["files"][0]["path"], "src/main.ts",
+        "the stored gzip is decoded and republished as plain JSON",
+    );
+}
+
+#[tokio::test]
+async fn the_published_code_analysis_document_is_scrubbed() {
+    // R7. `build` scrubs the `PerRun` document and *only* that document, so a sibling
+    // object bypasses redaction entirely. This one is a static read of model-written
+    // source — every authored path and every symbol name it wrote — and model-written
+    // source contains hard-coded credentials often enough that the scrubber exists at
+    // all, so it is parsed and scrubbed on its own way out. The leak below is a file the
+    // model named after the key it was handed, which is exactly the shape that reaches an
+    // *unbounded* document while the bounded summary (all numbers) can never carry one.
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(
+        &store,
+        "r1",
+        serde_json::json!({
+            "analyzerVersion": 1,
+            "files": [{ "path": "src/keys/sk-ant-api03-notreal-value.ts" }],
+        }),
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let document = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == code_analysis_key("r1"))
+        .expect("the code-analysis object");
+    let body = String::from_utf8(document.bytes.clone()).unwrap();
+    assert!(
+        !body.contains("sk-ant-api03-notreal-value"),
+        "a leaked key reached R2 through the code-analysis object: {body}",
+    );
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+#[tokio::test]
+async fn two_snapshot_refreshes_upload_the_code_analysis_object_once() {
+    // **The property the generation-in-the-key exists for.** The document is immutable
+    // for a given (run, analyzer generation), so a refresh that finds the object already
+    // in the bucket must reference it rather than re-read, re-scrub and re-upload it —
+    // otherwise every refresh re-exports the whole analysed corpus, which is the growing
+    // cost `with_existing_media` was introduced to stop for media.
+    //
+    // The second build is handed exactly what the first uploaded, which is what the
+    // publisher does (it lists the `media/` prefix before building).
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 1 }));
+
+    let first = SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store.clone())
+        .build(now())
+        .await
+        .unwrap();
+    assert!(
+        first
+            .objects
+            .iter()
+            .any(|o| o.key == code_analysis_key("r1")),
+        "the first refresh uploads it",
+    );
+
+    let uploaded: std::collections::HashSet<String> = first
+        .objects
+        .iter()
+        .map(|o| o.key.clone())
+        .filter(|key| key.starts_with("media/"))
+        .collect();
+    let second = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(uploaded)
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !second
+            .objects
+            .iter()
+            .any(|o| o.key == code_analysis_key("r1")),
+        "the second refresh re-uploaded the code-analysis object: {:?}",
+        second.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+    );
+
+    let parsed = run_document_json(&second, "r1");
+    assert_eq!(
+        parsed["codeAnalysisKey"],
+        code_analysis_key("r1"),
+        "skipping the upload must still point the document at the object already there",
+    );
+}
+
+#[tokio::test]
+async fn a_newer_analyzer_generation_mints_a_new_code_analysis_key() {
+    // The other half of putting the generation in the key: the skip must be scoped to the
+    // generation that produced the bytes. A re-analysis under a newer generation is a
+    // different document, so it gets a different key rather than silently overwriting
+    // figures an already-published snapshot still points at — and the older object's
+    // presence in the bucket must not suppress it.
+    let (_tmp, store) = empty_store();
+    let mut run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 99 }));
+    run.record.code_analysis.as_mut().unwrap().analyzer_version = 99;
+
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([code_analysis_key("r1")]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let key = "media/runs/r1/code-analysis/v99.json";
+    assert!(
+        snapshot.objects.iter().any(|o| o.key == key),
+        "the generation the record carries keys the object, not the running binary's: {:?}",
+        snapshot.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+    );
+}
+
+#[tokio::test]
+async fn an_unanalysed_run_carries_no_code_summary_and_no_key() {
+    // Absence is explicit, and it is the common case: the corpus is deliberately not
+    // backfilled (owner decision Q2), so every run that finished before the analyzer
+    // shipped carries no analysis forever. The card must therefore omit `code` entirely
+    // rather than serialize a zeroed block — a zero reads as "wrote no code", which is a
+    // different and false claim.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let index: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert!(
+        index["runs"][0]["code"].is_null(),
+        "an unanalysed run's card must not claim a figure",
+    );
+
+    let parsed = run_document_json(&snapshot, "r1");
+    assert!(parsed["codeAnalysisKey"].is_null());
+}
+
+#[tokio::test]
+async fn an_analysed_run_whose_document_is_gone_still_publishes_its_summary() {
+    // The backend store is an ephemeral emptyDir in production and there is no
+    // artifact-service route for a tree-root file, so a run can legitimately reach a
+    // refresh with its bounded summary on the record and no document bytes anywhere. The
+    // card and the record still carry the figures; only the key is omitted, so the
+    // explorer is simply not offered rather than offering a link that 404s.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.record.code_analysis = Some(code_analysis_summary());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let index: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert_eq!(index["runs"][0]["code"]["codeLines"], 3);
+
+    let parsed = run_document_json(&snapshot, "r1");
+    assert!(
+        parsed["codeAnalysisKey"].is_null(),
+        "a key with no object behind it would 404 the Code tab",
+    );
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("code-analysis")),
+    );
+}
+
+// ── the gg document corpus ──────────────────────────────────────────────────
+
+/// A gg document with the given id and a couple of fields, standing in for what
+/// [`crate::gg_docs::public_documents`] hands the builder.
+fn gg_doc(id: &str) -> test_cabinet_core::gg_query::GgRunDoc {
+    let mut doc = test_cabinet_core::gg_query::GgRunDoc::default();
+    doc.insert("id", id.to_string());
+    doc.insert("case", "pong".to_string());
+    doc.insert("metric.cost", 0.42);
+    doc
+}
+
+#[tokio::test]
+async fn the_gg_corpus_is_published_and_the_index_points_at_it() {
+    // The whole public analysis payload is one object, and `index.json` is how the site
+    // finds it — a key the site cannot resolve is the same as no corpus at all.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![gg_doc("r1"), gg_doc("r2")])
+        .build(now())
+        .await
+        .unwrap();
+
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    let key = index["ggRunsKey"]
+        .as_str()
+        .expect("the index names the corpus");
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("the corpus the index points at is uploaded");
+
+    let corpus: serde_json::Value = serde_json::from_slice(&object.bytes).unwrap();
+    assert_eq!(corpus["documents"].as_array().unwrap().len(), 2);
+    assert_eq!(corpus["documents"][0]["fields"]["id"], "r1");
+    // Its own build time, so a public figure can be rendered beside the instant it was
+    // true rather than joined against the index at read time.
+    assert_eq!(corpus["generatedAt"], index["generatedAt"]);
+}
+
+#[tokio::test]
+async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
+    // R7, on the object this milestone adds. `build` scrubs the `PerRun` document by
+    // walking it individually, so **every sibling object has to opt in** — a new one
+    // reaches R2 unredacted by default, and that is a two-line change nothing else in
+    // the builder would notice. A gg document is derived from a run's configuration, and
+    // an operator who pasted a provider key into a capability parameter has put it into
+    // a field short enough to survive the document's own redaction.
+    let (_tmp, store) = empty_store();
+    let mut leaky = gg_doc("r1");
+    leaky.insert("cap.shell.env", "sk-ant-api03-notreal-value".to_string());
+
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![leaky])
+        .build(now())
+        .await
+        .unwrap();
+
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/gg-runs.json"))
+        .expect("the gg corpus");
+    let body = String::from_utf8(object.bytes.clone()).unwrap();
+    assert!(!body.contains("sk-ant-api03-notreal-value"));
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+#[tokio::test]
+async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller() {
+    // The other half of R7, and the one the scrubber cannot cover. A pasted system
+    // prompt in a capability parameter is neither short nor key-shaped, so the scrubber
+    // has nothing to match on: the *document* redaction is what drops it. Applying that
+    // in the composer alone made it a caller's discipline at the one seam where the
+    // object stops being a value in this process and becomes bytes in a public bucket —
+    // so it is applied here too, which the idempotence of the rule makes free.
+    let (_tmp, store) = empty_store();
+    let mut leaky = gg_doc("r1");
+    let pasted = "You are a careful reviewer. ".repeat(64);
+    leaky.insert("cap.review.instructions", pasted.clone());
+
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![leaky])
+        .build(now())
+        .await
+        .unwrap();
+
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/gg-runs.json"))
+        .expect("the gg corpus");
+    let body = String::from_utf8(object.bytes.clone()).unwrap();
+    assert!(
+        !body.contains("You are a careful reviewer"),
+        "free text long enough to be prose never reaches the public object",
+    );
+    // And the corpus is still a corpus: redaction drops the field, not the document.
+    let corpus: serde_json::Value = serde_json::from_slice(&object.bytes).unwrap();
+    assert_eq!(corpus["documents"][0]["fields"]["id"], "r1");
+}
+
+#[tokio::test]
+async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
+    // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
+    // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
+    // short step away. A session record is the complete model conversation verbatim; the
+    // exported documents are configuration ids and outcome numbers. Only the second
+    // travels.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_artifact("r1", "replay", b"{\"text\":\"the-verbatim-conversation\"}")
+        .unwrap();
+
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![],
+        store,
+    )
+    .with_gg_documents(vec![gg_doc("r1")])
+    .build(now())
+    .await
+    .unwrap();
+
+    for object in snapshot
+        .objects
+        .iter()
+        .chain(std::iter::once(&snapshot.index))
+    {
+        assert!(
+            !object.key.contains("replay"),
+            "a replay artifact was published as `{}`",
+            object.key
+        );
+        assert!(
+            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
+            "recorded conversation text leaked into `{}`",
+            object.key
+        );
+    }
+}
+
+// --- Validator-rated runs in the snapshot ---------------------------------------
+
+/// [`manifest`] moved onto the engine format, scoring two validated points: `serve`
+/// (cap `broken`) and `hud` (cap `great`), both on the `gameplay` domain — so the
+/// version is validator-rated and its runs are scored by their validators alone.
+fn validator_manifest() -> StoredManifest {
+    use crate::store::{StoredReviewItem, StoredReviewValidation};
+    use test_cabinet_core::review::FailureCap;
+    let point = |id: &str, cap: FailureCap| StoredReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("The build satisfies {id}."),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        sub_items: vec![],
+        validation: Some(StoredReviewValidation {
+            script: format!("gameplay/{id}"),
+            per_engine: true,
+            engines: vec![],
+            outputs: vec![],
+        }),
+        failure_cap: Some(cap),
+        domains: vec!["gameplay".to_string()],
+    };
+    let mut manifest = manifest();
+    manifest.engine_format = true;
+    manifest.common_review_items = vec![
+        point("serve", FailureCap::Broken),
+        point("hud", FailureCap::Great),
+    ];
+    manifest
+}
+
+/// [`stored_run`] with one decided validator verdict per `(point, pass)` pair and
+/// no reviews at all — a validator-rated run the moment it completed.
+fn validator_run(id: &str, published_at: &str, verdicts: &[(&str, bool)]) -> StoredRun {
+    use test_cabinet_core::validation::AutoVerdict;
+    let mut run = stored_run(id, published_at);
+    run.reviews.clear();
+    run.validator_rated = true;
+    run.record.validation.debug_scripts = verdicts
+        .iter()
+        .map(|(point, pass)| DebugScriptResult {
+            item_id: point.to_string(),
+            sub_item_id: None,
+            title: point.to_string(),
+            category_title: point.to_string(),
+            script: format!("gameplay/{point}"),
+            gates: true,
+            ran: true,
+            precondition_unmet: false,
+            inconclusive: None,
+            detail: None,
+            verdicts: vec![AutoVerdict {
+                id: point.to_string(),
+                pass: *pass,
+                assertions: vec![],
+            }],
+            outputs: vec![],
+        })
+        .collect();
+    run
+}
+
+#[test]
+fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
+    let manifest = validator_manifest();
+    let run = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+
+    // Scored with no review at all: one of two points earned, `reviews` is zero —
+    // the no-review fixed point, the validators' own figure.
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 0);
+    assert_eq!(score.overall_grade, None);
+
+    // The same run on the legacy format has no score until someone reviews it.
+    let mut legacy = validator_manifest();
+    legacy.engine_format = false;
+    assert!(run_summary_score(&legacy, &run.record, &run.reviews).is_none());
+
+    // The effective domains resolve from the stored manifest like the items do.
+    let domains = domains_for(&manifest, "base");
+    assert_eq!(domains.len(), 1);
+    assert_eq!(domains[0].id, "gameplay");
+}
+
+#[test]
+fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
+    use test_cabinet_core::review::VerdictStatus;
+    let manifest = validator_manifest();
+    let mut run = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+
+    // A review with no overrides reproduces the validators' figure exactly.
+    run.reviews.push(aesthetic_reviewer_review(&[]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 1);
+
+    // The review waves the failing point through: the run's score rises.
+    run.reviews.clear();
+    run.reviews
+        .push(aesthetic_reviewer_review(&[("hud", VerdictStatus::Pass)]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 2.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 1);
+
+    // Two reviews average their effective scores: one waves `hud` through (2/2),
+    // the other fails `serve` too (0/2).
+    run.reviews
+        .push(aesthetic_reviewer_review(&[("serve", VerdictStatus::Fail)]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 2);
+}
+
+#[test]
+fn the_engine_aware_checklist_drops_the_points_a_run_s_engine_does_not_carry() {
+    use crate::store::{StoredReviewItem, StoredReviewValidation, StoredSubReviewItem};
+    let validation = |engines: &[&str]| {
+        Some(StoredReviewValidation {
+            script: "gameplay/point.test.ts".to_string(),
+            per_engine: true,
+            engines: engines.iter().map(|slug| (*slug).to_string()).collect(),
+            outputs: vec![],
+        })
+    };
+    let sub = |id: &str, engines: &[&str]| StoredSubReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        description: None,
+        weight: 1,
+        reference: None,
+        proof: None,
+        validation: validation(engines),
+        failure_cap: None,
+        domains: vec![],
+    };
+    let item =
+        |id: &str, engines: Option<&[&str]>, subs: Vec<StoredSubReviewItem>| StoredReviewItem {
+            id: id.to_string(),
+            title: id.to_string(),
+            text: format!("The build satisfies {id}."),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 1,
+            graded: false,
+            domain: None,
+            failure_cap: None,
+            domains: vec![],
+            sub_items: subs,
+            validation: engines.and_then(validation),
+        };
+    let mut manifest = validator_manifest();
+    manifest.common_review_items = vec![
+        // Decided on every engine the case supports.
+        item("serve", Some(&[]), vec![]),
+        // Decided only on an engineless build: under an engine the overlay is the
+        // engine's own, so validating it would test the engine rather than the model.
+        item("overlay", Some(&["none"]), vec![]),
+        // A category keeping one point and losing the other.
+        item(
+            "spin",
+            None,
+            vec![sub("stationary", &[]), sub("hud", &["none"])],
+        ),
+        // A category whose every point is scoped away goes with them.
+        item("debug", None, vec![sub("panel", &["none"])]),
+    ];
+
+    // The engine the scoped points are declared on carries all four.
+    let engineless = review_items_for_engine(&manifest, "base", "none");
+    assert_eq!(
+        engineless.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+        ["serve", "overlay", "spin", "debug"]
+    );
+    assert_eq!(engineless[2].sub_items.len(), 2);
+
+    // Another engine carries neither the scoped item, the scoped sub-item, nor the
+    // category left empty by the filter.
+    let engined = review_items_for_engine(&manifest, "base", "simple-2d");
+    assert_eq!(
+        engined.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+        ["serve", "spin"]
+    );
+    assert_eq!(
+        engined[1]
+            .sub_items
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        ["stationary"]
+    );
+
+    // The engine-independent form is unchanged: it describes the case, not one run
+    // of it, so a catalog listing or a case page still shows every declared point.
+    assert_eq!(review_items_for(&manifest, "base").len(), 4);
+}
+
+#[test]
+fn a_validator_rated_run_is_scored_only_over_the_points_its_engine_carries() {
+    // A point the run's engine does not carry contributes no weight: the denominator
+    // is the checklist that engine actually decides, so a run is never marked down
+    // for a validator that could not have run against it.
+    // `validator_manifest`'s second point, `hud`, restricted to the engineless build.
+    let mut manifest = validator_manifest();
+    manifest.common_review_items[1]
+        .validation
+        .as_mut()
+        .unwrap()
+        .engines = vec!["none".to_string()];
+
+    // On `none` both points count, and the failing `hud` costs the run half of them.
+    let engineless = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+    let score = run_summary_score(&manifest, &engineless.record, &engineless.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+
+    // On `simple-2d` the run never carried `hud` at all: one point, earned.
+    let mut engined = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", true)]);
+    engined.record.subject.engine_slug = "simple-2d".to_string();
+    let score = run_summary_score(&manifest, &engined.record, &engined.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 1);
+}
+
+#[test]
+fn a_stored_validator_s_engine_scoping_reaches_the_core_type() {
+    // The snapshot reconstructs the core `ReviewValidation` from the stored one so
+    // the scoring path sees the same checklist the driver did; the scoping has to
+    // come back with it or `covers` would admit every engine.
+    let stored = crate::store::StoredReviewValidation {
+        script: "hud/debug-overlay.test.ts".to_string(),
+        per_engine: true,
+        engines: vec!["none".to_string()],
+        outputs: vec![],
+    };
+
+    let core = core_review_validation(&stored);
+
+    assert_eq!(core.engines, ["none"]);
+    assert!(core.covers("none"));
+    assert!(!core.covers("simple-2d"));
+
+    // An unscoped stored validator comes back covering everything.
+    let unscoped = core_review_validation(&crate::store::StoredReviewValidation {
+        engines: vec![],
+        ..stored
+    });
+    assert!(unscoped.engines.is_empty());
+    assert!(unscoped.covers("simple-2d"));
+}
+
+/// A run-wide-aesthetic review carrying the given verdict `overrides`, for the
+/// override-folding score test.
+fn aesthetic_reviewer_review(
+    overrides: &[(&str, test_cabinet_core::review::VerdictStatus)],
+) -> StoredReview {
+    use test_cabinet_core::review::AestheticRating;
+    StoredReview {
+        reviewer: crate::db::Reviewer {
+            user_id: "u1".to_string(),
+            username: "ada".to_string(),
+            display_name: "Ada L.".to_string(),
+        },
+        ratings: vec![],
+        aesthetics: vec![],
+        aesthetic: Some(AestheticRating::Good),
+        writeup: "Looks fine.".to_string(),
+        checklist: overrides
+            .iter()
+            .map(|(id, status)| ReviewVerdict {
+                id: id.to_string(),
+                status: *status,
+                note: None,
+            })
+            .collect(),
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic_review() {
+    use test_cabinet_core::review::AestheticRating;
+    let (_tmp, store) = empty_store();
+    // `r1` is unreviewed; `r2` carries one aesthetic review.
+    let unreviewed = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+    let mut reviewed = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", false)]);
+    reviewed.reviews.push(StoredReview {
+        reviewer: crate::db::Reviewer {
+            user_id: "u1".to_string(),
+            username: "ada".to_string(),
+            display_name: "Ada L.".to_string(),
+        },
+        ratings: vec![],
+        aesthetics: vec![],
+        aesthetic: Some(AestheticRating::Legendary),
+        writeup: "Breathtaking, even broken.".to_string(),
+        checklist: vec![],
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    });
+    let snapshot = SnapshotBuilder::new(
+        vec![unreviewed, reviewed],
+        vec![validator_manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    let index = runs_index(&snapshot);
+    let by_id = |id: &str| {
+        index["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| run["id"] == id)
+            .cloned()
+            .unwrap()
+    };
+    let r1 = by_id("r1");
+    assert_eq!(r1["validatorRated"], true);
+    assert_eq!(
+        r1["rating"], "great",
+        "decided by the failing cosmetic point"
+    );
+    assert_eq!(r1["aesthetic"], serde_json::Value::Null);
+    assert_eq!(r1["reviewCount"], 0);
+    assert_eq!(r1["score"]["earned"], 1.0);
+    assert_eq!(r1["score"]["total"], 2);
+    assert_eq!(r1["score"]["reviews"], 0);
+
+    let r2 = by_id("r2");
+    assert_eq!(
+        r2["rating"], "broken",
+        "a review with no overrides does not move it"
+    );
+    assert_eq!(r2["aesthetic"], "legendary");
+    assert_eq!(r2["reviewCount"], 1);
+
+    // The run document carries the review's run-wide aesthetic tier (the legacy
+    // per-domain array is no longer emitted), and the case document says the
+    // version is on the engine format with each point's cap.
+    let document = run_document_json(&snapshot, "r2");
+    assert_eq!(document["reviews"][0]["aesthetic"], "legendary");
+    assert!(document["reviews"][0].get("aesthetics").is_none());
+    assert!(
+        document["reviews"][0]
+            .get("ratings")
+            .is_some_and(|r| r.as_array().unwrap().is_empty())
+    );
+    let case_obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/cases/pong/v1.0.0.json"))
+        .expect("case document");
+    let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
+    assert_eq!(case["engineFormat"], true);
+    assert_eq!(case["commonReviewItems"][0]["failureCap"], "broken");
+    assert_eq!(case["commonReviewItems"][0]["domains"][0], "gameplay");
+    assert_eq!(case["commonReviewItems"][1]["failureCap"], "great");
+}
+
+#[tokio::test]
+async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let summary = runs_index(&snapshot)["runs"][0].clone();
+    assert_eq!(summary["validatorRated"], false);
+    assert_eq!(summary["aesthetic"], serde_json::Value::Null);
+    assert_eq!(summary["rating"], "great");
+    let document = run_document_json(&snapshot, "r1");
+    assert!(document["reviews"][0].get("aesthetics").is_none());
+    assert!(document["reviews"][0].get("aesthetic").is_none());
+    let case_obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/cases/pong/v1.0.0.json"))
+        .expect("case document");
+    let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
+    assert_eq!(case["engineFormat"], false);
 }

@@ -1,0 +1,76 @@
+// gameplay/serve-after-p1 — after a point is scored ON player one, the next
+// serve travels toward player one.
+//
+// The point is a real one: the ball is aimed down the mid-field lane at the LEFT
+// goal and the build's own simulation carries it out, scoring for player two.
+// The serve that follows is then expired and its direction read on the launch
+// frame. Nothing is posed about the serve itself, and the score is asserted
+// alongside the direction so a build that never scored the point cannot pass by
+// serving left out of a countdown it never left.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane. The serve that
+// answers the point leaves the same field: nothing respawns what was cleared, so
+// the launch that is read is the ball on an otherwise empty court.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThan } from "../assert";
+import {
+  arrangeGoal,
+  ball0,
+  captureReplay,
+  createHarness,
+  driveGoal,
+  driveServe,
+  enterPlaying,
+  stageServe,
+  type Harness,
+} from "../harness";
+
+/**
+ * Frames of the served flight recorded after the launch.
+ *
+ * The direction is read on the launch frame — before a wall or a paddle could
+ * turn the ball around — and that instant does not move. A recording that ended
+ * there would stop on the frame the ball started moving, so the review item's
+ * serve would never be seen to travel; the flight is driven after the reading,
+ * inside the same recorded section, where it cannot reach an assertion.
+ */
+const FLIGHT_TICKS = 90; // 0.75 s
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("serves toward player one after player two scores", async () => {
+  enterPlaying(harness);
+  harness.debug.setScore(0, 0);
+  arrangeGoal(harness, "left");
+
+  // The point and the serve that answers it, as one continuous section: the
+  // direction only means anything beside the point that decided it.
+  await captureReplay(harness, "serve", async () => {
+    const point = await driveGoal(harness);
+    assertEqual(point.hit, true);
+    assertEqual(point.snapshot.score.p2, 1);
+    assertEqual(point.snapshot.screen, "countdown");
+
+    // The hold is cut to nothing; the LAUNCH is the build's own, on the frame
+    // after, and `receiver` is not touched by either pose.
+    stageServe(harness);
+    const launched = await driveServe(harness);
+    await harness.advance(FLIGHT_TICKS);
+
+    assertEqual(launched.hit, true);
+    // Player one defends the LEFT edge: the receiver is the player just scored
+    // on.
+    assertLessThan(ball0(launched.snapshot).vx, 0);
+  });
+});

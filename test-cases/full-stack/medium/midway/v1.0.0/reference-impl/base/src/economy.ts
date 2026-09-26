@@ -47,8 +47,16 @@ export function chargeDaily(l: Ledger, upkeep: number, wages: number): void {
 }
 
 // The last full day's income/expense/net rates (for the HUD trend arrow).
-export function rates(l: Ledger): { income: number; expense: number; net: number } {
-  return { income: l.incomeRate, expense: l.expenseRate, net: l.incomeRate - l.expenseRate };
+export function rates(l: Ledger): {
+  income: number;
+  expense: number;
+  net: number;
+} {
+  return {
+    income: l.incomeRate,
+    expense: l.expenseRate,
+    net: l.incomeRate - l.expenseRate,
+  };
 }
 
 // Advance the bankruptcy grace timer. While cash sits below the floor the timer grows;

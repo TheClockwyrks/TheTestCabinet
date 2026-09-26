@@ -59,9 +59,11 @@ struct PublisherInner {
     /// can be embedded in the public snapshot.
     auth: Arc<test_cabinet_core::AccountsClient>,
     http: reqwest::Client,
-    /// The artifact service's public base URL, passed to the snapshot builder so it
-    /// can fall back for run media missing from the (ephemeral) store. `None` in a
-    /// dev/single-box setup with no separate artifact service.
+    /// The artifact service's **in-cluster** base URL
+    /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
+    /// passed to the snapshot builder so it can fall back for run media missing from
+    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
+    /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
     coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
@@ -69,6 +71,10 @@ struct PublisherInner {
     snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
+    /// How many refreshes the background loop has finished, so a test can wait for the loop to
+    /// act rather than poll the database on a timer.
+    #[cfg(test)]
+    refreshes: tokio::sync::watch::Sender<u64>,
 }
 
 /// The timing knobs a publisher is built with, grouped so the two `Duration`s
@@ -89,6 +95,9 @@ impl Publisher {
     /// Build a publisher. `r2` is `None` in the dev mode where the R2 credentials
     /// were not configured: the snapshot is still regenerated into SQLite-derived
     /// form and the dirty flag cleared, but no upload or hook fire happens.
+    ///
+    /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
+    /// backend itself can reach — not the address advertised to consoles.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,
@@ -121,6 +130,8 @@ impl Publisher {
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
+                #[cfg(test)]
+                refreshes: tokio::sync::watch::channel(0).0,
             }),
         }
     }
@@ -166,6 +177,8 @@ impl Publisher {
                             if let Err(err) = run_refresh(&inner).await {
                                 tracing::error!("coalesced snapshot refresh failed: {err}");
                             }
+                            #[cfg(test)]
+                            inner.refreshes.send_modify(|finished| *finished += 1);
                         }
                         _ = shutdown_rx.recv() => break,
                     }
@@ -177,6 +190,12 @@ impl Publisher {
             _shutdown: shutdown_tx,
             handle,
         }
+    }
+
+    /// A receiver that changes each time the background loop finishes a coalesced refresh.
+    #[cfg(test)]
+    pub(crate) fn refreshes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.refreshes.subscribe()
     }
 
     /// Force an immediate refresh, bypassing the debounce (operator recovery via
@@ -263,22 +282,30 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // Learn what is already uploaded so the builder references those objects instead of
     // re-reading, re-transcoding and re-uploading them. The whole `media/` prefix is
     // listed in one pass — it also covers the reference sheets `tcab publish-reference`
-    // writes, which are simply never looked up here.
+    // writes, which are simply never looked up here — and the `files/` prefix with it,
+    // covering a case version's content-addressed starter-workspace files
+    // (`files/cases/<slug>/<version>/…`).
     //
     // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
     // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
     // everything) rather than abort the whole refresh, so a transient list error
     // degrades to the old behavior.
     let existing_media = match &inner.r2 {
-        Some(r2) => match r2.list_keys("media/").await {
-            Ok(keys) => keys.into_iter().collect(),
-            Err(err) => {
-                tracing::warn!(
-                    "listing existing snapshot media failed ({err}); re-exporting all run and case media"
-                );
-                std::collections::HashSet::new()
+        Some(r2) => {
+            let mut keys = std::collections::HashSet::new();
+            for prefix in ["media/", "files/"] {
+                match r2.list_keys(prefix).await {
+                    Ok(listed) => keys.extend(listed),
+                    Err(err) => {
+                        tracing::warn!(
+                            "listing existing snapshot `{prefix}` objects failed ({err}); \
+                             re-exporting everything under it"
+                        );
+                    }
+                }
             }
-        },
+            keys
+        }
         None => std::collections::HashSet::new(),
     };
 
@@ -333,6 +360,34 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         }
     }
 
+    // The published harness comparisons, each assembled to its full read model over
+    // the whole experiment's runs (not only the published ones) with the same
+    // computation the internal `/comparisons` API uses, so the public numbers match
+    // the console's exactly.
+    let mut comparisons = Vec::new();
+    for stored in inner.db.all_published_comparisons().await? {
+        comparisons
+            .push(crate::api::assemble_comparison(inner.db.as_ref(), &inner.store, stored).await?);
+    }
+
+    // The gg document corpus the public Discover surface evaluates in the browser.
+    // Decoupled from publication (a document carries configuration ids and outcome
+    // numbers, so gating it on publication would export almost nothing), filtered
+    // against the experimental catalog gate, and field-redacted — all three composed in
+    // `gg_docs::public_documents`, which is the only door the site's gg data comes
+    // through. **Replay records are never exported**; nothing here loads one.
+    let gg_documents = crate::gg_docs::public_documents(inner.db.as_ref(), &inner.store).await?;
+
+    // The ingested test-case-group set, read from the store slot the whole-catalog
+    // ingest reconciles and mapped to the same wire shape `GET /test-case-groups`
+    // serves — so the public home page and the consoles render one set.
+    let test_case_groups = inner
+        .store
+        .read_test_case_groups()?
+        .into_iter()
+        .map(crate::api::TestCaseGroupOut::from)
+        .collect();
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
@@ -341,6 +396,9 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_existing_media(existing_media)
         .with_existing_documents(existing_documents)
         .with_reviewer_pictures(reviewer_pictures)
+        .with_comparisons(comparisons)
+        .with_gg_documents(gg_documents)
+        .with_test_case_groups(test_case_groups)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

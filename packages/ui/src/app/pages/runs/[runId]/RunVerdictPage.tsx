@@ -1,4 +1,4 @@
-import { GradeBadge, Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, Markdown, Panel, RatingBadge } from "@clockwyrks/ui";
 import {
   RATING_META,
   formatPoints,
@@ -8,13 +8,14 @@ import {
   type ParsedWriteup,
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
-import { useReviewModel } from "../../../data/useTestCase";
+import { useReviewModel } from "../../../data/useRunVariant";
 import {
   describeRunState,
+  RUN_STATE_DOCS_URL,
   type RunStatePresentation,
 } from "../../../data/runState";
 import { LoadingState } from "../../../components/LoadingState";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
 import { useAuth } from "../../../../client/auth";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
@@ -26,33 +27,57 @@ import { AssetResultSection } from "./AssetResultSection";
 import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
+import { ValidatorVerdict } from "./ValidatorVerdict";
+import { ReviewItemBrowser } from "./ReviewItemBrowser";
 import styles from "./RunDetailPages.module.scss";
 
-// The note a failed run's default tab stands in place of its result: it produced
-// neither a reviewable implementation nor a scored one. Catastrophic and
+// The note a run without a result stands in place of one on its default tab: it
+// produced neither a reviewable implementation nor a scored one. Catastrophic and
 // timed-out runs are still publishable model signal, but from the dedicated
-// Publish failures list rather than here; infrastructure failures are kept for
-// inspection only. The failure reason is in the banner above this body, and the
-// Events tab carries whatever timeline was recorded.
+// Publish failures list rather than here; an infrastructure failure or a run an
+// operator canceled is kept for inspection only. The reason is in the banner above
+// this body, and the Events tab carries whatever timeline was recorded — which for
+// a canceled run is the point of retaining it at all.
 function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
+  // The never-publishable tiers differ in *why*, so name the actual state rather
+  // than assuming the reason is always an infrastructure failure.
+  const note = presentation.isPublishableFailure
+    ? "This run produced no result. It can be published as a failure from the Publish failures list."
+    : `This run produced no result, and a run in the ${presentation.label.toLowerCase()} state is never published.`;
   return (
     <Panel>
       <p className={styles.empty}>
-        {presentation.isPublishableFailure
-          ? "This run produced no result. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-          : "This run failed before producing a result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
+        {note} See the reason above, and the Events tab for what was recorded.
+      </p>
+      {/* What the tier itself means — publishability, what a publish releases,
+          whether it counts towards the model's statistics. It is deliberately not
+          folded into the banner's failure detail, which reports the error and
+          nothing about how the system treats it; a reader of the gallery still
+          needs the consequence, so it is stated here once per tier with the
+          contract behind it a link away. */}
+      <p className={styles.failureConsequence}>
+        {presentation.consequence}{" "}
+        <a
+          className={styles.docsLink}
+          href={RUN_STATE_DOCS_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Terminal states ↗
+        </a>
       </p>
     </Panel>
   );
 }
 
-// The run's default tab (`/runs/:runId`), which renders as one of two things.
+// The run's Verdict tab (`/runs/:runId/verdict`), which renders as one of two
+// things. It leads the tab strip — and is where the bare run URL redirects —
+// for a run with no playable build; a playable run lands on its Play tab
+// instead, with the verdict one tab over.
 //
 // For a human-reviewed run it is the **Verdict** tab: the hand-written,
 // post-implementation review — its overall rating and score, the per-domain
-// ratings, the reviewer's writeup, and the per-item checklist breakdown. This is
-// the default tab so a visitor reads the verdict before launching the (possibly
-// broken) build on the Play tab.
+// ratings, the reviewer's writeup, and the per-item checklist breakdown.
 //
 // For a performance run it is the **Results** tab: that type is graded
 // automatically (correctness gates, then the fuel a correct engine burned), so it
@@ -70,7 +95,7 @@ export function RunVerdictPage() {
   const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review, reviews, published }) => {
+      {({ run, review, reviews, published, validatorRated }) => {
         const presentation = describeRunState(run.status.state);
 
         // A performance run is scored automatically, so nothing below this branch
@@ -159,6 +184,7 @@ export function RunVerdictPage() {
                   run={run}
                   reviews={reviews}
                   published={published}
+                  validatorRated={validatorRated}
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
@@ -166,6 +192,7 @@ export function RunVerdictPage() {
                   run={run}
                   review={review}
                   reviews={reviews}
+                  validatorRated={validatorRated}
                 />
               )
             }
@@ -183,10 +210,15 @@ function ReadOnlyVerdictPanel({
   run,
   review,
   reviews,
+  validatorRated,
 }: {
   run: RunRecord;
   review: ParsedWriteup | undefined;
   reviews: StoredReview[];
+  /** Whether the run is validator-rated (the store's word): its verdict is read
+   * off the record with reviewer overrides folded in; reviews also contribute
+   * the run-wide aesthetic channel. */
+  validatorRated: boolean;
 }) {
   const model = useReviewModel(run.subject);
   // The scoring model arrives with the case fetch, so wait for it rather than
@@ -197,7 +229,26 @@ function ReadOnlyVerdictPanel({
   }
   return (
     <Panel>
-      {review ? (
+      {validatorRated ? (
+        // A validator-rated run has a verdict the moment it completes — the
+        // validators' — whether or not anyone has reviewed it. The reviews add
+        // the aesthetic channel, any verdict overrides (folded into the rating
+        // and score shown), and their prose.
+        <>
+          <ValidatorVerdict run={run} model={model} reviews={reviews} />
+          {/* The per-item browser under the verdict header: the single per-item
+              surface — every checked point walked one at a time with the
+              reference-vs-run media, assertions, failure caps, and backing
+              script behind its (effective) verdict. Read-only, so it renders
+              for every visitor — the public gallery included. */}
+          <ReviewItemBrowser run={run} items={model.items} reviews={reviews} />
+          {review?.body && (
+            <Markdown breaks className={styles.writeupBody}>
+              {review.body}
+            </Markdown>
+          )}
+        </>
+      ) : review ? (
         <PublishedVerdict review={review} model={model} />
       ) : (
         <p className={styles.empty}>
@@ -213,7 +264,12 @@ function ReadOnlyVerdictPanel({
             {reviews.length} review
             {reviews.length === 1 ? "" : "s"}
           </h2>
-          <ReviewList reviews={reviews} items={model.items} runId={run.id} />
+          <ReviewList
+            reviews={reviews}
+            items={model.items}
+            runId={run.id}
+            validatorRated={validatorRated}
+          />
         </div>
       )}
     </Panel>
@@ -228,6 +284,9 @@ function ReadOnlyVerdictPanel({
 // `showOverall` (default) leads with the overall rating + tier description + score
 // headline; the single-review page omits it (`showOverall={false}`) because its
 // own top section already carries that reviewer's name, rating, and score.
+//
+// This is the LEGACY verdict — a review that carries the functional ratings and
+// the checklist. A validator-rated run renders {@link ValidatorVerdict} instead.
 export function PublishedVerdict({
   review,
   model,

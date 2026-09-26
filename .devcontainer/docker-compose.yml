@@ -1,10 +1,16 @@
 x-devcontainer-build-args: &devcontainer-build-args
-  USERNAME: ${DEVCONTAINER_USERNAME:-vscode}
+  USERNAME: ${DEVCONTAINER_USERNAME:-ttc}
   USER_UID: ${DEVCONTAINER_UID:-1000}
   USER_GID: ${DEVCONTAINER_GID:-1000}
   DOCKER_GID: ${DOCKER_GID:-999}
   LAZYGIT_VERSION: 0.61.1
   NODE_VERSION: 24.16.0
+  # Playwright, which installs Chromium and resolves the system libraries it
+  # needs (tools/browsers.sh and system/browser-deps.sh). Both scripts read the pin
+  # from this line when run by hand. Keep it equal to the `playwright` in
+  # packages/case-harness and packages/browser-driver: Playwright resolves a browser
+  # build per client version, so a mismatch bakes in a Chromium the tests never ask for.
+  PLAYWRIGHT_VERSION: 1.63.0
   NEXTEST_VERSION: 0.9.140
   RUST_VERSION: 1.97.1
   TZ: ${TZ:-UTC}
@@ -15,8 +21,21 @@ services:
     build:
       args:
         <<: *devcontainer-build-args
-      context: .
-      dockerfile: ./ubuntu.dockerfile
+      # The build context is the REPOSITORY ROOT, not this directory. The image
+      # bakes gg's eleven program-language toolchains, and those are pinned by the
+      # repository — each arm's packages/gg-sandbox-*/<lang>-version.sh, installed
+      # by scripts/ci/install-gg-toolchains.sh — so the build has to be able to read
+      # it. What keeps that from meaning "send the whole repository" is
+      # ubuntu.dockerfile.dockerignore, a per-dockerfile allowlist that narrows it to
+      # ~230 kB and applies to this build alone; its header explains why it exists
+      # rather than re-includes in the root .dockerignore. That narrowing is an
+      # optimisation, not the thing that makes the build work: which ignore file a
+      # builder reaches differs between BuildKit and Buildah, and a podman-compose
+      # rebuild read the ROOT .dockerignore instead — which is why that file
+      # re-includes the five .devcontainer/ paths the COPYs below read. Every COPY in
+      # the Dockerfile is therefore written relative to the repository root.
+      context: ..
+      dockerfile: ./.devcontainer/ubuntu.dockerfile
     # Keep the container alive after the build's entrypoint exits.
     command: sleep infinity
     init: true
@@ -42,17 +61,25 @@ services:
       - ..:/workspaces/the-test-cabinet:rw
       # Off-virtiofs cargo target dir (see CARGO_TARGET_DIR above).
       - cargo-target:/cargo-target
-      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
-      # the local service stack drives the HOST daemon. This is what lets `k3d`
-      # create its cluster (its node containers are siblings on that same daemon),
-      # and the deployments/local Makefile's `docker` calls reach a daemon at all:
-      # building/saving the service images, and inspecting this devcontainer to
-      # resolve the HOST path of the workspace it mounts into the k3d node (so the
-      # backend can ingest the catalog from a read-only /repo). Override the source
-      # for a non-default socket (e.g. rootless Podman at
-      # /run/user/1000/podman/podman.sock) with DOCKER_SOCKET in .env. Access is
-      # granted at container start by tools/docker-socket-access.sh.
-      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      # DOCKER-OUTSIDE-OF-DOCKER — the host runtime socket — IS NOT MOUNTED HERE.
+      # It is added by each host override (docker-compose.ubuntu.yml,
+      # .nixos.yml, .macos-docker.yml), because whether a host HAS such a socket to
+      # bind is a property of the host and not of this file.
+      #
+      # It used to live here, on the assumption that every host can bind one. macOS
+      # + Podman cannot, and it does not fail softly: a bind mount's source is
+      # resolved on the machine running the `podman` CLI — your Mac — and reaches
+      # the VM only because `podman machine` shares that directory, so the VM path
+      # where podman's socket actually lives (/run/podman/podman.sock) is not
+      # addressable from here at all. Podman refuses the whole `up` over it:
+      #
+      #   Error: statfs /private/var/run/user/501/podman/podman.sock:
+      #   no such file or directory
+      #
+      # Which is to say the container could not START because of a mount that only
+      # the optional local service stack ever uses. Hence the move: that row brings
+      # the same socket in through a named volume, whose path the runtime resolves
+      # on its own side. See .devcontainer/README.md.
 
 volumes:
   # Cargo build artifacts, kept off the host-mounted workspace; survives

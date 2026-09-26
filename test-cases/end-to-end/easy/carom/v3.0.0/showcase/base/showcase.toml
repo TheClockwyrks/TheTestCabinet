@@ -1,0 +1,7 @@
+[[media]]
+file = "gameplay.json.gz"
+name = "Match play against the AI, taken to two points"
+
+[[media]]
+file = "mid-match.png"
+name = "The field and HUD mid-match"

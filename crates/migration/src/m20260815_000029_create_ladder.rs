@@ -117,7 +117,8 @@ impl MigrationTrait for Migration {
                             .default(false),
                     )
                     // Nullable: `NULL` means "use the account's `coverage_settings`
-                    // default", which is a different statement from an explicit `0`.
+                    // default", which is a different statement from an explicit `0`
+                    // — or from a negative value, which the backend reads as "no bound".
                     .col(ColumnDef::new(Ladder::BufferTarget).integer())
                     // Nullable claim marker serializing top-up, exactly as on
                     // `coverage_plan`: holds the RFC 3339 claim time so a request

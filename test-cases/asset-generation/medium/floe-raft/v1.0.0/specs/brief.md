@@ -28,10 +28,10 @@ onto the dark water.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **2 frames, numbered 0–1**.
 
-| Frame | Length | Occupies |
-| --- | --- | --- |
-| 0 | **three tiles** | the **left 96×32** of the canvas (`x = 0–95`); the right tile (`x = 96–127`) is left fully transparent |
-| 1 | **four tiles** | the **full 128×32** canvas (`x = 0–127`) |
+| Frame | Length          | Occupies                                                                                               |
+| ----- | --------------- | ------------------------------------------------------------------------------------------------------ |
+| 0     | **three tiles** | the **left 96×32** of the canvas (`x = 0–95`); the right tile (`x = 96–127`) is left fully transparent |
+| 1     | **four tiles**  | the **full 128×32** canvas (`x = 0–127`)                                                               |
 
 ## The form (both frames)
 
@@ -64,11 +64,11 @@ single continuous raft, not several small pans lined up.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Snow top (upper surface) | `#eef6fa` |
-| Ice body (pale blue surface) | `#c3dee9` |
-| Ice edge | `#8fb6c9` |
+| Role                           | Hex       |
+| ------------------------------ | --------- |
+| Snow top (upper surface)       | `#eef6fa` |
+| Ice body (pale blue surface)   | `#c3dee9` |
+| Ice edge                       | `#8fb6c9` |
 | Waterline shadow (bottom edge) | `#4d7488` |
 
 ## Working the tool

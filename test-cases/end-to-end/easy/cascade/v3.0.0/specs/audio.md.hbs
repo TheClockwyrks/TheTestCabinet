@@ -1,0 +1,54 @@
+# Cascade — Audio
+
+This file defines the ten sounds the game plays and how they are silenced. The
+control that silences them is in `specs/screens.md`, and the events they answer
+are in `specs/deal.md`, `specs/stock.md`, `specs/tableau.md`,
+`specs/foundations.md`, `specs/controls.md`, and `specs/victory.md`.
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, synthesizing its sounds with
+the Web Audio API rather than loading audio files. Play exactly the ten cues
+below, under exactly these names, one per event.
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the {{engine.name}} engine's cue bus. Define and play exactly
+the ten cues in `CUES`, under exactly these names, one per event.
+{{else}}
+Audio plays through the {{engine.name}} engine's cue bus: define exactly the ten
+cues in `CUES` from the game instance's `initialize` and play them from the
+world's audio inside a tick, under exactly these names, one per event.
+{{/if}}
+
+## The cues
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `deal` | `CUES.deal` | A fresh game is dealt. |
+| `turn` | `CUES.turn` | A turn moves cards from the stock onto the waste. |
+| `recycle` | `CUES.recycle` | A turn of an empty stock recycles the waste. |
+| `lift` | `CUES.lift` | A press lifts a run into the hand. |
+| `drop` | `CUES.drop` | A drop is accepted by the pile it resolved to. |
+| `reject` | `CUES.reject` | A drop returns its run to the pile it was lifted from. |
+| `flip` | `CUES.flip` | A column's newly exposed card is turned face-up. |
+| `home` | `CUES.home` | A card is accepted onto a foundation, by any move. |
+| `launch` | `CUES.launch` | The cascade launches a card. |
+| `win` | `CUES.win` | The game is won. |
+
+Each is a distinct short sound, so the ten events are told apart by ear. Each is
+played on the frame its event happens and at most once on that frame; a frame
+that raises more than one of them plays each of those once. A drop accepted by a
+foundation raises both `drop` and `home`.
+
+## Muting
+
+{{#if (eq engine.slug "none")}}
+Muting is yours as well, and the HUD's `SOUND` control toggles it. While sound is
+muted every cue is silent and the game stays fully playable, and turning mute off
+makes the same cues audible again. Audio does not start until the player has
+interacted with the page, and a build whose audio cannot start still runs and
+still plays.
+{{else}}
+Muting belongs to the engine, along with the unlock that waits on the player's
+first interaction with the page. The HUD's `SOUND` control toggles the engine's
+mute bit. While sound is muted every cue is silent and the game stays fully
+playable, and turning mute off makes the same cues audible again.
+{{/if}}

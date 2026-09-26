@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   PerformanceCaseResult,
   PerformanceResult,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import { PerformanceResultBody } from "./PerformanceResultSection";
 import { PlaybackOverlay } from "./LatticePlaybackSection";
@@ -64,7 +64,7 @@ describe("PerformanceResultBody", () => {
     expect(screen.getByText("2,210,000")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /all 2 held-out scenarios reproduced the reference oracle/,
+        /All 2 held-out scenarios reproduced the reference oracle/,
       ),
     ).toBeInTheDocument();
   });
@@ -250,6 +250,7 @@ describe("PerformanceResultBody", () => {
       input: "smoke/belt-transport.json",
       scenarioUrl: "/runs/r/asset/scenario.json",
       fuel: 100,
+      graded: [{ tick: 20, checksum: "fnv1a64:0000000000000001" }],
     };
     render(
       <PerformanceResultBody
@@ -274,26 +275,62 @@ describe("PerformanceResultBody", () => {
 });
 
 describe("PlaybackOverlay", () => {
-  it("shows an unavailable message when the run published no engine module", () => {
-    const scenario: PerformanceScenarioView = {
-      caseIndex: 0,
-      input: "cases/small.json",
-      scenarioUrl: "/runs/r/asset/scenario.json",
-      fuel: 100,
-    };
+  it("names which half is missing when the run published no engine module", () => {
     // Playback steps the run's own module; there is no reference fallback, so a run
-    // that published none is simply not playable — no worker is spawned.
+    // that published none is simply not playable — no worker is spawned. The
+    // message reports which of the module and the scenario is absent, because that
+    // is the whole content of the failure; the chrome around it already says
+    // playback could not happen.
     render(
       <PlaybackOverlay
-        scenario={scenario}
+        scenarioUrl="/runs/r/asset/scenario.json"
         moduleUrl={null}
+        label="cases/small.json"
         onExit={() => {}}
       />,
     );
-    expect(
-      screen.getByText(/Playback is unavailable for this run/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no engine module recorded$/)).toBeInTheDocument();
     // The transport controls are disabled: nothing loaded to play.
     expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+  });
+
+  it("offers zoom controls and follows the fitted scale by default", () => {
+    // The medium (48x32) and large (72x40) factories are several times a viewport at
+    // any legible scale, so the player opens fitted to the window rather than at a
+    // fixed magnification a viewer would have to scroll around. The ladder is how
+    // they get closer again; `zoom.test.ts` covers what each control computes.
+    render(
+      <PlaybackOverlay
+        scenarioUrl={null}
+        moduleUrl={null}
+        label="Large — 72×40"
+        onExit={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Fit" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Zoom out" }),
+    ).toBeInTheDocument();
+    // Nothing loaded, so there is no board to scale: the controls are inert rather
+    // than reporting a zoom over an empty stage.
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+  });
+
+  it("names the factory being played, so a launched scenario is identifiable", () => {
+    // The player covers the viewport: without the label a viewer who launched one of
+    // several scenarios has nothing on screen saying which one this is.
+    render(
+      <PlaybackOverlay
+        scenarioUrl={null}
+        moduleUrl={null}
+        label="Large — 72×40"
+        onExit={() => {}}
+      />,
+    );
+    expect(screen.getByText("Large — 72×40")).toBeInTheDocument();
   });
 });

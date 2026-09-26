@@ -2,67 +2,62 @@
 title: Roll Production Service Images
 ---
 
-Promote the latest CI-built **service** images
-([backend](/components/backend/overview/),
+## Overview
+
+Roll the production cluster to a new commit by merging it to `master`. The Azure
+pipeline gates the commit, builds every image at its sha into
+`testcabinet.azurecr.io`, and rolls `tcab-prod` to them: the
+[backend](/components/backend/overview/), auth,
 [dispatcher](/components/dispatcher/overview/),
 [driver](/components/driver/overview/),
 [artifacts](/components/artifacts/overview/), [arena](/components/arena/overview/),
-auth, publisher, [web console](/components/web/overview/)) to the production
-cluster by re-pinning the prod overlay to a newer git-sha and applying it.
+publisher, and [web console](/components/web/overview/) images, plus the
+run-container images through `TCAB_CONTAINER_TAG`.
 
-For the full walkthrough and the *why* — including the private-cluster mechanics
-and the run-container images' separate cadence — see [Rolling Production Service
-Images](/guides/devops/rolling-prod-service-images/). The image pinning model lives in
-[Kubernetes](/deployment/kubernetes/#prerequisites).
+The full walkthrough is
+[Rolling Production Service Images](/guides/devops/rolling-prod-service-images/),
+and the deploy itself is described in
+[Kubernetes](/deployment/kubernetes/overview/#deploying).
 
 ## Prerequisites
 
-- `gh` authenticated against `TheClockwyrks/TheTestCabinet`.
-- `az` logged in to the cluster's subscription. Prod
-  (`testcabinet-prod-westus2-aks`, RG `testcabinet-prod-westus2-rg`, namespace
-  `tcab-prod`) is a **private** AKS cluster, so drive it with `az aks command
-  invoke` (runs `kubectl` from inside the cluster — no VPN, no `kubelogin`).
+- The commit has been rehearsed on `staging`, which the pipeline rolls the same
+  way from the `staging` branch.
+- For verifying or rolling back by hand: `az` signed in as an identity holding the
+  [deploy roles](/deployment/kubernetes/overview/#the-deploy-identity) on
+  `testcabinet-prod-westus2-aks`, plus `kubectl` and `jq`. The API server is
+  private, so commands reach it through `az aks command invoke`.
 
 ## Steps
 
 ```sh
-# 1. The newest successfully-built sha (usually the tip of master).
-gh run list --workflow=build-service-images.yml --branch master --limit 10 \
-  --json headSha,status,conclusion,displayTitle,createdAt
+# 1. Merge to master (for a release, the vX.Y.Z PR from staging). The pipeline
+#    runs gates -> images -> deploy on the merge commit; watch its deploy_prod job.
 
-# 2. Re-pin all THREE files (the images: block + the two env-value image refs).
-#    Leave TCAB_CONTAINER_TAG (run-container images) untouched — it changes what
-#    every future RUN executes in, so it moves with a rehearsed release, not a roll.
-OLD=<current-sha>; NEW=<full-target-sha>
-sed -i "s/$OLD/$NEW/g" \
-  deployments/k8s/overlays/azure-prod/kustomization.yaml \
-  deployments/k8s/overlays/azure-prod/patch-dispatcher-driver-image.yaml \
-  deployments/k8s/overlays/azure-prod/patch-dispatcher-publisher.yaml
-git diff   # expect ONLY image tags + TCAB_DRIVER_IMAGE/TCAB_PUBLISHER_IMAGE to change
-
-# 3. Preview, then apply — run from deployments/k8s so --file . uploads base/ too.
-cd deployments/k8s
-INV="az aks command invoke -g testcabinet-prod-westus2-rg -n testcabinet-prod-westus2-aks --file ."
-$INV --command "kubectl diff  -k overlays/azure-prod"   # diff exits 1 when there ARE changes — expected
-$INV --command "kubectl apply -k overlays/azure-prod"   # only the 6 image-bearing workloads -> configured
-
-# 4. Confirm the rollout landed on the new sha.
-$INV --command "kubectl -n tcab-prod rollout status deploy/tcab-backend --timeout=180s; \
-                kubectl -n tcab-prod get deploy,statefulset \
-                  -o jsonpath='{range .items[*]}{.metadata.name}{\"\t\"}{.spec.template.spec.containers[*].image}{\"\n\"}{end}'"
+# 2. Confirm the rollout landed on the new sha.
+az aks command invoke -g testcabinet-prod-westus2-rg -n testcabinet-prod-westus2-aks \
+  --command "kubectl -n tcab-prod get deploy,statefulset -o wide"
 ```
 
-Then commit the overlay — it's the record of what's deployed:
+A rollout that does not become ready within 600 seconds is undone by the
+pipeline and fails `deploy_prod`, leaving that workload on its previous image.
+
+## Rolling back
+
+Put an earlier commit's images back by running the deploy by hand with its sha:
 
 ```sh
-git add deployments/k8s/overlays/azure-prod/ && git commit -m "chore(deploy): roll prod service images to <short-sha>"
+az login
+scripts/ci/deploy.sh --render prod <earlier-sha>   # preview, no cluster needed
+scripts/ci/deploy.sh prod <earlier-sha>
 ```
+
+Or revert the change on `master` and let the pipeline deploy the revert. A roll
+by hand lasts until the next merge to `master` deploys over it.
 
 ## Next steps
 
-- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/) — the
-  full guide, with previewing, verification, rollback, and the run-container
-  caveat.
-- [Kubernetes](/deployment/kubernetes/) — the deployment topology and the pinning
-  model these commands act on.
-</content>
+- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
+  is the full guide, covering verification, rollback, and the catalog re-ingest.
+- [Kubernetes](/deployment/kubernetes/overview/) describes the deployment
+  topology and the cluster bootstrap.

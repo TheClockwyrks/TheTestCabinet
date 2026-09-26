@@ -1,7 +1,7 @@
 # Thunderhead Broadside — audio brief
 
 You are authoring the **main-gun broadside**, the heavy report a player's
-**capital ship** fires in *Thunderhead*, a naval fleet-command game. When a
+**capital ship** fires in _Thunderhead_, a naval fleet-command game. When a
 battleship's main battery salvos a target, this is the sound: a huge, layered
 naval-gun report that lands with weight and rolls out into settling debris. You
 are authoring a single **stereo** clip built by layering samples from the
@@ -24,7 +24,7 @@ It should read, blind, as a **capital-ship main gun firing** — a battleship's
   hitting you — followed immediately by an enormous low-end **boom** that you feel
   more than hear.
 - **Metallic.** Under the blast, the ring of a vast steel barrel and turret — a
-  resonant, hollow metal character that says *heavy gun*, not *TNT*.
+  resonant, hollow metal character that says _heavy gun_, not _TNT_.
 - **Rolling out.** The report doesn't stop dead; it decays into a **rubble/debris
   tail** — masonry, grit, and shell fragments scattering and settling as the
   low-end rumble fades.
@@ -50,11 +50,11 @@ The stages overlap — this is one continuous report, not four separate hits.
 
 ## The layers — composite from `combat-core`
 
-You mix over the baked **`combat-core`** sample pack. Browse it first with
-`sfx-sample list-samples` and `sfx-sample sample-info --name <name>` (you cannot
-audition audio, so reason from each clip's tags, duration, and description), then
-layer several clips into the effect. Useful ingredients in the pack for a
-broadside include:
+You mix over the **`combat-core`** sample pack. Browse it first with
+`sfx-sample list-samples` and `sfx-sample sample-info --name <name>` (you
+cannot audition audio, so reason from each clip's tags, duration, and
+description), then layer several clips into the effect. Useful ingredients in
+the pack for a broadside include:
 
 - **The gun body** — `cannon_body_heavy` (a heavy black-powder cannon report, a
   broadband blast with a strong low-mid body) as the core of the blast.

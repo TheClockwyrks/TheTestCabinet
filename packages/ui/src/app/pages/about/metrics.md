@@ -6,7 +6,7 @@ using a model and how quickly it can complete tasks. A model that's 2x cheaper
 and 4x faster than another model isn't cheaper or faster in practice if it
 consumes 10x as many tokens to complete the same task.
 
-Since many of our models are tested through OpenRouter, we intentionally *don't*
+Since many of our models are tested through OpenRouter, we intentionally _don't_
 use runtime as a primary metric. Test runs do record their runtime for anyone
 curious, but runtime isn't a fair metric to go off of since it's heavily
 provider dependent. For open weight models served by multiple providers

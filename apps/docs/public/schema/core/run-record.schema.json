@@ -539,19 +539,93 @@
       "type": "object"
     },
     "CostMetrics": {
-      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token prices could not be resolved (the model is\nabsent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).\nThis is distinct from `Some(0.0)`, a genuinely free run. Keeping the two\napart avoids presenting an unknown cost as `$0.00`.",
+      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token list prices could not be resolved (the model's\ncatalog entry curates none). This is distinct from `Some(0.0)`, a genuinely\nfree run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.",
       "properties": {
         "actual": {
-          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.\n`None` when the cost is unknown.",
+          "description": "The amount the run was actually billed, recorded for reference: the\nharness's own accounting where it reports one, otherwise the comparable\nfigure. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead. `None` when the cost is unknown.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\ncomputed from the run's token classes and the model's curated list\nprice, and from nothing else: a billed figure never feeds it, so two\nruns of one model at different billed rates still compare on the same\nbasis. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         }
       },
+      "type": "object"
+    },
+    "CoverageFile": {
+      "description": "One measured source file's coverage.",
+      "properties": {
+        "branches": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Branch arms: each side of an `if`, a ternary, a logical operator, a default\nparameter and a `switch` case."
+        },
+        "functions": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Function declarations, including methods and arrow functions."
+        },
+        "lines": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Executable lines."
+        },
+        "path": {
+          "description": "The file's path relative to the implementation's repository root, forward\nslashed. Istanbul keys its report by ABSOLUTE host path; storing that would\nleak the host's filesystem layout into a published record and would not join\nto the static analysis, whose `CodeFileEntry.path` is repo-relative. The\nrelativisation happens once, when the report is read.",
+          "type": "string"
+        },
+        "statements": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Statements, which a single line may hold several of."
+        }
+      },
+      "required": ["path", "lines", "statements", "functions", "branches"],
+      "type": "object"
+    },
+    "CoverageMetric": {
+      "description": "One istanbul coverage metric: how many of a thing there are and how many the tests\nreached.\n\n[`covered`](Self::covered) and [`total`](Self::total) are the authority and\n[`pct`](Self::pct) is what istanbul itself printed, carried so a stored figure and\nthe report it came from cannot disagree by a rounding rule. `pct` is an `Option`\nbecause istanbul does not always emit a number: a metric with a zero total is\nreported as the STRING `\"Unknown\"`, which is an absence, not a zero. A consumer\nthat wants a percentage for a metric whose `pct` is `None` derives it from\n`covered`/`total`, or renders nothing when `total` is zero.",
+      "properties": {
+        "covered": {
+          "description": "How many of this thing the tests reached.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pct": {
+          "description": "The percentage istanbul reported, when it reported one.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "total": {
+          "description": "How many of this thing there are in the measured source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["covered", "total"],
+      "type": "object"
+    },
+    "CoverageMetrics": {
+      "description": "The four istanbul metrics, for one file or for the whole measured source.\n\nAll four are carried rather than one headline percentage, because branch and\nfunction coverage answer questions line coverage cannot: a suite that calls every\nfunction once and takes no `else` reads as well-covered on lines alone. Istanbul's\n`branchesTrue` extra is deliberately not carried — it is a diagnostic of\nistanbul's own branch bookkeeping, not a figure about the code.",
+      "properties": {
+        "branches": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Branch arms: each side of an `if`, a ternary, a logical operator, a default\nparameter and a `switch` case."
+        },
+        "functions": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Function declarations, including methods and arrow functions."
+        },
+        "lines": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Executable lines."
+        },
+        "statements": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Statements, which a single line may hold several of."
+        }
+      },
+      "required": ["lines", "statements", "functions", "branches"],
       "type": "object"
     },
     "DebugScriptOutput": {
@@ -578,7 +652,7 @@
       "type": "object"
     },
     "DebugScriptResult": {
-      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A script the host could not run *at all* (no browser) is\nnot recorded here — that degrades like a [check](CheckResult).",
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A check that decided nothing about the build is held apart\nby [`precondition_unmet`](Self::precondition_unmet), which\n[`inconclusive`](Self::inconclusive) then qualifies.",
       "properties": {
         "categoryTitle": {
           "default": "",
@@ -595,6 +669,18 @@
           "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but it\nis not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a\nresult recorded before the field existed still counts.",
           "type": "boolean"
         },
+        "inconclusive": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Inconclusive"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which inconclusive outcome this is, set exactly when\n[`precondition_unmet`](Self::precondition_unmet) is. `None` on a result\nrecorded before the outcomes were told apart."
+        },
         "itemId": {
           "description": "The id of the [review item](crate::test_case::ReviewItem) this script backs.",
           "type": "string"
@@ -609,7 +695,7 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure: no failed\nverdict is synthesized for it and the point is left for the reviewer to decide\nby hand. Only ever `true` alongside `ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. Which inconclusive outcome it\nwas is carried by [`inconclusive`](Self::inconclusive), and the\n[`detail`](Self::detail) names the reason in prose. Only ever `true` alongside\n`ran == false`.",
           "type": "boolean"
         },
         "ran": {
@@ -656,8 +742,278 @@
         }
       ]
     },
+    "GgErrorSummary": {
+      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn, the same judgement the\n[error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of\nits turns and finished anyway would be, in the durable record, indistinguishable from one that\nnever failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
+      "properties": {
+        "byType": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold: it sums to [`errors`](Self::errors), and regrouping it by\n[`GgTurnErrorType::kind`] reproduces the five named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and only for one: it sums to\n[`errors`](Self::errors), so an empty map and a zero there are the same statement.",
+          "type": "object"
+        },
+        "errors": {
+          "description": "Turns whose outcome was an [error](GgTurnOutcome::Error). At most [`turns`](Self::turns), and\nexactly the sum of the per-kind counters below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAbortChars": {
+          "description": "Characters of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts\n— the companion of [`loop_abort_words`](Self::loop_abort_words), and the finer of the two\nmeasures, since a reply's final partial word is never counted as a word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAbortWords": {
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price here: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill. Its price is read back at session end from\nOpenRouter's generation endpoint into the run's [total](GgSessionSummary::cost) and never\nits [work](GgSessionSummary::work_cost), since the reply produced no program and no tool\ncall. A reply the lookup could not price is counted in\n[`GgSessionSummary::loop_abort_unpriced`].",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAborts": {
+          "description": "Responses discarded mid-stream by [loop detection](GgLoopDetection). **Not** an error turn —\na discarded attempt is retried, and the turn is judged on what the retry produced — and\ncounted here because it is money and wall-clock spent on nothing, which is the cost the\ncapability exists to bound and the figure that says whether arming it was worth it.\n\nAlways `0` for a run whose agents all left loop detection disarmed, which is the default.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxConsecutive": {
+          "description": "The longest **consecutive-error run any single agent reached** — the peak of the same\ncounter [`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) is enforced on.\n\nA maximum over agents rather than a run-wide streak: the counter is per agent (turns from\ntwo agents interleave arbitrarily on a parallel run, so a run-wide streak would be an\nartefact of scheduling), which is why each `TurnOutcome` event carries its agent's running\ncount rather than leaving this to be re-derived here.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missingCompletion": {
+          "description": "Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelApi": {
+          "description": "Errors of kind [`model_api`](GgTurnErrorKind::ModelApi) — including a reply that\n[looped](GgLoopDetection) on every attempt.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "programFault": {
+          "description": "Errors of kind [`program_fault`](GgTurnErrorKind::ProgramFault).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sandboxLimit": {
+          "description": "Errors of kind [`sandbox_limit`](GgTurnErrorKind::SandboxLimit).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "toolFailures": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "**Calls** that failed, by [failure class](GgCallFailure) — a different population from\neverything above, which counts *turns*.\n\nFolded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it\ncounts every failed tool dispatch in either execution mode, whether or not the program that\nmade it caught the failure and carried on. Keyed by [`GgCallFailure::wire_id`], and open for\nthe reason [`by_type`](Self::by_type) is.\n\nIt counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that\nnever reached a tool is not here: a carve-out no tool backs, and a call the membrane refused\nbefore dispatch, have an [`ApiResult`](GgTelemetryKind::ApiResult) carrying their class and\nno `ToolResult` at all. Those are on the stream and a console folds them from there; they\nare deliberately not summed into this map, because a rollup whose population is \"some of one\nsurface plus some of another\" is a number nobody can check.",
+          "type": "object"
+        },
+        "transpile": {
+          "description": "Errors of kind [`transpile`](GgTurnErrorKind::Transpile).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "turns": {
+          "description": "Turns recorded across every agent, whatever their outcome — the denominator every rate here\nis read against, and one per model call the run made.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turns",
+        "errors",
+        "maxConsecutive",
+        "modelApi",
+        "transpile",
+        "programFault",
+        "sandboxLimit",
+        "missingCompletion",
+        "loopAborts",
+        "loopAbortWords",
+        "loopAbortChars"
+      ],
+      "type": "object"
+    },
+    "GgLoopDetection": {
+      "additionalProperties": false,
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\n**An armed detector writes all five knobs.** What the rule trips on is the whole set of them\ntogether — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector\narmed on figures nobody chose measures gg rather than the model, and an armed detector missing\nany of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one\nis still read and still judged as written, which is what keeps the armed and unarmed arms of one\ncomparison the same document with one switch moved. A knob **set** to a value that cannot bound\nanything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,\non the same terms as [`GgRunLimits`].\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the detector runs for this agent at all. `false`, which is what a profile that says\nnothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming\ntransport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "type": "boolean"
+        },
+        "maxResponseChars": {
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Written and required on the terms\n[`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the\nrepetition rule, which is a declaration rather than an omission.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minOffenders": {
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Written and required on the terms [`window_words`](Self::window_words) is.\n\nMore than one is worth asking for because a single very common token (`the`, `0,`, a brace)\nis ordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minSaturatedRun": {
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "repeatThreshold": {
+          "description": "`P` — how many times a single word may occur within the [window](Self::window_words) before\nit counts as an *offender*. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "windowWords": {
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive, and the minimum sample: the repetition rule cannot fire until\nthis many words have arrived.\n\nOne of the five knobs an **armed** detector writes. What the rule trips on is the five of\nthem together, so a detector armed on figures nobody chose would measure gg rather than the\nmodel, and an armed detector missing any of them refuses the launch. An unarmed detector owes\nnone of them, and a knob written on one is still read and still judged as written.\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgProviderStat": {
+      "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
+      "properties": {
+        "cacheMisses": {
+          "description": "Replies this provider served that were an unexpected cache miss, folded from the\n[`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a\nprovider that never missed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "calls": {
+          "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when any of them reported one."
+        },
+        "errors": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,\nstring-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same\nterms.",
+          "type": "object"
+        },
+        "modelId": {
+          "description": "The model this slice's agent was running on, as the agent's own\n[`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded\nbefore the agent's first usage delta named one.",
+          "type": ["string", "null"]
+        },
+        "provider": {
+          "description": "OpenRouter's name for the upstream provider that served this slice's calls. `None` for the\nslice of calls that named none — a gateway that stamps no provider, or a turn whose call\nproduced no reply to name one (a model timeout).",
+          "type": ["string", "null"]
+        },
+        "rejected": {
+          "description": "Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this\nslice's provider served. `0`, and omitted, for the ordinary slice with none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stalls": {
+          "description": "Requests sent to this provider whose stream went\n[`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from\nthe [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider\nthat never stalled.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "#/$defs/TokenMetrics",
+          "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
+        },
+        "turns": {
+          "description": "Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on\nthe provider its own call named, or on the providerless slice when it named none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "working": {
+          "description": "The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or\n[finished](GgTurnOutcome::Finished) outcome.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["calls", "tokens", "turns", "working"],
+      "type": "object"
+    },
+    "GgRejectedResponses": {
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
+        },
+        "count": {
+          "description": "How many replies were rejected.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "#/$defs/TokenMetrics",
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
+        }
+      },
+      "required": ["count", "tokens"],
+      "type": "object"
+    },
+    "GgUndocumentedCalls": {
+      "description": "**Calls a model wrote without having read what they do** — the measurement of whether a model\nfollows the one discipline [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) discovery is built\non.\n\ngg's prompt names the modules an agent holds and no function inside any of them, so a model\ncannot know a call's signature until it has searched the documentation and opened a\n[documentation view](GgContextSource::DocsView) of the name. A view a program opens arrives in\nthe window on the turn *after* the program that opened it, which is why the prompt states the\ndiscipline as *open a documentation view of each function you intend to call, and write the call\non a later turn*. This counts the calls that broke it: the operation was called while no\ndocumentation view of it stood in the window from an earlier turn.\n\n# It is a measurement and never a gate\n\nNothing is refused, nothing is retried and no [turn outcome](GgTurnOutcome) changes: the program\ncompiled, ran and did its work, so no [error ceiling](GgRunLimits) observes any of this and none\nof it reaches the [error rollup](GgErrorSummary). What it is evidence about is the **model**. A\nmodel that repeatedly calls functions it never looked up is writing signatures from memory, and\na run where that number is large is a run whose model should not be given this surface — which\nis a conclusion nobody could reach from a record that only showed the calls that happened to\ncompile.\n\nIt is a **lower bound**, and deliberately so. A guessed signature that did not compile never\nreaches a call site, so it is counted nowhere here; what is counted is the guess that happened to\nbe right about the shape while still being a guess.\n\n# Why the operations are carried and not only the count\n\nA bare count says a model guessed and not at what. Forty calls of `files.read_file` is a model\nthat never opened the one page it needed; forty different operations once each is a model\nignoring the mechanism outright. Those are different findings with different remedies, and only\nthe breakdown tells them apart.",
+      "properties": {
+        "calls": {
+          "description": "How many such calls were made. Exactly the sum of [`operations`](Self::operations)'s values.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operations": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The same calls broken down by **which** operation was called, keyed by gg's own rendered\n[operation id](GgTelemetryKind::ApiCall) (`files.read_file`) rather than by any arm's\nspelling — so eleven language arms' findings are counted under one key.\n\nOpen (a string key) for the reason [`GgErrorSummary::by_type`] is: an operation added to gg's\nvocabulary joins the breakdown without a schema change, and a reader that has never heard of\none degrades to an unlabelled row rather than failing to read the record at all.\n\nEmpty — and omitted from the wire — exactly when [`calls`](Self::calls) is `0`.",
+          "type": "object"
+        }
+      },
+      "required": ["calls"],
+      "type": "object"
+    },
     "HarnessSlug": {
-      "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (all eight happen to be single-word lowercase tokens).",
+      "description": "A stable slug identifying an agent harness — a run's subject.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (every slug happens to be a single-word lowercase token).\n\nThe first eight are the **third-party CLI harnesses** The Test Cabinet\nintegrates: each ships a `harnesses/<slug>/harness.toml` manifest, installs a\nCLI into the run container, and is shelled out to. [`Gg`](HarnessSlug::Gg) is\ndifferent in kind — the Test Cabinet's own first-party executor, invoked\ndirectly rather than through a manifest/CLI — so it is **deliberately not** a\nmember of [`ALL`](HarnessSlug::ALL) (the CLI-harness catalog) and is handled on\nits own path everywhere ALL is enumerated. It is still a first-class run\nsubject: a gg run yields a scoreable [`RunRecord`] carrying `harness_slug: gg`.",
       "oneOf": [
         {
           "const": "claude",
@@ -697,6 +1053,31 @@
         {
           "const": "pi",
           "description": "Pi (`pi`).",
+          "type": "string"
+        },
+        {
+          "const": "gg",
+          "description": "gg (`gg`) — The Test Cabinet's own first-party coding harness (backronym\nGameGen). Unlike the eight above it is not a third-party CLI: it is a\nstandalone binary that runs *inside* the run container carrying the LLM\nclient, agent turn loop, tool dispatch, and telemetry emitter, and core\ninvokes it directly (no orchestrator, no `tcab-session` wrapper, no\nmanifest). For Phase 0 it reaches its model **through OpenRouter**\n(`OPENROUTER_API_KEY`), so it belongs to [`HarnessFamily::Openrouter`].\nBecause it is a distinct run mode rather than a ninth catalog entry, it is\nexcluded from [`ALL`](HarnessSlug::ALL); use [`from_wire`](HarnessSlug::from_wire)\nwhen a wire slug must resolve to any variant, gg included.",
+          "type": "string"
+        }
+      ]
+    },
+    "Inconclusive": {
+      "description": "Why a validator's negative answer decided nothing about the build.\n\nEach of these leaves the point unanswered, and they are held apart so a reviewer\nreads the real reason rather than one that sounds like a fact about the build.",
+      "oneOf": [
+        {
+          "const": "preconditionUnmet",
+          "description": "The check ran and declined to decide: it could not pose its scenario in the\nworld this build invented, though every call it made was answered correctly. A\n[vitest validator](crate::vitest_validator) says this by skipping every check\nin its suite.",
+          "type": "string"
+        },
+        {
+          "const": "notRun",
+          "description": "The check could not be executed. A validator project the run's engine has none\nof, a tree with no vitest to run one, a suite the project does not contain, or\na report that would not parse are facts about the case or the produced tree.",
+          "type": "string"
+        },
+        {
+          "const": "timedOut",
+          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing.",
           "type": "string"
         }
       ]
@@ -930,7 +1311,7 @@
       "type": "object"
     },
     "MediaKind": {
-      "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>` or a `<video>`.",
+      "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>`, a `<video>`, or a\nplayer that redraws a recording.",
       "oneOf": [
         {
           "const": "image",
@@ -941,11 +1322,16 @@
           "const": "video",
           "description": "A video clip (`webm`, `mp4`). A run captures its clip as the `.webm`\nPlaywright records natively; the public snapshot transcodes it to `.mp4`\nfor universal (incl. iOS/Safari) playback.",
           "type": "string"
+        },
+        {
+          "const": "replay",
+          "description": "A draw-command recording (`json.gz`): the list of operations a build issued\nagainst its 2D context, frame by frame, which a player re-issues against a\ncanvas of its own to reproduce the picture the build drew.\n\nIt is evidence of a different quality from a clip. A clip is a re-shoot of\nthe build at whatever rate the recorder managed; a recording *is* the build's\nown drawing, so it replays at any size, seeks to any frame without replaying\nthe frames before it, and can be scrubbed in step beside the same recording\ntaken from the reference implementation.\n\nIt is stored gzipped, and the redundancy that makes that so effective is the\nsame property that makes a frame independently drawable: each frame restates\nthe drawing state it inherited and issues very nearly the operations its\nneighbours did. The document a player reads is the JSON inside; the\ncompression is how it travels.\n\nUnlike the other two kinds it needs no transcode — the captured `.json.gz` is\nwhat the live console serves and what the public snapshot publishes.",
+          "type": "string"
         }
       ]
     },
     "ModelSpec": {
-      "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required** contract\n(the scoring targets and the stable, game-facing joint interface); at run time\nthe model may add further parts and joints of its own, which are recorded in\nthe produced `rig.json` but are not required here. Carried into the run record\n(see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know\nthe joint interface without a separate catalog lookup.",
+      "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required**\ninterface, the parts and joints a consuming game may rely on by name; a\nproduced rig may carry further parts and joints of its own, which `rig.json`\nrecords and nothing here requires.",
       "properties": {
         "animations": {
           "description": "The model's **animations** — one unified type across the pipeline. On the\n*required* contract each is a declaration (its `joints` set, `tracks` empty),\nseeded into `rig.json` from t=0; on the *produced* rig each additionally\ncarries the model-authored F-curve `tracks`. Empty when the case declares\nnone.",
@@ -1118,7 +1504,7 @@
         },
         "snapshots": {
           "default": [],
-          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach scheduled snapshot tick can compare the module's checksum against the one\nrecorded here — a cheap assertion that the wasm it is animating is the engine\nthe run graded, not a stand-in.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach graded tick inside the played window it compares the module's checksum\nagainst the one recorded here, warning when they differ — a cheap assertion\nthat the wasm it is animating is the engine the run graded, not a stand-in.\n\nThe checksums are worth comparing against because the grader *derived* them\nfrom state rather than accepting them as reported: the host re-serializes each\nreturned snapshot to canonical bytes and rejects a checksum that is not its\nown state's. A run recorded before that gate existed carries checksums that\nwere taken on trust.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
           "items": {
             "$ref": "#/$defs/PerformanceSnapshotCheck"
           },
@@ -1242,7 +1628,7 @@
           "description": "Which authentication mode the run used. This is how the run's cost should\nbe read: an API-key run is billed against that key, while a subscription\nrun carries no per-run provider charge (a harness that still reports an\nexact charge — Claude Code does even on a subscription — is recorded\nas-is; one that reports none falls back to OpenRouter comparable pricing)."
         },
         "containerImage": {
-          "description": "The run-container image the run executed in: the single shared base image,\nthe same for every harness. The full, pullable reference pulled by digest\nfrom the registry (for example,\n`ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build\nfallback tag for an offline run.",
+          "description": "The run-container image the run executed in: the single shared base image,\nthe same for every harness. The full, pullable reference pulled by digest\nfrom the registry (for example,\n`testcabinet.azurecr.io/test-cabinet-base@sha256:…`), or the local-build\nfallback tag for an offline run.",
           "type": "string"
         },
         "nodeVersion": {
@@ -1279,20 +1665,58 @@
           "description": "Cost, recorded as comparable and actual."
         },
         "runTimeSeconds": {
-          "description": "End-to-end wall-clock time of the run, in seconds.",
+          "description": "End-to-end wall-clock time of the whole run, in seconds, excluding any\ntime the run's container spent queued for cluster capacity before it\nstarted.\n\nThis is what the run cost in machine time. It is the sum of\n[`Self::setup_seconds`], [`Self::session_seconds`] and\n[`Self::teardown_seconds`], and a question about the model is answered by\nthe session alone: setup is shared by every run of a test case and\ndominates this figure whenever the session is short.",
           "format": "double",
           "type": "number"
+        },
+        "sessionSeconds": {
+          "description": "Wall-clock time of the harness session alone, in seconds — the model's own\nworking time, and the figure that describes a model.\n\n`None` on a record written before the stage durations were measured, which\nis distinct from `Some(0.0)`.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "setupSeconds": {
+          "description": "Wall-clock time from the start of the run until the harness session began,\nin seconds: rendering the case's references, seeding the workspace,\nstarting the container, probing its environment, installing the harness,\nand running the test case's `init` step.\n\nThe queueing wait excluded from [`Self::run_time_seconds`] is subtracted\nhere, the stage that contains it. `None` on a record written before the\nstage durations were measured.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "teardownSeconds": {
+          "description": "Wall-clock time spent collecting the produced tree and stopping the\ncontainer, in seconds.\n\nTaken as the remainder of [`Self::run_time_seconds`], so the three stages\nsum to it exactly. `None` on a record written before the stage durations\nwere measured.",
+          "format": "double",
+          "type": ["number", "null"]
         },
         "tokens": {
           "$ref": "#/$defs/TokenMetrics",
           "description": "Normalized token usage."
+        },
+        "validationSeconds": {
+          "description": "Wall-clock time of the [validation](crate::validation) pass, in seconds.\n\nRecorded outside [`Self::run_time_seconds`], which is frozen before\nvalidation and before every [post-run stage](crate::post_run) runs. `None`\non a canceled run, which skips validation, and on a record written before\nthe stage durations were measured.",
+          "format": "double",
+          "type": ["number", "null"]
         }
       },
       "required": ["runTimeSeconds", "tokens", "cost"],
       "type": "object"
     },
+    "RunShowcase": {
+      "description": "A run's showcase: the model's own presentation of the game it built, captured\nonto the record from the produced tree's `showcase/` directory (see\n`docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is\n`showcase/showcase.toml`'s `[[media]]` tables, in their declared order.\n\nThe media *bytes* do not ride the record — they are uploaded from the produced\ntree and served per run at `/runs/<id>/showcase/<file>` alongside the run's\nproof, asset, and validation media; this block carries only the description\ntext and the carousel's file names, captions, and kinds.",
+      "properties": {
+        "description": {
+          "description": "The player-facing markdown description, in the style of a store page. It may\nreference images beside it in `showcase/` by bare relative path\n(`![Title](title.png)`), which a renderer resolves against the run's served\nshowcase files. Capped at capture; a longer description is truncated on a\nchar boundary with a trailing marker.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in the order the model declared it — carousel order is\npresentation order. Capped at capture; entries whose files were missing or\noversized were dropped there, so every entry named here was present and\nwithin bounds when the record was assembled.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMedia"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded) and, when the output's dependency install never\nsucceeded, [`Infrastructure`](RunState::Infrastructure);\na harness that stopped itself on one of its own configured ceilings is\n[`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any\nother way is a [`HarnessError`](RunState::HarnessError), and one that stops\nresponding altogether is [`Hung`](RunState::Hung); a run stopped before the\nharness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),\n[`Canceled`](RunState::Canceled) (an operator killed it), or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1301,7 +1725,7 @@
         },
         {
           "const": "catastrophic",
-          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads is reviewable however badly it behaves: a missing or\nnon-conformant debug API fails the individual checklist points its validation\nscripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact: a tree with no\n`package.json`, or one whose build or load failed after its dependency\ninstall succeeded. A tree whose [dependency install](crate::install) did not\nsucceed is not this — its output was never given a chance to build, so it is\n[`Infrastructure`](RunState::Infrastructure). An output that builds and loads\nis reviewable however badly it behaves: a missing or non-conformant debug API\nfails the individual checklist points its validation scripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
           "type": "string"
         },
         {
@@ -1315,13 +1739,23 @@
           "type": "string"
         },
         {
+          "const": "limit_exceeded",
+          "description": "The agent harness stopped the run on one of its own **execution ceilings** —\na turn count, a wall-clock budget, a spend, or a tolerance for failing turns\n— and exited on the code that says so.\n\nThe ceilings are safeguards the run's own capability set arms, and they are\nnot expected to be reached: a run that reaches one spent its whole allowance\nwithout finishing. That is the model's outcome and real signal about it, so\nthis is publishable **without** a review as a per-model statistic, exactly as\na [`HarnessError`](RunState::HarnessError) is, and it releases no source repo\nand no playable build — the harness stopped mid-task, so whatever is in the\ntree is work nobody said was finished.\n\nIt is a distinct state because it is the one harness stop that must **not**\nbe retried. Every other retryable failure can come out differently on a\nsecond attempt; a breached ceiling is a property of the configuration, so a\nretry spends another run reaching the same bound. See the backend's\n`is_retryable`.\n\nOnly [gg](crate::gg) reaches it, because gg is the only harness whose\nceilings the Test Cabinet configures.",
+          "type": "string"
+        },
+        {
           "const": "hung",
           "description": "The agent harness stopped producing output entirely and was killed as hung\n— it neither finished nor failed, it stalled (a provider request that never\nreturns, a subagent that never reports back).\n\nTreated exactly like a [`HarnessError`](RunState::HarnessError): publishable\n**without** a review as a per-model statistic, releasing no source repo and\nno playable build, and never published automatically. It is a distinct state\nbecause the cause is distinct — nothing exited, so there is no exit code to\nreport — and because a hung run is the one failure the Test Cabinet ends on\nits own timer rather than observing.",
           "type": "string"
         },
         {
           "const": "infrastructure",
-          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, or seeding / the case's init step failed. Not\nthe model's fault — retained with a diagnostic [`RunStatus::detail`] for\ndebugging, but **never** publishable and excluded from every model statistic.\nA harness that merely exited non-zero is a\n[`HarnessError`](RunState::HarnessError), not this.",
+          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, seeding or the case's init step failed, or the\ncollected tree's [dependency install](crate::install) did not succeed after\nits retries. Not the model's fault — retained with a diagnostic\n[`RunStatus::detail`] giving the reason, but **never** publishable and\nexcluded from every model statistic. A run that reached the install carries\nits collected tree and its [validation summary](crate::validation::ValidationSummary),\nunlike the earlier failures, which produced neither. A harness that merely\nexited non-zero is a [`HarnessError`](RunState::HarnessError), not this.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "An operator killed the run before it finished — a deliberate stop, not an\noutcome. **Never** publishable and excluded from every model statistic: nothing\nabout the model can be concluded from a run a human ended.\n\nOnly a killed [gg](crate::gg) run reaches this state, and reaching it is the\npoint of gg's cooperative wind-down: gg observes the kill at a turn boundary and\nstops, so the run still finishes through its ordinary post-session path and is\nretained — with everything it streamed before the kill — visible and inspectable\nin the run list rather than vanishing. Killing a run of any other harness\nproduces no record at all: such a harness has no wind-down to be asked for, so\nits driver destroys the run outright (see the driver's `cancel` module) and there\nis nothing to record this state on.\n\nDistinct from [`TimedOut`](RunState::TimedOut) and [`Hung`](RunState::Hung),\nthe two terminations the Test Cabinet itself decides on a timer; this one has\nno timer and no fault, only an operator.",
           "type": "string"
         }
       ]
@@ -1344,6 +1778,37 @@
     "RunSubject": {
       "description": "The subject of a run: what was run, with what, against which model.",
       "properties": {
+        "engineSlug": {
+          "default": "none",
+          "description": "The slug of the [engine](crate::engine) the produced build was written\nagainst (for example `simple-2d`), or `none` when the build supplied its\nown frame loop, input, audio, assets, and diagnostics.\n\nThe engine is a **run dimension**, not a property of the case: the same\ncase version can be run on several engines, and a result is only\ncomparable with another result on the same engine, so the selection is\nrecorded here beside the harness and the orchestrator rather than being\ninferred from the case. Defaults to `none` so records written before\nengine selection existed — and hand-written fixtures — still deserialize,\nwhich is also the truth about them: they had no runtime.",
+          "type": "string"
+        },
+        "engineVersion": {
+          "description": "The version of the engine runtime that was vendored into the run\nrepository, read out of the staged package at seed time.\n\nSeparate from [`Self::engine_slug`] because an engine's contract moves\nunder a stable slug: two `simple-2d` runs a release apart were given\ndifferent frame, input, or host behaviour, and only the version\ndistinguishes them. `None` for a run whose engine vendors no runtime\n(`none` has no package, so there is no version to read) and for records\nwritten before engine selection existed.",
+          "type": ["string", "null"]
+        },
+        "ggCapabilitySet": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The declarative [capability set](GgCapabilitySet) a **gg** run was configured\nwith — which capabilities were on, their implementations/params, and the\nmodel-slot bindings — recorded verbatim so a gg result is traceable to the\nexact configuration that produced it and\n[result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can\nslice by configuration. Present only for a gg run (`harness_slug` is\n[`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is\nconfigured by the flat `(model, orchestrator)` dimensions instead."
+        },
+        "ggSummary": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The compact, aggregatable [summary](GgSessionSummary) of a **gg** run's own\noutcome — total agents/subagent depth, compactions, whether it ran out of\ncontext, issue-review and speculation counts, issues created/completed, the\nper-slot cost rollup, the terminal status, and the execution ceiling that stopped\nit, when one did — computed by the gg binary from\nits telemetry and recorded here so\n[result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can\nslice a run's outcome by its [`gg_capability_set`](Self::gg_capability_set)\nwithout re-parsing the whole event stream. Present only for a gg run that ran a\nsession (the binary emitted a\n[`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary)); `None` for every\nthird-party-harness run and for a gg run that failed to launch."
+        },
         "harnessSlug": {
           "$ref": "#/$defs/HarnessSlug",
           "description": "The agent harness slug."
@@ -1353,12 +1818,12 @@
           "type": ["string", "null"]
         },
         "modelId": {
-          "description": "The model ID passed to the harness, treated as an opaque string.",
+          "description": "The model ID passed to the harness, treated as an opaque string. For a gg\nrun there is no single harness model (a run binds models to slots via\n[`Self::gg_capability_set`]); this carries the run's primary-slot model so a\ngg run still has a representative model identity for the existing per-model\nlistings.",
           "type": "string"
         },
         "orchestratorSlug": {
           "default": "one-shot",
-          "description": "The resolved slug of the orchestrator that conducted the harness sessions\n(for example `one-shot` or `ralph`). For an external `--orchestrator-dir`\nthis is the directory's own manifest slug, not the request's. Defaults to\n`one-shot` so records written before orchestrator selection existed — and\nhand-written fixtures — still deserialize. See\n[orchestrators](crate::OrchestratorCatalog).",
+          "description": "The resolved slug of the orchestrator that conducted the harness sessions\n(for example `one-shot`). For an external `--orchestrator-dir`\nthis is the directory's own manifest slug, not the request's. Defaults to\n`one-shot` so records written before orchestrator selection existed — and\nhand-written fixtures — still deserialize. See\n[orchestrators](crate::OrchestratorCatalog).",
           "type": "string"
         },
         "testCaseSlug": {
@@ -1547,19 +2012,48 @@
       "required": ["loaded", "checks"],
       "type": "object"
     },
+    "ShowcaseMedia": {
+      "description": "One entry of a [showcase](RunShowcase)'s media carousel.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the run's `showcase/` directory (a plain file name,\nno subdirectories), which is also its name under the run's served\n`/runs/<id>/showcase/<file>` route.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "The kind of media, inferred from the file's extension by the same rule as a\ndeclared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a\ndraw-command replay, `.webm` a video."
+        },
+        "name": {
+          "description": "The model's short caption for this entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
+      "type": "object"
+    },
     "StepResult": {
       "description": "The outcome of a single **required** build step — dependency install or the\nstatic build — that every run performs before the load check.\n\nBuilding an implementation is not a single opaque step: the install and the\nbuild each run a manifest-declared command and each can fail on its own, so\neach is reported in the [`ValidationSummary`] in its own right rather than\nbeing folded silently into the load signal. See `docs/validation.md`.",
       "properties": {
+        "attempts": {
+          "description": "How many times the command was run before this result was final. Present on\nthe install, which is retried; absent on the build, which runs once, and on\nrecords from before it was kept.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
         "command": {
           "description": "The command that was run (the manifest's `install` or `build` command).",
           "type": "string"
         },
         "detail": {
-          "description": "Detail about a failure (a tail of the command's stderr), or `None` when\nthe step succeeded.",
+          "description": "Detail about a failure — why the command could not be started, the packages\nan install left uninstalled, or the bounded output of a command that exited\nnon-zero — or `None` when the step succeeded.",
+          "type": ["string", "null"]
+        },
+        "output": {
+          "description": "A bounded excerpt of the command's combined stdout and stderr, capped at\n[`TOOLCHAIN_OUTPUT_LIMIT`](crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT) bytes.\nPresent whenever the command ran, whatever it exited with; absent when it\ncould not be started, and on records from before it was kept.",
           "type": ["string", "null"]
         },
         "succeeded": {
-          "description": "Whether the command exited successfully.",
+          "description": "Whether the step succeeded: the command exited zero and, for the\n[verified install](crate::install), left every package the lockfile declares\nfor the host on disk.",
           "type": "boolean"
         }
       },
@@ -1629,6 +2123,388 @@
           "type": ["integer", "null"]
         }
       },
+      "type": "object"
+    },
+    "ToolchainCommandResult": {
+      "description": "What one toolchain command did.\n\n[`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command\nwas never started* — a declared command whose prerequisite install failed did not\nfail the check, it never got the chance, and reporting that as a failure would be\na fabricated verdict. Only a command that ran and exited non-zero can gate.",
+      "properties": {
+        "attempts": {
+          "description": "How many times the command was run before this result was final. Present on\nthe [verified install](crate::install), which is retried; absent on every\ncommand that is run once.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "command": {
+          "description": "The command as the manifest declared it, run verbatim through `sh -c`.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Why the command did not run, when it did not; or, for an install that ran\nand exited zero but still did not succeed, the lockfile packages it left\nuninstalled. `None` for any other command that ran, whatever it exited with.",
+          "type": ["string", "null"]
+        },
+        "exitCode": {
+          "description": "The process exit status, or `None` when the command never ran (or was killed\nby a signal, which leaves no code).",
+          "format": "int32",
+          "type": ["integer", "null"]
+        },
+        "output": {
+          "description": "A bounded excerpt of the command's combined output, capped at\n[`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.",
+          "type": "string"
+        },
+        "ran": {
+          "description": "Whether the command was started at all. `false` when a prerequisite step\nfailed, when no shell could be spawned, or when the stage ran out of time.",
+          "type": "boolean"
+        },
+        "succeeded": {
+          "description": "Whether the command ran and exited zero — and, for the [verified\ninstall](crate::install), left every package the lockfile declares for the\nhost on disk.",
+          "type": "boolean"
+        },
+        "truncated": {
+          "description": "Whether [`output`](Self::output) is an excerpt rather than the whole of what\nthe command printed.",
+          "type": "boolean"
+        }
+      },
+      "required": ["command", "ran", "succeeded", "output", "truncated"],
+      "type": "object"
+    },
+    "ToolchainCoverage": {
+      "description": "What the coverage reporter measured, read from\n[`TOOLCHAIN_COVERAGE_SUMMARY_PATH`].\n\nThe presence of this whole block is the signal that coverage was reported at all.\nA case whose config writes no summary file, a command that never ran, and a runner\nthat produced an unreadable file all leave it absent — never present with zeroes\nin it.",
+      "properties": {
+        "files": {
+          "description": "Per-file rows, sorted by path, capped at [`TOOLCHAIN_COVERAGE_FILE_LIMIT`].",
+          "items": {
+            "$ref": "#/$defs/CoverageFile"
+          },
+          "type": "array"
+        },
+        "filesMeasured": {
+          "description": "How many files the report actually measured, before the cap.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesTruncated": {
+          "description": "Whether [`files`](Self::files) was cut short by the cap.",
+          "type": "boolean"
+        },
+        "totals": {
+          "$ref": "#/$defs/CoverageMetrics",
+          "description": "The `total` row: every measured file rolled up."
+        }
+      },
+      "required": ["totals", "files", "filesMeasured", "filesTruncated"],
+      "type": "object"
+    },
+    "ToolchainSmokeResult": {
+      "description": "The build smoke check: does the site the build produced actually boot?\n\nDistinct from — and weaker than — validation's load check, which decides review\npoints. This one answers a single question at the moment the toolchain ran: the\nbuilt site was served, opened in headless Chromium, and either painted a first\nframe with a clean console or it did not.",
+      "properties": {
+        "booted": {
+          "description": "Whether the page loaded and its scripts got as far as a first animation\nframe.",
+          "type": "boolean"
+        },
+        "consoleErrors": {
+          "description": "Console errors and uncaught page errors observed while the page booted, each\ntruncated to a readable length and capped in number. Empty is the clean case.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "description": "Why the check could not run, or what went wrong while it did.",
+          "type": ["string", "null"]
+        },
+        "painted": {
+          "description": "Whether that first frame drew anything — a canvas with more than one distinct\npixel, or a laid-out DOM.",
+          "type": "boolean"
+        },
+        "ran": {
+          "description": "Whether the check could be performed at all: the build produced an output\ndirectory and a browser was available to open it. `false` degrades — a host\nwith no Node, Playwright or Chromium reports *not checked*, never *failed*.",
+          "type": "boolean"
+        }
+      },
+      "required": ["ran", "booted", "painted"],
+      "type": "object"
+    },
+    "ToolchainSummary": {
+      "description": "Everything the [toolchain stage](crate::toolchain_stage) recorded for a run,\ndestined for [`RunRecord::toolchain`](crate::run_record::RunRecord::toolchain).\n\nAbsent from a run whose case declares no `[toolchain]` table, and from a run\nwhose tree never reached the host — absence means *not checked*, which the\nrecord's `Option` is what encodes.",
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional format check's result, when the case declared one."
+        },
+        "install": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The dependency install the stage ran before the commands, so that each\ncommand had the dependencies it needs. Reported in its own right because a\nfailed install is why every command below it reports `ran: false`."
+        },
+        "lint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional lint command's result, when the case declared one."
+        },
+        "smoke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainSmokeResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The build the smoke check served, and the check itself. `None` when the stage\ndid not get as far as building."
+        },
+        "test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainTestRun"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The optional test command's result and figures, when the case declared one."
+        },
+        "typecheck": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The gating typecheck. Always present when the case declares a toolchain,\neven when it never ran — *why* it did not run is the whole point of\n[`ToolchainCommandResult::ran`]."
+        }
+      },
+      "required": ["install", "typecheck"],
+      "type": "object"
+    },
+    "ToolchainTest": {
+      "description": "One test the runner reported, named and timed.\n\nThe per-file rows say how many tests a file passed and failed; these say which\ntests those were. Counts and the first ten failures cannot show a reader the suite\nitself — which tests a build wrote, which of them it skipped, and which one took a\nsecond and a half.",
+      "properties": {
+        "durationMs": {
+          "description": "How long it took, in milliseconds, when the runner timed it. Absent when it\nreported no duration, which is the ordinary case for a test that never ran:\nabsence is *not timed*, never zero.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "file": {
+          "description": "The test file's repo-relative path, forward slashed: the\n[`path`](ToolchainTestFile::path) of the row this test is counted in.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The test's full name — its `describe` chain and its own title, as the reporter\njoined them; its bare title when it has no chain.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ToolchainTestStatus",
+          "description": "What the runner decided about it."
+        }
+      },
+      "required": ["file", "name", "status"],
+      "type": "object"
+    },
+    "ToolchainTestFailure": {
+      "description": "One failing test, named and explained.",
+      "properties": {
+        "file": {
+          "description": "The test file's repo-relative path.",
+          "type": "string"
+        },
+        "message": {
+          "description": "Why it failed: the reporter's failure messages joined by a blank line, with\nevery stack frame dropped and the result capped at\n[`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`] bytes. Frames carry host paths and line\nnumbers that mean nothing to a reader of a published record.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The test's full name — its `describe` chain and its own title, as the reporter\njoined them.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name"],
+      "type": "object"
+    },
+    "ToolchainTestFile": {
+      "description": "One test file the runner reported on.",
+      "properties": {
+        "failed": {
+          "description": "Tests in this file that failed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "description": "The file-level message, when the file failed to load and so ran no tests at\nall. Stack frames stripped and bounded, like every other message here.",
+          "type": ["string", "null"]
+        },
+        "passed": {
+          "description": "Tests in this file that passed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "The file's path relative to the implementation's repository root, forward\nslashed. The reporter names it absolutely, for the same reason and with the\nsame fix as [`CoverageFile::path`].",
+          "type": "string"
+        },
+        "skipped": {
+          "description": "Tests in this file that were skipped, pending or todo — neither passed nor\nfailed, and counted separately so a suite that skipped half of itself cannot\nread as a suite that passed all of itself.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["path", "passed", "failed", "skipped"],
+      "type": "object"
+    },
+    "ToolchainTestRun": {
+      "description": "The optional `test` command's result, plus the figures its REPORT FILES carried.\n\nNothing here is read from what the command printed. The case's build vitest config\nwrites a JSON test report and an istanbul coverage summary into `coverage/`, and\nthese two blocks are those files, parsed and bounded. A figure that no longer\nmoves when a reporter changes its terminal layout is a figure that can be compared\nacross runs; a scraped one is not.\n\nBoth blocks are `Option` and **absence means not reported, never zero**. A case\nwhose config writes no report files — every case version predating this contract,\nand any case not on the v0.7.0 shape — leaves both absent, and every consumer is\nrequired to render nothing at all rather than an empty widget. A zero inside a\npresent block is only ever a zero the runner actually reported.",
+      "properties": {
+        "coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCoverage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the coverage summary said, when one was written."
+        },
+        "result": {
+          "$ref": "#/$defs/ToolchainCommandResult",
+          "description": "The command, its exit status and its bounded output."
+        },
+        "tests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainTests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the runner's JSON report said, when it wrote one."
+        }
+      },
+      "required": ["result"],
+      "type": "object"
+    },
+    "ToolchainTestStatus": {
+      "description": "What the runner decided about one test.\n\nThe three states the reporter's own statuses collapse to. `skipped`, `pending` and\n`todo` are one state seen from three spellings — a test the runner declined to\ndecide — and they are held together here exactly as [`ToolchainTestFile::skipped`]\ncounts them together.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "The test ran and passed.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The test ran and failed. Why it failed is on the matching\n[`ToolchainTestFailure`], when it is among the first\n[`TOOLCHAIN_TEST_FAILURE_LIMIT`].",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "The test did not run: skipped, pending or todo.",
+          "type": "string"
+        }
+      ]
+    },
+    "ToolchainTests": {
+      "description": "What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].\n\nPresent only when that file was written and parsed. A suite that ran and found no\ntests reports zeroes here — that is a figure the runner actually produced, and it\nis exactly the signal that a build shipped no tests. The difference between \"no\ntests\" and \"not reported\" is the difference between this block being present with\nzeroes and being absent.",
+      "properties": {
+        "failed": {
+          "description": "How many of them failed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failures": {
+          "description": "The first [`TOOLCHAIN_TEST_FAILURE_LIMIT`] failures, in the reporter's own\norder, so the list reads as \"what broke\" rather than an arbitrary sample.",
+          "items": {
+            "$ref": "#/$defs/ToolchainTestFailure"
+          },
+          "type": "array"
+        },
+        "failuresTruncated": {
+          "description": "Whether [`failures`](Self::failures) was cut short by the cap.\n[`failed`](Self::failed) is always the true count regardless.",
+          "type": "boolean"
+        },
+        "files": {
+          "description": "Per-file rows, sorted by path, capped at [`TOOLCHAIN_TEST_FILE_LIMIT`].",
+          "items": {
+            "$ref": "#/$defs/ToolchainTestFile"
+          },
+          "type": "array"
+        },
+        "filesFailed": {
+          "description": "How many of those files had a failure in them, counting a file that failed to\nload at all as one.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesRun": {
+          "description": "Test FILES the runner loaded.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesTruncated": {
+          "description": "Whether [`files`](Self::files) was cut short by the cap.",
+          "type": "boolean"
+        },
+        "passed": {
+          "description": "How many of them passed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "description": "Skipped, pending and todo together.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "succeeded": {
+          "description": "Whether the runner called the whole invocation a success.",
+          "type": "boolean"
+        },
+        "tests": {
+          "description": "The first [`TOOLCHAIN_TEST_ENTRY_LIMIT`] tests the runner reported, in its own\norder: file by file as the report lists them and, within a file, the order they\nran in. A prefix of that order rather than a sample of it, so two reads of one\nreport retain the same entries. The order is the reporter's rather than the\npath sort [`files`](Self::files) is in, because a suite reads as the runner ran\nit.",
+          "items": {
+            "$ref": "#/$defs/ToolchainTest"
+          },
+          "type": "array"
+        },
+        "testsTruncated": {
+          "description": "Whether [`tests`](Self::tests) was cut short by the cap.\n[`total`](Self::total) is always the true count regardless.",
+          "type": "boolean"
+        },
+        "total": {
+          "description": "Every test the runner ran, in every file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "skipped",
+        "filesRun",
+        "filesFailed",
+        "succeeded",
+        "files",
+        "filesTruncated",
+        "failures",
+        "failuresTruncated",
+        "tests",
+        "testsTruncated"
+      ],
       "type": "object"
     },
     "UiElementResult": {
@@ -1796,6 +2672,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its\nshape is deliberately fixed; the `packages/run-record` bindings and the\npublished JSON Schema are generated from it (see the module docs).",
   "properties": {
+    "codeAnalysis": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeAnalysisSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The **bounded** tier of the run's [code analysis](crate::code_analysis): a\ndeterministic, execute-nothing static read of the code the model wrote,\ncomputed on the host at the [post-run seam](crate::post_run) — after the tree\nis collected and **before** validation rewrites it.\n\nRoughly ninety-five scalars, every leaf a number, a boolean or a small enum, so\nthe whole block flattens into the query language's `code.*` namespace and is\ndirectly aggregable. The unbounded tier — every file, symbol, import edge, cycle\nand clone group — is the run tree's\n[`code-analysis.json.gz`](crate::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT)\nartifact instead, because a record is deserialized on every run listing.\n\n**Nothing in here influences the run's score or verdict.** A run is judged on\nwhat it built, never on what a metric said about it; the polarity a metric\ndefinition carries orients a sort and nothing else.\n\nAbsent for a run whose host wired no analyzer, for a run analysed by a build\nthat predates the analyzer, and for a run whose tree could not be read at all.\nDefaulted and omitted when absent so records written before the field existed\nstill deserialize, and so a run that carries no analysis is not confused with\none that measured an empty tree — the distinction that\n[`CodeAuthoredBasis`](crate::code_analysis::CodeAuthoredBasis) exists to keep\nhonest."
+    },
     "environment": {
       "$ref": "#/$defs/RunEnvironment",
       "description": "The container environment the run executed in."
@@ -1827,6 +2714,21 @@
       "$ref": "#/$defs/RunMetrics",
       "description": "Resource metrics for the run."
     },
+    "seedCommit": {
+      "description": "The commit hash of the run's **seed** commit — the single commit\n[`RepoSeeder::seed`](crate::execution::RepoSeeder::seed) makes after laying\ndown the specs, assets, and rendered reference images, before the container\never starts. Everything reachable from it is scaffolding the run was given;\neverything else in the produced tree is the model's own work.\n\nRecorded because it is the only *exact* answer to \"which files did the model\nwrite?\", and it is computed host-side where nothing the model does can affect\nit. The obvious substitute — treat the produced tree's root commit as the seed\n— fails in the worst direction: a model that amends, squashes, rebases, or\nre-runs `git init` folds its own work into the root commit, so the seeded set\nswallows the authored files and the run reports near-zero authored code\n*stamped as an exact measurement*. See\n[code analysis](https://docs.testcabinet.ai/gg/analysis/code-analysis/) for the\nbasis ladder that falls back when this field is absent.\n\nDistinct from, and authoritative over, a gg session record's `baselineCommit`: that is\ngg's own in-container observation of the same commit, and a mismatch between\nthem is diagnostic rather than redundant.\n\nDefaulted and omitted when absent so records written before the field existed\nstill deserialize, and a run that failed before its workspace was seeded — which\nhas no seed commit to name — serializes without the key rather than with an\nempty string that would read as a real hash.",
+      "type": ["string", "null"]
+    },
+    "showcase": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunShowcase"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run's showcase: the model's own presentation of the game it built — a\nplayer-facing description and a short, ordered media carousel — captured\nfrom the produced tree's `showcase/` directory at record assembly (see\n`docs/showcase.md`). The Play page renders it around the playable build.\n\nAbsent for a run whose tree carried no parseable showcase and for every\nrecord written before the field existed; a showcase problem never fails a\nrun and never degrades its status, so absence says nothing about the run\nbeyond \"there is nothing to show\". Defaulted and omitted when absent so\nolder records still deserialize."
+    },
     "startedAt": {
       "description": "RFC 3339 timestamp for when the run started.",
       "type": "string"
@@ -1838,6 +2740,26 @@
     "subject": {
       "$ref": "#/$defs/RunSubject",
       "description": "What was run."
+    },
+    "toolCalls": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. Defaulted and omitted when\nempty so records written before the field existed still deserialize, and a\ngg run — whose per-tool detail comes from its own telemetry — carries none.",
+      "type": "object"
+    },
+    "toolchain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolchainSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the case's [`[toolchain]`](crate::toolchain) commands did when they were\nrun over the produced implementation at the\n[post-run seam](crate::post_run), together with the build smoke check.\n\n**This is the one analysis block that can influence a run's rating**, and it\ndoes so through exactly one field: a `typecheck` that ran and exited non-zero\n[gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it\n`broken` and scores it zero, because code that does not compile is not\nreviewable. The lint, format and test results are recorded and gate nothing.\nThe gate is applied where the aggregate rating and score are computed\n([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.\n\nAbsent for a run whose case declares no `[toolchain]` table, for a canceled\nrun, for a run whose tree never reached the host, and for every record written\nbefore the field existed. Absence is *not checked*, and it never gates — the\ndistinction the `Option` exists to keep."
     },
     "tooling": {
       "$ref": "#/$defs/RunTooling",

@@ -1,0 +1,192 @@
+# Arc Foundry — Controls
+
+This file fixes how a player operates the game: how simulation time advances, what the
+pointer does, the actions the keyboard fires, and what each control on the status bar and
+the build panel commits. Where those controls sit is in `specs/hud.md`, and what each
+action produces is in `specs/scrap-press.md`.
+
+## Simulation time
+
+{{#if (eq engine.slug "none")}}
+The frame loop is part of the runtime layer you write, and it hands each update the real
+elapsed seconds of the frame.
+{{else}}
+The frame loop belongs to the {{engine.name}} engine, which hands each update the real
+elapsed seconds of the frame.
+{{/if}}
+
+The game keeps a simulation clock, in seconds, and every duration and every rate this
+specification states is measured against it.
+
+| Situation | The clock advances by |
+| --- | --- |
+| A build phase, a wave, or the finale, not paused | `dt * speed`, where `speed` is the current speed multiplier |
+| Paused in place, or the pause menu open | Nothing |
+| Any screen other than `playing` | Nothing |
+
+Every rate is per second and integrated against that advance, so an interval of
+simulation time reaches the same state however it was divided into frames. The speed
+multiplier changes how fast the game plays and never changes the outcome.
+
+## The pointer and touch
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the pointer belongs to the runtime layer you write.
+What the game reads from that layer is a pointer position in the game's logical units on
+the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a release edge. That layer
+delivers a touch contact on the same reads and in the same logical units: a landing, the
+positions it travels through while it is down, and a lift. How the layer produces either
+is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+The pointer belongs to the engine, which documents it in the `engine/` directory at the
+root of this repository. What the game reads from it is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a
+release edge. A touch contact reaches the game on those same reads and in those same
+logical units, as a landing, the positions it travels through while it is down, and a
+lift. The engine is stood up with the `LAYOUT` (`single-vertical`) touch layout, one
+vertical list, which is the shape every menu of `specs/ui.md` takes.
+{{else}}
+The pointer belongs to the engine, which documents it in the `engine/` directory at the
+root of this repository. What the game reads from it is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a
+release edge, delivered as the ordered samples the player controller reads each frame. A
+touch contact reaches the game on those same samples and in those same logical units, as
+a landing, the positions it travels through while it is down, and a lift. The engine is
+stood up with the `LAYOUT` (`single-vertical`) touch layout, one vertical list, which is
+the shape every menu of `specs/ui.md` takes.
+{{/if}}
+
+Every screen and every control is fully operable with the pointer alone, and every menu
+is fully operable with a touch contact alone. The keyboard actions below are
+accelerators, with one exception: `modify` stands in for no control at all and only
+modifies a pointer press, and the combine set it builds is a refinement of a combine the
+game otherwise resolves on its own.
+
+| Pointer act | Effect |
+| --- | --- |
+| Press on a control | Activates that control. A press at the center of a control's drawn rectangle activates it. |
+| Press on the yard while holding a rock | Drops the rock, when the footprint is legal. A press on an illegal footprint places nothing and keeps the rock held. |
+| Press on a structure | Selects it as the primary selection. |
+| Press on empty yard | Clears the selection. |
+| Press on a base structure while `modify` is held | Adds it to the explicit combine set, or removes it if it is already in the set. A press with `modify` released clears the set back to a single selection. |
+| Move over a menu entry's reported hit region | Moves the menu highlight to that entry, so the highlight follows the pointer as it crosses the menu. |
+| Move over the yard while holding a rock | Snaps the held footprint to the tile under the pointer and updates its legal read. |
+| Move over the maze-length readout | Draws the full ground route on the yard. |
+| Move over a leaderboard row | Spotlights that structure on the yard. |
+| Move over a next-wave entry or a recipe entry | Floats that entry's tooltip. |
+
+A touch contact drives the menus, over those same hit regions.
+
+| Touch act | Effect |
+| --- | --- |
+| A contact lands inside a menu entry's reported hit region, or travels onto one | Moves the menu highlight to that entry. |
+| A contact lands and lifts inside one menu entry's reported hit region | Moves the menu highlight to that entry and takes it. |
+
+`specs/ui.md` states the hit region each menu entry occupies and what taking each entry
+does. Outside the menus a touch contact reaches the game as an ordinary pointer press and
+release at the positions it lands and lifts at.
+
+## Actions and bindings
+
+{{#if (eq engine.slug "none")}}
+`ACTIONS` holds the actions the game reads from the runtime layer, and `BINDINGS` maps
+each to the key that fires it.
+{{else}}
+`ACTIONS` holds the actions the game registers with the engine, and `BINDINGS` maps each
+to the key that fires it.
+{{/if}}
+Every action but `modify` is read as a press edge, so holding its key fires it once.
+`modify` is read as a level instead: what the game reads is whether its key is down at
+the moment it reads it, so it modifies whatever act it is held across.
+
+| Action | Key | Effect |
+| --- | --- | --- |
+| `stamp` | `KeyB` | Pulls the press and arms a rock. |
+| `keep` | `KeyK` | Harvests the selected candidate. |
+| `downgrade` | `KeyG` | Harvests the selected candidate one quality tier lower. |
+| `combine` | `KeyC` | Commits a combine from the current selection. |
+| `upgrade` | `KeyU` | Raises the selected combination tower's level, or refines the press when the selection is not a combination tower. |
+| `targeting` | `KeyT` | Cycles the selected firing structure's targeting priority. |
+| `dismantle` | `KeyX` | Dismantles the selected structure. |
+| `speed` | `KeyF` | Cycles the speed multiplier. |
+| `pause` | `Space` | Toggles the in-place pause. |
+| `pause-menu` | `Escape`, `KeyP` | Opens the pause menu on `playing`, and closes it and resumes on `paused`. |
+| `combos` | `KeyV` | Toggles the recipe book. |
+| `damage` | `KeyL` | Toggles the damage leaderboard. |
+| `mute` | `KeyM` | Toggles audio mute. |
+| `modify` | `ShiftLeft`, `ShiftRight` | Held rather than pressed. A press on the yard made while it is held adds to or removes from the explicit combine set. |
+| `up` | `ArrowUp` | Moves the menu highlight up. |
+| `down` | `ArrowDown` | Moves the menu highlight down. |
+| `confirm` | `Enter` | Takes the highlighted menu entry. |
+| `back` | `Escape` | Backs out, as the paragraphs below state. |
+
+`back` resolves against the first of these that applies: a held rock is put away; the
+selection is cleared; an open overlay is closed; on `playing` the pause menu opens; on
+`paused` the pause menu closes; on any other screen the game returns to the previous
+screen.
+
+`Escape` fires `back` and `pause-menu` together, and one press resolves once. On
+`playing` `back` runs first and spends the press when it has something to back out of,
+so `Escape` reaches the pause menu with nothing held, nothing selected, and no overlay
+open. `KeyP` fires `pause-menu` alone, so it opens the pause menu whatever is pending and
+leaves the held rock, the selection, and the open overlay exactly as they were; resuming
+hands all three back. On `paused` either key closes the pause menu and resumes, and on
+every other screen `pause-menu` does nothing.
+
+## When each action is available
+
+| Action | Available |
+| --- | --- |
+| `stamp`, `keep`, `downgrade`, `dismantle` | During a build phase only. |
+| `combine` | During a build phase, and during a wave when it folds standing structures only. |
+| `upgrade`, `targeting` | In every phase, including during a wave and the finale. |
+| `speed`, `pause`, `combos`, `damage`, `modify` | On `playing`, in every phase. |
+| `pause-menu` | On `playing`, in every phase, and on `paused`. |
+| `mute` | On every screen. |
+| `up`, `down`, `confirm` | On the menu screens. |
+| `back` | Everywhere. |
+
+An action not listed as available on a screen does nothing there. On `paused` the pause
+menu's own choices, the action that closes the menu, and the mute action are the whole of
+what the player operates: every other action, every status bar control, and every build
+panel control is inert, whether it is pressed with the pointer or fired from the
+keyboard.
+
+A control that is unavailable is drawn disabled in its slot rather than removed, as
+`specs/hud.md` states.
+
+## The build controls
+
+- Pulling the press arms a blank rock on the cursor. It is refused when the level's stamp
+  allowance is spent, and the refusal reads clearly.
+- Placing a rock spends one stamp and rolls its component where it lands. While stamps
+  remain, another rock is armed immediately, so five are placed back to back.
+- Keeping harvests the selected candidate. It is immediate and final: the candidate
+  becomes a permanent component, every other candidate hardens into a blocker, and the
+  wave starts.
+- Downgrading harvests the selected candidate one quality tier lower, and starts the wave
+  the same way. It is offered on a candidate at Tuned or above and disabled on a Scrap
+  candidate.
+- Combining resolves the instant it is committed. It is offered on a base structure when
+  a matching partner or a reachable recipe exists. The inspector labels the quality fold
+  `COMBINE` and each reachable recipe `COMBINE SPECIAL`, naming the tower it would build.
+  It does not annotate whether a given fold starts the wave.
+- Upgrading raises the selected combination tower one level, or, when the selection is
+  not a combination tower, refines the press one level. Both are refused at their top
+  rung and when unaffordable. The panel's refinement control of `specs/hud.md` is a
+  control of its own rather than this action: it refines the press whatever is selected,
+  and activating it never upgrades a combination tower.
+- Cycling targeting steps the selected firing structure's priority through `first`,
+  `last`, `nearest`, `strongest`, `weakest`, and back to `first`, one step per activation.
+- Dismantling removes the selected structure and reopens its tiles.
+
+## Waves, speed, and pause
+
+- There is no send control. A wave starts when the level's harvest is committed.
+- The speed control cycles the multiplier through `1`, `2`, `4`, `8`, and back to `1`,
+  one step per activation. It applies to the whole simulation and persists until changed.
+- The in-place pause freezes the simulation without opening a menu. The yard stays
+  visible and readable, and the status bar reads `PAUSED`. Activating it again resumes.
+- The pause menu freezes the simulation and covers the yard, as `specs/ui.md` states. It
+  is opened from `playing` by `Escape` and by `KeyP`, and closed by either of them or by
+  its own `RESUME` choice. Resuming from it also clears any in-place pause.

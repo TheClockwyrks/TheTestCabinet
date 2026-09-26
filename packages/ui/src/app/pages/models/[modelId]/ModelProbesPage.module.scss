@@ -1,0 +1,409 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+
+// The Probes tab: the trigger form, the probe history, and the selected probe's
+// detail. Shares the model config form's field/control styling so the trigger
+// reads as part of the same console.
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.section {
+  margin-bottom: t.$space-md;
+}
+
+.sectionTitle {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.notice {
+  margin: t.$space-md 0;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-accent-2;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+// --- Trigger form --------------------------------------------------------------
+
+.trigger {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+.triggerFields {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fieldLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+%control {
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.select {
+  @extend %control;
+  max-width: 18rem;
+}
+
+.number {
+  @extend %control;
+  width: 7rem;
+}
+
+// The checkbox sits in the same row rhythm as the text controls: same row
+// height, the box itself centered in it.
+.checkbox {
+  align-self: flex-start;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: t.$space-sm 0;
+  accent-color: t.$color-accent;
+}
+
+.run {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// --- History -------------------------------------------------------------------
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One probe as a selectable row: when · provider · status/verdict · rates ·
+// spend. A button rather than a link — selection is page state, not a route.
+.row {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-align: left;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  flex-wrap: wrap;
+
+  &:hover,
+  &:focus-visible {
+    border-color: t.$color-accent;
+  }
+}
+
+.rowSelected {
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 35%, transparent);
+}
+
+.rowWhen {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowLanguage {
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.rowProvider {
+  color: t.$color-text-muted;
+}
+
+.rowStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+.rowSpinner {
+  width: 1.25rem;
+}
+
+.rowRates {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowSpend {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.failed {
+  color: t.$color-negative;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// A probe's verdict as a color-coded chip, tone selected by `data-verdict` (the
+// `RatingBadge` pattern). Ready is the positive green, reminders the caution
+// amber, overfit the negative red, and not-ready the same red muted — it is the
+// floor of the scale, not a louder failure than overfit.
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 t.$space-sm;
+  border: t.$border-hairline solid var(--verdict-color);
+  border-radius: t.$radius-sm;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--verdict-color);
+  background: color-mix(in srgb, var(--verdict-color) 14%, transparent);
+  white-space: nowrap;
+
+  &[data-verdict="ready"] {
+    --verdict-color: #{t.$color-positive};
+  }
+  &[data-verdict="ready-with-reminders"] {
+    --verdict-color: #{t.$color-warning};
+  }
+  &[data-verdict="tool-call-overfit"] {
+    --verdict-color: #{t.$color-negative};
+  }
+  &[data-verdict="not-ready"] {
+    --verdict-color: color-mix(
+      in srgb,
+      #{t.$color-negative} 55%,
+      #{t.$color-text-muted}
+    );
+  }
+}
+
+// --- Detail --------------------------------------------------------------------
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  padding: t.$space-md t.$space-lg;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+}
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.summaryFact {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.configLine {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// --- Results view --------------------------------------------------------------
+
+// Wide tables scroll inside their own container rather than the page.
+.tableWrap {
+  overflow-x: auto;
+}
+
+.rollup {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+
+  th,
+  td {
+    padding: t.$space-xs t.$space-sm;
+    text-align: left;
+    border-bottom: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 55%, transparent);
+  }
+
+  th {
+    color: t.$color-text-muted;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.item {
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 55%, transparent);
+  border-radius: t.$radius-sm;
+
+  &[open] {
+    border-color: t.$color-border;
+  }
+}
+
+.itemSummary {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.itemCondition {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.itemLabel {
+  color: t.$color-accent;
+}
+
+.itemMeta {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.itemBody {
+  padding: t.$space-xs t.$space-sm t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.itemFacts {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// --- Raw text ------------------------------------------------------------------
+
+.rawTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+}
+
+.rawNote {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  @include h.halo;
+}
+
+// A raw reply/message verbatim: wrapped, capped in height, scrolling within its
+// own panel (the RawOutputLog conventions).
+.raw {
+  margin: 0;
+  padding: t.$space-sm t.$space-md;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  background: color-mix(in srgb, t.$color-bg 70%, transparent);
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 55%, transparent);
+  border-radius: t.$radius-sm;
+}
+
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+}
+
+.requestPick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}

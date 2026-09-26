@@ -7,12 +7,19 @@ import { ReviewChecklist } from "./ReviewChecklist";
 // ("General") item, so the grouping, numbering, and sub-item lettering are all
 // exercised.
 const model: ReviewModel = {
+  validatorRated: false,
   domains: [
     { id: "core", name: "Core", description: "The core loop." },
     { id: "polish", name: "Polish", description: "The finish." },
   ],
   items: [
-    { id: "loop", title: "Has a game loop", text: "", weight: 2, domain: "core" },
+    {
+      id: "loop",
+      title: "Has a game loop",
+      text: "",
+      weight: 2,
+      domain: "core",
+    },
     {
       id: "controls",
       title: "Controls work",
@@ -96,6 +103,7 @@ describe("ReviewChecklist (verdict mode)", () => {
 // one — every top-level item is a scoring category, so its title heads its own
 // points and there is no synthetic "General" bucket.
 const categorized: ReviewModel = {
+  validatorRated: false,
   domains: [
     { id: "single-player", name: "Single player", description: "Solo." },
     { id: "versus", name: "Versus", description: "Two players." },
@@ -107,8 +115,18 @@ const categorized: ReviewModel = {
       text: "",
       weight: 2,
       subItems: [
-        { id: "scoring", title: "Scores on a goal", description: "A goal.", weight: 1 },
-        { id: "match-win", title: "Match win at 11", description: "First to 11.", weight: 1 },
+        {
+          id: "scoring",
+          title: "Scores on a goal",
+          description: "A goal.",
+          weight: 1,
+        },
+        {
+          id: "match-win",
+          title: "Match win at 11",
+          description: "First to 11.",
+          weight: 1,
+        },
       ],
     },
     {
@@ -158,6 +176,7 @@ describe("ReviewChecklist (categories grammar, no domained items)", () => {
     // (`scored: false`), which the reviewer left unrated — it must still show,
     // marked "not scored", while an ordinary unrated sibling stays hidden.
     const withExcluded: ReviewModel = {
+      validatorRated: false,
       domains: [],
       items: [
         {
@@ -167,7 +186,12 @@ describe("ReviewChecklist (categories grammar, no domained items)", () => {
           weight: 3,
           subItems: [
             { id: "ace-only", title: "Ace only", weight: 1 },
-            { id: "reject-offsuit", title: "Reject off-suit", weight: 1, scored: false },
+            {
+              id: "reject-offsuit",
+              title: "Reject off-suit",
+              weight: 1,
+              scored: false,
+            },
             { id: "build-up", title: "Build up", weight: 1 },
           ],
         },
@@ -190,5 +214,82 @@ describe("ReviewChecklist (categories grammar, no domained items)", () => {
     expect(screen.queryByText("☐")).toBeNull();
     // …while the ordinary ungraded sibling stays hidden.
     expect(screen.queryByText(/Build up/)).toBeNull();
+  });
+});
+
+describe("ReviewChecklist on a validator-rated version", () => {
+  // Every point declares the domains a failure lowers and the cap it lowers them
+  // to; the rubric shows both so a reader sees what each check is worth beyond
+  // its points.
+  const rated: ReviewModel = {
+    validatorRated: true,
+    domains: [
+      { id: "single-player", name: "Single player", description: "Solo." },
+      { id: "versus", name: "Versus", description: "Two players." },
+    ],
+    items: [
+      {
+        id: "rules",
+        title: "Rules",
+        text: "",
+        weight: 2,
+        subItems: [
+          {
+            id: "serve",
+            title: "Ball serves",
+            weight: 1,
+            failureCap: "broken",
+            domains: ["single-player", "versus"],
+          },
+          {
+            id: "ai",
+            title: "AI paddle tracks the ball",
+            weight: 1,
+            failureCap: "scuffed",
+            domains: ["single-player"],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("shows each point's failure cap and the domains it affects, by name", () => {
+    render(<ReviewChecklist model={rated} />);
+    // The definition view has no verdicts, so each cap reads in its tier's
+    // color (nothing has passed to dim it) and says what the badge is.
+    const broken = screen.getByText("Broken");
+    expect(broken.getAttribute("data-rating")).toBe("broken");
+    expect(broken.getAttribute("data-muted")).toBeNull();
+    expect(broken.getAttribute("title")).toBe("Rating cap applied on failure.");
+    expect(screen.getByText(/caps Single player, Versus/)).toBeTruthy();
+    expect(screen.getByText("Scuffed")).toBeTruthy();
+  });
+
+  it("dims a passed point's cap and lights a failed point's", () => {
+    render(
+      <ReviewChecklist
+        model={rated}
+        verdicts={[
+          { id: "rules.serve", status: "pass" },
+          { id: "rules.ai", status: "fail" },
+        ]}
+      />,
+    );
+    // The hover text is the same either way: the state reads through the
+    // badge itself, not its title.
+    const broken = screen.getByText("Broken");
+    expect(broken.getAttribute("data-muted")).toBe("true");
+    expect(broken.getAttribute("title")).toBe("Rating cap applied on failure.");
+    const scuffed = screen.getByText("Scuffed");
+    expect(scuffed.getAttribute("data-muted")).toBeNull();
+    expect(scuffed.getAttribute("title")).toBe(
+      "Rating cap applied on failure.",
+    );
+  });
+
+  it("shows no caps on a legacy version even when a point carries one", () => {
+    render(<ReviewChecklist model={{ ...rated, validatorRated: false }} />);
+    expect(screen.queryByText(/caps /)).toBeNull();
+    expect(screen.queryByText("Broken")).toBeNull();
   });
 });

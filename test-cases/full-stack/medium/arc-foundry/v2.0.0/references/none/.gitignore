@@ -1,0 +1,25 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the produced-effect runtime is
+# vendored into this repository under `vendor/`, prebuilt, and its own `dist/`
+# is committed. An unanchored `dist/` would match that directory too and leave
+# the build unable to resolve the package.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Showcase capture scratch — the recorder's working directory. The finished media under
+# showcase/ is committed; this is not.
+.showcase-video/
+
+# Logs.
+*.log

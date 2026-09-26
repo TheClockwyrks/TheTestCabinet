@@ -1,0 +1,39 @@
+# The "Simple 2D" engine definition.
+#
+# An engine is the runtime a produced game is built on: the frame loop and the
+# delta time it hands the game, the input actions, the audio bus, the asset
+# loader, and the on-screen diagnostics. It is a *run dimension*, selected per
+# run alongside the test case, variant, harness, and model — a case declares only
+# which engines it supports, and the engine documents itself from its own
+# package, so a case's specs never restate it.
+#
+# This engine provides everything around a 2D game *except* the game: it owns no
+# simulation and no rendering, so a build under it still writes its own physics
+# and draws its own frames — against the delta time the engine hands it. It also
+# carries an opt-in draw-command recorder, so a validator can capture the frames
+# a build drew over the section of a scenario its check is about.
+#
+# See `engines/README.md` and the design doc at
+# `apps/docs/src/content/docs/components/core/engines.md`.
+
+# Stable slug, used throughout run records and the site. Must match the folder
+# name.
+slug = "simple-2d"
+
+# Human-readable name, shown by `tcab engines`.
+name = "Simple 2D"
+
+# What the engine provides, for display.
+description = "Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering."
+
+# The npm package carrying the runtime. It is staged into the host package store
+# with the other shippable packages, then vendored into `.vendor/engine/` in the
+# run repository at seed time and written into the seeded workspace's
+# `package.json` as a relative `file:` dependency, so the build imports it by its
+# bare name. Its `version` in the store is what is recorded on the run.
+package = "@clockwyrks/simple-2d"
+
+# The directory inside the package holding the engine's own documentation. It is
+# seeded into the run workspace at `engine/`, and the rendered prompt points the
+# build at it; reading it is part of the work a run measures.
+docs = "docs"

@@ -2,16 +2,16 @@
 title: Overview
 ---
 
-Cline is a coding agent run in The Test Cabinet through its `cline` CLI. It
-drives a model through OpenRouter, so it reports OpenRouter model IDs and its
-comparable cost is derived from OpenRouter prices. See the project at
-[cline.bot](https://cline.bot/).
+Cline (slug `cline`) is a coding agent driven non-interactively through its
+`cline` CLI. It reaches its model through OpenRouter, so it reports OpenRouter
+model IDs and is priced from the model's curated list price. The harness itself
+is documented at [cline.bot](https://cline.bot/).
 
 ## Model IDs
 
 Cline runs with `--provider openrouter`, so its model IDs are OpenRouter
-provider-prefixed slugs and are used unchanged for the comparable-cost lookup
-(pricing model `Passthrough`). The following are illustrative, not exhaustive:
+provider-prefixed slugs, launched unchanged and priced from the model's list
+price. The following are illustrative, not exhaustive:
 
 - `z-ai/glm-5.2`
 - `moonshotai/kimi-k2.7-code`
@@ -19,30 +19,34 @@ provider-prefixed slugs and are used unchanged for the comparable-cost lookup
 
 ## Invocation
 
-Cline is invoked non-interactively through the `cline` binary, which is
-installed into the run container at run time with:
+The harness probes and invokes the `cline` binary. It is installed into the run
+container at run time with:
 
-```
+```sh
 npm install -g cline@latest && npm cache clean --force
 ```
 
-A session is run with these flags, followed by the prompt:
+A session runs the binary with these flags, followed by the prompt as the final
+positional argument:
 
-```
-cline --json --auto-approve true --provider openrouter --model <model> <prompt>
-```
+| Flag                    | Purpose                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--json`                | Emit the line-delimited JSON stream consumed for [events](/harnesses/cline/events/) and [usage](/harnesses/cline/metrics/). |
+| `--auto-approve true`   | Run unattended, without per-action approval prompts.                                                                        |
+| `--provider openrouter` | Route the model through OpenRouter.                                                                                         |
+| `--model <model>`       | The model to run.                                                                                                           |
 
-- `--json` selects the line-delimited JSON event stream parsed for
-  [events](./events/).
-- `--auto-approve true` runs the agent to completion without interactive
-  approvals.
-- `--provider openrouter` routes the model through OpenRouter.
+## Authentication
 
-Authentication uses the host's `OPENROUTER_API_KEY`, injected into the container
-under the same name (no remapping). Because Cline talks to OpenRouter rather than
-a single provider at one price, it reports no cost of its own; the comparable
-cost is derived from OpenRouter prices via the `Passthrough` pricing model.
+Cline authenticates with an OpenRouter API key, sourced from
+`OPENROUTER_API_KEY` on the host and injected into the run container under the
+same name. See [Authentication](/harnesses/cline/authentication/).
 
-See [Events](./events/) and [Metrics](./metrics/) for how Cline's output is
-normalized, and [Harnesses](/components/core/harnesses/) for the harness layer
-these pages describe.
+## Pricing
+
+Cline's model IDs are already OpenRouter slugs, so they resolve to the catalog
+entry whose list price yields the comparable cost. A trailing variant tag such
+as `:free` selects a pricing route rather than a different model, so it is
+stripped and the model is priced at its list price. Cline reports no run cost of
+its own, so its actual cost equals the comparable cost. See
+[Metrics](/harnesses/cline/metrics/).

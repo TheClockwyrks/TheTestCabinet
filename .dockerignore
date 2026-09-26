@@ -1,16 +1,44 @@
 # Keep the build context lean AND stable. Both the run-container builds
-# (containers/*/Dockerfile, which compile the `draw`/`foray` binaries from
-# crates/) and the service-image builds (deployments/images/*.Dockerfile, which
-# compile the backend/auth/dispatcher/driver/artifacts/arena crates) use the
-# repository root as their context. Every one of those builds is just a `cargo
+# (containers/*/Dockerfile — the shared tooling builder in containers/tools/, which
+# compiles every asset binary from crates/, plus the adversarial and performance
+# images, which compile the Foray/Lattice tooling in their own stages) and the
+# service-image builds (deployments/images/services.Dockerfile, which compiles the
+# backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
+# repository root as their context. Almost every one of those builds is just a `cargo
 # build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
 # everything, then re-include only the paths cargo actually reads.
 #
+# One build from this context answers to a different allowlist ON SOME HOSTS AND
+# TO THIS ONE ON OTHERS: .devcontainer/ubuntu.dockerfile, which carries its own
+# ubuntu.dockerfile.dockerignore beside it. BuildKit prefers a per-dockerfile ignore
+# file over the context root's, so on a Docker host that file is what narrows the
+# devcontainer's context and nothing here is consulted for it. That preference is not
+# something the build can rely on being honoured — a rebuild driven by podman-compose
+# resolved THIS file instead and died on the devcontainer's first COPY — so the five
+# `!/.devcontainer/…` entries near the bottom make this allowlist sufficient on its
+# own. The block above them carries the whole argument, including what it costs the
+# seven `COPY . .` builds to admit them.
+#
+# (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
+# all: they only `COPY --from` the tooling builder. They are still built with the
+# repo root as their context for consistency, and it costs them nothing because they
+# read none of it.)
+#
+# WHAT THIS ALLOWLIST ACTUALLY WEIGHS, because this paragraph used to say "~100kB" and
+# was wrong by three orders of magnitude for years: ~35 MB across ~2,300 files, nearly
+# all of it the Rust workspace's sources (crates/ is ~22 MB, the eleven guest packages
+# ~13 MB) — real build inputs, every one of them compiled or reflected by some image.
+# The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
+# each of the seven whole-context builds materialises on a cache miss, which is why the
+# re-exclusions at the foot of this file keep ignored output out of it.
+#
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
 # change to anything cargo does NOT compile — the frontend, the docs, test cases,
-# k8s manifests, models, this devcontainer — can never invalidate a build layer.
-# Only a change to a file in the list below busts the `COPY . .` cache, which is
-# the whole point: those edits genuinely shouldn't trigger an image rebuild.
+# k8s manifests, models — can never invalidate a build layer. Only a change to a
+# file in the list below busts the `COPY . .` cache, which is the whole point: those
+# edits genuinely shouldn't trigger an image rebuild. The devcontainer's install
+# scripts are the one exception the list makes to that, knowingly and for a reason
+# the entry states.
 
 # Ignore everything by default…
 *
@@ -23,13 +51,18 @@
 !/rust-toolchain.toml
 !/.cargo
 !/crates
-# crates/core bakes these two trees into the binary verbatim via include_str!
-# (the built-in orchestrator runner scripts and the harness manifests), so they
-# must be present in the context even though they are not Rust sources.
+# crates/core bakes these three trees into the binary verbatim via include_str!
+# (the built-in orchestrator runner scripts, the harness manifests, and the
+# built-in engine manifests), so they must be present in the context even though
+# they are not Rust sources. A tree that is baked in but not re-included here does
+# not fail at COPY like a missing Dockerfile source does — it fails much later, as
+# `error: couldn't read ...: No such file or directory` from the compiler, which is
+# how engines/ was missed when engines landed.
 !/orchestrators
 !/harnesses
+!/engines
 
-# The backend service image (deployments/images/backend.Dockerfile) bakes the
+# The backend service image (services.Dockerfile, `--target backend`) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
 # driver script, the sibling ES modules it imports (its reporter-side `ttc` kit and
 # the `validation` runtime), and its manifest must survive the allowlist too. Any
@@ -61,6 +94,61 @@
 !/containers/blender/tcab_blend_export.py
 !/containers/blender/tcab-blend
 
+# The gg language-toolchain builder (containers/gg-toolchains/Dockerfile) installs the
+# Java arm's JDK and TeaVM jars by running the SAME script a developer's or CI machine
+# runs, so there is one pinned list of versions rather than two: it COPYs
+# scripts/ci/install-java.sh and the version file that script sources. Both live outside
+# every path re-included above (nothing under crates/ reaches them), so without this the
+# COPYs fail with "not found" against the allowlisted context (transferring context: 2B) —
+# the same trap the Blender entry above records. That failure is not confined to Java:
+# containers/build.sh is `set -euo pipefail` and builds this builder before every `-gg`
+# variant, so a gg run image of ANY language stops being buildable.
+!/packages/gg-sandbox-java/java-version.sh
+!/scripts/ci/install-java.sh
+# The Kotlin arm does the same, and its installer RUNS the Java one — it compiles Kotlin to
+# JVM bytecode and hands that bytecode to the same TeaVM — so all four files are needed for
+# either block to build.
+!/packages/gg-sandbox-kotlin/kotlin-version.sh
+!/scripts/ci/install-kotlin.sh
+# The Swift arm does the same, and its installer does more than fetch: it PRUNES a 3.3 GB
+# toolchain to the ~1 GB a wasm cross-compile actually runs, and vendors the shared libraries
+# the published `lld` links against so the tree works on both the Debian-derived run images and
+# `blender-gg`'s Ubuntu. That knowledge must live in one place, so the image runs the same
+# script a developer's machine does.
+!/packages/gg-sandbox-swift/swift-version.sh
+!/scripts/ci/install-swift.sh
+# The C++ arm does the same. Its installer prunes a ~650 MB wasi-sdk to the ~200 MB a wasm
+# cross-compile actually runs and vendors the two GCC-runtime sonames the published binaries
+# link, so the tree works on both the Debian-derived run images and `blender-gg`'s Ubuntu.
+# That knowledge must live in one place, so the image runs the same script a developer's
+# machine does.
+!/packages/gg-sandbox-cpp/cpp-version.sh
+!/scripts/ci/install-wasi-sdk.sh
+# The C# arm does the same, and its version file SOURCES the C++ arm's (the two share a
+# wasi-sdk pin and a wit-bindgen pin, deliberately, so that two arms reading one crates/gg/wit
+# cannot describe the wire differently) — so its block needs both. Its installer prunes a
+# ~770 MB .NET SDK to the ~122 MB a Roslyn compile actually runs, and deletes Roslyn's resident
+# compiler server, which is a decision that must live in one place rather than two.
+!/packages/gg-sandbox-csharp/csharp-version.sh
+!/scripts/ci/install-dotnet.sh
+# The PureScript arm does the same, and it is the arm where the version file and the image
+# were LAST to stop disagreeing: its block used to restate `purs` and `esbuild` as ARG
+# defaults that containers/build.sh overrode, so the Dockerfile carried a second, silently
+# stale answer for anyone who built it without the wrapper. It runs the installer now. The
+# third file is spago.yaml, which the version file is not merely beside but READS — the
+# registry package set is written down where Spago reads it, and purescript-version.sh
+# projects it — so sourcing that file without this line fails inside the image.
+#
+# The fourth is spago.lock, and it belongs to a different consumer: `install-gg-build-tools.sh`
+# warms Spago's package STORE by running `spago install` in this package, and the lockfile is
+# what decides which versions that resolves to. Without it the warm would resolve the package
+# set afresh and cache a set the arm's build then re-resolves — a warm that warms the wrong
+# thing is worse than none, because it looks like it worked.
+!/packages/gg-sandbox-purescript/purescript-version.sh
+!/packages/gg-sandbox-purescript/spago.yaml
+!/packages/gg-sandbox-purescript/spago.lock
+!/scripts/ci/install-purescript.sh
+
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's
 # `COPY test-cases/.../references/training`). It is the one test-case tree a build
@@ -75,10 +163,10 @@
 #   - EVERY workspace member's package.json (npm ci validates the whole workspace
 #     against the lockfile, so a missing member's manifest aborts the install), and
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
-#     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
+#     plus its workspace deps @clockwyrks/ui and @clockwyrks/run-record, which
 #     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
-#     @test-cabinet/run-stats, @test-cabinet/voxel-runtime and
-#     @test-cabinet/particle-runtime, whose compiled subpaths the ui library
+#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
+#     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
 #     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
 #     The Dockerfile builds their dist/ before the console — the sources ride
 #     along here, dist/ is re-excluded below and rebuilt in-image.
@@ -87,7 +175,6 @@
 !/package.json
 !/package-lock.json
 !/tsconfig.base.json
-!/apps/desktop/package.json
 !/apps/docs/package.json
 !/apps/site/package.json
 !/apps/web
@@ -96,18 +183,219 @@
 !/packages/ui
 !/packages/voxel-runtime
 !/packages/particle-runtime
+# The rig/animation half of the generated contract. `run-record` re-exports it, so
+# the console needs it for the same reason it needs `run-record`; separately, it is
+# what the two runtimes above now depend on, so the staging script pulls it into the
+# package store as part of their closure (scripts/ci/build-context.sh asserts this
+# line exists for exactly that reason).
+!/packages/asset-contract
+# The engine runtimes are the odd ones out in this block: the console does not
+# bundle them and the ui library does not import them. They ride along for the
+# BASE image below, whose staging script bakes them into the package store beside
+# the shippable packages — an engine runtime is seeded per run rather than named
+# by a case, so each appears in that script's list and in no case manifest.
+!/packages/simple-2d
+!/packages/structured-2d
+!/packages/simple-3d
+!/packages/structured-3d
+# The shared engineless (`none`) validator harness and canvas recorder. Nothing
+# bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
+# package store beside the engine runtimes, and crates/core's vitest validator
+# (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
+# store into a case's staged validator project. So the driver image must carry its
+# sources, and a build context missing them fails inside the staging script
+# ("shippable package @clockwyrks/case-harness not found under packages/"), taking
+# every service image on services.Dockerfile down with it. scripts/ci/build-context.sh
+# asserts every name in that script's SHIPPABLE list survives this allowlist, because
+# a `COPY . .` stage is invisible to the COPY-source checks.
+!/packages/case-harness
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
-# bake the shippable @test-cabinet packages into /opt/tcab-packages (see
+# bake the shippable @clockwyrks packages — and the simple-2d engine runtime —
+# into /opt/tcab-packages (see
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
+# The driver service image (services.Dockerfile, `--target driver`) bakes in a
+# static-musl `gg` harness, building it in a stage that runs
+# scripts/build-gg-static.sh (which `cargo build`s test-cabinet-gg for the musl
+# target). That build reaches much further into this repository than a `cargo build`
+# normally does, and the next three blocks are why.
+#
+# COMPILING gg NOW MEANS REFLECTING ELEVEN SDKs — AND BUILDING EVERY ONE OF THEIR
+# ARTIFACTS. gg's responses-as-code capability drives a model in one of eleven program
+# languages, and TWO things per arm are generated on the way to a gg binary.
+#
+# What the model is *told* each language offers — every module, signature, argument, type
+# and type member — is a signature catalogue reflected out of that language's own SDK by
+# that language's own documentation tool. Those catalogues used to be committed under
+# crates/gg/src/sandbox/guests/, which is what let this stage compile gg from crates/
+# alone. They are not committed any more: crates/gg/build.rs runs
+# scripts/gg-signatures.sh on every build, so the catalogue embedded in a gg binary is
+# reflected from the SDK sources of the same checkout and cannot describe a surface the
+# guest does not export.
+#
+# What a model's program is COMPILED AND EVALUATED AGAINST went the same way, one arm at
+# a time, and the move is COMPLETE: an SDK jar, a compiler, a compiled library set, a
+# guest archive, and finally the four baked interpreters — the TypeScript/JavaScript,
+# Python, Ruby and C# guest components, 14 to 35 MB apiece. Every arm has a crate under
+# crates/gg-sandbox-artifacts/ whose build script runs that arm's
+# packages/gg-sandbox*/build.sh into its own OUT_DIR, and crates/gg include_bytes!s the
+# result. So this stage does not merely read those packages' sources — it compiles them,
+# and crates/gg/src/sandbox/guests/ does not exist any more.
+#
+# ONE ARM COSTS THIS STAGE SOMETHING THE OTHERS DO NOT, and it is not a context entry:
+# csharp's build wants a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB installed by
+# scripts/ci/install-gg-build-toolchains.sh — which is NOT part of the eleven-arm
+# install-gg-toolchains.sh list every image already runs. A stage that builds gg needs
+# both lists. That is a Dockerfile concern rather than a context one, and it is recorded
+# here because this is where somebody reading "why does gg need all of packages/" will
+# look for the rest of the price.
+#
+# The price of both is paid right here: the ten guest packages and the scripts that
+# reflect and build them are build inputs of the driver image now, exactly as crates/ is.
+#
+# So the whole of every guest package rides along. Each is a few hundred kB of sources,
+# tools and pins (the big directories inside them — .build/, .spago/, output/ — are
+# re-excluded at the end of this file), and each is named as a directory rather than as
+# a file list on purpose: a reflection reads an arm's whole `src`/`Sources` tree, and
+# the failure mode of missing one file is not a warning but "no such file" partway
+# through an image build, minutes in.
+!/packages/gg-sandbox
+!/packages/gg-sandbox-python
+!/packages/gg-sandbox-ruby
+!/packages/gg-sandbox-purescript
+!/packages/gg-sandbox-java
+!/packages/gg-sandbox-kotlin
+!/packages/gg-sandbox-rust
+!/packages/gg-sandbox-swift
+!/packages/gg-sandbox-cpp
+!/packages/gg-sandbox-csharp
+# The eleventh entry is not an arm, and that is exactly why it was missed: nothing is
+# compiled or reflected out of `packages/gg-sandbox-jvm` on its own. It holds the
+# canonical ABI, the wire encoding and the one vendored TeaVM runtime class that the java
+# and kotlin arms BOTH compile into their own jars, so it is an input of two builds while
+# looking like the package of none. Its absence took a `make local-rebuild` down
+# mid-`cargo build` with `find: '/src/packages/gg-sandbox-jvm/src': No such file or
+# directory`, reported by the kotlin arm's crate rather than by a COPY — which is why the
+# COPY-reading half of scripts/ci/build-context.sh could not see it coming, and why that
+# script now also asserts every `packages/gg-sandbox*` directory survives this file.
+!/packages/gg-sandbox-jvm
+# And the scripts that drive all of that, which is a CLOSURE rather than a file: the
+# gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
+# scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately
+# runs scripts/ci/install-gg-toolchains.sh, which runs eight per-arm installers and
+# sources scripts/ci/lib.sh beside them. The two entry points are named. The installer
+# family is admitted as a DIRECTORY, because enumerating that half is precisely the trap
+# this file's own history records twice — the Blender helpers and the Java arm's
+# installer — and because it is the half that grows every time an arm is added. (The
+# per-arm installer entries enumerated further up are now redundant with this, and stay:
+# they exist for containers/gg-toolchains/Dockerfile, which COPYs each one BY NAME, and
+# scripts/ci/build-context.sh reads this file path by path to check those named COPYs. A
+# reader deleting one of them should have to think about that first.)
+#
+# What is deliberately NOT admitted is scripts/ as a whole, and the reason is this file's
+# opening paragraph. Seven Dockerfiles built from this context do `COPY . .` — the shared
+# asset-tooling builder that compiles ~20 Rust binaries, the adversarial and performance
+# run images, the web console image and all three service targets — so anything admitted
+# here busts the layer cache of every one of them. The ten guest packages above are worth
+# that: the driver image genuinely compiles their reflections into the binary it bakes.
+# The ~30 unrelated top-level scripts (media backfills, cluster re-ingests, sample-pack
+# tooling) are not, and admitting them would mean editing any
+# one of them recompiled the asset tooling from scratch.
+!/scripts/build-gg-static.sh
+# The gg build's own shared shell, ENUMERATED, and the enumeration is load-bearing.
+# `gg-signatures.sh` and `gg-artifacts.sh` both source `gg-arms.sh` (the one list of the arms),
+# every arm's `build.sh` sources `gg-artifacts-out-dir.sh`, and the pinned-download and npm-tool
+# resolvers are sourced by the arms' `bindings.sh` and by two installers. This used to be one
+# line, `!/scripts/gg-*.sh`, and it cannot be: A RE-INCLUSION MUST NEVER CARRY A WILDCARD.
+# BuildKit's context sender skips an ignored directory outright only while it can prove no
+# negated pattern is rooted beneath it, and it proves that by string prefix — so the moment ANY
+# `!` pattern in this file contains a `*`, `?` or `[`, the proof is off for every directory and
+# the sender walks the ENTIRE working tree (node_modules, target/, tmp/ — ~650,000 entries on a
+# developer machine) to ship the ~200 kB it keeps. That cost twenty seconds per build, and it
+# meant one unreadable entry anywhere in the tree — a transient `bad file descriptor` on a
+# shared mount, under tmp/, in a directory no image reads — failed `make local-rebuild`. A
+# literal list keeps the walk to the paths named here. scripts/ci/build-context.sh enforces
+# both halves: no negation anywhere in an allowlist may contain a wildcard, and every tracked
+# `scripts/gg-*.sh` must still survive this file, so the list below cannot silently fall behind.
+!/scripts/gg-arms.sh
+!/scripts/gg-artifacts-out-dir.sh
+!/scripts/gg-artifacts.sh
+!/scripts/gg-downloads.sh
+!/scripts/gg-npm-tools.sh
+!/scripts/gg-probe-fixtures.sh
+!/scripts/gg-reference.sh
+!/scripts/gg-scratch-lock.sh
+!/scripts/gg-signatures.sh
+!/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed
 # nothing from here. They live outside every path re-included above, so without
 # this the COPYs fail with "not found" against the allowlisted context.
 !/deployments/images/web
+
+# The DEVCONTAINER image (.devcontainer/ubuntu.dockerfile). These five entries are
+# the only ones in this file that exist for a BUILDER rather than for a Dockerfile,
+# and the difference is worth a paragraph.
+#
+# That image builds from this same context — it bakes gg's eleven program-language
+# toolchains, which are pinned by the repository rather than by .devcontainer/ — and
+# it carries a per-dockerfile allowlist beside it,
+# .devcontainer/ubuntu.dockerfile.dockerignore, narrowing that context to the ~230 kB
+# slice its COPYs actually read. BuildKit prefers that file over this one, so on a
+# Docker host it is what applies and nothing here is consulted for that build.
+#
+# THAT PREFERENCE IS NOT PORTABLE, and the failure it caused is quoted below. Buildah
+# — so Podman, so podman-compose, so the devcontainer on a rootless-Podman host, which
+# is a supported one (docker-compose.nixos.yml and .env.podman are committed and
+# .devcontainer/README.md tells a NixOS user to copy them) — resolves an ignore file
+# in this order (pkg/parse.ContainerIgnoreFile): an explicit --ignorefile, then
+# <containerfile>.containerignore, then <containerfile>.dockerignore, then
+# $CONTEXT/.containerignore, then $CONTEXT/.dockerignore. So it does have a sibling
+# rule, and it still did not reach the devcontainer's file: a rebuild driven by VS
+# Code's Dev Containers extension through podman-compose ended on the first COPY with
+#
+#     no items matching glob ".../.devcontainer/system/apt.sh" copied
+#     (1 filtered out using /…/.dockerignore): no such file or directory
+#
+# — buildah naming THIS file, by absolute path, as the one it applied. Whether that is
+# an older buildah than the sibling rule or the containerfile path podman-compose
+# hands it, the conclusion does not change and is the reason these entries are here: a
+# per-dockerfile ignore file is an optimisation the build may not assume was found, so
+# the root allowlist has to be sufficient on its own. That is also how this was found —
+# a rebuild that failed, not a prediction.
+#
+# The alternative fix — a root .containerignore, which Buildah prefers over
+# .dockerignore — would repoint EVERY image built from this context on every Podman
+# host at a second allowlist that has to be kept in step with this one. Five entries
+# here cost less than that, and cost it once.
+#
+# WHAT THEY COST THE SEVEN `COPY . .` BUILDS, honestly: those layer cache keys gain
+# ~24 small files, which is a real widening of the principle at the top of this file.
+# In practice it is close to free. Those keys already carry the whole of crates/ (904
+# commits in the last six months) and the whole of scripts/ci (68); .devcontainer's
+# install scripts moved 24 times in the same window, and the pipeline builds the images
+# only on `master` and `staging`, so a devcontainer-only change busts a cache at most
+# once per merge.
+#
+# What is deliberately NOT admitted is the rest of the directory — README.md,
+# devcontainer.json, the four compose files, the Dockerfile and its ignore file. No
+# COPY reads them, and they churn harder than the scripts do. The host-specific
+# docker-compose.local.yml and .env are excluded for free by the same narrowing (the
+# per-dockerfile allowlist, which admits !/.devcontainer whole, has to re-exclude
+# them by name).
+#
+# These five entries and that per-dockerfile allowlist are ONE list with two
+# spellings, and the wider one will not fail when they drift — a new script directory
+# would work under Docker and break under Podman. scripts/ci/build-context.sh
+# therefore checks every Dockerfile against BOTH allowlists that can apply to it.
+!/.devcontainer/system
+!/.devcontainer/languages
+!/.devcontainer/tools
+!/.devcontainer/ai
+!/.devcontainer/post-install.sh
 
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
@@ -116,3 +404,66 @@
 **/node_modules/
 **/dist/
 **/.astro/
+# The guest packages' own scratch, which the block above would otherwise admit and
+# which dwarfs everything else in this context: measured on a developer machine that
+# has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of
+# these — 179 MB of PureScript `.build`, 123 MB of Rust, 75 MB of C#, 54 MB of Swift,
+# 34 MB of `purs` output. Every one of them is regenerated inside the image by the
+# reflection that needs it, so admitting them would cost a `make images` several
+# hundred megabytes of context transfer to ship files the build immediately
+# overwrites.
+**/.build/
+**/.spago/
+**/__pycache__/
+/packages/gg-sandbox-purescript/output/
+# The Rust arm's WIT bindings are GENERATED into its source tree (bindings.sh writes
+# src/bindings.rs, which is gitignored). They are a pure function of crates/gg/wit and
+# the pinned wit-bindgen, and `signatures.sh` rewrites them UNCONDITIONALLY rather than
+# when the file is missing — it spends a paragraph on why, and cites this line as the
+# other half of the same invariant. So a copy carried in from a developer's machine
+# would not be used; it would be overwritten. Keeping it out buys the two things that
+# are left, which are enough on their own: a context that does not carry a file the
+# build is about to rewrite, and a layer cache that does not churn on it.
+/packages/gg-sandbox-rust/src/bindings.rs
+
+# TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored
+# output that lands inside `!/packages/ui` — re-included for the web console image, which
+# reads that package's sources — and it is REWRITTEN by every local `tsc -b`. So a
+# type-check on the host changes the context, which changes the `COPY . .` cache key, which
+# recompiles the whole Rust workspace in an image that does not contain a line of
+# TypeScript. As a glob rather than the one path, because the next package to gain a
+# composite tsconfig should not have to rediscover this.
+**/*.tsbuildinfo
+
+# macOS Finder metadata, and the entry most likely to be the reason a `make images` you
+# expected to be cached was not. `.DS_Store` files exist wherever a directory has been
+# opened in Finder — this repository has them at its root and under crates/, packages/,
+# scripts/, harnesses/, orchestrators/ and containers/, six of which sit inside allowlisted
+# trees — and Finder rewrites them for reasons that have nothing to do with the repository:
+# a window resized, a view mode changed, a folder scrolled. Each rewrite changes the
+# `COPY . .` cache key of every build from this context, and the build stage's first act on
+# a miss is to touch the tree and hand cargo a workspace it must compile from scratch. The
+# symptom is a full ~19-crate rebuild with no source change, blamed on the Dockerfile.
+#
+# This is not hypothetical here: the primary development host is macOS running the tree
+# through a Linux VM's shared mount, so Finder and the builder see the same directories.
+**/.DS_Store
+
+# The staged AUDIO STORE, and the one thing under dist/ that belongs in this context.
+# The audio clips are not committed to this repository: they live in the private audio
+# object store, and `containers/build.sh` runs scripts/stage-audio-store.mjs, which
+# downloads and verifies every published pack into dist/audio-store/tree.
+# containers/audio-store/Dockerfile then `COPY`s that directory (named through the
+# AUDIO_STAGE_DIR build arg) to /opt/tcab-audio, which is the ONE image that carries
+# audio: no RUN image bakes a pack any more, a run is staged with the packs its test
+# case declares. The blanket `**/dist/` re-exclusion above would keep it out, so
+# re-include just this subtree — and only it, so every OTHER dist/ (a local
+# `npm run build`'s output) stays out as before. This re-inclusion has to come after
+# `**/dist/` to win, which is why it lives here rather than with the allowlist proper.
+#
+# The pattern names the `tree` directory rather than the whole `dist/audio-store` root,
+# which is as narrow as this file's format goes: it is exactly what the COPY reads, so
+# the stager's content-addressed DOWNLOAD CACHE at dist/audio-store/.cache — a second
+# copy of every clip it has ever verified, which no image reads — stays out, and so does
+# anything else that ends up beside the tree.
+!/dist/audio-store/tree

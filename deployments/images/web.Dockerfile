@@ -17,16 +17,16 @@
 # Both default to empty, so an unset env yields a valid (empty) config that leaves
 # the console unconfigured rather than broken.
 #
-# The canonical image is published to GHCR by the build-service-images.yml GitHub
-# Actions workflow (as ghcr.io/<owner>/tcab-web, tagged :latest and :<git-sha>) on
-# every push to master that touches the web sources or this Dockerfile. To build
-# and push it by hand instead (from the repo root):
+# The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)
+# on every push to master and staging, natively per architecture, and pushed to the
+# Test Cabinet ACR as testcabinet.azurecr.io/tcab-web:<sha>. To build and push it by
+# hand instead (from the repo root):
 #   docker build -t <registry>/tcab-web:<tag> -f deployments/images/web.Dockerfile .
 #   docker push <registry>/tcab-web:<tag>
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 # Build the SPA from the repo root so the npm workspace resolves: Vite bundles the
-# console's workspace deps (@test-cabinet/ui, @test-cabinet/run-record) from their
+# console's workspace deps (@clockwyrks/ui, @clockwyrks/run-record) from their
 # TypeScript sources, so the whole workspace must `npm ci` against the root
 # lockfile. The .dockerignore re-includes exactly the slice this needs (the root
 # manifests, every member's package.json, and the three packages' sources).
@@ -36,7 +36,7 @@ COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
 # web console. run-record, run-stats, voxel-runtime and particle-runtime are built
 # first: the console's `tsc -b` needs run-record's compiled types, and the
-# @test-cabinet/ui library it bundles from source imports run-stats' `.`/`./rollup`
+# @clockwyrks/ui library it bundles from source imports run-stats' `.`/`./rollup`
 # subpaths and voxel-runtime's and particle-runtime's `./three` subpaths, whose
 # typings only resolve once each package's dist/ exists (none of the three is a tsc
 # project reference of the console, so they must be built explicitly). The npm
@@ -44,11 +44,11 @@ COPY . .
 # across builds instead of refetching every dependency.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci \
-    && npm run build -w @test-cabinet/run-record \
-    && npm run build -w @test-cabinet/run-stats \
-    && npm run build -w @test-cabinet/voxel-runtime \
-    && npm run build -w @test-cabinet/particle-runtime \
-    && npm run build -w @test-cabinet/web
+    && npm run build -w @clockwyrks/run-record \
+    && npm run build -w @clockwyrks/run-stats \
+    && npm run build -w @clockwyrks/voxel-runtime \
+    && npm run build -w @clockwyrks/particle-runtime \
+    && npm run build -w @clockwyrks/web
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # nginx-unprivileged: runs as a non-root user (uid 101) and listens on 8080 by

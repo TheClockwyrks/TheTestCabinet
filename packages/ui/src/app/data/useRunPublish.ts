@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { useOptionalWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
 import { describeRunState } from "./runState";
@@ -17,6 +17,9 @@ import { useRunsRuntime } from "../runtime/runsRuntime";
  *   publishable, whatever reviews it carries;
  * - a publishable failure tier is real model signal with no checklist to complete,
  *   so it publishes with no review;
+ * - a completed **validator-rated** run publishes with zero reviews — its
+ *   functional rating and score stand on their own, and a review (the run-wide
+ *   aesthetic tier plus any verdict overrides) can be added later (or never);
  * - anything else needs at least one review.
  *
  * The backend is the real gate — it refuses regardless — so this exists to keep the
@@ -27,6 +30,7 @@ export function isPublishable(summary: RunSummary): boolean {
   const state = describeRunState(summary.state);
   if (state.isPublishableFailure) return true;
   if (summary.state === "infrastructure") return false;
+  if (summary.validatorRated && summary.state === "completed") return true;
   return summary.reviewCount > 0;
 }
 

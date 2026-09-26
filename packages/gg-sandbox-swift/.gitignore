@@ -1,0 +1,6 @@
+# The C bindings `wit-bindgen` generates from crates/gg/wit, the compiled library set, the symbol
+# graph `signatures.sh` reflects from, and the staging tree the archives are cut from. THIS PACKAGE
+# COMMITS NOTHING: `build.sh` writes its four artifacts into $GG_ARTIFACTS_OUT_DIR — the `OUT_DIR`
+# of crates/gg-sandbox-artifacts/swift — and `signatures.sh` writes its catalogue into
+# $GG_SIGNATURES_OUT_DIR, which is crates/gg's. Both are cargo's, and neither is in this tree.
+.build/

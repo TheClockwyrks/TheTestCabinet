@@ -1,0 +1,9 @@
+{
+  "width": 20,
+  "height": 16,
+  "depth": 20,
+  "background": "#101418",
+  "actions": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/ring/actions.json",
+  "preview": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/ring/preview.png",
+  "mesh": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/models/ring/mesh.glb"
+}

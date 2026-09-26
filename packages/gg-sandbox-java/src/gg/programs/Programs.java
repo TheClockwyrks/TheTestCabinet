@@ -1,0 +1,110 @@
+package gg.programs;
+
+import gg.ApiError;
+import gg.ApiErrorCode;
+import gg.internal.Coding;
+import gg.internal.Read;
+import gg.internal.Value;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Fetch a program this session already ran, and hand a patched copy back to be run.
+ *
+ * <p>A program is fetched by the id its acknowledgement carried, patched with ordinary string
+ * work, and handed back to run in place of the one that fetched it.
+ *
+ * <pre>{@code
+ * Programs.rerun(Programs.get("k3p9").replace("parseAll(", "parseOne("));
+ * }</pre>
+ *
+ * @ggmodule programs
+ */
+public final class Programs {
+    private Programs() {
+    }
+
+    /**
+     * Every program this session has run, oldest first.
+     *
+     * <p>It lists each program's shape rather than its source. The list survives a context
+     * compaction. A session that has run nothing yet gets an empty list rather than a failure.
+     *
+     * @return every program this session has run, oldest first
+     * @ggop programs.history
+     */
+    public static List<ProgramSummary> history() {
+        return Read.programSummaries(Coding.call("programs.history"));
+    }
+
+    /**
+     * Fetch the exact source of one program that ran, by the id its acknowledgement carried.
+     *
+     * <p>The source comes back as a string. Where a submission's program was itself handed over,
+     * this is the program that ran rather than the few lines that asked for it. A rerun keeps the
+     * id of the submission it replaced.
+     *
+     * @param id The program's id, as its acknowledgement carried it and as {@link #history}
+     *     reports it.
+     * @return the source of the program that ran under that id
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the ids that are held, for an id this
+     *     session was never issued or one whose program the library has dropped.
+     * @ggop programs.get
+     */
+    public static String get(String id) {
+        return Coding.call("programs.get", Value.of(id)).text();
+    }
+
+    /**
+     * Hand gg a program to run in place of this one.
+     *
+     * <p>This program finishes, then gg compiles and runs {@code source} as this submission's
+     * program, under the same id. Nothing is undone: every call already made stands, and the
+     * program that runs next sees the world this one left behind.
+     *
+     * <p>The first call in a program stands. A program that then fails cancels its hand-over along
+     * with everything else it decided, and the turn is an ordinary error turn instead. A submission
+     * runs at most four programs: this one plus three handed over.
+     *
+     * @param source The program to run in place of this one, as Java statements. It may not be
+     *     blank.
+     * @throws ApiError {@link ApiErrorCode#REFUSED} for a second hand-over from the same program, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a blank source.
+     * @ggop programs.rerun
+     */
+    public static void rerun(String source) {
+        Coding.call("programs.rerun", Value.of(source));
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // The type the library hands back
+    // -------------------------------------------------------------------------------------------
+
+    /**
+     * One program this session already ran, as the history lists it.
+     *
+     * <p>It describes the program's shape, never its source.
+     *
+     * @param id The id its {@code submit_program} acknowledgement carried — what
+     *     {@link Programs#get(String)} takes.
+     * @param turn The turn it ran on.
+     * @param lines How many lines of source it was.
+     * @param chars How many characters of source it was.
+     * @param ok Whether it ran to its end, with no uncaught failure and no ceiling stopping it.
+     * @param error The error it ended with, where it did not run to its end.
+     */
+    public record ProgramSummary(String id, int turn, int lines, int chars, boolean ok,
+            Optional<String> error) {
+
+        /**
+         * Fetch this program's source, which is {@link Programs#get(String)} on its id.
+         *
+         * @return the source of the program that ran under this id
+         * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the library has dropped it.
+         * @ggalias programs.get
+         */
+        public String source() {
+            return Programs.get(id);
+        }
+    }
+}

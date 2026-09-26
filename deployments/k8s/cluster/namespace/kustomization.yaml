@@ -1,0 +1,7 @@
+# The environment's Namespace. The including kustomization's `namespace:` directive
+# names it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml

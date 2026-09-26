@@ -1163,3 +1163,264 @@ fn orchestration_actions_use_their_documented_slugs() {
         json!("subagent_failed")
     );
 }
+
+// Regression tests for tool classifications that formerly leaked `unknown`
+// events, validated against real Codex/OpenCode/Cline/Kilo/Pi Carom runs.
+
+#[test]
+fn opencode_apply_patch_writes_each_file_named_in_patch_text() {
+    // OpenCode and Kilo carry the patch body in `patchText`, and a single patch
+    // can add and update several files.
+    let events = single(
+        EventFormat::Opencode,
+        r#"{"type":"tool_use","part":{"tool":"apply_patch","state":{"status":"completed","input":{"patchText":"*** Begin Patch\n*** Update File: /work/package.json\n@@\n-  \"a\": 1\n+  \"a\": 2\n*** Add File: /work/index.html\n+<!doctype html>\n*** End Patch\n"}}}}"#,
+    );
+    let paths: Vec<_> = events
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::Write {
+                path, is_success, ..
+            } => {
+                assert_eq!(*is_success, Some(true));
+                path.clone()
+            }
+            other => panic!("expected write events, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(paths, ["/work/package.json", "/work/index.html"]);
+}
+
+#[test]
+fn opencode_background_process_start_is_a_command() {
+    // `action: "start"` launches a long-running process; its command line is the
+    // command. Management actions without a command are consumed, not unknown.
+    assert_eq!(
+        one(single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","part":{"tool":"background_process","state":{"status":"completed","input":{"action":"start","command":"npx vite preview --port 4173"}}}}"#,
+        )),
+        EventKind::Command {
+            command: "npx vite preview --port 4173".to_string(),
+            working_directory: None,
+            exit_code: None,
+            is_success: Some(true),
+        }
+    );
+    assert!(
+        single(
+            EventFormat::Kilo,
+            r#"{"type":"tool_use","part":{"tool":"background_process","state":{"status":"completed","input":{"action":"status","id":"p1"}}}}"#,
+        )
+        .is_empty(),
+        "a background-process management action carries no command and is consumed"
+    );
+}
+
+#[test]
+fn opencode_task_tool_becomes_orchestration() {
+    // OpenCode's subagent-spawn `task` names its role in `subagent_type` and its
+    // session in `task_id`; an empty `task_id` leaves the id unset.
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"tool_use","part":{"tool":"task","state":{"status":"completed","input":{"description":"Audit compliance","subagent_type":"explore","task_id":"ses_abc"}}}}"#,
+        )),
+        EventKind::Orchestration {
+            action: OrchestrationAction::SubagentCompleted,
+            subagent_id: Some("ses_abc".to_string()),
+            subagent_name: Some("explore".to_string()),
+            is_success: Some(true),
+        }
+    );
+}
+
+#[test]
+fn cline_search_codebase_emits_a_search_per_query() {
+    // Cline's semantic search carries a `queries` array; each pattern is a search.
+    let events = seq_last(
+        EventFormat::Cline,
+        &[
+            r#"{"type":"agent_event","event":{"type":"content_start","contentType":"tool","toolCallId":"t1","toolName":"search_codebase","input":{"queries":["carom|paddle","window\\.__carom"]}}}"#,
+            r#"{"type":"agent_event","event":{"type":"content_end","contentType":"tool","toolCallId":"t1","toolName":"search_codebase","output":{"success":true}}}"#,
+        ],
+    );
+    let queries: Vec<_> = events
+        .iter()
+        .map(|event| match &event.kind {
+            EventKind::Search {
+                query, is_success, ..
+            } => {
+                assert_eq!(*is_success, Some(true));
+                query.clone()
+            }
+            other => panic!("expected search events, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(queries, ["carom|paddle", "window\\.__carom"]);
+}
+
+#[test]
+fn pi_agent_settled_is_a_consumed_lifecycle_marker() {
+    assert!(
+        single(EventFormat::Pi, r#"{"type":"agent_settled"}"#).is_empty(),
+        "agent_settled is lifecycle noise, not an unknown event"
+    );
+}
+
+// --- Per-turn usage events (Gap 2) ------------------------------------------
+
+#[test]
+fn opencode_step_finish_emits_per_turn_usage() {
+    // OpenCode reports per-step tokens under `part.tokens`, with cache reads/writes
+    // nested in a `cache` object. The step's slice is surfaced as a usage event
+    // (the run-level total is still summed separately by the registry), mapped onto
+    // the classes exactly as the session total is.
+    let usage = one(single(
+        EventFormat::Opencode,
+        r#"{"type":"step_finish","part":{"tokens":{"input":100,"output":50,"reasoning":10,"cache":{"read":200,"write":5}}}}"#,
+    ));
+    assert_eq!(
+        usage,
+        EventKind::Usage {
+            tokens: crate::metrics::TokenCounts {
+                // uncached input (100) + cache-creation (5); cache reads are their
+                // own class, not folded into input.
+                uncached_input: Some(105),
+                cached_input: Some(200),
+                output: Some(50),
+                reasoning: Some(10),
+            },
+            cost: None,
+        }
+    );
+}
+
+#[test]
+fn pi_message_end_emits_per_turn_usage() {
+    // Pi reports usage per assistant message under `message.usage`; a message with
+    // no text content emits only the usage slice.
+    let usage = one(single(
+        EventFormat::Pi,
+        r#"{"type":"message_end","message":{"role":"assistant","usage":{"input":300,"cacheRead":100,"cacheWrite":10,"output":80}}}"#,
+    ));
+    assert_eq!(
+        usage,
+        EventKind::Usage {
+            tokens: crate::metrics::TokenCounts {
+                uncached_input: Some(310), // input (300) + cacheWrite (10)
+                cached_input: Some(100),
+                output: Some(80),
+                reasoning: None, // Pi does not break reasoning out
+            },
+            cost: None,
+        }
+    );
+}
+
+#[test]
+fn step_finish_without_per_turn_tokens_emits_no_usage_event() {
+    // A step boundary carrying no `part.tokens` produces nothing, so the feed is
+    // not littered with empty usage events.
+    assert!(
+        single(
+            EventFormat::Opencode,
+            r#"{"type":"step_finish","tokens":{"input":1}}"#
+        )
+        .is_empty()
+    );
+}
+
+// --- Tool-call tally, including consumed tools (Gap 1) ----------------------
+
+#[test]
+fn kilo_counts_the_consumed_todo_tool_and_mapped_tools() {
+    // The todo tools emit no event (internal task list, no workspace activity) but
+    // are real API round-trips that cost tokens, so the tally must still see them —
+    // a count derived from the emitted event stream alone would show zero.
+    let mut parser = EventParser::new(EventFormat::Kilo);
+    for _ in 0..3 {
+        let events = parser.ingest(
+            OutputStream::Stdout,
+            r#"{"type":"tool_use","tool":"todowrite","status":"completed","input":{"todos":[]}}"#,
+        );
+        assert!(events.is_empty(), "a todo tool emits no event");
+    }
+    // A mapped tool is counted alongside the consumed one.
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"tool_use","tool":"write","status":"completed","input":{"path":"/work/x.ts"}}"#,
+    );
+    let calls = parser.take_tool_calls();
+    assert_eq!(calls.get("todowrite"), Some(&3));
+    assert_eq!(calls.get("write"), Some(&1));
+    // Taking the tally drains it, leaving nothing for a subsequent read.
+    assert!(parser.take_tool_calls().is_empty());
+}
+
+#[test]
+fn pi_counts_a_split_tool_at_its_start_exactly_once() {
+    // A Pi tool call spans a start and an end event; counting at the start (which
+    // carries the name) tallies it once even though two events reference it.
+    let mut parser = EventParser::new(EventFormat::Pi);
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"tool_execution_start","toolCallId":"t1","toolName":"todo","args":{}}"#,
+    );
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"tool_execution_end","toolCallId":"t1","toolName":"todo","result":{"content":[]}}"#,
+    );
+    assert_eq!(parser.take_tool_calls().get("todo"), Some(&1));
+}
+
+#[test]
+fn claude_counts_a_tool_use_by_lowercased_name() {
+    // Claude records a tool use silently and resolves it on the later result; the
+    // tally counts it once, by its raw name lowercased.
+    let mut parser = EventParser::new(EventFormat::Claude);
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"td","name":"TodoWrite","input":{"todos":[]}}]}}"#,
+    );
+    assert_eq!(parser.take_tool_calls().get("todowrite"), Some(&1));
+}
+
+#[test]
+fn cline_counts_a_tool_at_its_start() {
+    let mut parser = EventParser::new(EventFormat::Cline);
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"agent_event","event":{"type":"content_start","contentType":"tool","toolCallId":"c1","toolName":"read_files","input":{"files":["/work/a.ts"]}}}"#,
+    );
+    parser.ingest(
+        OutputStream::Stdout,
+        r#"{"type":"agent_event","event":{"type":"content_end","contentType":"tool","toolCallId":"c1","output":{"success":true}}}"#,
+    );
+    assert_eq!(parser.take_tool_calls().get("read_files"), Some(&1));
+}
+
+#[test]
+fn usage_event_round_trips_through_serde() {
+    let event = HarnessEvent {
+        timestamp: "2026-07-27T00:00:00Z".to_string(),
+        session_id: None,
+        kind: EventKind::Usage {
+            tokens: crate::metrics::TokenCounts {
+                uncached_input: Some(10),
+                cached_input: None,
+                output: Some(4),
+                reasoning: None,
+            },
+            cost: Some(0.0123),
+        },
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "usage");
+    // The four token classes sit under `tokens` (the shared `TokenMetrics`
+    // contract), an unreported class serialized as null.
+    assert_eq!(json["tokens"]["uncachedInput"], 10);
+    assert!(json["tokens"]["cachedInput"].is_null());
+    assert_eq!(json["cost"], 0.0123);
+    let back: HarnessEvent = serde_json::from_value(json).unwrap();
+    assert_eq!(back, event);
+}

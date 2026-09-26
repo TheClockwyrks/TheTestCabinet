@@ -1,14 +1,16 @@
 @use "../styles/tokens" as t;
 @use "../styles/halo" as h;
 
-// Sits under the live monitor's header, aligned to the trailing edge so the kill
-// affordance reads as the run-level negative action without crowding the feed.
+// Aligned to the trailing edge of whatever row hosts it, so the kill affordance reads
+// as the run-level negative action without crowding what it sits beside. It carries no
+// vertical margin of its own: every host packs it into a row of theirs — the monitor's
+// page-header comment line, gg's Status card header — where a margin only pushes the
+// button off the line its neighbours sit on.
 .killControl {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
   margin-left: auto;
-  margin-bottom: t.$space-xs;
 }
 
 // A muted destructive button: it reads as the negative action without shouting,
@@ -33,9 +35,17 @@
     background: color-mix(in srgb, t.$color-negative 8%, transparent);
   }
 
+  // Busy: the press landed and the request is in flight.
   &:disabled {
     opacity: 0.6;
     cursor: progress;
+  }
+
+  // Blocked: the control is offered here but not for this run in this state, and
+  // its `title` says why. A refused press is not a pending one, so it must not
+  // read as one.
+  &:disabled[data-blocked] {
+    cursor: not-allowed;
   }
 }
 

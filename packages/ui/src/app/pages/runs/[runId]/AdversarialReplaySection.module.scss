@@ -214,6 +214,23 @@
 .error {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: t.$space-xs;
+  padding: 0 t.$space-md;
   height: t.$embed-height;
+  text-align: center;
   color: t.$color-text-muted;
+}
+
+.errorMessage {
+  margin: 0;
+}
+
+// The standing fact under the failure: the recorded result is unaffected. Quieter
+// than the message above it, since it is reassurance rather than the error.
+.errorNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  opacity: 0.8;
 }

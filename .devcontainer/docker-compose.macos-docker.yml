@@ -1,0 +1,54 @@
+# Host override for the Docker API on macOS — Docker Desktop or OrbStack. Copy
+# this to docker-compose.local.yml (see README.md), paired with `.env.ubuntu`.
+#
+# ONE FILE COVERS BOTH RUNTIMES, and the name says why: OrbStack is a drop-in
+# Docker-API implementation, so what this row targets is the interface rather than
+# a vendor. Everything below follows from the two behaving the same way where it
+# matters here — each runs a Docker daemon in a VM it manages for you, each
+# presents the workspace already owned by a UID 1000 user (so nothing has to be
+# remapped and the plain Docker environment fits), and each synthesises
+# /run/host-services/ssh-auth.sock for the SSH agent bind below.
+#
+# The other macOS row, docker-compose.macos-podman.yml, is a separate file because
+# rootless Podman does none of those three things.
+services:
+  dev:
+    environment:
+      - SSH_AUTH_SOCK=/tmp/devcontainer-ssh-agent.sock
+    volumes:
+      # The SSH agent comes in through the socket the runtime SYNTHESISES —
+      # /run/host-services/ssh-auth.sock, which Docker Desktop and OrbStack both
+      # invent inside their own VM and keep pointed at the Mac's live agent. Do
+      # NOT interpolate the host's $SSH_AUTH_SOCK here, tempting as the Linux
+      # rows make it look: on macOS that variable names a per-boot random path
+      # (an ~/.ssh/agent/s.* socket, or a launchd Listeners socket), the compose
+      # `up` VS Code runs inherits it, and a bind source the daemon cannot find
+      # is silently created AS A DIRECTORY. One reboot later the container
+      # refuses to start with "not a directory: Are you trying to mount a
+      # directory onto a file", and a junk directory is left at the stale path.
+      # The synthesised path never goes stale because the runtime resolves it on
+      # its own side of the VM boundary.
+      #
+      # SSH_AGENT_SOCKET in .env overrides it should a runtime ever move it — a
+      # dedicated name rather than SSH_AUTH_SOCK, because the ambient variable
+      # leaking into the interpolation was the bug.
+      - type: bind
+        source: ${SSH_AGENT_SOCKET:-/run/host-services/ssh-auth.sock}
+        target: /tmp/ssh-agent.sock
+      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
+      # the local service stack (`make -C deployments/local local-up`) drives the
+      # HOST daemon. That is what lets `k3d` create its cluster — its node
+      # containers are siblings on that same daemon — and what lets the Makefile's
+      # `docker` calls build/save the service images and inspect this devcontainer
+      # to resolve the HOST path of the workspace it mounts into the k3d node.
+      #
+      # It lives in the host overrides rather than in docker-compose.yml because
+      # HOW a host exposes that socket is a property of the host: the macOS +
+      # Podman row cannot bind one at all — a bind source there is resolved on the
+      # Mac, and the socket is inside the machine VM — so it routes the socket in
+      # through a named volume instead. Naming it here stopped that row's container
+      # from starting at all. Access is granted at container start by
+      # tools/docker-socket-access.sh, whatever group owns the socket.
+      #
+      # Set DOCKER_SOCKET in .env for a non-default path.
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock

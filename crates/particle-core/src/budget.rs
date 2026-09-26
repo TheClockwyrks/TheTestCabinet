@@ -56,14 +56,14 @@ impl Projection {
     }
 
     /// The rejection message an over-budget projection is reported with: what the
-    /// system would cost, which emitters spend it, and what to turn down. It is read
-    /// by a model mid-run, so it names the flags to change.
+    /// system would cost, which emitters spend it, what to turn down, and the sizing
+    /// rule that says how far. It is read by a model mid-run, so it names the flags to
+    /// change and keeps the one worked example that makes them actionable.
     pub fn over_budget_message(&self) -> String {
         let mut message = format!(
             "this system would hold about {} particles alive at once, over the \
-             {MAX_LIVE_PARTICLES}-particle budget an effect has to fit in (every \
-             consumer simulates the system live, every frame). A denser-looking effect \
-             comes from particle size, opacity, and color, not from particle count.",
+             {MAX_LIVE_PARTICLES}-particle budget; lower --rate, --lifetime or \
+             --burst (including a sub-emitter child's)",
             self.total.round() as u64
         );
         if !self.contributions.is_empty() {
@@ -76,11 +76,12 @@ impl Projection {
                 ));
             }
         }
+        // The sizing rule is remediation data, not narration: it is the one datum
+        // that says how far the flags above have to come down, and a reader without
+        // it is left to guess at the arithmetic.
         message.push_str(
-            "\n\nLower --rate (particles per second), --lifetime (how long each one \
-             lives), or --burst, and the burst count of any sub-emitter child, until \
-             the projected total fits. An emitter holds roughly `rate x lifetime` \
-             particles alive at once: --rate 2000 --lifetime 1500 is ~3000 live.",
+            "\n\nAn emitter holds roughly rate x lifetime particles alive at once: \
+             --rate 2000 --lifetime 1500 is ~3000 live.",
         );
         message
     }

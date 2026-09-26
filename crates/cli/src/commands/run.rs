@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use test_cabinet_core::backend_client::LiveItem;
 use test_cabinet_core::{
-    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody,
+    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody, NONE_SLUG,
     PublishedRun, RunRecord, runtime_hours_to_seconds,
 };
 
@@ -31,8 +31,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
 
     let backend = config::backend_url().context(
-        "TCAB_BACKEND_URL is not set; `tcab run` now enqueues runs on the backend (the k3d \
-         stack) — set it to the backend's address (for example http://127.0.0.1:8787)",
+        "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
+         http://127.0.0.1:8787)",
     )?;
     // The enqueue is gated on the launching account, so a launch requires a stored
     // login token even though plain reads do not.
@@ -43,6 +43,13 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     // built-in slug. `one-shot` is the default the backend also assumes when the
     // field is omitted.
     let orchestrator = (args.orchestrator != "one-shot").then(|| args.orchestrator.clone());
+    // The engine is omitted at its default for the same reason: `none` is what the
+    // backend assumes when the field is absent, so an engineless launch says
+    // nothing about an engine at all. The slug is not checked here —
+    // the core gates it (it must resolve, and the case must declare support) before
+    // the driver spends a container on it, and doing it twice would mean two
+    // catalogues to keep in step.
+    let engine = (args.engine != NONE_SLUG).then(|| args.engine.clone());
     let body = LaunchBody {
         test_case: args.test_case.clone(),
         version: args.version.clone(),
@@ -50,9 +57,20 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         harness,
         model: args.model.clone(),
         orchestrator,
+        engine,
         max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
         retry_count: args.retry_count,
+        // `tcab run` submits third-party-harness runs; a gg run is configured by a
+        // capability set through gg's own surface, not this flat flag form.
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        // The prices the run is scored at are the backend's to stamp: the model
+        // catalog lives there, and the enqueue overwrites whatever a client sent.
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     println!(
@@ -71,6 +89,13 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     match &body.orchestrator {
         Some(slug) => println!("  orch:    {slug}"),
         None => println!("  orch:    one-shot"),
+    }
+    // Echoed even when it is the default, because the engine changes what the
+    // harness is asked to build: a reader comparing two runs needs to see which
+    // dimension this one is on without reconstructing it from the flags.
+    match &body.engine {
+        Some(slug) => println!("  engine:  {slug}"),
+        None => println!("  engine:  {NONE_SLUG} (no runtime)"),
     }
     if let Some(mode) = &body.auth_mode {
         println!("  auth:    {mode}");
@@ -139,8 +164,10 @@ async fn finish(
             Ok(())
         }
         // A `failed`/`canceled` job either produced a failure record (a model
-        // failure with a timeline) or none (an infrastructure failure). Surface the
-        // detail and exit non-zero either way.
+        // failure with a timeline, or the partial record a killed run's driver hands
+        // back a moment after the cancel lands) or none (an infrastructure failure).
+        // Surface the detail and exit non-zero either way — the record, when there
+        // is one, is inspectable in the console.
         JobState::Failed | JobState::Canceled => {
             let detail = status
                 .detail
@@ -152,8 +179,7 @@ async fn finish(
         // means the watch ended early (a dropped connection); treat it as a failure
         // to observe the run rather than a silent success.
         other => bail!(
-            "watch for job {job_id} ended while the run was still {} — re-run to observe it to \
-             completion",
+            "watch for job {job_id} ended while the run was still {}",
             state_label(other)
         ),
     }
@@ -238,7 +264,8 @@ fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
 /// A short label for a run's terminal state.
 fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
     use test_cabinet_core::RunState::{
-        Catastrophic, Completed, HarnessError, Hung, Infrastructure, TimedOut,
+        Canceled, Catastrophic, Completed, HarnessError, Hung, Infrastructure, LimitExceeded,
+        TimedOut,
     };
     match state {
         Completed => "completed",
@@ -246,7 +273,9 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
         TimedOut => "timed out",
         Infrastructure => "infrastructure failure",
         HarnessError => "harness error",
+        LimitExceeded => "stopped on an execution ceiling",
         Hung => "harness hung",
+        Canceled => "canceled by operator",
     }
 }
 

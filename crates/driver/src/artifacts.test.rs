@@ -22,7 +22,8 @@ use test_cabinet_core::test_case::{MediaKind, SheetSpec};
 use test_cabinet_core::validation::*;
 
 use super::{
-    upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend,
+    upload_adversarial_to_backend, upload_assets_to_backend, upload_code_analysis_to_backend,
+    upload_proofs_to_backend, upload_replay_to_backend, upload_showcase_to_backend,
     upload_validation_to_backend,
 };
 
@@ -160,7 +161,11 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".into(),
+            engine_slug: "none".into(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".into(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: None,
@@ -183,6 +188,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -198,7 +204,12 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     }
 }
 
@@ -450,6 +461,7 @@ fn record_with_debug_scripts(outputs: Vec<DebugScriptOutput>) -> RunRecord {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs,
@@ -463,12 +475,16 @@ async fn uploads_each_present_validation_output_under_its_flat_name() {
     let out = TempDir::new().unwrap();
 
     // The synthesized actual media lands under the collected tree's
-    // `.tcab/validation/` dir, named `<item>__<output>.<ext>` (png/webm) — the same
+    // `.vendor/validation/` dir, named `<item>__<output>.<ext>` (png/webm) — the same
     // flat name the snapshot keys on and the gallery requests.
-    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png-bytes");
     write_impl_file(
         out.path(),
-        ".tcab/validation/spin__rally.webm",
+        ".vendor/validation/spin__still.png",
+        b"png-bytes",
+    );
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/spin__rally.webm",
         b"webm-bytes",
     );
 
@@ -516,7 +532,7 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
     // `<item>.<sub>`, so it lands on disk (and uploads) as `<item>.<sub>__<output>`.
     write_impl_file(
         out.path(),
-        ".tcab/validation/ball-spin.stationary__straight.webm",
+        ".vendor/validation/ball-spin.stationary__straight.webm",
         b"webm-bytes",
     );
 
@@ -530,6 +546,7 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {
@@ -557,12 +574,78 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
 }
 
 #[tokio::test]
+async fn mirrors_the_recordings_shared_image_store_alongside_the_declared_outputs() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A recording's image entries name flat `img.<id>.<ext>` files beside it rather
+    // than carrying base64 of their pixels. Those files back no verdict and are named
+    // by their own bytes, so they are on no output declaration — this mirror has to
+    // find them by looking at the directory, and a published replay whose store did
+    // not travel resolves nothing and draws holes.
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/spin__serve.json.gz",
+        b"\x1f\x8bgz",
+    );
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/img.9f2c1ab4.png",
+        b"png:sprite",
+    );
+    write_impl_file(out.path(), ".vendor/validation/img.7ee01d33.bin", b"rgba");
+    // Not a store file and not on the record: neither loop names it, so it stays put.
+    write_impl_file(out.path(), ".vendor/validation/notes.txt", b"scratch");
+
+    let rec = record_with_debug_scripts(vec![DebugScriptOutput {
+        id: "serve".to_string(),
+        name: "Serve".to_string(),
+        kind: MediaKind::Replay,
+        actual_present: true,
+    }]);
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let mut paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "/runs/run-1/validation/img.7ee01d33.bin".to_string(),
+            "/runs/run-1/validation/img.9f2c1ab4.png".to_string(),
+            "/runs/run-1/validation/spin__serve.json.gz".to_string(),
+        ],
+        "the store travels with the recording that names it, and nothing else does; \
+         got {paths:?}",
+    );
+    let sprite = received
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|u| u.path == "/runs/run-1/validation/img.9f2c1ab4.png")
+        .map(|u| u.body_len);
+    assert_eq!(
+        sprite,
+        Some(b"png:sprite".len()),
+        "the store file uploads its bytes verbatim, under the very name the entry \
+         inside the recording spells",
+    );
+}
+
+#[tokio::test]
 async fn skips_validation_outputs_the_build_did_not_produce() {
     let (backend_url, received) = stub_backend().await;
     let out = TempDir::new().unwrap();
 
     // Only the present output's file exists; the absent one must not be uploaded.
-    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png");
+    write_impl_file(out.path(), ".vendor/validation/spin__still.png", b"png");
 
     let rec = record_with_debug_scripts(vec![
         DebugScriptOutput {
@@ -883,5 +966,197 @@ async fn non_asset_run_uploads_no_asset_media() {
     assert!(
         received.lock().unwrap().is_empty(),
         "a non-asset-generation run makes no asset upload",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The gg session-record mirror
+// ---------------------------------------------------------------------------
+//
+// This mirror is the whole reason a backend-driven gg run's record is reachable at all:
+// `GET /runs/{id}/replay` serves what this POSTs, and the read it does is deliberately
+// silent about a missing file (a run that captured nothing is the common case). That
+// silence is what makes a wrong path an *unconditional* no-op with no signal anywhere, so
+// the path is pinned here rather than left to the `else { return Ok(()) }` arm.
+
+/// Write `bytes` to `{out_dir}/run-1/replay.json.gz` — the run tree root, where the
+/// assembly stage puts the record.
+fn write_replay_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
+    let path = out_dir
+        .join("run-1")
+        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn uploads_the_assembled_replay_record_from_the_run_tree_root() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Gzip magic + arbitrary payload: the mirror uploads the bytes as they are, so the
+    // body must come back byte for byte rather than re-encoded.
+    let bytes = b"\x1f\x8b\x08\x00assembled-replay".to_vec();
+    write_replay_artifact(out.path(), &bytes);
+
+    upload_replay_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("the replay upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    assert_eq!(
+        uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
+        vec!["/runs/run-1/replay".to_string()],
+        "the record is POSTed to the run's replay slot; got {uploads:?}",
+    );
+    assert_eq!(
+        uploads[0].body_len,
+        bytes.len(),
+        "the gzipped record is uploaded verbatim, not re-encoded",
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_assembled_no_replay_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The common case by far: session capture is off, so the assembly stage wrote nothing.
+    upload_replay_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run with no assembled session record makes no request",
+    );
+}
+
+/// Write a code-analysis document into the run tree's **root**, where the post-run
+/// analyzer stage puts it — never inside `implementation/`, which is a verbatim copy of
+/// what the model produced.
+fn write_code_analysis_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
+    let path = out_dir
+        .join("run-1")
+        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn uploads_the_code_analysis_document_from_the_run_tree_root() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Gzip magic + arbitrary payload: the mirror uploads the bytes as they are, because
+    // the store keeps run-tree artifacts opaque and the serving route content-negotiates.
+    let bytes = b"\x1f\x8b\x08\x00code-analysis".to_vec();
+    write_code_analysis_artifact(out.path(), &bytes);
+
+    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("the code-analysis upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    assert_eq!(
+        uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
+        vec!["/runs/run-1/code-analysis".to_string()],
+        "the document is POSTed to the run's code-analysis slot; got {uploads:?}",
+    );
+    assert_eq!(
+        uploads[0].body_len,
+        bytes.len(),
+        "the gzipped document is uploaded verbatim, not re-encoded",
+    );
+}
+
+#[tokio::test]
+async fn a_run_with_no_code_analysis_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A run collected before the analyzer shipped, or one whose tree never reached the
+    // host: absence is ordinary, not a failure.
+    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run with no code-analysis document makes no request",
+    );
+}
+
+/// A record whose showcase was captured, driving the `upload_showcase_to_backend`
+/// mirror. The carousel lists only `title.png`; the directory holds more, which is
+/// the point — the mirror takes the directory, not the carousel.
+fn record_with_showcase() -> RunRecord {
+    let mut rec = record(None);
+    rec.showcase = Some(RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    rec
+}
+
+#[tokio::test]
+async fn uploads_every_showcase_file_except_the_manifest() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The whole produced showcase/: the carousel image, the description and an
+    // image it references (not in the carousel), and the manifest — which is
+    // capture-side input, already folded into the record, and must not upload. A
+    // file over the capture's media cap is skipped too: the capture refused to
+    // record it, so shipping it would bloat every store downstream.
+    write_impl_file(out.path(), "showcase/title.png", b"png:title");
+    write_impl_file(out.path(), "showcase/showcase.md", b"# My Game");
+    write_impl_file(out.path(), "showcase/banner.png", b"png:banner");
+    write_impl_file(out.path(), "showcase/showcase.toml", b"[[media]]");
+    let oversized = vec![0u8; (test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES + 1) as usize];
+    write_impl_file(out.path(), "showcase/huge.png", &oversized);
+
+    upload_showcase_to_backend(&backend_url, &record_with_showcase(), out.path())
+        .await
+        .expect("upload succeeds");
+
+    let mut paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "/runs/run-1/showcase/banner.png".to_string(),
+            "/runs/run-1/showcase/showcase.md".to_string(),
+            "/runs/run-1/showcase/title.png".to_string(),
+        ],
+        "every file uploads except the manifest and the oversized one; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn run_without_a_captured_showcase_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Files on disk without a captured showcase on the record are not mirrored:
+    // nothing serves them without the record's description and carousel.
+    write_impl_file(out.path(), "showcase/title.png", b"png:title");
+
+    upload_showcase_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("upload succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run whose record carries no showcase makes no request",
     );
 }

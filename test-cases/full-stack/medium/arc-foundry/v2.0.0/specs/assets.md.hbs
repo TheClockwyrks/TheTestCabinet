@@ -1,0 +1,259 @@
+# Arc Foundry — The assets you produce
+
+Arc Foundry ships with no art, no effects, and no sound. You produce every asset the game
+plays, commit the produced files, and wire them into the build. This file is the
+contract: what to produce, which tool makes it, where the file lands, and the bar it
+meets.
+
+Six asset-generation binaries are on your `PATH` in this container. They are there for
+this build alone: the finished repository installs and builds with none of them present
+and with no network access, so the build bundles the committed files and generates
+nothing at build time.
+
+## The six tools
+
+These six binaries are on your `PATH`, and no others. There is no tool for user
+interface, painting, textures, voxels, or meshes, so every panel, menu, and overlay is
+drawn in code.
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | One sprite, as a PNG | The yard, the components, the combination towers, the blocker, the projectiles, the Load, and the icons |
+| `draw-sheet` | A sprite sequence, one PNG per frame | The Load's idle cycles, the firing cycles, and the press cycle |
+| `particle-2d` | A particle system, as a `system.json` | Every electrical effect |
+| `sfx-synth` | A synthesized sound, as a `.wav` | The sharper cues |
+| `sfx-sample` | A sampled sound over the sample pack, as a `.wav` | The fuller cues |
+| `music` | Sequenced music over the instrument bank, as a `.wav` and a `.mid` | The music bed |
+
+Each is a command-line tool. Run `<tool> --help` for its operations, and
+`<tool> <operation> --help` for one operation's flags. In outline each records the
+operations you issue and then renders the finished file to a path you name.
+
+- `draw` and `draw-sheet` rasterize a fixed-size straight-alpha RGBA canvas from drawing
+  operations. `draw-sheet` is `draw` with a frame index on every operation, and it emits
+  one separate PNG per frame rather than a strip.
+- `particle-2d` authors a system as emitters, forces, and per-particle curves, and emits
+  the `system.json` that is the asset. It bakes no frames.
+- `sfx-synth`, `sfx-sample`, and `music` render a PCM `.wav`. `sfx-sample` draws on
+  the `combat-core` sample pack and `music` on the `synthwave` instrument bank, both
+  present in the container and browsed with `list-samples` and `list-instruments`.
+
+## Where the files land
+
+Every produced file lands under `assets/` at the repository root, at the exact path
+below. Sprite frames are named by their frame index, `0.png` upward.
+
+```
+assets/
+  yard/substrate.png  entry.png  collector.png  waypoint.png  housing.png
+  components/<type>/base.png
+  components/<type>/head-<tier>.png
+  components/<type>/fire/0.png .. 3.png
+  combos/<id>/base.png  head.png  fire/0.png .. 3.png
+  blocker.png
+  projectiles/<type>.png
+  load/<type>/0.png .. 3.png
+  press/0.png .. 3.png
+  icons/charge.png  integrity.png  type-<type>.png
+  fx/<effect>.json
+  audio/<cue>.wav
+  audio/music.mid
+```
+
+`<type>` is a base component's identifier or a Load type's identifier, `<id>` is a
+combination tower's identifier, `<tier>` is `1` through `5`, `<effect>` is one of the
+twelve named below, and `<cue>` is one of the twelve cue names in `specs/ui.md`.
+
+{{#if (eq engine.slug "none")}}
+### Loading them
+
+The build loads its own files. The built site is served from any base path, at the root
+of a static host or mounted under a sub-path of one, so every URL the build requests
+resolves against the page rather than against the origin root: no request carries a
+leading `/`, and the bundler's base is relative. The built site is self-contained and
+carries every file it draws and plays.
+{{else}}
+### Loading them
+
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and decodes the
+file. Load each file through that loader rather than requesting a URL of your own,
+writing the path relative to that root: `components/capacitor/head-3.png`,
+`fx/chain.json`, `load/mote/0.png`.
+
+The built site serves every produced file under that root, so a path the loader resolves
+reaches the file at whatever base path the site is served from.
+{{/if}}
+
+## Sprites
+
+Produce each with `draw`, on a small transparent straight-alpha canvas. These are pixel
+art: draw at the sprite's native size and sample it with nearest-neighbor so it stays
+crisp at every scale the stage is fitted to.
+
+| Sprite | Path | Size | What it is |
+| --- | --- | --- | --- |
+| Yard substrate | `yard/substrate.png` | `40 x 40` | The tile the yard is tiled from. It repeats seamlessly. |
+| Entry | `yard/entry.png` | `40 x 40` | The blown feeder vent the Load spills from. |
+| Collector | `yard/collector.png` | `40 x 40` | The grounding sink units ground out at. |
+| Waypoint | `yard/waypoint.png` | `20 x 20` | The checkpoint stud drawn on a waypoint platform's tiles. |
+| Housing | `yard/housing.png` | `40 x 40` | The transformer box that fills a Fixed-blocked tile. It repeats seamlessly. |
+| Component base | `components/<type>/base.png` | `40 x 40` | The fixed mount a head turns on, one per base type. |
+| Component head | `components/<type>/head-<tier>.png` | `40 x 40` | The rotating head, one per base type per tier: eight types by five tiers, forty sprites. |
+| Combination base | `combos/<id>/base.png` | `40 x 40` | The fixed mount, one per tower. |
+| Combination head | `combos/<id>/head.png` | `40 x 40` | The rotating head, one per tower. A tower has no tier variants. |
+| Blocker | `blocker.png` | `40 x 40` | The inert fused rock an unharvested candidate hardens into. |
+| Projectile | `projectiles/<type>.png` | `12 x 12` | The traveling shot, one per firing base type: seven sprites. A combination tower's shot reuses the sprite of the base type its dominant output matches. |
+| Charge icon | `icons/charge.png` | `16 x 16` | The status bar's Charge mark. |
+| Integrity icon | `icons/integrity.png` | `16 x 16` | The status bar's Grid Integrity mark. |
+| Type icon | `icons/type-<type>.png` | `16 x 16` | One glyph per base component type, for the panel. |
+
+Every head, and every projectile, is drawn facing one canonical direction, toward `+x`,
+so the game rotates it to its heading. A head's canonical facing is the same across its
+five tiers. The Regulator never fires, so its head is a static aura emitter with no
+muzzle, drawn across its five tiers like every other type.
+
+The bar these sprites meet:
+
+- A component reads as its type and as its tier. The five tiers escalate in finish, from
+  pitted and rusted at Scrap to mirror-chromed at Tesla-Prime.
+- A combination tower reads as a combination tower beside any base component, and its
+  look reads its dominant ability.
+- A blocker reads as dead: no head, no muzzle, no glow.
+- Each of the six Load types reads as its own type, the Filament reads as airborne, and
+  the Dynamo reads as an unstable overload core.
+
+## Animation frames
+
+Produce each cycle with `draw-sheet`, which emits one PNG per frame. Each cycle below is
+four frames, `0.png` through `3.png`, played as a loop.
+
+| Cycle | Path | What it shows |
+| --- | --- | --- |
+| Load idle | `load/<type>/0.png` .. `3.png` | The unit seething with charge as it travels, at `20 x 20`, and `32 x 32` for the Slug, the Dynamo, and the Overload Dynamo. One cycle per Load type, seven in all counting the Overload Dynamo. Frame `0` doubles as the unit's still sprite. The Dynamo's carries a visible overload wobble. |
+| Component firing | `components/<type>/fire/0.png` .. `3.png` | The head's charge-and-discharge, played once per shot. One cycle per firing base type, seven in all. |
+| Regulator idle | `components/regulator/fire/0.png` .. `3.png` | The Regulator's slow aura pulse, played as a loop rather than on a shot, since it never fires. |
+| Combination firing | `combos/<id>/fire/0.png` .. `3.png` | The tower's discharge, played once per shot. One cycle per tower, twelve in all. |
+| Press | `press/0.png` .. `3.png` | The press stamping, played when a rock is placed. |
+
+A firing cycle is played on the frame a structure fires and runs once. An idle cycle
+loops while its subject is on the yard. A body may be reused across tints; what the
+cycles must deliver is that the Load visibly crackles, a firing structure visibly charges
+and discharges, and the Dynamo visibly seethes.
+
+## Particle systems
+
+Author each with `particle-2d`, whose emit step writes the `system.json` that is the
+asset. Each is played live and simulated as it plays, so it varies from one firing to the
+next.
+
+Produce these twelve, each at `assets/fx/<effect>.json`:
+
+| Effect | File | Spawned when | What it carries |
+| --- | --- | --- | --- |
+| Build spark | `fx/build.json` | A rock lands | A shower of sparks and a snap of arc at the new footprint |
+| Combine flash | `fx/combine.json` | A combine of either kind resolves | A convergent flash at the resulting structure's footprint |
+| Arc bolt | `fx/bolt.json` | A Capacitor, Choke, Rectifier, or Discharge Rig projectile travels | A crackling bolt trail from the head to the target |
+| Chain lightning | `fx/chain.json` | A Coil's hit chains | Forked lightning between each unit the chain strikes, dimming per leap |
+| Spark spray | `fx/spray.json` | An Emitter fires | A fast fan of small sparks toward the target |
+| Discharge ring | `fx/ring.json` | An Arc-Node's shot lands | An expanding ring covering the splash radius |
+| Impact | `fx/impact.json` | Any shot connects with a unit | A small burst of sparks at the point of impact |
+| Death burst | `fx/death.json` | A unit dies | An electrical pop, scaled up for a Dynamo |
+| Leak alarm | `fx/leak.json` | A unit grounds out at the collector | A warning surge at the collector |
+| Slow snap | `fx/slow.json` | A slow is applied | A drag snap clinging to the slowed unit |
+| Burn | `fx/burn.json` | A burn is applied | An ember flare on impact and a low flicker while the burn ticks |
+| Aura pulse | `fx/aura.json` | A structure carrying an aura stands on the yard | A slow pulse ring at the source, marking the aura it projects |
+
+The slow, burn, and aura systems each carry a color of their own, distinct from each
+other and from the firing effects, so a player reads which effect is on a unit without
+reading a number.
+
+A crit reuses the impact system at a larger scale, and a multishot is several ordinary
+projectiles, each carrying its own impact. Neither needs a system of its own.
+
+The firing effects escalate with the firing structure's quality tier, so the ladder reads
+in the effects as well as in the sprites: a Scrap bolt is thin and dim where a
+Tesla-Prime bolt is fat and bright, and the same escalation applies to the chain, the
+spray, the ring, and the arc bolt.
+
+### Playing them
+
+The particle runtime is already a dependency of the project. Import it by its package
+name; there is nothing to add to `package.json` for it and nothing to install, and it is
+neither fetched nor reimplemented.
+
+{{#if (eq engine.slug "structured-2d")}}
+Use its canvas binding: construct a player from a parsed `system.json` and a 2D context,
+and advance it each frame with the frame's delta. The engine's declarative pipeline does
+not draw particles, so the effects are drawn from a draw component whose `draw` is handed
+the raw context. The package's own types are the authoritative API.
+{{else}}
+Use its canvas binding: construct a player from a parsed `system.json` and your 2D
+context, and advance it each frame with the frame's delta. It simulates the system and
+composites the particles. The package's own types are the authoritative API.
+{{/if}}
+
+Spawn an instance of the matching system at the position of the event that raised it: the
+build spark at the stamped footprint, the combine flash at the resulting structure, the
+bolt along the line from a firing head to its target, the chain threaded through each
+unit a Coil's hit strikes, the ring centered on an Arc-Node's impact point, the impact
+where a shot connects, the death burst where a unit dies, the leak alarm at the
+collector, the slow snap and the burn on the unit carrying them, and the aura pulse at
+its source.
+
+## Audio
+
+Produce twelve `.wav` files, one per cue in `specs/ui.md`, at `assets/audio/<cue>.wav`.
+`music` also emits a `.mid` score beside its `.wav`; commit it at `assets/audio/music.mid`
+and play the `.wav`.
+
+| Cue | Tool | What it is |
+| --- | --- | --- |
+| `stamp` | `sfx-synth` or `sfx-sample` | A rock dropping from the press. |
+| `fire-bolt` | `sfx-synth` | A sharp single zap. |
+| `fire-spark` | `sfx-synth` | A short, light spark, played often. |
+| `fire-chain` | `sfx-sample` | A crackling chain. |
+| `fire-discharge` | `sfx-sample` | A heavy discharge. |
+| `combine` | `sfx-sample` | The chime of a fold resolving. It doubles as a combination tower's spawn cue. |
+| `kill` | `sfx-synth` | A unit destroyed. |
+| `leak` | `sfx-synth` or `sfx-sample` | The alarm as Grid Integrity drops. |
+| `slow` | `sfx-synth` | A cold shimmer as a slow lands. |
+| `burn` | `sfx-synth` | A sizzle as a burn lands. |
+| `settle` | `sfx-synth` or `sfx-sample` | Unharvested rocks hardening into blockers. |
+| `music` | `music` | A tense, driving industrial bed, looped under the yard. |
+
+The eleven effect cues are told apart by ear. `fire-spark` plays several times a second
+at a high fire rate, so it is short and does not build up.
+
+{{#if (eq engine.slug "none")}}
+Load each `.wav` the same page-relative way as every other produced file, decode it with
+the Web Audio API, and play it on the event `specs/ui.md` names. Audio does not start
+before the player's first interaction with the page, and the mute control silences the
+whole bus.
+{{else}}
+Bind each `.wav` to its cue name through the engine's audio bus, which loads and decodes
+it through the same asset loader, and play the cue by name on the event `specs/ui.md`
+names. The engine owns the first-interaction unlock and the mute bit.
+{{/if}}
+
+## What is drawn in code
+
+No tool produces the following, and the build draws each of them:
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The status bar and the build panel, their text, and their layout | `specs/hud.md` |
+| The recipe book and the damage leaderboard | `specs/hud.md` |
+| Every screen and menu | `specs/ui.md` |
+| The faint tile grid over the yard substrate | `specs/yard.md` |
+| The held rock's snapped footprint and its legal or illegal read | `specs/controls.md` |
+| The range ring on a held or selected structure | `specs/components.md` |
+| Each unit's health bar | `specs/enemies.md` |
+| The waypoint order numbers and the flow toward the collector | `specs/pathing.md` |
+| The mark on a combinable structure and on the selected fold | `specs/hud.md` |
+| The candidate treatment that distinguishes an unharvested roll from a component | `specs/scrap-press.md` |
+| Placing the produced yard sprites for each map's topology | `specs/yard.md` |
+
+Everything the game shows or plays traces either to a file produced with one of the six
+tools or to one of the code-drawn elements above.

@@ -1,6 +1,31 @@
-import { describe, expect, it } from "vitest";
-import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
-import { planProgress } from "./CoveragePlansPage";
+import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router";
+import { describe, expect, it, vi } from "vitest";
+import type { CoveragePlanSummary } from "@clockwyrks/run-record/coverage";
+import {
+  BackendProvider,
+  type BackendContextValue,
+} from "../../../client/context";
+import { CoveragePlansPage, planProgress } from "./CoveragePlansPage";
+
+// The page's app chrome reads contexts none of these tests are about; stub it as the
+// other account page tests do.
+vi.mock("../../components/PageLayout", () => ({
+  PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("../../components/PromptHeader", () => ({
+  PromptHeader: ({ titleActions }: { titleActions?: ReactNode }) => (
+    <>{titleActions}</>
+  ),
+}));
+vi.mock("../../components/ConfirmDialog", () => ({
+  useConfirm: () => ({ confirm: async () => true, alert: async () => {} }),
+}));
+// A plan belongs to an account, so a token is what makes the list exist at all.
+vi.mock("../../../client/auth", () => ({
+  useAuth: () => ({ token: "t0" }),
+}));
 
 // A plan card's bar tracks how many of the wanted runs exist, not how many cells
 // have already hit the target — raising the target on a covered plan has to read as
@@ -57,5 +82,35 @@ describe("planProgress", () => {
       runsTotal: 0,
       donePct: 0,
     });
+  });
+});
+
+// This is the screen an operator arriving to schedule gg runs reads first, so the
+// empty state has to name what a plan actually crosses its cases with: combinations,
+// which take two shapes.
+describe("CoveragePlansPage", () => {
+  it("names combinations, not harness/model pairs, on the empty state", async () => {
+    const value = {
+      client: { getCoveragePlansSummary: vi.fn().mockResolvedValue([]) },
+      identity: null,
+      status: "ready",
+      error: null,
+      url: null,
+      setUrl: () => {},
+    } as unknown as BackendContextValue;
+    render(
+      <MemoryRouter>
+        <BackendProvider value={value}>
+          <CoveragePlansPage />
+        </BackendProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/the combinations you want covered/),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByText(/gg\s+configuration/)).toBeTruthy();
+    expect(screen.queryByText(/harness\/model/)).toBeNull();
   });
 });

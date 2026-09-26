@@ -102,7 +102,7 @@
   font-size: t.$font-lg;
   font-variant-numeric: tabular-nums;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // Cancels the value's glow on missing figures, matching the Stats tab.
@@ -116,6 +116,7 @@
   margin: t.$space-md 0 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // The two rings share a row on a wide viewport and stack below it.

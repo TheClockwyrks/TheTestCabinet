@@ -1,0 +1,60 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
+
+// The global stop cluster, sat on the trailing edge of a runs-section page header's
+// comment line. Wraps rather than overflows when the labels outgrow the space left
+// beside the comment. It holds the three buttons alone: a sweep reports its count in
+// a toast, so nothing here grows a row when one is pressed.
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+
+  // On a phone the comment has the row to itself and the cluster takes the next one,
+  // where the three buttons share the width evenly and wrap onto a further line only
+  // when even that is too tight — which keeps all three reachable without a horizontal
+  // scroll. Nothing collapses into a menu: these are three destructive global controls,
+  // and hiding them behind an extra tap is exactly the wrong trade for the one class of
+  // control a user reaches for in a hurry.
+  @include bp.below(t.$bp-sm) {
+    .action {
+      flex: 1 1 auto;
+    }
+  }
+}
+
+// A muted destructive button, matching the run-kill and run-delete controls so
+// every negative affordance in the runs section reads as one family. All three
+// share the one treatment: they differ in reach, not in kind, and the two that
+// throw work away are guarded by a confirmation that names the count rather than
+// by shouting in the header.
+.action {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+
+  // Disabled means there is nothing in that state to cancel (or another sweep is
+  // in flight) — not a permissions problem, so it dims rather than disappears.
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

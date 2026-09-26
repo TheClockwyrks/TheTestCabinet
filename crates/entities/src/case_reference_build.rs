@@ -9,11 +9,14 @@
 //! URL is recorded here so the version response and the public snapshot can surface
 //! it on the test-case page's "Reference" tab.
 //!
-//! One row is one `(slug, version, variant)` triple — the same identity a
-//! `ManifestVariant` is addressed by — and the composite primary key means a
-//! re-deploy of the same variant upserts its `url` in place rather than
-//! accumulating rows. A variant with no reference implementation simply has no
-//! row here. Timestamps are RFC 3339 strings, matching the model-catalog tables,
+//! One row is one `(slug, version, variant, engine)` tuple, and the composite
+//! primary key means a re-deploy of the same variant on the same engine upserts its
+//! `url` in place rather than accumulating rows. The engine is part of the identity
+//! because the build a reference demonstrates genuinely differs under each — an
+//! engineless one carries its own runtime, an engine-backed one hands the same
+//! surfaces to the engine it is built on — so a variant supporting two engines has two
+//! rows and the case's Reference tab lets a reader switch between them. A variant
+//! with no reference implementation simply has no row here. Timestamps are RFC 3339 strings, matching the model-catalog tables,
 //! so the schema stays portable across the SQLite (local/tests) and PostgreSQL
 //! (deployment) backends.
 
@@ -31,6 +34,10 @@ pub struct Model {
     /// The variant slug (for example `base`); part of the composite primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub variant: String,
+    /// The engine slug the build was made for (for example `none`); part of the
+    /// composite primary key.
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub engine: String,
     /// The absolute `https://` URL the reference implementation is served from
     /// (a Cloudflare Pages deployment). Read back from `wrangler` after deploy,
     /// never constructed, because Cloudflare truncates long branch subdomains.

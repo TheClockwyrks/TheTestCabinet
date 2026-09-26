@@ -3,7 +3,7 @@
  * effects").
  *
  * When a unit fires, it plays ONE fresh instance of its provided muzzle-flash particle
- * system (`assets/effects/*.json`), simulated live via `@test-cabinet/particle-runtime`'s
+ * system (`assets/effects/*.json`), simulated live via `@clockwyrks/particle-runtime`'s
  * `/three` `ParticleSystemPlayer`, anchored to the firing part's muzzle tip, oriented
  * along the barrel (each effect is authored firing forward along `+z`), scaled to the
  * muzzle, and disposed once its one-shot decays. The build never hand-codes a particle
@@ -54,7 +54,12 @@ interface ActiveFlash {
 
 /** The largest field dimension of a system (the extent the world scale is fit against). */
 function fieldExtent(system: ParticleSystem): number {
-  return Math.max(system.field.width, system.field.height, system.field.depth ?? 0, 1);
+  return Math.max(
+    system.field.width,
+    system.field.height,
+    system.field.depth ?? 0,
+    1,
+  );
 }
 
 export class EffectsManager {
@@ -111,7 +116,14 @@ export class EffectsManager {
 
     // M_muzzle = M_place · partWorld · T(barrelTip). Its rotation maps the effect's
     // authored forward (+z) onto the barrel's world facing.
-    placeMatrix(this.place, place.x, place.altitude, place.z, place.yaw, bounds);
+    placeMatrix(
+      this.place,
+      place.x,
+      place.altitude,
+      place.z,
+      place.yaw,
+      bounds,
+    );
     this.partWorld.fromArray(part.worldMatrix);
     this.muzzle.multiplyMatrices(this.place, this.partWorld);
     this.anchor.makeTranslation(mount.local[0], mount.local[1], mount.local[2]);
@@ -120,10 +132,18 @@ export class EffectsManager {
     // Fit the (small, authored) system to the muzzle: scale, then recentre the field's
     // XY origin and near face onto the muzzle so its forward spit fires down the barrel.
     const extent = fieldExtent(system);
-    const world = THREE.MathUtils.clamp(mount.scale * MUZZLE_FIT, MIN_EFFECT_WORLD, MAX_EFFECT_WORLD);
+    const world = THREE.MathUtils.clamp(
+      mount.scale * MUZZLE_FIT,
+      MIN_EFFECT_WORLD,
+      MAX_EFFECT_WORLD,
+    );
     const s = world / extent;
     this.scaleM.makeScale(s, s, s);
-    this.recenter.makeTranslation(-system.field.width / 2, -system.field.height / 2, 0);
+    this.recenter.makeTranslation(
+      -system.field.width / 2,
+      -system.field.height / 2,
+      0,
+    );
     this.muzzle.multiply(this.scaleM).multiply(this.recenter);
 
     const player = this.acquire(mount.kind, system);
@@ -134,7 +154,12 @@ export class EffectsManager {
     points.matrixWorldNeedsUpdate = true;
     (points.material as THREE.ShaderMaterial).wireframe = this.wire;
     this.scene.add(points);
-    this.active.push({ player, kind: mount.kind, elapsedMs: 0, durationMs: system.durationMs });
+    this.active.push({
+      player,
+      kind: mount.kind,
+      elapsedMs: 0,
+      durationMs: system.durationMs,
+    });
   }
 
   /** Advance every live flash; recycle each one once its one-shot has fully decayed. */
@@ -158,7 +183,8 @@ export class EffectsManager {
   setWireframe(on: boolean): void {
     this.wire = on;
     for (const players of this.created.values()) {
-      for (const p of players) (p.points.material as THREE.ShaderMaterial).wireframe = on;
+      for (const p of players)
+        (p.points.material as THREE.ShaderMaterial).wireframe = on;
     }
   }
 
@@ -177,18 +203,27 @@ export class EffectsManager {
 
   private pool(kind: MuzzleKind): ParticleSystemPlayer[] {
     let list = this.free.get(kind);
-    if (!list) { list = []; this.free.set(kind, list); }
+    if (!list) {
+      list = [];
+      this.free.set(kind, list);
+    }
     return list;
   }
 
-  private acquire(kind: MuzzleKind, system: ParticleSystem): ParticleSystemPlayer {
+  private acquire(
+    kind: MuzzleKind,
+    system: ParticleSystem,
+  ): ParticleSystemPlayer {
     const idle = this.pool(kind);
     const reused = idle.pop();
     if (reused) return reused;
     const player = new ParticleSystemPlayer(system);
     (player.points.material as THREE.ShaderMaterial).wireframe = this.wire;
     let created = this.created.get(kind);
-    if (!created) { created = []; this.created.set(kind, created); }
+    if (!created) {
+      created = [];
+      this.created.set(kind, created);
+    }
     created.push(player);
     return player;
   }

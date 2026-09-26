@@ -1,0 +1,588 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/breakpoints" as bp;
+
+// Discover — the TCQ query surface: the field sidebar, the editor with its highlight
+// layer and completion popup, and the result tables.
+//
+// The one structurally load-bearing rule in this file is the editor: the painted `<pre>`
+// and the transparent `<textarea>` above it **must** share every metric that affects text
+// layout (font, size, line height, padding, border, white-space, word-break). A single
+// disagreement between them puts the caret a glyph away from the character it is editing,
+// which is the classic failure of this technique — so those declarations are written once,
+// in the `editor-text` mixin, and included by both.
+
+.layout {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr);
+  gap: t.$space-lg;
+  align-items: start;
+
+  // Below a tablet the sidebar stacks above the editor rather than squeezing it: a
+  // seventeen-character field name in a six-character column teaches nobody anything.
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// --- The field sidebar ------------------------------------------------------------
+
+.sidebar {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md;
+  max-height: 42rem;
+  overflow-y: auto;
+  position: sticky;
+  top: t.$space-md;
+
+  @include bp.below(t.$bp-md) {
+    position: static;
+    max-height: 24rem;
+  }
+}
+
+.sidebarHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.sidebarTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.sidebarCount {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebarSearch {
+  width: 100%;
+  margin: t.$space-sm 0;
+  padding: t.$space-xs t.$space-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+}
+
+.sidebarEmpty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.fieldGroup {
+  margin-bottom: t.$space-md;
+}
+
+.fieldGroupTitle {
+  margin: 0 0 t.$space-2xs;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-accent;
+  text-transform: lowercase;
+}
+
+.fieldList,
+.valueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fieldItem {
+  border-bottom: t.$border-hairline solid transparent;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-2xs 0;
+}
+
+.fieldName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+// The document count. Always visible, never hidden behind a hover: it is what makes a
+// deliberately sparse field (every `tool.*`) legible before it is queried rather than
+// after it returns nothing.
+.fieldCount {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+}
+
+.fieldKind {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.fieldExpand {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  padding: 0 t.$space-2xs;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  font-size: t.$font-sm;
+  line-height: 1;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.valueList {
+  padding: t.$space-2xs 0 t.$space-xs t.$space-sm;
+  border-left: t.$border-hairline solid t.$color-border;
+  margin-left: t.$space-2xs;
+}
+
+.valueRow {
+  display: flex;
+  width: 100%;
+  gap: t.$space-sm;
+  align-items: baseline;
+  justify-content: space-between;
+  background: none;
+  border: 0;
+  padding: t.$space-2xs 0;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.valueName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.valueCount {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The controls row -------------------------------------------------------------
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.rangeField {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.rangeLabel {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.rangeSelect {
+  padding: t.$space-xs t.$space-sm;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+}
+
+// --- The editor -------------------------------------------------------------------
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.editorRow {
+  display: flex;
+  align-items: flex-start;
+  gap: t.$space-sm;
+}
+
+.editorBox {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// The shared text metrics. Both layers include this, so the painted glyphs and the typed
+// ones land on exactly the same pixels — the whole technique depends on it.
+@mixin editor-text {
+  margin: 0;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  tab-size: 2;
+}
+
+.highlight {
+  @include editor-text;
+
+  min-height: 2.75rem;
+  background: t.$color-bg;
+  color: t.$color-text;
+  overflow: hidden;
+  // Purely decorative: the textarea above carries the real text and the real caret.
+  pointer-events: none;
+}
+
+.input {
+  @include editor-text;
+
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 2.75rem;
+  resize: none;
+  background: transparent;
+  // Transparent text over the painted layer, but a visible caret and a visible
+  // selection — the two things the layer underneath cannot render.
+  color: transparent;
+  caret-color: t.$color-accent;
+  border-color: transparent;
+
+  &::selection {
+    background: color-mix(in srgb, t.$color-accent 30%, transparent);
+  }
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+  }
+}
+
+// The syntax colours. Deliberately few: a field, a value, and the grammar around them.
+// More classes would be more decisions and no more legible.
+.hlKeyword {
+  color: t.$color-accent-2;
+  font-weight: 600;
+}
+
+.hlField {
+  color: t.$color-accent;
+}
+
+.hlFunction {
+  color: t.$color-accent-2;
+}
+
+.hlString,
+.hlLiteral {
+  color: t.$color-text;
+}
+
+.hlPunct {
+  color: t.$color-text-muted;
+}
+
+// The error underline. Wavy and coloured rather than a background wash, so it reads as a
+// squiggle under the exact span rather than as a selection.
+.hlInvalid {
+  text-decoration: underline wavy t.$color-negative;
+  text-underline-offset: 0.2em;
+}
+
+.run,
+.examplesToggle {
+  flex: 0 0 auto;
+  padding: t.$space-sm t.$space-md;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.completions {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: t.$space-2xs 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 25%);
+}
+
+.completion {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-sm;
+  background: none;
+  border: 0;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-align: left;
+  cursor: pointer;
+}
+
+.completionActive {
+  background: t.$color-surface-2;
+  color: t.$color-accent;
+}
+
+.completionLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completionDetail {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-size: 0.7rem;
+}
+
+// The suggestion's document count — the sparse-field tell, carried into the popup so an
+// operator sees it while typing and not only in the sidebar.
+.completionCount {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+}
+
+.diagnostics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.diagnostic {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}
+
+.examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  width: 100%;
+  padding: t.$space-sm;
+  background: none;
+  border: 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+}
+
+.exampleQuestion {
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}
+
+.exampleQuery {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  overflow-x: auto;
+}
+
+// --- Results ------------------------------------------------------------------------
+
+.summary {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
+.error {
+  color: t.$color-negative;
+  @include h.halo;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
+// --- The visualization panel --------------------------------------------------------
+
+// One card per aggregated column, stacked down the panel. Stacked and never
+// side-by-side: two aggregations of different scale share a page, never a frame, and
+// a single column of full-width cards is also what keeps the charts legible on the
+// narrow viewport where a two-up grid would halve them.
+.viz {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// The single-bucket case: labelled figures rather than a one-bar chart. Sized so a
+// row of two or three fills the width and a row of six wraps instead of shrinking
+// its digits.
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: t.$space-sm;
+}
+
+// A wide result (several group-by columns plus aggregations) scrolls inside its own
+// container so the page body never scrolls horizontally.
+.tableWrap {
+  overflow-x: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+
+  th,
+  td {
+    padding: t.$space-xs t.$space-sm;
+    text-align: left;
+    border-bottom: t.$border-hairline solid t.$color-border;
+    white-space: nowrap;
+  }
+
+  thead th {
+    color: t.$color-text-muted;
+    font-family: var(--ttc-font);
+    font-weight: 600;
+    background: t.$color-surface-2;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.numCol {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+// An absent field — dimmed and italic so it can never be mistaken for a stored `0`.
+.absent {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// The "k of n contributed" note beside a partially populated aggregate. It is the
+// denominator, so it renders inline with the figure rather than in a column of its own.
+.contrib {
+  color: t.$color-text-muted;
+  font-size: 0.85em;
+}
+
+// The Save control in the filter row. A link rather than a button because saving is a
+// navigation: the question is carried as text to the Saved tab's form, so exactly one
+// query editor exists in the console.
+.savedLink {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  text-decoration: none;
+
+  &:hover {
+    color: t.$color-text;
+    text-decoration: underline;
+  }
+}

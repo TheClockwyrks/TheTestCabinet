@@ -1,0 +1,96 @@
+@use "../styles/tokens" as t;
+
+// A run's aesthetic rating, shown as a color-coded chip with the same chrome as
+// RatingBadge (over the `--tcab-aesthetic-*` tokens), selected by the
+// `data-aesthetic` attribute so the markup stays a single element.
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 t.$space-sm;
+  border: t.$border-hairline solid var(--aesthetic-color);
+  border-radius: t.$radius-sm;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--aesthetic-color);
+  background: color-mix(in srgb, var(--aesthetic-color) 14%, transparent);
+  white-space: nowrap;
+
+  &[data-aesthetic="amazing"] {
+    --aesthetic-color: var(--tcab-aesthetic-amazing);
+  }
+  &[data-aesthetic="good"] {
+    --aesthetic-color: var(--tcab-aesthetic-good);
+  }
+  &[data-aesthetic="okay"] {
+    --aesthetic-color: var(--tcab-aesthetic-okay);
+  }
+  &[data-aesthetic="slop"] {
+    --aesthetic-color: var(--tcab-aesthetic-slop);
+  }
+
+  // Legendary is the exceptional tier, so its chip is unlike every flat tier: the
+  // text is a two-tone gradient that drifts slowly across the label (a shimmer),
+  // over a faint blend of the same two colors, with a soft glow. The gradient is
+  // three times the chip's width and animates its position, so the sheen sweeps
+  // end to end and loops seamlessly.
+  &[data-aesthetic="legendary"] {
+    --aesthetic-color: var(--tcab-aesthetic-legendary);
+    --aesthetic-color-2: var(--tcab-aesthetic-legendary-2);
+    border-color: color-mix(
+      in srgb,
+      var(--aesthetic-color) 60%,
+      var(--aesthetic-color-2)
+    );
+    box-shadow: 0 0 0.6rem
+      color-mix(in srgb, var(--aesthetic-color) 45%, transparent);
+    color: transparent;
+    // Two layers: the text gradient on top, clipped to the label, over the faint
+    // chip fill clipped to the box.
+    background-image:
+      linear-gradient(
+        100deg,
+        var(--aesthetic-color) 0%,
+        var(--aesthetic-color-2) 25%,
+        #ffffff 50%,
+        var(--aesthetic-color-2) 75%,
+        var(--aesthetic-color) 100%
+      ),
+      linear-gradient(
+        100deg,
+        color-mix(in srgb, var(--aesthetic-color) 22%, transparent),
+        color-mix(in srgb, var(--aesthetic-color-2) 22%, transparent)
+      );
+    background-size:
+      300% 100%,
+      100% 100%;
+    background-position:
+      0% 0,
+      0 0;
+    background-clip: text, border-box;
+    -webkit-background-clip: text, border-box;
+    animation: aesthetic-shimmer 4s linear infinite;
+  }
+}
+
+@keyframes aesthetic-shimmer {
+  from {
+    background-position:
+      0% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -300% 0,
+      0 0;
+  }
+}
+
+// Motion is a courtesy, not the signal: without it the chip is still the only
+// gradient-text, glowing tier, so Legendary stays distinct when static.
+@media (prefers-reduced-motion: reduce) {
+  .badge[data-aesthetic="legendary"] {
+    animation: none;
+  }
+}

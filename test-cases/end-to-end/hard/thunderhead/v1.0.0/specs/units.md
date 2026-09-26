@@ -60,8 +60,8 @@ carries many **turrets** and **mounts** around its hull, and each is **independe
 simulated** — its own **firing arc**, its own **range**, its own **reload**, its own
 intact-or-destroyed state, and, within a turret, **each barrel reloads
 independently** (`specs/combat.md`). But the player does **not** man them one by one.
-A ship's gunnery **stations are weapon classes** — *surface guns*, *anti-air*,
-*torpedoes* — and possessing a class gives you a **single crosshair** that commands
+A ship's gunnery **stations are weapon classes** — _surface guns_, _anti-air_,
+_torpedoes_ — and possessing a class gives you a **single crosshair** that commands
 **every turret of that class at once**: those that **bear** on your aim, are **in
 range** of it, and are **loaded** fire; those that cannot are shown as such on the
 crosshair. Crucially, a class spans guns of **different sizes and ranges**: the
@@ -154,16 +154,16 @@ differently, and it is **not** a universal archetype:
 Each power fields the archetypes marked below; a blank is a **deliberate gap**
 (`specs/factions.md`). **F** marks the power's flagship capital.
 
-| Archetype | Ironbound | Meridian | Geode |
-| --- | --- | --- | --- |
-| Battleship | **F** | — | **F** (dreadnought) |
-| Carrier | ✓ | **F** | ✓ |
-| Cruiser | ✓ | ✓ | ✓ |
-| Destroyer | — | ✓ | ✓ |
-| Submarine | ✓ | ✓ | ✓ |
-| Fighter | ✓ | ✓ (blink) | ✓ |
-| Bomber | Heavy (3–5) | Light (1–2) | Medium (2–3) |
-| Support | Repair tender | (carrier station) | Lodestar |
+| Archetype  | Ironbound     | Meridian          | Geode               |
+| ---------- | ------------- | ----------------- | ------------------- |
+| Battleship | **F**         | —                 | **F** (dreadnought) |
+| Carrier    | ✓             | **F**             | ✓                   |
+| Cruiser    | ✓             | ✓                 | ✓                   |
+| Destroyer  | —             | ✓                 | ✓                   |
+| Submarine  | ✓             | ✓                 | ✓                   |
+| Fighter    | ✓             | ✓ (blink)         | ✓                   |
+| Bomber     | Heavy (3–5)   | Light (1–2)       | Medium (2–3)        |
+| Support    | Repair tender | (carrier station) | Lodestar            |
 
 Read together with `specs/factions.md`: the **Ironbound** are a slow, capital-heavy
 **gun line** (battleship flagship, no destroyer, a heavy bomber); the **Meridian**

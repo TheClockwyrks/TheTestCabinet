@@ -20,6 +20,21 @@
   margin-bottom: t.$space-lg;
 }
 
+// The new-run form's test half: the type, case and version on the first row, the
+// variant and the engine on the second. The columns are fixed rather than
+// auto-fit so the second row keeps its shape whether or not the resolved version
+// offers a choice of engine — an engine that appears takes the empty column
+// beside the variant instead of resizing the row.
+.testFields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  // Three columns at the 14rem floor the rest of the form holds to need a 44rem
+  // container, and the page's own padding costs 2rem of the viewport.
+  @media (max-width: 46rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -36,6 +51,13 @@
 // Scoped to `.fields` so the combination rows' Harness/Model labels — which sit
 // on a panel — keep the plain treatment. See halo.scss.
 .fields .fieldLabel {
+  @include h.halo;
+}
+
+// Why a numeric field in that grid is refusing the launch. It is out on the
+// backdrop with the labels, so it takes the same halo; `NumberField` colors it,
+// this only lifts it off the grid. See components/NumberField.tsx.
+.fieldProblem {
   @include h.halo;
 }
 
@@ -111,7 +133,7 @@
 }
 
 // Strip the engine-native dropdown chrome (Aqua on macOS WebKit, flat on
-// Chromium) and draw our own chevron so the desktop app and web console match.
+// Chromium) and draw our own chevron so the console matches across browsers.
 .select {
   @include f.select-control;
 }
@@ -205,6 +227,35 @@
   min-width: 0;
 }
 
+// A gg combination is a stack, not a line: its configuration declares one model slot per
+// agent profile, and an unbounded set of pickers laid out side by side leaves none of them
+// wide enough to read a model id in. The configuration leads on its own line, then one slot
+// per row beneath it, each at the panel's full width.
+.comboRowStacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: t.$space-sm;
+}
+
+// The stacked row's head: the configuration picker with the remove control at the far edge,
+// so the control stays on the line that names what it removes rather than trailing the last
+// slot.
+.comboHead {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+}
+
+.comboHead .comboField {
+  flex: 1 1 auto;
+}
+
+// One model slot's row — full width, since a model id is the longest value on the form.
+.comboSlotField {
+  width: 100%;
+  min-width: 0;
+}
+
 // The remove-combination button: a compact, muted glyph that turns negative on
 // hover, aligned to the bottom of the row so it sits on the controls' line.
 .comboRemove {
@@ -228,15 +279,6 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-}
-
-// The run-count multiplier beside the launch button: a compact numeric field so it
-// reads as a modifier of the launch action rather than a full-width form field.
-.runCountField {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  width: 7rem;
 }
 
 // --- Batch launch: the per-combination result summary ------------------------
@@ -347,6 +389,7 @@
 }
 
 .muted {
+  @include h.halo;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
 }
@@ -435,6 +478,16 @@
   cursor: pointer;
 }
 
+// The validator-rated editor's live-score row: the same two-cell spread as the
+// expandable bar, but static — the per-script detail lives on each point in the
+// walker, so there is nothing to expand here.
+.liveScoreStatic {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
 // The left cell: "Live score: X / Y pts" plus the muted auto-set note. Allowed to
 // shrink and wrap so the right-aligned checks cell keeps its place on a narrow row.
 .liveScoreSummary {
@@ -508,14 +561,16 @@
   }
 }
 
-// The live event feed itself now lives in the shared `EventFeed` component
-// (`components/EventFeed.module.scss`), which owns its own styling so the run
-// monitor and the Appearance settings preview render it identically.
+// The live event feed itself now lives in the shared feed component
+// (`components/FeedView.module.scss`), which owns its own styling so the run
+// monitor, the gg activity panel, and the Appearance settings preview render it
+// identically.
 
-// The header row above the live feed: the "Live Event Feed" label stacked over
-// the run id on the left, and the Follow toggle pinned to the right. Aligns to
-// the bottom so the button sits on the run-id line, and wraps the button under
-// the heading on a narrow viewport.
+// The header row above a live feed: a section label on the leading edge and the
+// Follow toggle pinned to the trailing one. Aligns to the bottom so the button sits
+// on the label's line, and wraps the button under it on a narrow viewport. The run
+// monitor's own feed no longer has one — its Follow toggle rides the page header —
+// so gg's activity panel is what this now dresses.
 .feedHeader {
   display: flex;
   align-items: flex-end;
@@ -525,36 +580,22 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
-.feedHeading {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  min-width: 0;
-}
-
-// Matches the section-label treatment elsewhere on the page.
-.feedTitle {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
-}
-
-.feedRunId {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-}
-
-// The Follow toggle. Reads as an outlined control when off; when auto-follow is
-// active (`data-active`) it fills with the accent and glows, so its state is
-// legible at a glance (and conveyed to AT via `aria-pressed`).
+// The Follow toggle, on the run monitor's page header and on gg's activity feed.
+// Boxed exactly like the `.primary`/`.secondary` family above (same type size,
+// line-height, padding, and radius) so it sits on a page header at the same
+// height as the runs list's "+ New run" — the two pages are meant to read as one
+// console. Reads as the secondary control when off; when auto-follow is active
+// (`data-active`) it becomes the primary one — filled with the accent and glowing
+// — so its state is legible at a glance (and conveyed to AT via `aria-pressed`).
 .followButton {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: t.$space-xs t.$space-lg;
+  font-size: t.$font-md;
+  line-height: 1.2;
+  padding: t.$space-sm t.$space-lg;
   border-radius: t.$radius-md;
   border: t.$border-hairline solid t.$color-border;
   background: s.$panel-bg;
@@ -577,6 +618,16 @@
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
+}
+
+// The same toggle at the compact size the gg explorer's in-pane feed header uses:
+// it sits beside a section label inside a pane, where the page-header box above
+// would crowd the row. Composed onto `.followButton`.
+.followButtonCompact {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-lg;
 }
 
 // The live monitor's view toggle. Reuses the run-detail tab bar's container
@@ -604,16 +655,7 @@
 
 .tabButtonActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo (the `.tabButton` `h.halo` dark layers)
-  // and back the accent glow with it — `var(--ttc-glow)` alone has no contrast
-  // where an active label lands over the warm sun. Merged into one declaration
-  // because a bare `text-shadow` would override the halo the `.tabButton` mixin
-  // set. (Mirrors `.comment` in PromptHeader.module.scss.)
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 
@@ -647,11 +689,25 @@
   color: t.$color-text-muted;
 }
 
+// The item heading row: the numbered title on the left and, on a capped point,
+// its failure-cap badge pushed to the right edge of the same line.
+.checklistTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm t.$space-md;
+}
+
 // The item heading: a synthesized number plus the manifest title, in the accent
 // color, so the checklist reads as discrete items rather than a wall of text.
 .checklistTitle {
   color: t.$color-accent;
   font-weight: 600;
+}
+
+// The heading row's failure-cap badge: never shrinks or wraps into the title.
+.titleCap {
+  flex: 0 0 auto;
 }
 
 .checklistNumber {
@@ -676,6 +732,25 @@
 
 .checklistText {
   color: t.$color-text;
+}
+
+// The validator script behind a browsed point: its state + failure detail, with
+// the reporter-side script path beneath in small, muted type — the information
+// the old "Automated validation" table carried.
+.scriptNote {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+
+  > p {
+    margin: 0;
+  }
+}
+
+.scriptPath {
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 .checklistControls {
@@ -958,26 +1033,10 @@
 // In-progress runs now render as spinner rows folded into the shared run log
 // (see `RunLog`), so their styling lives there beside the finished rows.
 
-// The Runs page header row: the prompt header on the left, the "+ New run"
-// action pinned to the right on the same row. Aligns to the prompt line at the
-// top (the header carries a second comment line below) and wraps the action
-// under the header on narrow viewports.
-.runsHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-// Groups the header's actions (the Publish-failures link beside the New-run
-// button) so they sit together at the right, wrapping as one unit.
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
+// A page's header actions are `PromptHeader`'s own `titleActions` slot — the header
+// lays out both of its rows, so a page never wraps one in a row of its own. The two
+// containers that used to do that here are gone; what stays is the button treatment
+// below, which is what every header action wears.
 
 // --- Review flow: one question at a time, with a navigable item rail ---------
 
@@ -1312,11 +1371,90 @@
   gap: t.$space-xs;
 }
 
+// The pane's heading row: what the pane is with its download control, on the
+// left, and — for a replay pane — how long its recording is, pushed to the right
+// edge, which is the right edge of the viewport directly under it.
 .mediaPaneLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
+}
+
+// The pane's name and the download control beside it, as one unit on the left.
+.mediaPaneName {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// The icon-only download control beside a pane's name: quiet until hovered, and
+// visibly busy while a replay is being rendered to a clip.
+.mediaPaneDownload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  line-height: 0;
+
+  &:hover:not(:disabled) {
+    color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+    border-radius: t.$radius-sm;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  &[data-status="error"] {
+    color: t.$color-negative;
+  }
+}
+
+.mediaPaneDownloadIcon {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+}
+
+// The busy mark stands in for the icon while an export is being rendered.
+.mediaPaneDownloadBusy {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: media-pane-download-spin 0.8s linear infinite;
+}
+
+@keyframes media-pane-download-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// A replay pane's frame count. Read against the count across the row: a shorter
+// recording is a build that stopped drawing before the other did.
+.mediaPaneLength {
+  flex: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .mediaMissing {
@@ -1326,9 +1464,10 @@
   font-style: italic;
 }
 
-// One automated-validation output: its name, the shared video controls (for a clip
-// pair), and the reference-vs-this-run panes beneath. Stacked so a question can
-// carry several outputs one under another.
+// One automated-validation output: the shared video controls (for a clip pair)
+// and the reference-vs-this-run panes beneath. Stacked so a question can carry
+// several outputs one under another. The output's name is not printed — the
+// item's prose above says what is being compared — but it labels the figure.
 .validationOutput {
   margin: t.$space-sm 0;
   display: flex;
@@ -1336,19 +1475,14 @@
   gap: t.$space-xs;
 }
 
-// The output's title row: its name on the left, the Play/Pause toggle pushed to the
-// right, so a reviewer starts (or restarts) the reference and this run together from
-// beside the title rather than a separate control strip.
+// A clip pair's control row: the Play/Pause toggle pushed to the right, so a
+// reviewer starts (or restarts) the reference and this run together from above
+// the panes rather than a separate control strip.
 .validationOutputHeader {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: t.$space-md;
-}
-
-.validationOutputName {
-  font-weight: 600;
-  color: t.$color-text;
 }
 
 // The paired-video Play/Pause toggle: a compact button that restarts and plays both

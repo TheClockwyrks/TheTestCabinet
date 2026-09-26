@@ -111,7 +111,7 @@ mute.
 src/            the engine — game state machine + fixed-timestep sim + Canvas 2D renderer
 assets/         the PRODUCED art, VFX, and audio (committed; see ASSET-LAYOUT.md)
 scripts/        the asset-generation scripts (gen-*.sh)
-vendor/         the vendored @test-cabinet/particle-runtime (prebuilt)
+vendor/         the vendored @clockwyrks/particle-runtime (prebuilt)
 dist/           the production build (git-ignored)
 ```
 

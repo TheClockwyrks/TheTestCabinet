@@ -11,18 +11,10 @@
     {
       "name": "vent",
       "shape": "edge",
-      "position": [
-        64.0,
-        40.0,
-        0.0
-      ],
+      "position": [64.0, 40.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          10.0,
-          1.0,
-          0.0
-        ]
+        "size": [10.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -32,11 +24,7 @@
       "lifetimeSpread": 220.0,
       "speed": 24.0,
       "speedSpread": 7.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 16.0,
       "seed": 12,
       "forces": {},
@@ -74,11 +62,7 @@
       "amplitude": 9.0,
       "scale": 0.05
     },
-    "wind": [
-      3.0,
-      6.0,
-      0.0
-    ]
+    "wind": [3.0, 6.0, 0.0]
   },
   "subEmitters": []
 }

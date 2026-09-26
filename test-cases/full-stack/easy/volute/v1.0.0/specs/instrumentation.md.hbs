@@ -1,0 +1,633 @@
+# Volute — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Volute carries a small debugging and automation surface, `window.__volute`, so
+the hall can be driven and inspected from code without touching the keyboard or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__volute` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. A pose arranges the hall,
+and the game's own systems run from there exactly as they do in play: a core
+placed through the surface advances, merges, and recoils as one the inlet
+emitted, and a core released through it flies, strikes, and seats through the
+same insertion a played shot uses.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Volute carries a small debugging and automation surface so the hall can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `VoluteState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<VoluteState>`, and
+returns the next `VoluteState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.startLevel(s, 1))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+hall, and the game's own systems run from there exactly as they do in play: a
+core placed through the surface advances, merges, and recoils as one the inlet
+emitted, and a core released through it flies, strikes, and seats through the
+same insertion a played shot uses. Where the surface's implementation lives
+under `src/` is yours to decide; `src/game.ts` declares and exports its type,
+`VoluteDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Volute carries a small debugging and automation surface so the hall can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` builds the finished surface and returns it. The
+engine hands that same object back from `engine.debug`, and it is reached that
+way alone: nothing is installed on the page. Every scenario driven from code
+reaches the game through it, so it is present and exactly as specified here.
+
+Each operation is a method that acts on the running game. A pose takes only the
+arguments its heading names, returns nothing, and arranges the live world through
+the same systems play uses, leaving the outcome to the frames that follow: a core
+placed through the surface advances, merges, and recoils as one the inlet
+emitted, and a core released through it flies, strikes, and seats through the
+same insertion a played shot uses. A reading takes no arguments and returns plain
+data, read off the world at the instant of the call. A pose that opens a level
+takes effect no later than the end of the next advanced frame, so a caller
+advances one frame after `reset` or `startLevel` before it poses, presses a key,
+or reads further. Where the surface's implementation lives under
+`src/` is yours to decide; the type your instance declares for it, the `D` of its
+`GameInstance<D>`, is the surface this file specifies.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A render-free core
+
+{{#if (eq engine.slug "structured-2d")}}
+The surface rests on the simulation being steppable apart from drawing. Every
+rate this specification states is per second and every duration is in seconds,
+integrated against the delta time the engine hands each tick, so a step means the
+same thing whatever the frame rate. A `ConstantClock` of `1000 / 60` milliseconds
+makes one frame exactly one simulation step of `1 / 60` second, which is the step
+a scenario advances the engine by.
+{{else}}
+The surface rests on the simulation being steppable apart from drawing. The hall
+advances on a fixed tick of `TICK_HZ` (`60`) ticks per second, each worth
+`TICK_DT` (`1 / 60`) seconds: every frame's delta time accumulates, whole ticks
+are consumed, and the remainder waits for the next frame, so a step means the
+same thing whatever the frame rate. Every rate this specification states is per
+second and every duration is in seconds, and one tick applies exactly `TICK_DT`
+of them.
+{{/if}}
+
+{{#if (eq engine.slug "structured-2d")}}
+The world advances from its ticks and its input alone, independent of the canvas
+and of wall-clock time. The dependency runs one way: the simulation reads nothing
+from the rendering pipeline, and every advance, merge, strike, insertion,
+extraction, and cell is decided from the world alone.
+{{else}}
+Game state advances from ticks and input alone, independent of the canvas, of
+the frame loop that measured the delta time, and of wall-clock time. The
+dependency runs one way: the simulation reads nothing from the renderer, and
+every advance, merge, strike, insertion, extraction, and cell is decided from the
+state alone.
+{{/if}}
+
+The game draws at random in three places: the charges of the cores a level opens
+with, the charge of each emitted core, and the charges the injector loads and
+queues. `specs/channel.md` states the set each draw is uniform over, and the
+surface poses the outcome a scenario needs in place of the draw: `poseTrain` the
+cores on the channel, `setLoaded` and `setQueued` the injector's charges, and
+`setNextEmitted` the charge of the next core the inlet emits. How the game draws
+is yours.
+
+Audio belongs to the ticks. A pose changes the state alone and sounds nothing;
+the cues a scenario hears come from the ticks run after it.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard, the pointer, and the overlay belong to the runtime layer beneath
+the game, and the surface carries no operation for any of them. That layer
+delivers the actions the game registers from the key bindings this specification
+fixes, it reports the pointer in field units, and it draws and toggles the debug
+overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `step` below.
+{{else}}
+The {{engine.name}} engine owns the clock, the keyboard, the pointer, and the
+overlay, and documents them in the `engine/` directory, so the surface carries no
+operation for any of them. The engine advances the game frame by frame and a
+clock that supplies its own deltas takes it off real time, so a scenario pairs a
+`ConstantClock` of `1000 / 60` milliseconds with `engine.advance` and steps
+exactly one simulation step per frame. The engine drives the actions the game
+registers, reports the pointer in field units, and draws and toggles the debug
+overlay.
+{{/if}}
+
+What the overlay shows is Volute's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, booleans, and plain
+arrays. Every arc position and distance is in the field's logical units, every
+angle is in degrees measured from `+x` and increasing toward `+y`, and every
+duration is in seconds.
+{{#if (eq engine.slug "none")}}
+{{else if (eq engine.slug "simple-2d")}}
+
+Each operation's first parameter is the current state, `DeepReadonly<VoluteState>`.
+A pose returns the next `VoluteState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read. The headings below name the
+parameters that follow the state.
+{{else}}
+
+A pose takes only the parameters its heading names and returns nothing; a reading
+takes none and returns what it read. Each operation acts on the live world at the
+moment of the call.
+{{/if}}
+
+No operation declines. Each applies at the call whatever the screen, because the
+screen showing, the interlude running, and where the train stands are how a
+player would have reached the thing and are not the operation's conditions: a
+`fire` releases from a paused hall, and a `poseTrain` seeds the channel on
+`title` exactly as it seeds one in play.
+
+A range the specification fixes as a constant is the argument's domain, so a
+value outside one fails loudly rather than being brought back inside it. An angle
+names a heading whatever its value, so it is normalized rather than refused, as
+its heading states. A bound that reads a live figure of the run is a rule of the
+run rather than a domain of the argument, so `setQuotaRemaining` takes the count
+it is given whatever the level's quota stands at, and the hall's own tick makes
+of that what it makes of it. A call naming nothing the game holds a state for — an
+argument that is not a number, or a screen, charge, mark, or machinery kind
+outside the set that names them — fails loudly rather than passing quietly, so a
+caller never reads a call that did nothing as a call that did.
+
+No pose decides an outcome either: every insertion, extraction, score, chain
+step, mark, cell, clear, and ending comes from the ticks run after the pose, so a
+scenario reads what happened from the snapshot.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop feeding the wall clock's delta time into the tick accumulator, so the
+hall advances only when `step` says so. `setAutoStep(true)` returns it to running
+itself, which is how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent tick left.
+
+### `step(ticks)`
+
+Runs `ticks` whole simulation ticks, immediately and in order, each the full tick
+followed by a render. `ticks` defaults to `1`.
+
+Stepping while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario driven from code calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "simple-2d")}}
+### `reset(state)`
+{{else}}
+### `reset()`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value: the
+`title` screen, the score `0`, the level `1`, the cells at `CELLS` (`3`), an empty
+channel, no projectile, the pressure `0`, the chain step `1`, no active
+machinery, no interlude running, the injector holding neither a loaded nor a
+queued core with its cooldown at `0`, the aim at `270` degrees, no posed
+emission charge, and `simTime` at `0`.
+
+`muted` is deliberately untouched: muting is a player preference the runtime
+owns. Because a reset restores exactly the declared fields, anything else the
+build keeps across ticks is derived from them.
+
+The inlet's gate and the train's gate are untouched as well, for the reason
+`setEmission` and `setFeed` give below.
+{{#if (eq engine.slug "none")}}
+Whether the simulation advances on its own each frame is untouched for the same
+reason: `setAutoStep` belongs to the caller driving the game, not to the run
+being played, so a `reset` inside a stepped scenario leaves the game off the wall
+clock.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the hall as it now
+stands, without advancing anything. `emitted`, `feedSpeed`, `danger`, each core's
+`(x, y)` and its `segment`, and each segment's `count` and `hold` all follow from
+the level, the pressure, the active machinery, and where the cores sit on the
+channel, so after a pose they answer for the hall as it is rather than as it was
+before the call.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy — the segments
+are the one a build most often keeps — rewrites that copy from what it is a copy
+of, by the same rule that builds it during a tick.
+
+It moves no clock and runs no tick: `simTime`, the chain timer, the interlude,
+the injector's cooldown, and the active machinery's seconds left all stand where
+they stood, no segment advances, no projectile flies, no strike seats, no core is
+extracted, no cell is spent, the pressure neither rises nor bleeds, the inlet
+emits nothing, and no charge is drawn. It scores nothing, sounds no cue, plays no
+effect, and changes neither the screen nor the interlude. It moves nothing to
+make a reading agree: a core posed past the intake stays where it was posed and
+`danger` answers for where it is. Calling it twice leaves the same state as
+calling it once.
+
+It is never an error and may be called on any screen, whether or not the hall is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `VoluteState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `setScreen(state, name)`
+{{else}}
+### `snapshot()`
+
+A pure read of the running game, returned as the plain object under Snapshot
+shape below. It changes nothing.
+
+### `setScreen(name)`
+{{/if}}
+
+Sets the screen to `name`, one of the seven the state carries, and changes
+nothing else: no level is opened, no channel is seeded, no timer is started, and
+no interlude is set. A name outside the seven names no screen, so the call fails
+loudly.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setLevel(state, level)`
+{{else}}
+### `setLevel(level)`
+{{/if}}
+
+Sets the level in play to `level`, a whole number `1` through `LEVEL_COUNT`
+(`5`), and changes nothing else: the screen, the channel, the quota, the
+pressure, the chain step, the active machinery, the projectiles, and the injector
+are all left as they are. The level's feed speed and its charge set
+follow the new value at once.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScore(state, n)`, `setCells(state, n)`
+{{else}}
+### `setScore(n)`, `setCells(n)`
+{{/if}}
+
+`setScore` sets the run's score to `n`, a whole number of at least `0`.
+`setCells` sets the cells remaining to `n`, a whole number `0` through `CELLS`
+(`3`). Neither ends a run or opens one: `setCells(0)` leaves the screen
+exactly as it stands, and the ending a spent last cell reaches comes from the
+ticks run after the pose.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setChainStep(state, k)`
+{{else}}
+### `setChainStep(k)`
+{{/if}}
+
+Sets the chain step an extraction scores at to `k`, a whole number of at least
+`1`, and restarts the window that returns the step to `1`, so the posed step
+holds for `CHAIN_RESET` (`2.0` s) of play from the call.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `startLevel(state, level)`
+{{else}}
+### `startLevel(level)`
+{{/if}}
+
+Opens `level`, a whole number `1` through `LEVEL_COUNT` (`5`), exactly as the
+interlude before it opens it: the screen becomes `playing`, the channel
+holds the cores a level opens with, the quota is what a level start leaves it,
+the pressure becomes `0`,
+the chain step becomes `1`, the active machinery clears, every projectile is
+discarded, and the injector draws a fresh loaded and queued core. The score and
+the cells stay as they are.
+
+This is the one operation that arranges more than one thing, because opening a
+level IS the thing it poses: the seeded cores, the level's quota, and the fresh
+draws are the level opening itself, and a caller that wants some other hall
+assembles it from the single-field poses above.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `poseTrain(state, cores)`
+{{else}}
+### `poseTrain(cores)`
+{{/if}}
+
+Replaces every core on the channel with the cores given. `cores` is a list of
+`[s, charge, mark]` triples: `s` is an arc position, at most `5000`;
+`charge` is one of the five charge ids; and `mark` is one of the four machinery
+kinds or `null` for an unmarked core. The cores are placed at exactly the arc
+positions given, and the train orders them by descending `s` whatever order the
+list arrived in, two cores given the same arc position keeping the order the
+list gave them.
+
+Segments follow from the spacing rule and every recoil hold is cleared, so a
+posed train advances on the tick after the call. The quota, the pressure, the
+chain step, the active machinery, the projectiles, and the injector are left
+as they are.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearTrain(state)`
+{{else}}
+### `clearTrain()`
+{{/if}}
+
+Removes every core from the channel and every projectile. Nothing extracts,
+nothing scores, no cell is spent, and the level, the quota, the pressure, the
+chain step, the active machinery, and the injector are left as they are.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setLoaded(state, charge)`, `setQueued(state, charge)`
+{{else}}
+### `setLoaded(charge)`, `setQueued(charge)`
+{{/if}}
+
+Sets the core the injector holds loaded, and the one it holds queued, to
+`charge`, one of the five charge ids, and changes nothing else: no core is
+released, and the aim and the cooldown are untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setAim(state, angleDegrees)`
+{{else}}
+### `setAim(angleDegrees)`
+{{/if}}
+
+Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
+else: no core is released, the cooldown is untouched, and the loaded and queued
+cores stay as they are.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `fire(state)`
+{{else}}
+### `fire()`
+{{/if}}
+
+Releases the loaded core along the current aim through the same path the fire
+control takes: the core leaves the injector as a projectile, the queued core
+becomes loaded, a fresh core is drawn as queued, and the cooldown is set as a
+played shot sets it. Any cooldown outstanding at the call is cleared first, so
+the call always launches, and a call made while the injector holds no loaded core
+draws one first.
+
+The flight, the strike, the insertion, and any extraction the insertion causes
+come from the ticks that follow.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPressure(state, value)`
+{{else}}
+### `setPressure(value)`
+{{/if}}
+
+Sets the pressure to `value`, `0` through `100`. The feed speed the snapshot
+reports follows the new value at once, and the rise, the bleed, and the drop per
+extracted core run from it on the next tick.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setQuotaRemaining(state, n)`
+{{else}}
+### `setQuotaRemaining(n)`
+{{/if}}
+
+Sets the cores the inlet has left to emit this level to `n`, a whole number of at
+least `0`. The level's quota is a rule of the run rather than a bound on the
+argument, so a count above it is taken as given and the hall runs from there. The
+count of cores emitted this level is the level's quota less what remains, so
+which of the following emissions carry a mark, and which kind each mark is,
+follow the new value.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setEmission(state, enabled)`
+{{else}}
+### `setEmission(enabled)`
+{{/if}}
+
+Holds the inlet, and lets it go again. `setEmission(false)` stops step 7 of the
+tick order `specs/channel.md` fixes: no core is emitted, whatever the quota and
+whatever the tail has cleared, and the quota is left where it stands.
+`setEmission(true)` returns the inlet to emitting by its own rule. It is
+independent of the quota, so a hall whose quota is untouched and whose inlet is
+held emits nothing and is never cleared for an exhausted quota.
+
+The inlet emits when a game opens, and a `reset` and a `startLevel` both leave
+this where the caller put it, because it belongs to the caller driving the game
+rather than to the run being played. A charge `setNextEmitted` posed waits
+behind a held inlet and is taken by the first emission after it is let go.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setNextEmitted(state, charge)`
+{{else}}
+### `setNextEmitted(charge)`
+{{/if}}
+
+Poses the charge of the next core the inlet emits. `charge` is one of the five
+charge ids, or `null` to clear a standing pose; any other value names no charge,
+so the call fails loudly and the standing pose is left as it was. The next
+emission places a core carrying `charge` in place of the draw `specs/channel.md`
+states, whatever the channel holds, and that emission consumes the pose, so every
+emission after it is drawn again until the next call. A call made while a pose
+stands replaces it.
+
+Nothing else moves: the emitted core's mark, the quota, the inlet's gate, and
+the charges the injector holds are as they would otherwise be. The snapshot
+reports the pose as `nextEmitted`, and `null` while none stands.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setFeed(state, enabled)`
+{{else}}
+### `setFeed(enabled)`
+{{/if}}
+
+Holds the train where it stands, and lets it advance again. `setFeed(false)`
+stops step 2 of that same tick order: no segment advances, no merge follows from
+an advance, and an active `backflow` moves nothing. `setFeed(true)` returns the
+train to advancing by its own rules.
+
+Every other step runs unchanged while the train is held: timers fall, projectiles
+fly, a strike seats and the run it completes is extracted, a removal recoils what
+is behind it, pressure rises and bleeds, a core standing at the intake spends a
+cell, and the inlet emits. The train advances when a game opens, and a `reset`
+and a `startLevel` both leave this where the caller put it, for the same reason
+the inlet's gate is left alone.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `grantMachinery(state, kind)`
+{{else}}
+### `grantMachinery(kind)`
+{{/if}}
+
+Grants `kind`, one of the three timed machinery kinds — `choke`, `backflow`, or
+`sightline` — exactly as extracting a run holding a mark of that kind grants it:
+it becomes the active machinery at its full duration, replacing whatever was
+active and restarting its timer. A `kind` naming none of the three names no
+grant, so the call fails loudly.
+
+`bore` is not granted here. It removes cores and scores the moment it resolves,
+and no pose decides an outcome, so a caller that wants a bore poses a run
+carrying a `bore` mark and lets the ticks extract it.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `pause(state)`, `resume(state)`
+{{else}}
+### `pause()`, `resume()`
+{{/if}}
+
+`pause` poses the pause control, moving the screen to `paused`; `resume` poses it
+again, returning the screen to `playing`. Neither touches anything else.
+
+## Snapshot shape
+
+{{#if (eq engine.slug "simple-2d")}}
+`snapshot` returns:
+{{else}}
+`snapshot()` returns:
+{{/if}}
+
+```js
+{
+  version: 1,
+  screen: "title" | "playing" | "paused" | "cleared"
+        | "setback" | "gameover" | "victory",
+  score: <number>,
+  level: <number>,               // 1 through 5
+  cells: <number>,
+  quotaRemaining: <number>,      // cores the inlet has left to emit this level
+  emitted: <number>,             // the level's quota less quotaRemaining
+  pressure: <number>,            // 0 through 100
+  feedSpeed: <number>,           // the effective feed speed, units/s
+  chainStep: <number>,
+  chainTimer: <number>,          // seconds left before the step returns to 1
+  interlude: <number>,           // seconds left of the interlude, else 0
+  danger: <boolean>,
+
+  // Every core on the channel, head first.
+  train: [
+    { s: <number>, x: <number>, y: <number>,   // the point s gives on the channel
+      charge: <string>, mark: <string> | null,
+      segment: <number> },       // 0 is the lead segment, rising toward the tail
+  ],
+
+  // The segments, head first, entry 0 the lead segment.
+  segments: [
+    { count: <number>, hold: <number> },   // hold is the recoil hold's seconds left
+  ],
+
+  injector: {
+    aim: <number>,               // degrees
+    cooldown: <number>,          // seconds until the injector may fire again
+    loaded: <string> | null,
+    queued: <string> | null,
+  },
+
+  // Every projectile.
+  projectiles: [
+    { x: <number>, y: <number>, angle: <number>, charge: <string> },
+  ],
+
+  machinery: { kind: <string>, remaining: <number> } | null,
+
+  emission: <boolean>,           // whether the inlet emits
+  feed: <boolean>,               // whether the train advances
+  nextEmitted: <string> | null,  // the charge posed for the next emission
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,           // whether the frame loop advances the simulation
+{{/if}}
+  muted: <boolean>,
+  simTime: <number>,             // accumulated simulation time, in seconds
+}
+```
+
+The shape is fixed, and every field is present whatever the screen. `charge` is a
+charge id, `mark` and `machinery.kind` are machinery kinds, `machinery` is
+`null` while no timed machinery is active, and `nextEmitted` is a charge id
+while a pose stands and `null` otherwise. Every field is read straight off the
+game's state, so what the snapshot reports is what the game holds. Eight are
+derived rather than stored:
+
+| Field | Derived from |
+| --- | --- |
+| `emitted` | The level's quota less `quotaRemaining` |
+| `feedSpeed` | The level's feed speed under the current pressure and choke |
+| `danger` | The head's arc position against the danger threshold |
+| `train[].x`, `train[].y` | The core's arc position walked along the channel |
+| `train[].segment` | The spacing between consecutive cores |
+| `segments[].count` | How many cores the segment holds |
+| `segments[].hold` | The recoil hold the segment's cores stand under |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile` is what brings a stored copy back into agreement after a
+pose.
+
+{{#if (eq engine.slug "structured-2d")}}
+Two of the snapshot's figures are live reads rather than kept copies: `muted` is
+the engine's own mute bit, read from the audio bus at the call, and `simTime` is
+the frame clock's accumulated simulated time, which runs whatever the screen and
+carries across level transitions.
+{{else}}
+The game keeps two of these honest every tick:
+
+- `muted` mirrors the runtime's mute bit. Refresh it from the runtime in every
+  update, since the runtime owns muting and this is the game's readable copy of
+  it.
+- `simTime` accumulates the elapsed time of every update, whatever the screen.
+{{/if}}
+
+## Diagnostics
+
+The debug overlay is a read-only window on the same ground truth the snapshot
+reports, drawn over the running game and toggled by the backtick key
+(`KeyboardEvent.code` `Backquote`), hidden until it is asked for. Register at
+least the screen, the level with the score, the cells, the quota remaining, the
+pressure with the feed speed, the chain step, the count of cores on the channel
+with the head's arc position, the segment count, the danger flag, the loaded and
+queued charges with the aim and the cooldown, the count of projectiles, and
+the active machinery with its seconds left. Keep each one short enough to read on
+a line, and keep every source a pure read, so watching the overlay leaves the
+game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key, and it reads the game
+without changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Volute's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<VoluteState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Volute's part, through the two
+diagnostic registries the engine documents: a value that outlives a level on the
+instance's registry, and a value read off the open world on the world's. Each
+source is a function of no arguments that reads the live game at the moment it
+runs and returns a short value. Drawing the panel, toggling it, and keeping it
+read-only are the engine's.
+{{/if}}

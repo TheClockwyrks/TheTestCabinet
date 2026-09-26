@@ -22,44 +22,93 @@ large), and every active jelly node. The authoritative schema is
 
 ```jsonc
 {
-  "tick": 412,                    // 0-based tick counter
-  "timestep_ms": 16,              // the fixed, faked delta (always 16)
-  "team": "red",                  // which colony you drive ("red" | "blue")
+  "tick": 412, // 0-based tick counter
+  "timestep_ms": 16, // the fixed, faked delta (always 16)
+  "team": "red", // which colony you drive ("red" | "blue")
   "board": {
-    "width": 32, "height": 16,
-    "border_x": 16,               // first column belonging to Blue's half
-    "walls": [[3,4],[3,5]]        // blocked tiles, STATIC for the whole match
+    "width": 32,
+    "height": 16,
+    "border_x": 16, // first column belonging to Blue's half
+    "walls": [
+      [3, 4],
+      [3, 5],
+    ], // blocked tiles, STATIC for the whole match
   },
-  "score": { "red": 7, "blue": 5 },          // banked points
+  "score": { "red": 7, "blue": 5 }, // banked points
   "seeds_remaining": { "red_half": 13, "blue_half": 11 }, // sweep progress
-  "my_agents": [                  // ALWAYS your three agents, ids 0..3
+  "my_agents": [
+    // ALWAYS your three agents, ids 0..3
     // `load` is the number that matters: carrying + 3 * carrying_large.
-    { "id": 0, "x": 14, "y": 8, "role": "raider", "carrying": 4,
-      "carrying_large": 0, "load": 4,
-      "immune_ticks": 0, "can_move_this_tick": false },
-    { "id": 1, "x": 6, "y": 2, "role": "soldier", "carrying": 0,
-      "carrying_large": 0, "load": 0,
-      "immune_ticks": 0, "can_move_this_tick": true },
+    {
+      "id": 0,
+      "x": 14,
+      "y": 8,
+      "role": "raider",
+      "carrying": 4,
+      "carrying_large": 0,
+      "load": 4,
+      "immune_ticks": 0,
+      "can_move_this_tick": false,
+    },
+    {
+      "id": 1,
+      "x": 6,
+      "y": 2,
+      "role": "soldier",
+      "carrying": 0,
+      "carrying_large": 0,
+      "load": 0,
+      "immune_ticks": 0,
+      "can_move_this_tick": true,
+    },
     // Hauling a large seed: NOTHING in `carrying`, but three units of load.
-    { "id": 2, "x": 9, "y": 11, "role": "raider", "carrying": 0,
-      "carrying_large": 1, "load": 3,
-      "immune_ticks": 12, "can_move_this_tick": true }
+    {
+      "id": 2,
+      "x": 9,
+      "y": 11,
+      "role": "raider",
+      "carrying": 0,
+      "carrying_large": 1,
+      "load": 3,
+      "immune_ticks": 12,
+      "can_move_this_tick": true,
+    },
   ],
-  "enemies": [                    // the opposing colony's three agents (no cadence)
-    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0,
-      "carrying_large": 0, "load": 0, "immune_ticks": 0 }
+  "enemies": [
+    // the opposing colony's three agents (no cadence)
+    {
+      "id": 0,
+      "x": 20,
+      "y": 8,
+      "role": "soldier",
+      "carrying": 0,
+      "carrying_large": 0,
+      "load": 0,
+      "immune_ticks": 0,
+    },
   ],
   // EVERY takeable seed tile — ordinary caches (incl. dropped, recoverable ones)
   // AND large seeds. Step on any of these to pick it up.
-  "seeds": [ [18,3], [21,9], [15,6] ],
+  "seeds": [
+    [18, 3],
+    [21, 9],
+    [15, 6],
+  ],
   // The large seeds, with what `seeds` alone cannot tell you. Each also appears
   // in `seeds` above. `ticks_to_drift` is a clock: it moves whether you like it
   // or not, and it is heading for the border.
   "large_seeds": [
-    { "x": 15, "y": 6, "home_x": 1, "home_y": 6, "half": "red",
-      "value": 3, "ticks_to_drift": 128 }
+    {
+      "x": 15,
+      "y": 6,
+      "home_x": 1,
+      "home_y": 6,
+      "half": "red",
+      "value": 3,
+      "ticks_to_drift": 128,
+    },
   ],
-  "jelly": [ { "x": 24, "y": 1, "active": true } ]  // ACTIVE royal-jelly nodes
+  "jelly": [{ "x": 24, "y": 1, "active": true }], // ACTIVE royal-jelly nodes
 }
 ```
 
@@ -85,8 +134,8 @@ Key fields to reason about:
   it is given for **enemies too**. An immune ant cannot be tagged **and tags any
   non-immune enemy it meets** — including a soldier standing on its own half. An
   enemy with `immune_ticks > 0` is not a target; it is a threat.
-- **`seeds`** is every takeable seed tile — ordinary caches *and* large seeds. The
-  ones you *raid* are on the **enemy** half; the ones you *defend* are on your own.
+- **`seeds`** is every takeable seed tile — ordinary caches _and_ large seeds. The
+  ones you _raid_ are on the **enemy** half; the ones you _defend_ are on your own.
   A dropped load (from a tag) appears here too, as recoverable caches.
 - **`large_seeds`** is the richer view of the large seeds, which `seeds` alone
   cannot distinguish: each is worth (and weighs) `value` = 3, drifts toward the
@@ -106,10 +155,10 @@ Return **one move per owned agent**, every tick. The schema is
 ```jsonc
 {
   "moves": [
-    { "agent": 0, "dir": "N" },     // dir is one of: N | S | E | W | Stop
+    { "agent": 0, "dir": "N" }, // dir is one of: N | S | E | W | Stop
     { "agent": 1, "dir": "Stop" },
-    { "agent": 2, "dir": "W" }
-  ]
+    { "agent": 2, "dir": "W" },
+  ],
 }
 ```
 
@@ -117,7 +166,7 @@ Return **one move per owned agent**, every tick. The schema is
 
 ## Legality — two tiers
 
-Legality mirrors the cheating guarantee: illegal *intent* is impossible, but
+Legality mirrors the cheating guarantee: illegal _intent_ is impossible, but
 ordinary bugs are forgiven, not match-ending.
 
 - **Schema-invalid output is a forfeit.** Missing the `moves` array, naming an

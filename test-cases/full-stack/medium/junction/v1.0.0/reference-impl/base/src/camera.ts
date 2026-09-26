@@ -9,7 +9,17 @@
 // are never covered by the map. This module owns no DOM — it is pure state + math, so the
 // headless harness can `centerOn` a tile just like the browser.
 
-import { MAP_H, MAP_W, STAGE_W, TILE, VIEW_Y0, VIEW_Y1, ZOOM_DEF, ZOOM_MAX, ZOOM_MIN } from "./constants";
+import {
+  MAP_H,
+  MAP_W,
+  STAGE_W,
+  TILE,
+  VIEW_Y0,
+  VIEW_Y1,
+  ZOOM_DEF,
+  ZOOM_MAX,
+  ZOOM_MIN,
+} from "./constants";
 
 export interface ScreenPt {
   x: number;
@@ -39,12 +49,18 @@ export class Camera {
 
   worldToScreen(wx: number, wy: number): ScreenPt {
     const s = this.scale;
-    return { x: STAGE_W / 2 + (wx - this.cx) * s, y: VIEW_CY + (wy - this.cy) * s };
+    return {
+      x: STAGE_W / 2 + (wx - this.cx) * s,
+      y: VIEW_CY + (wy - this.cy) * s,
+    };
   }
 
   screenToWorld(sx: number, sy: number): ScreenPt {
     const s = this.scale;
-    return { x: this.cx + (sx - STAGE_W / 2) / s, y: this.cy + (sy - VIEW_CY) / s };
+    return {
+      x: this.cx + (sx - STAGE_W / 2) / s,
+      y: this.cy + (sy - VIEW_CY) / s,
+    };
   }
 
   // The tile under a screen point. `inView` is false in the HUD strips.
@@ -96,8 +112,14 @@ export class Camera {
     const s = this.scale;
     const halfW = STAGE_W / 2 / s; // world px half-width visible
     const halfH = VIEW_H / 2 / s;
-    this.cx = MAP_W <= 2 * halfW ? MAP_W / 2 : Math.max(halfW, Math.min(MAP_W - halfW, this.cx));
-    this.cy = MAP_H <= 2 * halfH ? MAP_H / 2 : Math.max(halfH, Math.min(MAP_H - halfH, this.cy));
+    this.cx =
+      MAP_W <= 2 * halfW
+        ? MAP_W / 2
+        : Math.max(halfW, Math.min(MAP_W - halfW, this.cx));
+    this.cy =
+      MAP_H <= 2 * halfH
+        ? MAP_H / 2
+        : Math.max(halfH, Math.min(MAP_H - halfH, this.cy));
   }
 
   // The inclusive tile rectangle currently visible, for the renderer's culled draw.

@@ -110,7 +110,8 @@ export function rebuildNetworks(world: World): NetworkStat[] {
       m.powered = m.network >= 0;
       m.running = m.powered && m.fuel > 0;
     } else {
-      const up = m.network >= 0 && !brownout[m.network] && supply[m.network]! > 0;
+      const up =
+        m.network >= 0 && !brownout[m.network] && supply[m.network]! > 0;
       m.powered = up;
       m.running = up;
     }
@@ -118,7 +119,12 @@ export function rebuildNetworks(world: World): NetworkStat[] {
 
   const stats: NetworkStat[] = [];
   for (let n = 0; n < count; n++) {
-    stats.push({ id: n, supply: supply[n]!, demand: demand[n]!, brownout: brownout[n]! });
+    stats.push({
+      id: n,
+      supply: supply[n]!,
+      demand: demand[n]!,
+      brownout: brownout[n]!,
+    });
   }
   return stats;
 }

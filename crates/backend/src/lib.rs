@@ -26,16 +26,19 @@ pub mod config;
 pub mod coverage;
 pub mod db;
 pub mod error;
+pub mod gg_docs;
 pub mod ingest;
 pub mod logo;
 pub mod metrics;
 pub mod model_seed;
+pub mod probe;
 pub mod publish_relay;
 pub mod publisher;
 pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
+pub mod stats;
 pub mod store;
 
 use std::sync::Arc;
@@ -62,6 +65,11 @@ pub struct Backend {
     /// The periodic model-price refresher task; kept alive for the server's
     /// lifetime (dropping it aborts the 24-hour re-pricing loop).
     pub price_refresher: tokio::task::JoinHandle<()>,
+    /// The periodic [artifact reclamation sweep](crate::artifacts); kept alive for
+    /// the server's lifetime (dropping it aborts the loop). `None` when the sweep is
+    /// not configured: no in-cluster artifact URL, no service token, or a zero
+    /// interval.
+    pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -84,6 +92,21 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         }
     }
 
+    // gg's reference documents are read from disk on first request, not compiled in, so a
+    // deployment that never points TCAB_GG_REFERENCE anywhere real would otherwise learn
+    // about it from a `503` the first time somebody opened the console's gg Reference
+    // section. Say it at boot instead, where an operator is already reading. A WARNING and
+    // not an error: the reference is a documentation page, and a backend with no reference
+    // still serves runs, reviews and the catalog perfectly.
+    if !config.gg_reference.join("index.json").exists() {
+        tracing::warn!(
+            directory = %config.gg_reference.display(),
+            "no gg reference documents (index.json), so GET /gg/reference answers 503; \
+             write them with `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
+             `gg reference --out` directory"
+        );
+    }
+
     let store = DefinitionStore::open(&config.store)?;
     let db = if config.db_azure_ad {
         Db::connect_azure_ad(&config.database_url).await?
@@ -103,6 +126,106 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Ok(0) => {}
         Ok(backfilled) => tracing::info!(backfilled, "backfilled run sort/filter columns"),
         Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
+    }
+
+    // The static analyzer's generation, lifted out of records that already carry a code
+    // analysis but were stored before the column existed. This lifts a number the record
+    // blob already holds — it never *analyses* anything, because a historical run's tree
+    // can only be re-read post-validation and those are not comparable figures. Same
+    // contract as the one above: idempotent, best-effort, never blocks startup.
+    match db.backfill_code_analyzer_version().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run code-analyzer versions"),
+        Err(err) => tracing::warn!(error = %err, "skipping run code-analyzer-version backfill"),
+    }
+
+    // The two segments of a gg run's coverage cell, lifted out of records (and out of the
+    // capability sets of the jobs still in flight) that were stored before the columns
+    // existed. Without it the whole gg backlog counts toward no gg cell, and every plan
+    // built on a configuration re-buys runs it already has. Same contract as the backfills
+    // above: idempotent, best-effort, never blocks startup.
+    match db.backfill_gg_models().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg cell identities"),
+        Err(err) => tracing::warn!(error = %err, "skipping run gg-cell backfill"),
+    }
+    match db.backfill_in_flight_gg_cells().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled in-flight gg cell identities"),
+        Err(err) => tracing::warn!(error = %err, "skipping in-flight gg-cell backfill"),
+    }
+
+    // The configuration a gg run came from, for the runs (and in-flight jobs) recorded
+    // before the id was a column. It is resolved rather than lifted: an older run records
+    // only the configuration's name, so the account that launched it is traced through the
+    // job that produced it and the name matched against that account's configurations. A run
+    // that resolves to no configuration, or to two, keeps its `NULL` and counts toward no gg
+    // cell — an under-count the next top-up fills, where a guess would merge two
+    // configurations' histories for good. Best-effort and never blocks startup, as the
+    // backfills above are, and unlike them it runs exactly once: the name it resolves
+    // through belongs to a library the operator keeps editing, so a later pass would answer
+    // with configurations that never ran the runs it would stamp.
+    match db.backfill_gg_config_id().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg configuration ids"),
+        Err(err) => tracing::warn!(error = %err, "skipping run gg-configuration-id backfill"),
+    }
+    match db.backfill_in_flight_gg_config_ids().await {
+        Ok(0) => {}
+        Ok(backfilled) => {
+            tracing::info!(backfilled, "backfilled in-flight gg configuration ids")
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "skipping in-flight gg-configuration-id backfill")
+        }
+    }
+
+    // Reap probes orphaned by the last shutdown. A model probe runs inside this
+    // process, so a restart always killed it; the row is failed rather than left
+    // `running` forever (which would also block re-triggering). Idempotent,
+    // best-effort, never blocks startup.
+    match time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
+        Ok(now) => match db.fail_running_model_probes(&now).await {
+            Ok(0) => {}
+            Ok(reaped) => tracing::info!(reaped, "failed model probes orphaned by restart"),
+            Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
+        },
+        Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
+    }
+
+    // The engine slug, lifted out of records stored before the `engine_slug` column
+    // existed (pre-engine-era records deserialize to `none`, which is lifted too — it
+    // is what the engineless filter matches). Same contract as the two above:
+    // idempotent, best-effort, never blocks startup.
+    match db.backfill_engine_slug().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run engine slugs"),
+        Err(err) => tracing::warn!(error = %err, "skipping run engine-slug backfill"),
+    }
+
+    // The same slug on the jobs still in flight across the deploy, re-derived from each
+    // one's launch request. A `NULL` column counts as the `none` engine, so only a job
+    // that named a real engine needs filling — and that is the one that would otherwise
+    // count toward a cell its run will never join, letting the plan buy a second set of
+    // runs on top of the ones already coming. Same contract as the backfills above:
+    // idempotent, best-effort, never blocks startup.
+    match db.backfill_in_flight_engine_slugs().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled in-flight engine slugs"),
+        Err(err) => tracing::warn!(error = %err, "skipping in-flight engine-slug backfill"),
+    }
+
+    // Re-decide which stored records this build can read, for the rows whose marker
+    // was decided under a different record-format generation. Zero rows in the steady
+    // state and one bounded pass at the boot of a build that bumped
+    // `db::RUN_RECORD_FORMAT`. It runs before the router serves because every run
+    // listing counts and serves through that marker, so the invariant has to hold
+    // from the first request. Same contract as the backfills above: idempotent,
+    // best-effort, never blocks startup.
+    match db.revalidate_run_records().await {
+        Ok(0) => {}
+        Ok(decided) => tracing::info!(decided, "revalidated stored run records"),
+        Err(err) => tracing::warn!(error = %err, "skipping stored run-record revalidation"),
     }
 
     let db = Arc::new(db);
@@ -144,7 +267,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         store.clone(),
         r2,
         config.deploy_hook_url.clone(),
-        config.artifacts_url.clone(),
+        config.artifacts_internal_url.clone(),
         Arc::clone(&auth),
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
@@ -168,24 +291,72 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // their `migrated = false` row and it is retried next startup; never blocks.
         tracing::warn!(error = %err, "skipping legacy coverage-plan backfill");
     }
-    if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
+    if let Err(err) = crate::bootstrap::normalize_free_runs(&db).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");
     }
+    // Price every known model the catalog holds no observation for, so a freshly
+    // seeded deployment shows prices — and a live run its per-class cost split —
+    // before the first run rather than after it completes. Missing-only (a
+    // steady-state boot fetches nothing) and best-effort: an unreachable OpenRouter
+    // leaves the models to the launch-time and completion-time observations.
+    match crate::bootstrap::seed_catalog_prices(&db, &prices).await {
+        Ok(seeded) if seeded > 0 => {
+            tracing::info!(seeded, "seeded missing model prices at startup");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(error = %err, "skipping startup model-price seeding"),
+    }
     let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
+
+    // A deployment that advertises an artifact service to consoles but gives this
+    // backend no address of its own for it silently loses three things, none of which
+    // announce themselves at the moment they stop working. Say so at boot, where an
+    // operator is already reading. A WARNING and not an error: the artifact URL is
+    // optional by design (a single-box dev setup has no artifact service at all), and
+    // a backend without it serves runs, reviews and the catalog perfectly.
+    if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
+        tracing::warn!(
+            "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
+             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
+             are all off"
+        );
+    }
+
+    let http = reqwest::Client::new();
+    // Reclaim the artifact trees no run row references (see `crate::artifacts`). The
+    // delete-time prune is best-effort, so this is what bounds how long a tree whose
+    // prune failed — or whose run never reached the record store at all — occupies
+    // the artifact volume.
+    let artifact_sweeper = crate::artifacts::spawn_orphan_sweeper(
+        Arc::clone(&db),
+        http.clone(),
+        config.artifacts_internal_url.clone(),
+        config.service_token.clone(),
+        crate::artifacts::SweepTiming {
+            interval: config.artifact_sweep_interval,
+            grace: config.artifact_sweep_grace,
+        },
+    );
 
     let bind = config.bind.clone();
     // Every test-case resolution reads the definition store, and on a deployment
     // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
     // that takes minutes on a cold catalog. Hold the backend out of its Service until
     // then, or every run launched in the gap dies on a spurious "is not ingested"
-    // 404. A store that already holds versions has nothing to wait for.
-    let readiness = crate::readiness::Readiness::new(store.is_populated());
+    // 404. A store that already holds readable versions has nothing to wait for.
+    let readiness = crate::readiness::Readiness::new(store.is_servable());
     if !readiness.is_ready() {
-        tracing::info!(
-            store = %store.root().display(),
+        // A store written in another record format is held out for the same reason an
+        // empty one is, and says so distinctly: it looks full, and serving it would
+        // answer with whatever subset an ingest has since rewritten.
+        let reason = if store.needs_reingest() {
+            "definition store was written in another record format; staying unready \
+             until an ingest rewrites it"
+        } else {
             "definition store is empty; staying unready until an ingest populates it"
-        );
+        };
+        tracing::info!(store = %store.root().display(), "{reason}");
     }
     let state = AppState {
         db,
@@ -196,8 +367,9 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         relay: crate::relay::Relay::new(),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
-        http: reqwest::Client::new(),
+        http,
         prices,
+        gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     let router = api::router(state);
 
@@ -206,5 +378,6 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         bind,
         refresher,
         price_refresher,
+        artifact_sweeper,
     })
 }
