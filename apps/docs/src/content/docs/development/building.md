@@ -630,6 +630,13 @@ pass or fail. No job sets a timeout: the 60-minute default is the budget, and a
 job that outgrows it is split, not extended. gg's test suite is the one split:
 the `ggTestPartitions` variable names its hash partitions, and each is a job.
 
+Every Rust job restores a `target/` cache keyed on `Cargo.lock` and saves one
+on a miss. Before the save, `scripts/ci/cargo-target-prune.sh` removes the
+executables cargo linked (the test binaries and the bins), which are most of
+the tree and are relinked by the next run, so the cache holds the compiled
+libraries and fits beside the tree on the agent's disk. A save that does not
+fit fails the job, which is why the prune runs in every job that saves one.
+
 | Job              | Track                               | Steps                                                                                                                                                                                               |
 | ---------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rust`           | Rust critical path                  | `cargo build` of the workspace, then `cargo nextest run` of every crate but `test-cabinet-gg`, then the contract drift and seeded-contract checks, which need the generator the build just compiled |
