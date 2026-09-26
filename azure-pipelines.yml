@@ -156,10 +156,12 @@ stages:
               # rebuilds them but never evicts the originals, and restoring a
               # full-debug cache into a line-tables build would leave both in
               # `target/` and run the disk out. Keying on it namespaces each
-              # setting to its own cache.
-              key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
+              # setting to its own cache. Every cargo target cache holds the
+              # libraries only: the prune step at the end of the job removes the
+              # linked binaries before the save.
+              key: 'cargo-target-workspace | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
               restoreKeys: |
-                cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
+                cargo-target-workspace | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
               path: target
           - script: ./scripts/ci/toolchains.sh
             displayName: Show the toolchains
@@ -178,6 +180,8 @@ stages:
             displayName: Regenerate the contract & check for drift
           - script: ./scripts/ci/seeded-contract-check.sh
             displayName: Seeded contract names nothing about evaluation
+          - script: ./scripts/ci/cargo-target-prune.sh
+            displayName: Prune the linked binaries before the cache save
 
       # gg's suite, one job per entry of `ggTestPartitions`. Each job compiles
       # gg and its tests itself, under a cargo target cache of its own, and then
@@ -209,6 +213,8 @@ stages:
                 displayName: Build
               - script: ./scripts/ci/gg-test.sh ${{ partition }}
                 displayName: Test
+              - script: ./scripts/ci/cargo-target-prune.sh
+                displayName: Prune the linked binaries before the cache save
 
       # rustdoc and the doctests: both compile the workspace at the test profile
       # and neither is on the way to a test result, so they share a job off the
@@ -312,6 +318,8 @@ stages:
             artifact: tcab-linux
             displayName: Publish tcab
             condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+          - script: ./scripts/ci/cargo-target-prune.sh
+            displayName: Prune the linked binaries before the cache save
 
       - job: binary_windows
         displayName: "Binary: release build & smoke (windows)"
@@ -364,6 +372,8 @@ stages:
             artifact: tcab-windows
             displayName: Publish tcab
             condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+          - bash: ./scripts/ci/cargo-target-prune.sh
+            displayName: Prune the linked binaries before the cache save
 
       # The web critical path: one install, one build of the workspace packages,
       # then the validators' type-check, the unit suites and the front-end builds
