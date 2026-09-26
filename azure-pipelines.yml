@@ -338,6 +338,12 @@ stages:
         container: web
         variables:
           npm_config_cache: $(Pipeline.Workspace)/.npm
+          # `astro build` records telemetry under $HOME/.config/astro without
+          # awaiting the write, so a home it cannot create fails the docs build
+          # as an unhandled rejection rather than a warning. Disabling it makes
+          # the docs build depend on the checkout alone, and keeps the gate from
+          # phoning out.
+          ASTRO_TELEMETRY_DISABLED: "1"
         steps:
           - checkout: self
             fetchDepth: 1
