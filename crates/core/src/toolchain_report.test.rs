@@ -61,6 +61,11 @@ fn a_populated_report_records_its_files_failures_and_strips_stacks() {
     let repo = tree();
     let game = inside(repo.path(), "src/game.test.ts");
     let hud = inside(repo.path(), "src/hud.test.ts");
+    // The message goes through the JSON encoder like the paths do: a stack frame
+    // carries the host path, whose backslashes on Windows are not JSON escapes.
+    let failure = format!(
+        "AssertionError: expected 0 to be 7\n    at run ({hud}:12:3)\n    at file:///x/y.js:1:1\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at new Promise (<anonymous>)"
+    );
     let json = format!(
         r#"{{"numTotalTestSuites":3,"numFailedTestSuites":1,"numTotalTests":3,
             "numPassedTests":1,"numFailedTests":1,"numPendingTests":1,"numTodoTests":0,
@@ -73,11 +78,10 @@ fn a_populated_report_records_its_files_failures_and_strips_stacks() {
                   "title":"settles","status":"skipped","failureMessages":[]}}]}},
               {{"name":{hud},"message":"","assertionResults":[
                 {{"ancestorTitles":["the hud"],"fullName":"the hud draws a score",
-                  "title":"draws a score","status":"failed","failureMessages":[
-                    "AssertionError: expected 0 to be 7\n    at run ({hud_frame}:12:3)\n    at file:///x/y.js:1:1\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at new Promise (<anonymous>)"]}}]}}]}}"#,
+                  "title":"draws a score","status":"failed","failureMessages":[{failure}]}}]}}]}}"#,
         game = serde_json::to_string(&game).unwrap(),
         hud = serde_json::to_string(&hud).unwrap(),
-        hud_frame = hud,
+        failure = serde_json::to_string(&failure).unwrap(),
     );
     write_report(repo.path(), TOOLCHAIN_TEST_REPORT_PATH, &json);
 
@@ -125,12 +129,12 @@ fn a_populated_report_records_its_files_failures_and_strips_stacks() {
 fn a_file_that_failed_to_load_is_a_failing_file_with_a_message() {
     let repo = tree();
     let broken = inside(repo.path(), "src/broken.test.ts");
+    let message = format!("Error: Cannot find module './missing'\n    at ({broken}:1:1)");
     let json = format!(
         r#"{{"numTotalTests":0,"success":false,"testResults":[
-            {{"name":{broken},"message":"Error: Cannot find module './missing'\n    at ({frame}:1:1)",
-              "assertionResults":[]}}]}}"#,
+            {{"name":{broken},"message":{message},"assertionResults":[]}}]}}"#,
         broken = serde_json::to_string(&broken).unwrap(),
-        frame = broken,
+        message = serde_json::to_string(&message).unwrap(),
     );
     write_report(repo.path(), TOOLCHAIN_TEST_REPORT_PATH, &json);
 

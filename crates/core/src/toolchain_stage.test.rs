@@ -254,29 +254,39 @@ async fn a_canceled_run_is_not_checked() {
 /// vitest config: it writes the two report files into `coverage/` exactly where the
 /// config's `outputFile` and istanbul's default directory put them.
 ///
-/// The paths inside the reports are absolute — `$(pwd)` is the repository root the
-/// command runs from — because that is how both reporters really key them, and
-/// relativising them is the reader's job. `exit_code` is the status the command then
-/// exits with, so a suite that failed can be shown to have reported anyway.
-fn writes_reports(exit_code: i32) -> String {
+/// The paths inside the reports are absolute, under `repo`, the tree the command
+/// runs in, because that is how both reporters really key them, and relativising
+/// them is the reader's job. They are JSON-encoded here and the heredocs are quoted,
+/// so a Windows path's backslashes reach the file untouched by the shell. `exit_code`
+/// is the status the command then exits with, so a suite that failed can be shown to
+/// have reported anyway.
+fn writes_reports(repo: &Path, exit_code: i32) -> String {
+    let inside = |relative: &str| repo.join(relative).to_string_lossy().into_owned();
+    let json = |text: &str| serde_json::to_string(text).expect("a string is json");
+    let test_file = json(&inside("src/game.test.ts"));
+    let failure = json(&format!(
+        "AssertionError: expected 0 to be 7\n    at run ({}:12:3)",
+        inside("src/game.test.ts")
+    ));
+    let source_file = json(&inside("src/game.ts"));
     format!(
         r#"mkdir -p coverage
-cat > coverage/test-report.json <<JSON
+cat > coverage/test-report.json <<'JSON'
 {{"numTotalTestSuites":2,"numTotalTests":3,"numPassedTests":2,"numFailedTests":1,
   "numPendingTests":0,"numTodoTests":0,"success":false,
-  "testResults":[{{"name":"$(pwd)/src/game.test.ts","message":"","assertionResults":[
+  "testResults":[{{"name":{test_file},"message":"","assertionResults":[
     {{"fullName":"the game advances","title":"advances","status":"passed","failureMessages":[]}},
     {{"fullName":"the game scores","title":"scores","status":"passed","failureMessages":[]}},
     {{"fullName":"the game ends","title":"ends","status":"failed",
-      "failureMessages":["AssertionError: expected 0 to be 7\n    at run ($(pwd)/src/game.test.ts:12:3)"]}}]}}]}}
+      "failureMessages":[{failure}]}}]}}]}}
 JSON
-cat > coverage/coverage-summary.json <<JSON
+cat > coverage/coverage-summary.json <<'JSON'
 {{"total":{{"lines":{{"total":50,"covered":41,"skipped":0,"pct":82}},
            "statements":{{"total":52,"covered":42,"skipped":0,"pct":80.77}},
            "functions":{{"total":10,"covered":9,"skipped":0,"pct":90}},
            "branches":{{"total":8,"covered":5,"skipped":0,"pct":62.5}},
            "branchesTrue":{{"total":0,"covered":0,"skipped":0,"pct":"Unknown"}}}},
- "$(pwd)/src/game.ts":{{"lines":{{"total":50,"covered":41,"skipped":0,"pct":82}},
+ {source_file}:{{"lines":{{"total":50,"covered":41,"skipped":0,"pct":82}},
                       "statements":{{"total":52,"covered":42,"skipped":0,"pct":80.77}},
                       "functions":{{"total":10,"covered":9,"skipped":0,"pct":90}},
                       "branches":{{"total":8,"covered":5,"skipped":0,"pct":62.5}}}}}}
@@ -295,7 +305,7 @@ async fn a_passing_toolchain_records_every_command_and_gates_nothing() {
         typecheck: "true".to_string(),
         lint: Some("true".to_string()),
         format: Some("true".to_string()),
-        test: Some(writes_reports(0)),
+        test: Some(writes_reports(repo.path(), 0)),
     };
     let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
     let summary = report.toolchain.expect("a declared toolchain is recorded");
@@ -345,7 +355,7 @@ async fn a_failing_test_command_still_records_the_figures_it_reported() {
         typecheck: "true".to_string(),
         lint: None,
         format: None,
-        test: Some(writes_reports(1)),
+        test: Some(writes_reports(repo.path(), 1)),
     };
     let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
     let summary = report.toolchain.expect("a declared toolchain is recorded");
@@ -562,7 +572,7 @@ async fn the_reports_are_removed_once_they_have_been_read() {
         typecheck: "true".to_string(),
         lint: None,
         format: None,
-        test: Some(writes_reports(0)),
+        test: Some(writes_reports(repo.path(), 0)),
     };
     let report = drive(repo.path(), Some(toolchain), Some(noop_build()), false).await;
     let summary = report.toolchain.expect("a declared toolchain is recorded");

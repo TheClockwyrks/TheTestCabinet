@@ -175,6 +175,31 @@ pub async fn check_tree(tree: &Path, install_command: &str) -> LockfileCheck {
     parse_report(&String::from_utf8_lossy(&output.stdout))
 }
 
+/// The names node gives this host's platform and architecture, which are the names
+/// a lockfile's `os` and `cpu` lists carry and the script compares against. Rust
+/// spells both differently (`windows`/`macos`, `x86_64`/`aarch64`), so a fixture
+/// built from Rust's names would describe a host the script never finds itself on.
+#[cfg(test)]
+pub(crate) mod node_host {
+    /// What `process.platform` reports here.
+    pub(crate) fn os() -> &'static str {
+        match std::env::consts::OS {
+            "windows" => "win32",
+            "macos" => "darwin",
+            other => other,
+        }
+    }
+
+    /// What `process.arch` reports here.
+    pub(crate) fn arch() -> &'static str {
+        match std::env::consts::ARCH {
+            "x86_64" => "x64",
+            "aarch64" => "arm64",
+            other => other,
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "lockfile_check.test.rs"]
 mod tests;

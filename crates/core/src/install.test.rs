@@ -13,6 +13,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::*;
+use crate::lockfile_check::node_host;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -26,15 +27,10 @@ fn node_available() -> bool {
 /// optional package that applies only to the host this test runs on, plus one that
 /// never applies here.
 fn write_lockfile(repo: &Path) {
-    let os = std::env::consts::OS;
-    let cpu = std::env::consts::ARCH;
-    // Rust names the architecture `x86_64`/`aarch64`; node (and the lockfile) say
-    // `x64`/`arm64`.
-    let cpu = match cpu {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
-        other => other,
-    };
+    // The lockfile names the platform the way node does, which is what the check
+    // compares against.
+    let os = node_host::os();
+    let cpu = node_host::arch();
     let lock = serde_json::json!({
         "name": "fixture",
         "lockfileVersion": 3,

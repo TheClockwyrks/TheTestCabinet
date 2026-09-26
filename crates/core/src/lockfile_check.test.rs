@@ -12,15 +12,6 @@ fn node_available() -> bool {
     which::which("node").is_ok()
 }
 
-/// The `cpu` value node reports for this host, which is what a lockfile names.
-fn node_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
-        other => other,
-    }
-}
-
 fn write_lockfile(repo: &Path, packages: serde_json::Value) {
     let lock = serde_json::json!({
         "name": "fixture",
@@ -148,8 +139,8 @@ async fn the_script_wants_the_packages_the_graph_reaches_that_apply_to_this_host
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
-    let os = std::env::consts::OS;
-    let cpu = node_arch();
+    let os = node_host::os();
+    let cpu = node_host::arch();
     write_lockfile(
         repo.path(),
         serde_json::json!({
@@ -222,8 +213,8 @@ async fn packages_reachable_only_through_an_excluded_optional_package_are_not_wa
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
-    let os = std::env::consts::OS;
-    let cpu = node_arch();
+    let os = node_host::os();
+    let cpu = node_host::arch();
     write_lockfile(
         repo.path(),
         serde_json::json!({
