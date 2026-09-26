@@ -261,7 +261,12 @@ async fn a_canceled_run_is_not_checked() {
 /// is the status the command then exits with, so a suite that failed can be shown to
 /// have reported anyway.
 fn writes_reports(repo: &Path, exit_code: i32) -> String {
-    let inside = |relative: &str| repo.join(relative).to_string_lossy().into_owned();
+    // Forward slashes on every host: the script reaches `sh -c` as one argument, and
+    // the MSYS runtime behind Git for Windows' `sh` collapses `\\` to `\` in an
+    // argument it receives from a native process, which turns a JSON-encoded Windows
+    // path into an invalid escape. Windows paths accept `/`, so the reporter's
+    // spelling still lies under the tree when the record relativises it.
+    let inside = |relative: &str| repo.join(relative).to_string_lossy().replace('\\', "/");
     let json = |text: &str| serde_json::to_string(text).expect("a string is json");
     let test_file = json(&inside("src/game.test.ts"));
     let failure = json(&format!(
