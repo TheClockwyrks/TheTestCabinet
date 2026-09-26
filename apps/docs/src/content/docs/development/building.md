@@ -235,7 +235,9 @@ run locally when reproducing a CI failure:
 
 ```sh
 scripts/ci/rust-build.sh      # cargo build, every crate and target
-scripts/ci/rust-test.sh       # cargo nextest run
+scripts/ci/rust-test.sh       # cargo nextest run, every crate but gg
+scripts/ci/gg-test-build.sh   # cargo build of gg and its tests
+scripts/ci/gg-test.sh [k/N]   # cargo nextest run of gg, whole or one hash partition
 scripts/ci/rust-doctest.sh    # the doctests
 scripts/ci/rust-fmt.sh        # cargo fmt --check
 scripts/ci/rust-clippy.sh     # cargo clippy, warnings denied
@@ -366,6 +368,11 @@ bytes have been compiled twice, and is evicted least recently used past 4 GiB.
 Test builds compile components on one thread, since nextest already runs one
 test per core. The root manifest optimizes the Cranelift and wasmtime crates in
 the dev profile, which is where that compile time goes.
+
+Most of gg's tests compile a program in one of its language arms, so the suite
+is the bulk of the workspace's test time. `scripts/ci/gg-test.sh` runs it, whole
+with no argument or as one `k/N` hash partition of it, which is how CI runs it
+across parallel jobs.
 
 ### Portable (static) builds
 
@@ -620,19 +627,21 @@ The gates run as parallel jobs, one per track, so the stage costs its slowest
 job rather than their sum. Within a job every command is a step of its own, so
 the build, the tests and each check report their own duration and their own
 pass or fail. No job sets a timeout: the 60-minute default is the budget, and a
-job that outgrows it is split, not extended.
+job that outgrows it is split, not extended. gg's test suite is the one split:
+the `ggTestPartitions` variable names its hash partitions, and each is a job.
 
-| Job              | Track                               | Steps                                                                                                                                                                              |
-| ---------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rust`           | Rust critical path                  | `cargo build` of the workspace, then `cargo nextest run`, then the contract drift and seeded-contract checks, which need the generator the build just compiled                     |
-| `rustdoc`        | Rust, off the path                  | `cargo doc` with warnings denied, then the doctests                                                                                                                                |
-| `rustlint`       | Rust, off the path                  | `cargo fmt --check`, then `cargo clippy` with warnings denied                                                                                                                      |
-| `binary_linux`   | Release binary                      | release build of `tcab` and its tests, the release suite and doctests, the binary smoke; on a tag, publishes the smoke-tested binary as `tcab-linux`                               |
-| `binary_windows` | Release binary                      | the same on `windows-2022`, publishing `tcab-windows`                                                                                                                              |
-| `web`            | Web critical path                   | `npm ci`, the workspace packages, then the validators' type-check, the vitest and `node:test` suites, and the front-end builds                                                     |
-| `checks`         | Non-critical                        | `npm ci`, then the CI image pins, specs lint, prettier, spec vocabulary, audio packs, build context, frozen versions, the Kubernetes manifests and the submodule pins, each a step |
-| `gg_amd64`       | gg, on `master`, `staging` and tags | the static gg binary, and on a tag the version gate                                                                                                                                |
-| `gg_arm64`       | gg, on `master`, `staging` and tags | the same on the arm64 pool                                                                                                                                                         |
+| Job              | Track                               | Steps                                                                                                                                                                                               |
+| ---------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rust`           | Rust critical path                  | `cargo build` of the workspace, then `cargo nextest run` of every crate but `test-cabinet-gg`, then the contract drift and seeded-contract checks, which need the generator the build just compiled |
+| `gg_tests_<k>`   | Rust critical path, gg's tests      | one job per partition: `cargo build` of `test-cabinet-gg` and its tests, then `cargo nextest run` of that hash partition of its suite                                                               |
+| `rustdoc`        | Rust, off the path                  | `cargo doc` with warnings denied, then the doctests                                                                                                                                                 |
+| `rustlint`       | Rust, off the path                  | `cargo fmt --check`, then `cargo clippy` with warnings denied                                                                                                                                       |
+| `binary_linux`   | Release binary                      | release build of `tcab` and its tests, the release suite and doctests, the binary smoke; on a tag, publishes the smoke-tested binary as `tcab-linux`                                                |
+| `binary_windows` | Release binary                      | the same on `windows-2022`, publishing `tcab-windows`                                                                                                                                               |
+| `web`            | Web critical path                   | `npm ci`, the workspace packages, then the validators' type-check, the vitest and `node:test` suites, and the front-end builds                                                                      |
+| `checks`         | Non-critical                        | `npm ci`, then the CI image pins, specs lint, prettier, spec vocabulary, audio packs, build context, frozen versions, the Kubernetes manifests and the submodule pins, each a step                  |
+| `gg_amd64`       | gg, on `master`, `staging` and tags | the static gg binary, and on a tag the version gate                                                                                                                                                 |
+| `gg_arm64`       | gg, on `master`, `staging` and tags | the same on the arm64 pool                                                                                                                                                                          |
 
 In `web` and `checks`, every step after the install runs whichever of its
 siblings failed, so one run reports every failure; the rustdoc, clippy and

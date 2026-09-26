@@ -106,6 +106,10 @@ variables:
   arm64Pool: pool-dev-linux-arm64-wus3-4c-eph-01
   # The two architectures every image and gg binary is built for.
   architectures: amd64,arm64
+  # The hash partitions gg's test suite runs as, one `gg_tests_<k>` job each.
+  # Most of gg's tests compile a program, and the whole suite outgrows a job, so
+  # it is split: each entry is a `k/N` nextest accepts, and N is their count.
+  ggTestPartitions: 1/4,2/4,3/4,4/4
   # The targets of deployments/images/services.Dockerfile, plus the web console.
   services: backend,auth,dispatcher,driver,artifacts,arena,publisher,web
 
@@ -117,7 +121,8 @@ stages:
       # costs its slowest job rather than their sum, and every step is one
       # command whose duration is a number of its own:
       #
-      #   rust            build, then test: the Rust critical path
+      #   rust            build, then test, every crate but gg: the Rust critical path
+      #   gg_tests_<k>    build gg and its tests, then one partition of its suite
       #   rustdoc         rustdoc and the doctests, off the critical path
       #   rustlint        rustfmt and clippy, off the critical path
       #   binary_linux    the release build, tests and smoke of `tcab`
@@ -164,6 +169,7 @@ stages:
             displayName: Install the npm workspace
           - script: ./scripts/ci/rust-build.sh
             displayName: Build
+          # Every crate but gg, whose suite is the gg_tests jobs below.
           - script: ./scripts/ci/rust-test.sh
             displayName: Test
           # The contract gate rides here rather than on a job of its own: its
@@ -172,6 +178,37 @@ stages:
             displayName: Regenerate the contract & check for drift
           - script: ./scripts/ci/seeded-contract-check.sh
             displayName: Seeded contract names nothing about evaluation
+
+      # gg's suite, one job per entry of `ggTestPartitions`. Each job compiles
+      # gg and its tests itself, under a cargo target cache of its own, and then
+      # runs its partition; the mirror job below depends on every one of them.
+      - ${{ each partition in split(variables.ggTestPartitions, ',') }}:
+          - job: gg_tests_${{ replace(partition, '/', '_of_') }}
+            displayName: "gg: tests (${{ partition }})"
+            container: rust
+            steps:
+              - checkout: self
+                fetchDepth: 1
+              - script: ./scripts/ci/free-disk-linux.sh
+                displayName: Reclaim agent disk
+                target: host
+              - task: Cache@2
+                displayName: Cache cargo target
+                inputs:
+                  key: 'cargo-target-gg | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
+                  restoreKeys: |
+                    cargo-target-gg | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
+                  path: target
+              - script: ./scripts/ci/toolchains.sh
+                displayName: Show the toolchains
+              # Building crates/gg reflects two of its catalogues with the pinned
+              # `typescript` that lives in the npm workspace.
+              - script: ./scripts/ci/npm-install.sh
+                displayName: Install the npm workspace
+              - script: ./scripts/ci/gg-test-build.sh
+                displayName: Build
+              - script: ./scripts/ci/gg-test.sh ${{ partition }}
+                displayName: Test
 
       # rustdoc and the doctests: both compile the workspace at the test profile
       # and neither is on the way to a test result, so they share a job off the
@@ -511,6 +548,8 @@ stages:
         displayName: GitHub mirror
         dependsOn:
           - rust
+          - ${{ each partition in split(variables.ggTestPartitions, ',') }}:
+              - gg_tests_${{ replace(partition, '/', '_of_') }}
           - rustdoc
           - rustlint
           - binary_linux
