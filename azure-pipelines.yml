@@ -98,6 +98,10 @@ stages:
     jobs:
       - job: rust
         displayName: "Rust: lint, build & test (CLI, backend, dispatcher/driver/artifacts, core)"
+        # The lint and the test build each compile the whole workspace, gg's arms
+        # included, and the suite runs after both; with a cold cargo cache that is
+        # well past the 60-minute default, which cut the job off mid-suite.
+        timeoutInMinutes: 120
         steps:
           - checkout: self
             fetchDepth: 1
