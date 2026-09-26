@@ -161,13 +161,24 @@ RUN NEXTEST_VERSION="$NEXTEST_VERSION" bash /tmp/scripts/install-nextest.sh && \
 # wanted: uv's cache holds the CPython and the pinned griffe the Python arm
 # reflects with, and cargo's registry holds the Rust arm's crate closure, which
 # that arm's build resolves offline.
+#
+# /TMP LEAVES THIS LAYER EMPTY. The installers run tools that scratch under the
+# temporary directory at a path they derive from the account, not from the run
+# (spago's is /tmp/root/spago-nodejs/), and a directory root made there stays
+# root's: /root is opened below, /tmp is not, and mkdir under a root-owned
+# directory is EACCES for the step user. So the run scratches under one TMPDIR
+# of its own and the layer ends by removing everything under /tmp, which leaves
+# the step user the sticky, world-writable /tmp of the base image, where every
+# path it derives is its own to make.
 COPY scripts/ci/install-*.sh scripts/ci/lib.sh scripts/ci/fetch.sh /tmp/gg-repo/scripts/ci/
 COPY scripts/gg-*.sh /tmp/gg-repo/scripts/
 COPY packages /tmp/gg-repo/packages
 COPY rust-toolchain.toml /tmp/gg-repo/rust-toolchain.toml
-RUN TCAB_DOWNLOAD_CACHE=/tmp/downloads bash /tmp/gg-repo/scripts/ci/install-gg-toolchains.sh && \
-	TCAB_DOWNLOAD_CACHE=/tmp/downloads bash /tmp/gg-repo/scripts/ci/install-gg-build-toolchains.sh && \
-	rm -rf /tmp/gg-repo /tmp/downloads /root/.npm && \
+RUN mkdir -p /tmp/image-build && \
+	TMPDIR=/tmp/image-build TCAB_DOWNLOAD_CACHE=/tmp/downloads bash /tmp/gg-repo/scripts/ci/install-gg-toolchains.sh && \
+	TMPDIR=/tmp/image-build TCAB_DOWNLOAD_CACHE=/tmp/downloads bash /tmp/gg-repo/scripts/ci/install-gg-build-toolchains.sh && \
+	rm -rf /root/.npm && \
+	find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} + && \
 	chmod -R a+rwX /root
 
 # git refuses a repository owned by another uid, and the checkout belongs to the

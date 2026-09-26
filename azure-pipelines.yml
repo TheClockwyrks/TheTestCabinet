@@ -77,7 +77,7 @@ resources:
   # says what each image holds and how a change to one rolls out.
   containers:
     - container: rust
-      image: testcabinet.azurecr.io/ubuntu-test-cabinet-rust-cicd:v1-e7541fa762bb
+      image: testcabinet.azurecr.io/ubuntu-test-cabinet-rust-cicd:v1-d2a8c87cfc10
       endpoint: tcab-acr
     - container: web
       image: testcabinet.azurecr.io/ubuntu-test-cabinet-web-cicd:v1-e075d8b79774

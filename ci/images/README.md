@@ -38,7 +38,11 @@ The Rust image pins `HOME=/root` and opens `/root` to every user. gg's toolchain
 install under `$HOME`, three of the eleven arms can install nowhere else, and the
 reflectors in `crates/gg/build.rs` look there first, so the step user has to see
 the same `HOME` the build did. `RUSTUP_HOME` and `CARGO_HOME` are stated
-explicitly for the same reason. The web image leaves `HOME` unset, so the step
+explicitly for the same reason. Its last layer also leaves `/tmp` empty: a
+toolchain that scratches under `/tmp` at a path derived from the account (spago
+does) would otherwise find that path already made by root at build time, and
+`mkdir` under a root-owned directory is refused to the step user, where a fresh
+`/tmp` is its own to write. The web image leaves `HOME` unset, so the step
 user's own home takes npm's and Playwright's caches; everything it installs lives
 under `/usr/local` and `/opt`, and `PLAYWRIGHT_BROWSERS_PATH` names the browser
 directory for both the install and the tests.
