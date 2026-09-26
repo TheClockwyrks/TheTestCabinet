@@ -10,8 +10,5 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-log "npm ci"
-npm ci
-
 log "check formatting (prettier)"
 npm run lint:format

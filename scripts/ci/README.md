@@ -9,9 +9,9 @@ site. The GitHub repository is a mirror and runs nothing (see
 
 Keeping the real commands here rather than inline in the pipeline's YAML means a
 failing job reproduces locally by running the same script. The pipeline YAML is
-responsible only for provisioning toolchains (Rust, Node), caching, and the
-credentials a step runs under; the scripts own the actual validation, builds and
-deploys.
+responsible only for naming the CI image a job runs inside (see
+[`ci/images/README.md`](../../ci/images/README.md)), caching, and the credentials
+a step runs under; the scripts own the actual validation, builds and deploys.
 
 Each script resolves the repository root from its own location (via `lib.sh`)
 and can be run from anywhere, including locally:
@@ -28,11 +28,11 @@ validation policies on those branches (Azure Repos ignores a `pr:` block), and
 any other branch runs the gates only. It has three stages, each after the one
 before it has passed:
 
-| Stage    | Runs on                   | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gates`  | every run                 | `rust`, `binary` (the `tcab-linux` and `tcab-windows` artifacts on a tag), `web`, `webtest`, `specs`, `format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`, `buildcontext`, `contract`, `manifests` (`k8s-manifests.sh`); on `master`, `staging` and tags `gg_amd64`/`gg_arm64` (`gg-dist.sh`, plus `gg-version-gate.sh` on a tag); then `mirror` (`mirror.sh`) on `master`, `staging`, `nightly` and tags |
-| `images` | `master`, `staging`, tags | on `master` and `staging`: the audio store (`audio-store-image.sh`), every run-container image (`run-images.sh`) and every service image (`service-image.sh`), per architecture, then fused by `manifest.sh`; on `master` and tags: `gg_publish` (`publish-gg.sh`)                                                                                                                                                     |
-| `deploy` | `master`, `staging`       | `deploy_staging` (environment `tcab-staging`, on `staging`) or `deploy_prod` (environment `tcab-prod`, on `master`) running `deploy.sh`, and `docs` running `deploy-docs.sh`                                                                                                                                                                                                                                           |
+| Stage    | Runs on                   | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`  | every run                 | one job per track, each step one script: `rust` (build, nextest, contract drift), `rustdoc`, `rustlint`, `binary_linux` and `binary_windows` (the release build and smoke; the `tcab-linux` and `tcab-windows` artifacts on a tag), `web` (install, packages, validators, tests, builds), `checks` (image pins, specs, prettier, spec vocabulary, audio packs, build context, frozen, manifests, submodule pins); on `master`, `staging` and tags `gg_amd64`/`gg_arm64` (`gg-dist.sh`, plus `gg-version-gate.sh` on a tag); then `mirror` (`mirror.sh`) on `master`, `staging`, `nightly` and tags |
+| `images` | `master`, `staging`, tags | on `master` and `staging`: the audio store (`audio-store-image.sh`), every run-container image (`run-images.sh`) and every service image (`service-image.sh`), per architecture, then fused by `manifest.sh`; on `master` and tags: `gg_publish` (`publish-gg.sh`)                                                                                                                                                                                                                                                                                                                                 |
+| `deploy` | `master`, `staging`       | `deploy_staging` (environment `tcab-staging`, on `staging`) or `deploy_prod` (environment `tcab-prod`, on `master`) running `deploy.sh`, and `docs` running `deploy-docs.sh`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Every image is built natively: `amd64` on Microsoft-hosted `ubuntu-24.04` agents
 and `arm64` on the organisation's arm64 pool
@@ -59,22 +59,34 @@ pipeline. Checkouts leave submodules off.
 
 | Script                           | Checks                                                                                                                                                                                                                                                                                                                                                                                                         | Critical |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `rust-lint.sh`                   | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items`                                                                                                                                                                                                                                                                                                                          | no       |
-| `install-nextest.sh`             | Install cargo-nextest pinned to `NEXTEST_VERSION`                                                                                                                                                                                                                                                                                                                                                              | —        |
+| `toolchains.sh`                  | print the user, `HOME`, `PATH`, free disk and every toolchain's version; fail when the Rust CI image's `HOME` is not the one gg's toolchains were installed under                                                                                                                                                                                                                                              | —        |
+| `install-nextest.sh`             | Install cargo-nextest pinned to `NEXTEST_VERSION` (the CI images carry it; the Windows leg installs it per run)                                                                                                                                                                                                                                                                                                | —        |
 | `install-gg-toolchains.sh`       | Install every toolchain a gg **run** and gg's reflectors execute                                                                                                                                                                                                                                                                                                                                               | —        |
 | `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs                                                                                                                                                                                                                                                                                                                                            | —        |
-| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (whole workspace)                                                                                                                                                                                                                                                                                                                                               | yes      |
-| `binary-smoke.sh`                | release-build, `cargo nextest run --release` + doctests, run binary                                                                                                                                                                                                                                                                                                                                            | yes      |
+| `ci-image.sh`                    | `inputs`, `tag`, `reference` and `build` of a track's CI image, content-addressed over its inputs; `build` runs only in `azure-pipelines-ci-images.yml`                                                                                                                                                                                                                                                        | —        |
+| `ci-image-pins.sh`               | every CI image reference pinned in `azure-pipelines.yml` is the one the checkout's inputs digest to                                                                                                                                                                                                                                                                                                            | no       |
+| `npm-install.sh`                 | `npm ci`                                                                                                                                                                                                                                                                                                                                                                                                       | —        |
+| `npm-build-packages.sh`          | `npm run build:packages`, the workspace runtime packages the validators and tests import                                                                                                                                                                                                                                                                                                                       | —        |
+| `rust-build.sh`                  | `cargo build --workspace --all-targets`                                                                                                                                                                                                                                                                                                                                                                        | yes      |
+| `rust-test.sh`                   | `cargo nextest run --workspace`                                                                                                                                                                                                                                                                                                                                                                                | yes      |
+| `rust-doctest.sh`                | the workspace doctests, which nextest does not run                                                                                                                                                                                                                                                                                                                                                             | yes      |
+| `rust-fmt.sh`                    | `cargo fmt --check`                                                                                                                                                                                                                                                                                                                                                                                            | no       |
+| `rust-clippy.sh`                 | `cargo clippy --all-targets -D warnings`                                                                                                                                                                                                                                                                                                                                                                       | no       |
+| `rust-doc.sh`                    | `cargo doc --document-private-items` with warnings denied                                                                                                                                                                                                                                                                                                                                                      | no       |
+| `release-build.sh`               | `cargo build --release` of `test-cabinet-core` and `test-cabinet-cli` with their tests                                                                                                                                                                                                                                                                                                                         | yes      |
+| `release-test.sh`                | `cargo nextest run --release` of the same two crates                                                                                                                                                                                                                                                                                                                                                           | yes      |
+| `release-doctest.sh`             | their doctests in the release profile                                                                                                                                                                                                                                                                                                                                                                          | yes      |
+| `binary-smoke.sh`                | hand the release-built `tcab` to `smoke-binary.sh`                                                                                                                                                                                                                                                                                                                                                             | yes      |
 | `smoke-binary.sh`                | run a built binary (`--version`/`--help`/commands)                                                                                                                                                                                                                                                                                                                                                             | yes      |
-| `web-build.sh`                   | `npm ci`, type-check + `vite build` of the front ends                                                                                                                                                                                                                                                                                                                                                          | yes      |
-| `web-test.sh`                    | `npm ci`, install Playwright's Chromium, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib`                                                                                                                                                                                                                                                           | yes      |
+| `web-build.sh`                   | type-check + `vite build` of the front ends                                                                                                                                                                                                                                                                                                                                                                    | yes      |
+| `web-test.sh`                    | `vitest run` across every workspace, `node --test` over `scripts/lib`                                                                                                                                                                                                                                                                                                                                          | yes      |
 | `specs-lint.sh`                  | markdownlint + cspell over `test-cases/**`                                                                                                                                                                                                                                                                                                                                                                     | no       |
 | `format-check.sh`                | `prettier --check` over the whole checkout, frozen versions and `.prettierignore` aside                                                                                                                                                                                                                                                                                                                        | no       |
 | `contract-drift.sh`              | regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff                                                                                                                                                                                                                                                                                                                                   | yes      |
 | `frozen-check.sh`                | `.frozen` test-case versions match their recorded digests                                                                                                                                                                                                                                                                                                                                                      | yes      |
 | `submodule-pins.sh`              | every pinned submodule commit is an ancestor of that submodule's `master`, fetched commits-only from the host the superproject was cloned from; `submodule-pins.test.sh` is its offline table test                                                                                                                                                                                                             | yes      |
 | `spec-vocabulary-check.sh`       | every non-frozen version's `prompt.hbs` and `specs/**`, plus the shared preambles in `crates/core/src/prompt.rs`, name nothing about evaluation or this project; frozen hits are reported, not failed                                                                                                                                                                                                          | yes      |
-| `validators-typecheck.sh`        | `npm ci`, build the workspace runtime packages, `tsc --noEmit` over every case's `validation/<engine>/` project                                                                                                                                                                                                                                                                                                | yes      |
+| `validators-typecheck.sh`        | `tsc --noEmit` over every case's `validation/<engine>/` project                                                                                                                                                                                                                                                                                                                                                | yes      |
 | `k8s-manifests.sh`               | every kustomization under `deployments/k8s/overlays/` and `deployments/k8s/cluster/` renders; each deploy set is namespaced, in its environment's namespace, and names every image at the ACR and the commit; the `azure-*` overlays name no registry; the `cluster/azure-*` bootstraps hold cluster-scoped objects only                                                                                       | yes      |
 | `build-context.sh`               | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it; no allowlist re-includes a wildcard family (which makes BuildKit walk the whole tree), and the families they enumerate instead are complete | yes      |
 | `mirror.sh`                      | force-push the built branch with its tags, or the built tag, to the GitHub mirror                                                                                                                                                                                                                                                                                                                              | —        |
@@ -151,11 +163,19 @@ compile only under `cfg(test)`, and no image build runs tests — and
 `install-nextest.sh` is a provisioning helper rather than a validation check
 (hence no "Critical" mark): the Rust test scripts run the suite with
 [cargo-nextest](https://nexte.st) (the repo's runner, configured in
-`.config/nextest.toml`), which the devcontainer already ships but bare CI agents
-do not, so every job that runs tests installs it first — pinned to
-`NEXTEST_VERSION` so CI matches the devcontainer. It is cross-platform because
-`binary-smoke.sh` runs on Linux and Windows. nextest does not execute doctests,
-so the test scripts additionally run `cargo test --doc`.
+`.config/nextest.toml`), pinned to `NEXTEST_VERSION` so every machine matches
+the devcontainer. The Rust CI image runs it at build time, so the Linux jobs
+find nextest installed; the Windows binary leg runs on the hosted image and is
+the one job that still runs it per run, which is why it is cross-platform.
+nextest does not execute doctests, so `rust-doctest.sh` and `release-doctest.sh`
+run those through cargo's own test runner.
+
+`toolchains.sh` is the first step of every job that runs inside a CI image. It
+prints who the step runs as and which toolchain versions it found, so a toolchain
+question is answered by the log rather than by a rebuild, and it fails by name
+when the Rust image's `HOME` is not the one gg's toolchains were installed under
+(see `ci/images/README.md`), which would otherwise surface minutes later inside
+a cargo build.
 
 `install-gg-toolchains.sh` is the other provisioning helper, and it is a
 prerequisite rather than a convenience. gg drives a model in one of eleven
@@ -165,11 +185,11 @@ documentation tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
 rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn).
 `crates/gg/build.rs` does that reflection **as a step of building the crate** —
 nothing is committed — so a machine without those toolchains cannot compile
-`test-cabinet-gg`, which means it cannot run `rust-test.sh`, `rust-lint.sh`, or
-anything else scoped `--workspace`. This script composes the per-arm installers
-into one pinned list that every such surface calls: the devcontainer's
-`postCreateCommand`, the CI scripts here, and the driver image's gg build
-stage. It is idempotent (a second call is a no-op in
+`test-cabinet-gg`, which means it cannot run `rust-build.sh`, `rust-clippy.sh`,
+or anything else scoped `--workspace`. This script composes the per-arm
+installers into one pinned list that every such surface calls: the
+devcontainer's `postCreateCommand`, the Rust CI image's build, the `gg_arm64`
+job, and the driver image's gg build stage. It is idempotent (a second call is a no-op in
 about a second) and costs ~1.9 GB installed. The two prerequisites it will not
 install itself are the Ruby interpreter (a distribution package, and so part of
 the machine) and the npm workspaces (`npm ci`, which two of the eleven arms
@@ -189,8 +209,8 @@ touches, so they go in a prefix of their own rather than widening the run list
 and every run image with it.
 
 Every surface that compiles `test-cabinet-gg` therefore calls **both** —
-`rust-test.sh`, `gg-dist.sh`, the driver image's gg build stage and the
-devcontainer's gg layer. (`contract-drift.sh` is deliberately not
+the Rust CI image's build, the `gg_arm64` job, the driver image's gg build stage
+and the devcontainer's gg layer. (`contract-drift.sh` is deliberately not
 on that list any more: it stopped building gg when the backend's committed
 `gg_reference.json` was retired, so it needs neither installer — see its
 header.) Skipping the second one
@@ -199,11 +219,11 @@ does not break the build, which is exactly why the call is explicit everywhere:
 package's own `.build/`, so what a missing prefix buys is a silent ~1.4 GB
 download in the middle of somebody's first `cargo build`.
 
-`web-test.sh` is the TypeScript counterpart of `rust-test.sh`, and is separate
-from `web-build.sh` for two reasons. A failing assertion should report as a failing
-test rather than as a failing build; and the two need different things, so they
-run in parallel — the tests need only the small workspace runtime packages built
-(`npm run build:packages`), never the app bundles.
+`web-test.sh` is the TypeScript counterpart of `rust-test.sh`, and is a step of
+its own beside `web-build.sh` so a failing assertion reports as a failing test
+rather than as a failing build. Both follow `npm-install.sh` and
+`npm-build-packages.sh` in the `web` job, so what each step measures is its own
+work; the browser the case-harness suite drives is part of the web CI image.
 
 It also runs the repository scripts' own `node:test` suites, through the root
 `test:scripts`. `scripts/` is not an npm workspace, so `npm run test --workspaces`
@@ -211,13 +231,15 @@ cannot reach it: a suite there would otherwise be executed by no gate. The suite
 hermetic — no network, no ffmpeg, no object store — so they cost this job under a
 second and need nothing the job does not already have.
 
-`binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
-ever being published: it builds `tcab` in the shipped release profile, runs the
-suite in that profile, and then hands the produced binary to `smoke-binary.sh`,
-with no container runtime or API keys required. It runs on Linux and Windows on
-every commit. On a `v*` tag the `binary` job publishes the binary it just
-smoke-tested as the run's `tcab-linux` or `tcab-windows` artifact, so the
-released `tcab` is exactly the one the gate checked.
+`release-build.sh`, `release-test.sh`, `release-doctest.sh` and
+`binary-smoke.sh` are the release gate that keeps a flat-out-broken binary from
+ever being published: they build `tcab` in the shipped release profile, run the
+suite in that profile, and then hand the produced binary to `smoke-binary.sh`,
+with no container runtime or API keys required. They run on Linux and Windows on
+every commit, as steps of `binary_linux` and `binary_windows`. On a `v*` tag
+those jobs publish the binary they just smoke-tested as the run's `tcab-linux`
+or `tcab-windows` artifact, so the released `tcab` is exactly the one the gate
+checked.
 
 `smoke-binary.sh` is the single definition of that smoke check: given a path, it
 runs the binary's `--version`/`--help` and confirms its subcommands are wired up.

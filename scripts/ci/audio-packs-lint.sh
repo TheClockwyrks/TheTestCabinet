@@ -3,9 +3,9 @@
 #
 # The lint reads the committed manifests and containers/sample-packs/ only — no
 # credentials, no network, no Rust — but it parses TOML through smol-toml, so it
-# needs the npm workspace installed. That `npm ci` is the whole reason this
-# wrapper exists; the check itself is the one command
-# development/building.md documents.
+# needs the npm workspace scripts/ci/npm-install.sh installs. The check itself is
+# the one command development/building.md documents; this wrapper gives it the
+# pipeline's logging and a step of its own.
 #
 # It runs in the Azure pipeline, and on the commit hook (.pre-commit-config.yaml
 # invokes the checker directly, since a working tree already has node_modules),
@@ -15,9 +15,6 @@
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-
-log "npm ci"
-npm ci
 
 log "check every version's [audio] packs declaration"
 node scripts/ci/audio-packs-check.mjs

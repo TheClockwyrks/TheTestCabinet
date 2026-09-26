@@ -736,13 +736,16 @@ done
 # --- what a COPY cannot tell you, part four: the paths the toolchain installers read ---
 
 # `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
-# two images, the devcontainer and the driver image's gg stage, along with a slice of
-# `packages/`, and they read pins, lockfiles and manifests out of that slice
-# by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a missing
-# one fails the image build minutes in with cargo's "manifest path ... does not exist".
+# three images, the devcontainer, the Rust CI image and the driver image's gg stage, along
+# with a slice of `packages/`, and they read pins, lockfiles and manifests out of that
+# slice by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a
+# missing one fails the image build minutes in with cargo's "manifest path ... does not
+# exist".
 #
-# So every tracked `$REPO_ROOT/<path>` literal in those installers must survive EVERY
-# allowlist, since each of those images reads one or the other. Untracked paths
+# So every tracked `$REPO_ROOT/<path>` literal in those installers must survive every
+# allowlist an installer-running image is built against: the root one, and the sibling of
+# each Dockerfile that names the installer. An image that runs no installer (the web CI
+# image) keeps an empty context, and this check leaves it alone. Untracked paths
 # (`node_modules/.bin/tsc`, which an installer probes and does without) are skipped. A
 # `cargo fetch --manifest-path` needs two more things than the manifest: the lockfile beside
 # it, which `--locked` reads, and — because the slice deliberately carries no `src/` — a
@@ -770,7 +773,16 @@ for path in "${installer_paths[@]}"; do
 	echo "       Fix: add 'path = \"src/lib.rs\"' under its [lib] table." >&2
 	problems=$((problems + 1))
 done
-for ignore_file in "${ignore_files[@]}"; do
+installer_ignore_files=(".dockerignore")
+for dockerfile in "${dockerfiles[@]}"; do
+	grep -q 'install-gg-toolchains\.sh' "$REPO_ROOT/$dockerfile" || continue
+	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && installer_ignore_files+=("$dockerfile.dockerignore")
+done
+((${#installer_ignore_files[@]} > 1)) || {
+	echo "error: no Dockerfile names scripts/ci/install-gg-toolchains.sh; the installer-input check would cover only the root allowlist." >&2
+	exit 1
+}
+for ignore_file in "${installer_ignore_files[@]}"; do
 	load_dockerignore "$REPO_ROOT/$ignore_file"
 	for path in "${installer_inputs[@]}"; do
 		installer_checked=$((installer_checked + 1))
@@ -848,11 +860,14 @@ check_family() {
 for pathspec in "${enumerated_families_root[@]}"; do
 	check_family ".dockerignore" "$pathspec"
 done
-if [[ -f "$REPO_ROOT/.devcontainer/ubuntu.dockerfile.dockerignore" ]]; then
+# The devcontainer and the Rust CI image both carry gg's toolchains, so both
+# allowlists enumerate the same three families.
+for ignore_file in .devcontainer/ubuntu.dockerfile.dockerignore ci/images/rust.Dockerfile.dockerignore; do
+	[[ -f "$REPO_ROOT/$ignore_file" ]] || continue
 	for pathspec in "${enumerated_families_devcontainer[@]}"; do
-		check_family ".devcontainer/ubuntu.dockerfile.dockerignore" "$pathspec"
+		check_family "$ignore_file" "$pathspec"
 	done
-fi
+done
 
 ((problems == 0)) || {
 	echo >&2
@@ -863,6 +878,6 @@ fi
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
 echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles, the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
-echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each allowlist — all survive."
+echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."

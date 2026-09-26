@@ -230,12 +230,16 @@ it with `scripts/ci/install-nextest.sh`. nextest does not execute doctests, so
 links, and `--document-private-items` is required for it to reach crates whose
 public surface is small.
 
-CI runs the same commands through three scripts, which are the ones to run
-locally when reproducing a CI failure:
+CI runs the same commands through one script per step, which are the ones to
+run locally when reproducing a CI failure:
 
 ```sh
-scripts/ci/rust-lint.sh       # fmt --check, clippy, doc
-scripts/ci/rust-test.sh       # build, nextest run, test --doc
+scripts/ci/rust-build.sh      # cargo build, every crate and target
+scripts/ci/rust-test.sh       # cargo nextest run
+scripts/ci/rust-doctest.sh    # the doctests
+scripts/ci/rust-fmt.sh        # cargo fmt --check
+scripts/ci/rust-clippy.sh     # cargo clippy, warnings denied
+scripts/ci/rust-doc.sh        # cargo doc, warnings denied
 scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 ```
 
@@ -474,7 +478,7 @@ npm run typecheck:validators
 It runs `tsc --noEmit` over each `test-cases/**/<version>/validation/<engine>/`
 project. Nothing else compiles them: a run stages a project into the produced
 tree and vitest transpiles it without checking types, so this is the only gate on
-a validator that fails to compile. Both CI systems run it, through
+a validator that fails to compile. CI runs it as a step of the `web` job, through
 `scripts/ci/validators-typecheck.sh`.
 
 A project resolves the build's `../src/*` against the case's reference
@@ -595,12 +599,14 @@ machine's own toolchains, which is the form to run while working on an arm. See
 ## Continuous integration
 
 `azure-pipelines.yml` is the project's only CI. It gates a commit, mirrors it to
-GitHub, builds its images, releases it, and deploys it. Every job delegates to a script under
-`scripts/ci/`, so a failure reproduces locally by running the same script; the
-scripts are listed in `scripts/ci/README.md`. Pushes to `master`, `staging`,
-`nightly`, and `v*` tags trigger it. Pull requests into `master` and `staging`
-run it through build validation policies on those branches, because Azure Repos
-ignores a `pr:` block. A run for any other branch runs the gates only.
+GitHub, builds its images, releases it, and deploys it. Every job delegates to a
+script under `scripts/ci/`, so a failure reproduces locally by running the same
+script; the scripts are listed in `scripts/ci/README.md`. The YAML names the CI
+image a job runs inside, its caches, and the credentials a step runs under, and
+nothing else. Pushes to `master`, `staging`, `nightly`, and `v*` tags trigger it.
+Pull requests into `master` and `staging` run it through build validation
+policies on those branches, because Azure Repos ignores a `pr:` block. A run for
+any other branch runs the gates only.
 
 | Stage    | Runs on                   | What it does                                                                                                                              |
 | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -608,18 +614,65 @@ ignores a `pr:` block. A run for any other branch runs the gates only.
 | `images` | `master`, `staging`, tags | On `master` and `staging`, every service and run-container image into `testcabinet.azurecr.io`; on `master` and tags, gg's release upload |
 | `deploy` | `master`, `staging`       | Rolls the matching cluster to the commit's images and deploys the docs site                                                               |
 
-The gates are `rust`, `binary` (Linux and Windows), `web`, `webtest`, `specs`,
-`format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`,
-`buildcontext`, `contract`, `manifests`, which renders every kustomization and
-checks the deploy set with `scripts/ci/k8s-manifests.sh`, and `submodulepins`,
-which fails when a submodule pin is absent from that submodule's `master`
-(`scripts/ci/submodule-pins.sh`). On `master`,
-`staging`, and tags, `gg_amd64` and `gg_arm64` build the static gg binaries
-natively, and on a tag build the step "gg version matches the tag" fails when
-`gg --version` differs from the tag with its `v` stripped, naming `crates/gg` and
-`crates/core` as the crates to bump. On a tag, `binary` also publishes the
-`tcab` it smoke-tested as the run's `tcab-linux` and `tcab-windows` artifacts;
-see [Releasing `tcab`](/development/releasing/#releasing-tcab).
+### The gate tracks
+
+The gates run as parallel jobs, one per track, so the stage costs its slowest
+job rather than their sum. Within a job every command is a step of its own, so
+the build, the tests and each check report their own duration and their own
+pass or fail. No job sets a timeout: the 60-minute default is the budget, and a
+job that outgrows it is split, not extended.
+
+| Job              | Track                               | Steps                                                                                                                                                                              |
+| ---------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rust`           | Rust critical path                  | `cargo build` of the workspace, then `cargo nextest run`, then the contract drift and seeded-contract checks, which need the generator the build just compiled                     |
+| `rustdoc`        | Rust, off the path                  | `cargo doc` with warnings denied, then the doctests                                                                                                                                |
+| `rustlint`       | Rust, off the path                  | `cargo fmt --check`, then `cargo clippy` with warnings denied                                                                                                                      |
+| `binary_linux`   | Release binary                      | release build of `tcab` and its tests, the release suite and doctests, the binary smoke; on a tag, publishes the smoke-tested binary as `tcab-linux`                               |
+| `binary_windows` | Release binary                      | the same on `windows-2022`, publishing `tcab-windows`                                                                                                                              |
+| `web`            | Web critical path                   | `npm ci`, the workspace packages, then the validators' type-check, the vitest and `node:test` suites, and the front-end builds                                                     |
+| `checks`         | Non-critical                        | `npm ci`, then the CI image pins, specs lint, prettier, spec vocabulary, audio packs, build context, frozen versions, the Kubernetes manifests and the submodule pins, each a step |
+| `gg_amd64`       | gg, on `master`, `staging` and tags | the static gg binary, and on a tag the version gate                                                                                                                                |
+| `gg_arm64`       | gg, on `master`, `staging` and tags | the same on the arm64 pool                                                                                                                                                         |
+
+In `web` and `checks`, every step after the install runs whichever of its
+siblings failed, so one run reports every failure; the rustdoc, clippy and
+doctest steps do the same. The gg version gate fails when `gg --version` differs
+from the tag with its `v` stripped, naming `crates/gg` and `crates/core` as the
+crates to bump. The published `tcab` artifacts are how a release of `tcab` is
+made; see [Releasing `tcab`](/development/releasing/#releasing-tcab).
+
+### CI images
+
+Every Linux gate job runs inside a CI image that carries the track's toolchains,
+so no gate installs one. The two exceptions are the Windows binary leg, which
+installs cargo-nextest on the hosted image, and `gg_arm64`, which runs on the
+arm64 pool and installs gg's toolchains per run.
+
+| Image                                                  | Jobs                                                      | Holds                                                                                                                                        |
+| ------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testcabinet.azurecr.io/ubuntu-test-cabinet-rust-cicd` | `rust`, `rustdoc`, `rustlint`, `binary_linux`, `gg_amd64` | The pinned Rust toolchain with rustfmt, clippy and cargo-nextest; Node; gg's program-language toolchains and the C# guest's build toolchains |
+| `testcabinet.azurecr.io/ubuntu-test-cabinet-web-cicd`  | `web`, `checks`                                           | Node, Playwright's Chromium with its system libraries, kubectl                                                                               |
+
+The images are defined under `ci/images/` and built only by CI: a second
+pipeline, `azure-pipelines-ci-images.yml`, runs `scripts/ci/ci-image.sh build`
+on every branch whose push touches an image input, and pushes the result through
+`tcab-acr`. The tag is content-addressed over the image's inputs and pins
+(`scripts/ci/ci-image.sh reference <track>` prints the current reference), so
+one input change is one tag, built once on the branch that made it. The `checks`
+job fails when a reference pinned in `azure-pipelines.yml` is stale.
+`ci/images/README.md` describes each image and the order to change one in.
+
+The image pipeline is created once per project, from the repository's default
+branch, and then follows the YAML on whichever branch triggers it:
+
+```sh
+az pipelines create --org https://dev.azure.com/genyume -p the-test-cabinet \
+  --name tcab-ci-images --repository the-test-cabinet --repository-type tfsgit \
+  --branch master --yml-path azure-pipelines-ci-images.yml --skip-first-run
+```
+
+Its jobs authenticate through the `tcab-acr` service connection, which must be
+authorized for the new pipeline in the project's service connection settings.
 
 The `mirror` job runs after every gate on `master`, `staging`, `nightly`, and
 `v*` tags. It force-pushes the branch with its tags, or the tag, to
@@ -643,7 +696,7 @@ variables:
 
 | Name                                                                                                                                                | Kind                       | Used for                                                                                                                                                   |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tcab-acr`                                                                                                                                          | Docker Registry connection | `AcrPush` on `testcabinet.azurecr.io`                                                                                                                      |
+| `tcab-acr`                                                                                                                                          | Docker Registry connection | `AcrPush` on `testcabinet.azurecr.io`, which also pulls the CI images and pushes them from the image pipeline                                              |
 | `tcab-deploy`                                                                                                                                       | Azure Resource Manager     | The cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager     | Storage Blob Data Contributor on `testcabinetartifacts`                                                                                                    |
 | `github-mirror-key`                                                                                                                                 | Secure file                | The GitHub mirror's write deploy key                                                                                                                       |

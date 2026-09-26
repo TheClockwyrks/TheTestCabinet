@@ -78,9 +78,6 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-log "npm ci"
-npm ci
-
 log "regenerate the contract (cargo run -p contract-codegen + prettier)"
 npm run gen:contract
 

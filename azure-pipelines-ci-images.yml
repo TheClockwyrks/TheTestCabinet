@@ -1,0 +1,105 @@
+# Builds the images the gate tracks of azure-pipelines.yml run inside, and pushes
+# them to testcabinet.azurecr.io.
+#
+# A pipeline of its own, on purpose. A gates run never builds an image: it writes
+# a pinned reference in its `resources.containers` block and lets the agent pull
+# it, so what a gate ran inside is a fact written in the diff. This file is what
+# makes that reference resolve. It runs on a change to an image's inputs and on
+# nothing else, and a run that finds the tag already in the registry ends in
+# under a minute, because the tag is a digest of those same inputs. See
+# scripts/ci/ci-image.sh, which is the whole of the logic, and
+# ci/images/README.md for what each image holds and the order to do things in
+# when an input changes.
+#
+# No pull request runs this. Azure Repos ignores a `pr:` block and runs a
+# pipeline against a pull request only through a build validation policy, and no
+# policy names this pipeline: an image build is not a check a pull request needs
+# to pass. `pr: none` is written out as a statement of intent. And the tag being
+# a digest of the inputs means a commit can only push an image under the tag its
+# own files describe, which nothing pulls until someone writes that tag into
+# azure-pipelines.yml.
+
+trigger:
+  branches:
+    include:
+      - "*"
+  paths:
+    include:
+      # The directories that hold every path `scripts/ci/ci-image.sh inputs
+      # <track>` prints, together with the file the pins are read out of. A
+      # change under one of these that no image digests queues a run that finds
+      # every tag already pushed and ends in under a minute; a digested change
+      # outside them would queue no build at all, which is the failure that
+      # cannot be recovered from, so the directories are listed whole.
+      - .devcontainer/docker-compose.yml
+      - ci/images
+      - packages/gg-sandbox
+      - packages/gg-sandbox-cpp
+      - packages/gg-sandbox-csharp
+      - packages/gg-sandbox-java
+      - packages/gg-sandbox-kotlin
+      - packages/gg-sandbox-purescript
+      - packages/gg-sandbox-python
+      - packages/gg-sandbox-ruby
+      - packages/gg-sandbox-rust
+      - packages/gg-sandbox-swift
+      - rust-toolchain.toml
+      - scripts
+
+pr: none
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  # One job per image and no `dependsOn` between them: they push to different
+  # repositories, so the pipeline costs the slower of the two rather than their
+  # sum. Neither declares a `container:`. These jobs build images; they need the
+  # hosted agent's own docker and buildx, which is the other reason the work is
+  # here and not in the gates pipeline, whose jobs run in images that carry no
+  # docker CLI at all.
+  - job: rustImage
+    displayName: Rust CI image
+    steps:
+      # One commit is enough: the tag digests the index, not the history.
+      - checkout: self
+        fetchDepth: 1
+
+      # The hosted image arrives nearly full of SDKs nothing here uses, and a
+      # buildx build of several gigabytes writes its layers twice, once into the
+      # builder's cache and once on the way to the registry.
+      - script: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
+
+      # `tcab-acr` is the Docker Registry service connection holding AcrPush on
+      # testcabinet.azurecr.io. This writes the credential into the agent's docker
+      # configuration for the rest of the job, which is where the existence check
+      # and the `--push` inside ci-image.sh both read it from.
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: tcab-acr
+
+      # Skips the build outright when the registry already holds the tag this
+      # checkout names, which is the common case.
+      - script: ./scripts/ci/ci-image.sh build rust
+        displayName: Build and push the Rust CI image
+
+  - job: webImage
+    displayName: Web CI image
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - script: ./scripts/ci/free-disk-linux.sh
+        displayName: Reclaim agent disk
+
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: tcab-acr
+
+      - script: ./scripts/ci/ci-image.sh build web
+        displayName: Build and push the web CI image

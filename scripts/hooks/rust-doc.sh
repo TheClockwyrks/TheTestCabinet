@@ -18,7 +18,7 @@
 # unresolved links, including ones naming items deleted with the multi-model
 # feature (`PRIMARY_SLOT`, `CAPABILITY_MULTI_MODEL`, `validate_slots`).
 #
-# It is applied workspace-wide, matching scripts/ci/rust-lint.sh exactly (change
+# It is applied workspace-wide, matching scripts/ci/rust-doc.sh exactly (change
 # the two together, or the hook and CI stop agreeing about what a clean tree is).
 #
 # Note this is NOT doctests. `cargo test --doc` compiles and runs the ``` code
@@ -26,7 +26,7 @@
 # comments resolve. The two gates catch disjoint problems, and doctests are the
 # one this repo does not need locally: every doctest in the workspace is
 # `ignore`/`text`, so `cargo test --doc` spends ~35s to execute zero tests. CI
-# still runs it (scripts/ci/rust-test.sh) as the backstop for when that changes.
+# still runs it (scripts/ci/rust-doctest.sh) as the backstop for when that changes.
 #
 # `--no-deps` documents only workspace crates, not the dependency graph, which is
 # what makes this cheap enough to sit on every commit even with private items in

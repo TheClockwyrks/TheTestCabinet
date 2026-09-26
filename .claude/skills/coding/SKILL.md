@@ -79,8 +79,9 @@ tests. `cargo test` must not be used to run the test suite.
 The one exception: nextest does not execute doctests. When a change touches
 doctests, additionally run `cargo test --workspace --doc` to cover them.
 
-The shared CI scripts (`scripts/ci/rust-test.sh`, `scripts/ci/binary-smoke.sh`)
-follow exactly this split; both CI systems install nextest first via
+The shared CI scripts (`scripts/ci/rust-test.sh` and `scripts/ci/rust-doctest.sh`,
+`scripts/ci/release-test.sh` and `scripts/ci/release-doctest.sh`) follow exactly
+this split; the Rust CI image carries nextest, installed by
 `scripts/ci/install-nextest.sh`.
 
 ## User Experience

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Installs the npm workspace and builds the front ends: the gallery (apps/site),
-# the operator web console (apps/web), and the developer docs (apps/docs). The
-# unit tests are `web-test.sh`, a job of its own.
+# Builds the front ends: the gallery (apps/site), the operator web console
+# (apps/web), and the developer docs (apps/docs), against a workspace
+# scripts/ci/npm-install.sh has installed. The unit tests are `web-test.sh`, a
+# step of its own in the same job.
 #
 # Each `build` script runs `tsc -b` (type-checking) before `vite build`, so this
 # both type-checks and produces the static bundle in one step (the docs are an
@@ -28,9 +29,6 @@
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-
-log "npm ci"
-npm ci
 
 log "build @clockwyrks/site (and the runtime packages it depends on)"
 npm run build:site

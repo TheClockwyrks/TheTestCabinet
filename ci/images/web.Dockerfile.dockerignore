@@ -1,0 +1,8 @@
+# The build context for ci/images/web.Dockerfile, and only for it: BuildKit reads
+# the ignore file named after the Dockerfile in preference to the root one.
+#
+# The web image copies nothing out of the checkout: every version it installs
+# arrives as a build argument or is pinned in the Dockerfile itself. So the
+# context is empty, and a change anywhere in the repository invalidates no layer
+# of it.
+*

@@ -67,7 +67,7 @@ test-cabinet-core = { path = "../core" }
 # and that is the thing to know: `packages/gg-sandbox-csharp/build.sh` falls back to fetching both
 # into the package's own `.build/`, so what a missing prefix costs is a silent ~1.4 GB download in
 # the middle of somebody's `cargo build` rather than an error naming the installer. Which is why
-# every surface that builds gg calls that installer explicitly — see `scripts/ci/rust-test.sh`,
+# every surface that builds gg calls that installer explicitly — see `ci/images/rust.Dockerfile`,
 # whose comment on the line says the same thing in the same words. The argument for paying it rather
 # than committing 35 MB is in that crate's `src/lib.rs`.
 gg-artifact-typescript = { path = "../gg-sandbox-artifacts/typescript" }

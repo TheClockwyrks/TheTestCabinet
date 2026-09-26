@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Pre-commit gate: fail if Clippy reports anything with warnings denied.
 #
-# This is the Clippy half of the CI lint gate (scripts/ci/rust-lint.sh, which
-# also checks rustfmt); the formatting half lives in scripts/hooks/rust-fmt.sh.
+# This is the Clippy half of the CI lint job (scripts/ci/rust-clippy.sh, beside
+# scripts/ci/rust-fmt.sh); the formatting half lives in scripts/hooks/rust-fmt.sh.
 # Clippy compiles the workspace, so this is the slow gate — it mirrors CI's
 # invocation exactly (every crate, all targets, warnings denied). Clippy operates on the whole workspace, so this
 # checks everything regardless of which files are staged.

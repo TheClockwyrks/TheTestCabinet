@@ -89,7 +89,7 @@ publish = false
 
 # Warnings-as-errors, baked into the manifests for every member crate that opts
 # in with `[lints] workspace = true`. CI already denies warnings on the clippy
-# command line (`scripts/ci/rust-lint.sh` runs `cargo clippy … -- -D warnings`),
+# command line (`scripts/ci/rust-clippy.sh` runs `cargo clippy … -- -D warnings`),
 # but that flag only fires under that one invocation; defining the policy here
 # means a plain `cargo build` or `cargo clippy` enforces it locally too — no flag
 # required — and keeps the rule in one place instead of scattered across scripts.

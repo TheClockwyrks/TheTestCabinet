@@ -15,9 +15,9 @@
 # smoke test (`packages/ui/src/app/pages/routeSmoke.test.tsx`), which is what now
 # stands behind this gate.
 #
-# It runs the same command CI does (scripts/ci/web-test.sh), minus the `npm ci`
-# and the package build — a working tree already has both, and re-doing them on
-# every commit is what would make this slow. If the runtime packages have never
+# It runs the same command CI does (scripts/ci/web-test.sh), without the `npm ci`
+# and the package build CI's `web` job runs first — a working tree already has
+# both, and re-doing them on every commit is what would make this slow. If the runtime packages have never
 # been built in this checkout, the message below says so.
 #
 # Invoked by pre-commit (see .pre-commit-config.yaml); also runnable by hand.

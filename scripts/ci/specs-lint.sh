@@ -8,8 +8,5 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-log "npm ci"
-npm ci
-
 log "lint specs (markdownlint + cspell)"
 npm run lint:specs
