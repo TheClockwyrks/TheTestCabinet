@@ -690,6 +690,14 @@ arm64 pool and installs gg's toolchains per run.
 | `testcabinet.azurecr.io/ubuntu-test-cabinet-rust-cicd` | `rust`, `rustdoc`, `rustlint`, `binary_linux`, `gg_amd64` | The pinned Rust toolchain with rustfmt, clippy and cargo-nextest; Node; gg's program-language toolchains and the C# guest's build toolchains |
 | `testcabinet.azurecr.io/ubuntu-test-cabinet-web-cicd`  | `web`, `checks`                                           | Node, Playwright's Chromium with its system libraries, kubectl                                                                               |
 
+A job pulls its CI image from the registry before its first step runs, so a
+registry answer that times out would fail the job before it has checked
+anything. The pipeline variable `VSTSAGENT_DOCKER_ACTION_RETRIES` therefore
+makes the agent retry each Docker login, pull and start, three attempts ten
+seconds apart, and every registry login and manifest fuse in the `images`
+stage carries a step retry of its own. Only those registry round trips are
+retried; a build runs once, so a failed one keeps its reason in the log.
+
 The images are defined under `ci/images/` and built only by CI: a second
 pipeline, `azure-pipelines-ci-images.yml`, runs `scripts/ci/ci-image.sh build`
 on every branch whose push touches an image input, and pushes the result through
