@@ -21,12 +21,12 @@
 # branches.
 #
 # Every job delegates to a script under scripts/ci/ (see scripts/ci/README.md). The
-# YAML names the CI image a job runs inside, its caches, and the credentials a step
-# runs under, and nothing else. The gates run as parallel tracks (one job each for
-# the Rust build and tests, rustdoc, the Rust lints, the release binaries, the web
-# front ends and the compiler-free checks), each inside a CI image that
-# azure-pipelines-ci-images.yml builds from ci/images/ and that carries every
-# toolchain the track needs. Nothing here holds a credential of its own:
+# YAML names the CI image a job runs inside, its caches, the credentials a step runs
+# under, and which registry round trips are retried, and nothing else. The gates run
+# as parallel tracks (one job each for the Rust build and tests, rustdoc, the Rust
+# lints, the release binaries, the web front ends and the compiler-free checks), each
+# inside a CI image that azure-pipelines-ci-images.yml builds from ci/images/ and that
+# carries every toolchain the track needs. Nothing here holds a credential of its own:
 #
 #   tcab-acr         Docker Registry service connection (workload identity
 #                    federation) holding AcrPush on the registry, which the gates
@@ -112,6 +112,19 @@ variables:
   ggTestPartitions: 1/4,2/4,3/4,4/4
   # The targets of deployments/images/services.Dockerfile, plus the web console.
   services: backend,auth,dispatcher,driver,artifacts,arena,publisher,web
+  # RETRIES ON THE REGISTRY. Every Linux gate job begins by pulling its CI image out of
+  # testcabinet.azurecr.io, before any step of its own runs, and the registry answers
+  # that pull through an OAuth token exchange that can time out on the registry's side
+  # ("Post .../oauth2/token: context deadline exceeded"). That is a fact about the
+  # network, not about the commit, and without this knob the agent tries once and
+  # fails the job — which failed a staging run whose eleven other gate jobs had all
+  # pulled the same image. The agent reads this variable as its `DockerActionRetries`
+  # knob and then gives each docker login, pull and start three attempts ten seconds
+  # apart. It is the only thing that can retry container initialisation: that runs
+  # before the first step, where `retryCountOnTaskFailure` cannot reach. The steps
+  # below that talk to the registry themselves (each `Docker@2` login and each
+  # manifest fuse) carry `retryCountOnTaskFailure` for the same reason.
+  VSTSAGENT_DOCKER_ACTION_RETRIES: "true"
 
 stages:
   - stage: gates
@@ -630,8 +643,15 @@ stages:
                 displayName: Use Node 22
                 inputs:
                   version: 22.23.1
+              # Every registry login in this stage retries, as does every manifest fuse:
+              # both are a handful of registry round trips that are safe to repeat, and
+              # the registry's token exchange is what has timed out (see
+              # VSTSAGENT_DOCKER_ACTION_RETRIES above). The builds themselves do not
+              # retry: a build that failed has a reason in its log, and a repeat of an
+              # hours-long job would hide it.
               - task: Docker@2
                 displayName: Log in to the registry
+                retryCountOnTaskFailure: 2
                 inputs:
                   command: login
                   containerRegistry: tcab-acr
@@ -682,6 +702,7 @@ stages:
                 displayName: Fetch gg
               - task: Docker@2
                 displayName: Log in to the registry
+                retryCountOnTaskFailure: 2
                 inputs:
                   command: login
                   containerRegistry: tcab-acr
@@ -743,6 +764,7 @@ stages:
                         displayName: Fetch gg
                   - task: Docker@2
                     displayName: Log in to the registry
+                    retryCountOnTaskFailure: 2
                     inputs:
                       command: login
                       containerRegistry: tcab-acr
@@ -769,11 +791,13 @@ stages:
             fetchDepth: 1
           - task: Docker@2
             displayName: Log in to the registry
+            retryCountOnTaskFailure: 2
             inputs:
               command: login
               containerRegistry: tcab-acr
           - script: ./scripts/ci/manifest.sh "$(Build.SourceVersion)" test-cabinet-audio-store
             displayName: Fuse the architectures
+            retryCountOnTaskFailure: 2
 
       - job: runimages_manifest
         displayName: "Run-container images: multi-arch tags"
@@ -785,6 +809,7 @@ stages:
             fetchDepth: 1
           - task: Docker@2
             displayName: Log in to the registry
+            retryCountOnTaskFailure: 2
             inputs:
               command: login
               containerRegistry: tcab-acr
@@ -795,6 +820,7 @@ stages:
               mapfile -t images < <(./containers/image-names.sh | sed 's/^/test-cabinet-/')
               ./scripts/ci/manifest.sh "$(Build.SourceVersion)" "${images[@]}" test-cabinet-gg-toolchains
             displayName: Fuse the architectures
+            retryCountOnTaskFailure: 2
 
       - job: services_manifest
         displayName: "Service images: multi-arch tags"
@@ -807,6 +833,7 @@ stages:
             fetchDepth: 1
           - task: Docker@2
             displayName: Log in to the registry
+            retryCountOnTaskFailure: 2
             inputs:
               command: login
               containerRegistry: tcab-acr
@@ -815,6 +842,7 @@ stages:
               tcab-backend tcab-auth-service tcab-dispatcher tcab-driver
               tcab-artifacts tcab-arena tcab-publisher tcab-web
             displayName: Fuse the architectures
+            retryCountOnTaskFailure: 2
 
       # gg's release artifacts, on master and tags. The upload re-runs the version gate
       # before it writes anything, so a tag whose gg reports another version uploads

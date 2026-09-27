@@ -10,8 +10,11 @@ site. The GitHub repository is a mirror and runs nothing (see
 Keeping the real commands here rather than inline in the pipeline's YAML means a
 failing job reproduces locally by running the same script. The pipeline YAML is
 responsible only for naming the CI image a job runs inside (see
-[`ci/images/README.md`](../../ci/images/README.md)), caching, and the credentials
-a step runs under; the scripts own the actual validation, builds and deploys.
+[`ci/images/README.md`](../../ci/images/README.md)), caching, the credentials
+a step runs under, and the retries on registry round trips (the agent's
+`VSTSAGENT_DOCKER_ACTION_RETRIES` knob for the CI image pull, and a step retry on
+each registry login and manifest fuse); the scripts own the actual validation,
+builds and deploys.
 
 Each script resolves the repository root from its own location (via `lib.sh`)
 and can be run from anywhere, including locally:
