@@ -293,7 +293,9 @@ headless screenshot. That is the same browser toolchain the
 [backend](/components/backend/overview/) bakes to render references, so the
 image layers the driver binary on the Node and browser base. It also bakes the
 static-musl gg binary the core copies into each sandbox pod, so a gg run
-installs locally with no network egress. Publishing is a separate backend
+installs locally with no network egress; that binary is the one the pipeline
+built and self-checked in the run images, and the one the backend's reference
+documents were projected by. Publishing is a separate backend
 operation, so the image ships no publish CLIs. The driver runs unprivileged and
 needs no Docker or Podman daemon.
 

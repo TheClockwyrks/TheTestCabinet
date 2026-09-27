@@ -59,9 +59,9 @@ compiled with. Those toolchains must be baked in because a compiler is on the
 turn path and a program's language is resolved per agent, so every toolchain is
 present together. Every run image publishes a variant, and a variant's name is
 derived from its parent's rather than looked up, so a gg run of any kind
-resolves an image that has the compilers in it. The toolchain tree is one layer
-with the same digest in every variant, so a host that has pulled one variant
-already has those bytes for all the others.
+resolves an image that has the compilers in it. Every variant carries the same
+tree byte for byte, and each carries its own layer for it, so a host that pulls
+two variants pulls the tree twice.
 
 A runner resolves the image for a run from its own registry configuration,
 consulting no backend, so it resolves the same image against any backend or

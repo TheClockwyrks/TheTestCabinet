@@ -36,32 +36,55 @@ FROM ${GG_TOOLCHAINS_IMAGE} AS ggtools
 
 FROM ${BASE_IMAGE}
 
-# The whole toolchain tree, at the same absolute path on every variant — which is what lets
-# one gg binary drive a Debian-based image and the Ubuntu-based Blender one without
-# knowing which it is in. `COPY` writes as root regardless of the inherited `USER node`;
+# The whole toolchain tree. `COPY` writes as root regardless of the inherited `USER node`;
 # the unprivileged run user only executes what is here.
 #
-# `--link` IS LOAD-BEARING, and this is the one line in the file where a change costs
-# gigabytes. Without it BuildKit computes this layer as a diff against THIS VARIANT'S
-# PARENT SNAPSHOT, so the twenty-seven variants each get a DIFFERENT digest for
-# byte-identical content — 846 MB compressed (2.18 GB unpacked) stored twenty-seven times
-# over in the registry, in every node that pulls more than one variant, and in every
-# `docker save` a local `make run-images-gg` feeds to `k3d image import`. That is not a
-# theory: the k3d node's content store held one 846.3 MB blob PER VARIANT before this flag
-# was added — twenty-six distinct copies of it, that being the size of the set when the
-# measurement was taken — and the comment that used to sit here claimed the opposite.
+# TWO CLAIMS LIVE ON THIS LINE, and only the first of them holds today.
 #
-# `--link` builds the layer rooted at `scratch` and merges it in, so it does not depend on
-# what it is layered onto: every variant gets the SAME digest and the bytes are stored once,
-# which is what makes the claim above true rather than aspirational. Nothing about the
-# resulting filesystem changes — the tree is identical either way (7826 files, 2 162 625 760
-# bytes) — because nothing in any parent image occupies `/opt/gg`, which is the condition
-# `--link` asks for.
+# THE TREE IS BYTE-IDENTICAL on every variant: 7826 files, 2 162 625 760 bytes, at the same
+# absolute path, copied out of one builder image. That is what lets one gg binary drive a
+# Debian-based image and the Ubuntu-based Blender one without knowing which it is in, and it
+# is the premise `containers/build.sh`'s five-representative `gg selfcheck` argument rests on
+# (what differs between two variants is the environment, never the tree). Nothing here
+# affects it.
 #
-# It needs Dockerfile frontend 1.4+, which every BuildKit this repo builds with has BUILT IN
-# (docker buildx locally and on the Azure pipeline's agents). Deliberately
-# no `# syntax=` directive: that would make an image build fetch a frontend image, and the
-# `containers/` images are the offline-buildable path (see `containers/build.sh`).
+# THE LAYER IS NOT SHARED, however, and `--link` is the flag meant to make it so: it asks
+# BuildKit to build the layer rooted at `scratch` and merge it in, rather than diffing it
+# against this variant's parent snapshot, so every variant would carry ONE digest for those
+# bytes and a registry, a node pull and a `docker save` would each hold them once. Measured
+# against the pipeline's own output that is not what happens: the registry holds one
+# distinct ~898.6 MB blob PER VARIANT, 12.6 GB of the 13.3 GB a run-image build pushes,
+# while the entire rest of the run-image set is 0.8 GB. Under `RECLAIM=1`, which
+# `scripts/ci/run-images.sh` sets, `containers/build.sh` removes each pushed image and prunes
+# the builder cache as it goes, so the agent's store survives the set regardless; and
+# `build_gg_variant` prints this layer's digest per variant, so the next build answers the
+# sharing question in its own log.
+#
+# WHY THIS FILE STILL HAS NO `# syntax=` DIRECTIVE, having been tried. `containers/base`,
+# `containers/tools` and `containers/gg-toolchains` all name the pinned external Dockerfile
+# frontend and this one does not, so a variant is built with the daemon's VENDORED frontend —
+# which is the likeliest place `--link` is being dropped, and therefore a tempting one-line
+# experiment. It does not belong in this file by default, for two reasons that are about cost
+# rather than about the hypothesis:
+#
+#   - This file is built TWENTY-SEVEN TIMES per run-image job, and `containers/build.sh`
+#     prunes the builder cache between variants, which discards the cached frontend
+#     resolution too. The last run-image build made exactly three Docker Hub frontend
+#     requests for all fifty-five images; the directive here would make it thirty per leg,
+#     sixty per staging run. Any one of them answering `toomanyrequests` fails a variant
+#     roughly two hours into the one job in the pipeline that cannot be exercised before it
+#     merges and must be re-run whole.
+#   - The offline argument is not void. `containers/README.md` documents pointing
+#     `GG_TOOLCHAINS_IMAGE` at the published toolchain tag so that `./build.sh <name>-gg`
+#     rebuilds nothing else; on that path this Dockerfile is the only one built, so a
+#     directive here would be the only thing reaching a registry for a frontend.
+#
+# `--link` is ACCEPTED by the vendored frontend — these twenty-seven variants have been built
+# with it — so nothing here fails without the directive, and `build_gg_variant` prints each
+# variant's layer digest so the sharing question is answered from an ordinary build log. Test
+# the directive deliberately under the backlog issue that owns the duplication
+# (`tasks/backlog/share-one-opt-gg-layer-across-the-gg-run-image-variants.md`), not as a side
+# effect of a disk fix.
 COPY --link --from=ggtools /opt/gg /opt/gg
 
 # Put the toolchains on `PATH` ahead of nothing: a language's compiler is found here, and

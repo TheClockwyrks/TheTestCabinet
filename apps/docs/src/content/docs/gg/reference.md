@@ -249,14 +249,15 @@ gg reference --out <dir>            → index.json + <language>.json × 11
             └─ console              → gg → Reference
 ```
 
-The service image bakes the documents at `/opt/gg-reference` out of the same
-build stage that produces the `gg` binary the driver image ships, so a deployed
-console and the harness its runs execute are one build of one checkout. A
-backend run from a release tarball unpacks the arch-independent
-`v<version>/gg-reference.tar.gz` from gg's release container and points
-`TCAB_GG_REFERENCE` at it; a
-developer running the binary from a checkout leaves the variable unset and runs
-`scripts/gg-reference.sh`.
+The backend image bakes the documents at `/opt/gg-reference`, and they come from
+the same build of gg the driver image ships and the run images are self-checked
+against: the pipeline builds that binary once per architecture, projects the
+documents beside it, publishes both as one artifact, and the backend and driver
+image builds consume it. A deployed console and the harness its runs execute are
+therefore one build of one checkout. A backend run from a release tarball unpacks
+the arch-independent `v<version>/gg-reference.tar.gz` from gg's release container
+and points `TCAB_GG_REFERENCE` at it; a developer running the binary from a
+checkout leaves the variable unset and runs `scripts/gg-reference.sh`.
 
 The documents are loaded on first use rather than at startup, and only a
 successful load is cached. A backend with no documents where it was told to look

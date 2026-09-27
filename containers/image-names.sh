@@ -32,7 +32,10 @@
 # below it, never a run image, so nothing resolves it and it needs no variant.
 #
 # Each variant is listed immediately after its parent, because build.sh builds in listed
-# order and a variant is `FROM` the image above it.
+# order and a variant is `FROM` the image above it. That ordering is also what lets a PUSH
+# build reclaim each image as it finishes with it, so a run image that becomes the parent of
+# anything BUT its own variant needs a third line: its name in build.sh's RECLAIM_KEEP, which
+# is what holds back an image that outlives its position in this list.
 set -euo pipefail
 
 cat <<'EOF'

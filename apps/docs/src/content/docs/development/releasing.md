@@ -65,9 +65,11 @@ is laid out under its own prefix:
 
 The Azure pipeline uploads all three on every `master` build and every `v*` tag
 build. The `gg_amd64` and `gg_arm64` gate jobs build the binaries natively with
-`scripts/ci/gg-dist.sh`, which runs `scripts/build-gg-static.sh`, the same
-script the driver image runs to bake gg in, so the release objects and the
-image's binary come off one build path. The `gg_publish` job then runs
+`scripts/ci/gg-dist.sh`, which runs `scripts/build-gg-static.sh` and then projects
+and packs the documents. Each job publishes its binary and its tarball as one
+`gg-<arch>` artifact, which is what the run-image self-check, the backend image and
+the driver image all consume, so the release objects and every image's copy come off
+one build. The `gg_publish` job then runs
 `scripts/ci/publish-gg.sh` under the `tcab-gg-publish` service connection, a
 workload-identity-federated identity holding Storage Blob Data Contributor on
 the account. The version prefix is what the `x86_64` binary reports, and each
@@ -101,15 +103,16 @@ document per program language, projected by the freshly built `gg` itself
 (`gg reference --out`). The backend reads them from the directory
 `TCAB_GG_REFERENCE` names because it must not link `test-cabinet-gg`. The backend
 image bakes the identical files at `/opt/gg-reference` and sets the variable
-itself.
+itself, out of the same artifact this upload takes them from.
 
 Without them the backend starts, serves everything else, logs one warning at
 boot, and answers `503` on the two reference endpoints, so the console's gg
 Reference section is the only thing that degrades.
 
-It is a single object built on the `x86_64` leg alone, with no triple in its
-name, because the content is JSON projected from data compiled into gg and is
-identical on every platform.
+It is a single object with no triple in its name, because the content is JSON
+projected from data compiled into gg and is identical on every platform. Both
+architectures project and pack it, so `gg reference --out` is gated on each and each
+one's backend image has a copy to bake; the upload takes the `x86_64` one by name.
 
 ## Static-site topology
 
