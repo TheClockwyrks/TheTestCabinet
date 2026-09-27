@@ -438,21 +438,27 @@ If the host exposes its SSH agent at `/tmp/ssh-agent.sock`, the `postStartComman
 bridges it to `/tmp/devcontainer-ssh-agent.sock` and the shell config points
 `SSH_AUTH_SOCK` at it, so `git push` over SSH works from inside the container.
 Two of the four host variants bind a host socket to that path: the Linux Podman
-one from `$SSH_AUTH_SOCK`, and the macOS Docker one from
+one from `/run/user/1000/ssh-agent`, where the NixOS and Spark configurations
+bind the user's agent, and the macOS Docker one from
 `/run/host-services/ssh-auth.sock`, which Docker Desktop and OrbStack both
-synthesise inside their own VM for exactly this. The Linux Docker row binds nothing and
-leans on the extension's own forwarding, the same as the row below.
+synthesise inside their own VM for exactly this. Both take `SSH_AGENT_SOCKET`
+in `.env` as an override. The Linux Docker row binds nothing and leans on the
+extension's own forwarding, the same as the row below.
 
-The macOS Docker row deliberately does **not** interpolate the host's
-`$SSH_AUTH_SOCK` the way the Linux Podman row does. On macOS that variable names
-a per-boot random path (an `~/.ssh/agent/s.*` socket, or a launchd `Listeners`
-socket), the compose `up` VS Code runs inherits it, and a bind source the daemon
-cannot find is silently created _as a directory_ — so one reboot later the
-container refuses to start with `not a directory: Are you trying to mount a
-directory onto a file`, leaving a junk directory at the stale path to delete.
-The synthesised socket never goes stale because the runtime resolves it on its
-own side of the VM boundary. If a runtime ever serves it elsewhere, set
-`SSH_AGENT_SOCKET` in `.env` — a dedicated name, because the ambient variable
+Neither row interpolates the host's `$SSH_AUTH_SOCK`, and the Linux Podman row
+used to. That variable names a path that does not survive a reboot (a launchd
+`Listeners` socket on macOS, a forwarded `/tmp/ssh-*/agent.*` on Linux) or is
+absent from the environment VS Code runs compose in; a bind source the runtime
+cannot find is silently created _as a directory_, and one reboot later the
+container refuses to start. Under podman-compose the `/dev/null` fallback the
+row carried did not help, because that tool substitutes the service's own
+`environment:` block into `${...}` too, so an unset `SSH_AUTH_SOCK` resolved to
+the _container_ path `/tmp/ssh-agent.sock`, a directory of that name appeared on
+the host, and the next reboot cleared it — after which every `up --no-recreate`
+died with `failed to fulfil mount request: open /tmp/ssh-agent.sock: no such
+file or directory`. A container already in that state starts again after
+`mkdir /tmp/ssh-agent.sock` on the host; rebuilding it picks up the fixed
+source. `SSH_AGENT_SOCKET` is a dedicated name because the ambient variable
 leaking into the interpolation was the bug.
 
 **macOS + Podman cannot have such a path.** Forwarding an agent this

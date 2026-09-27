@@ -29,19 +29,41 @@ services:
     userns_mode: keep-id:uid=1000,gid=100
     volumes:
       # Forward the host's SSH agent so `git push` over SSH works in here (see
-      # README.md, "SSH agent forwarding"). The `/dev/null` fallback keeps the
-      # container startable under a compose that honours it when the environment
-      # VS Code runs compose from has no agent — a login shell on a Spark has
-      # none — because compose rejects an empty bind source outright. Note that
-      # podman-compose substitutes the service's own `environment:` block into
-      # `${...}` as well, so there an unset SSH_AUTH_SOCK resolves to the
-      # container-side path above instead, podman creates an empty directory at
-      # that path ON THE HOST, and the container starts anyway. Either way a
-      # non-socket at the target merely fails the `-S` test in devcontainer.json's
-      # postStartCommand, which skips the bridge and leaves the extension's own
-      # forwarding to it.
+      # README.md, "SSH agent forwarding"). The source is the agent the host's
+      # own configuration binds at a FIXED path — `%t/ssh-agent`, which is
+      # /run/user/<uid>/ssh-agent: programs.ssh.startAgent on NixOS, the Home
+      # Manager user unit on a Spark (nixconfig's modules/dgx/ssh-agent.nix) — and
+      # it is spelled out here rather than interpolated from $SSH_AUTH_SOCK, for
+      # the same reason the macOS Docker row refuses to. Under podman-compose the
+      # ambient variable was worse than stale: `${SSH_AUTH_SOCK:-/dev/null}` is
+      # substituted from the service's own `environment:` block as well as from
+      # the host, so whenever the compose `up` VS Code runs had no agent in its
+      # environment, the source resolved to the CONTAINER path above,
+      # /tmp/ssh-agent.sock, podman silently created an empty directory there ON
+      # THE HOST, and the container started. It kept starting until the host
+      # rebooted and cleared /tmp; from then on `up --no-recreate` failed every
+      # time with
+      #
+      #   runc create failed: ... failed to fulfil mount request:
+      #   open /tmp/ssh-agent.sock: no such file or directory
+      #
+      # (and, on the retry, a bare "container create failed (no logs from
+      # conmon)"), because a bind source is created at container CREATE time
+      # only, and the extension reuses the container it already has. A stale
+      # container in that state starts again after `mkdir /tmp/ssh-agent.sock`
+      # on the host; rebuilding it is what makes this row take effect.
+      #
+      # SSH_AGENT_SOCKET in .env overrides the default when the account's uid is
+      # not 1000 or the agent lives elsewhere (`echo $SSH_AUTH_SOCK` in a login
+      # shell on the host says where). A dedicated name, not SSH_AUTH_SOCK: the
+      # ambient variable leaking into the interpolation was the bug. A source
+      # that does not exist when the container is created still becomes a
+      # directory, so make sure the agent is up (`systemctl --user status
+      # ssh-agent`) before the first `up`; a non-socket at the target merely fails
+      # the `-S` test in devcontainer.json's postStartCommand, which skips the
+      # bridge and leaves the extension's own forwarding to it.
       - type: bind
-        source: ${SSH_AUTH_SOCK:-/dev/null}
+        source: ${SSH_AGENT_SOCKET:-/run/user/1000/ssh-agent}
         target: /tmp/ssh-agent.sock
       # Docker-outside-of-Docker: bind the host's container-runtime socket in so
       # the local service stack (`make -C deployments/local local-up`) drives the
