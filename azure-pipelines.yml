@@ -665,9 +665,18 @@ stages:
             steps:
               - checkout: self
                 fetchDepth: 1
-              - ${{ if eq(arch, 'amd64') }}:
-                  - script: ./scripts/ci/free-disk-linux.sh
-                    displayName: Reclaim agent disk
+              # BOTH legs, unlike every other job's copy of this step. This is the job that
+              # builds every run image and both builder images on one agent, and it is the
+              # one that ran out of disk on both architectures. Running host-wide removals on
+              # the arm64 pool is safe because that pool is disposable: it is an Azure Managed
+              # DevOps Pool that hands every job a fresh Ubuntu 24.04 VM, which the last
+              # Images stage shows directly — its arm64 legs never overlapped in time and a
+              # job landing on the same agent slot half an hour later pulled its Rust base
+              # from Docker Hub cold. So there is no warm store to lose and no concurrent job
+              # on that daemon, and the disk readings either side turn the next failure into a
+              # number instead of an inference. The script explains what it touches and why.
+              - script: ./scripts/ci/free-disk-linux.sh
+                displayName: Reclaim agent disk
               - download: current
                 artifact: gg-${{ arch }}
                 displayName: Fetch gg
@@ -680,8 +689,17 @@ stages:
                   set -euo pipefail
                   gg="$(Pipeline.Workspace)/gg-${{ arch }}/gg-$(uname -m)-unknown-linux-musl"
                   chmod 0755 "$gg"
+                  ./scripts/ci/report-disk.sh "before the run images"
                   ./scripts/ci/run-images.sh "$gg" "$(Build.SourceVersion)"
                 displayName: Build, self-check and push the run images
+              # Whatever the build did, on the way out. With PUSH and RECLAIM set (which
+              # scripts/ci/run-images.sh does) containers/build.sh removes each pushed image
+              # and prunes the builder cache as it goes, so this figure is what says the
+              # reclaim HELD rather than merely ran; it is a diagnostic, so a failed build
+              # still reports it. Same reading as before the build, so the two compare directly.
+              - script: ./scripts/ci/report-disk.sh "after the run images"
+                displayName: Disk after the run images
+                condition: always()
 
           # One job per service image, so each reports and retries on its own. The
           # driver bakes the audio store this run pushed, so it waits for it.
@@ -712,13 +730,34 @@ stages:
                   - ${{ if eq(arch, 'amd64') }}:
                       - script: ./scripts/ci/free-disk-linux.sh
                         displayName: Reclaim agent disk
+                  # The two images that bake gg take the gates stage's published binary: the
+                  # driver bakes the binary itself and the backend the reference documents it
+                  # projected. Neither builds a gg of its own here — scripts/ci/gg-prebuilt.sh
+                  # stages the artifact as the `gg-build` named build context, which replaces
+                  # that Dockerfile stage. No `dependsOn` is needed for the artifact to be
+                  # there: the gg_<arch> jobs are in `gates`, this stage depends on `gates`,
+                  # and the two conditions name the same three refs.
+                  - ${{ if or(eq(service, 'backend'), eq(service, 'driver')) }}:
+                      - download: current
+                        artifact: gg-${{ arch }}
+                        displayName: Fetch gg
                   - task: Docker@2
                     displayName: Log in to the registry
                     inputs:
                       command: login
                       containerRegistry: tcab-acr
-                  - script: ./scripts/ci/service-image.sh ${{ service }} "$(Build.SourceVersion)"
-                    displayName: Build and push ${{ service }}
+                  - ${{ if or(eq(service, 'backend'), eq(service, 'driver')) }}:
+                      - script: |
+                          set -euo pipefail
+                          ./scripts/ci/gg-prebuilt.sh \
+                            "$(Pipeline.Workspace)/gg-${{ arch }}" \
+                            "$(Agent.TempDirectory)/prebuilt-gg"
+                          TCAB_PREBUILT_GG="$(Agent.TempDirectory)/prebuilt-gg" \
+                            ./scripts/ci/service-image.sh ${{ service }} "$(Build.SourceVersion)"
+                        displayName: Build and push ${{ service }}
+                  - ${{ else }}:
+                      - script: ./scripts/ci/service-image.sh ${{ service }} "$(Build.SourceVersion)"
+                        displayName: Build and push ${{ service }}
 
       - job: audiostore_manifest
         displayName: "Audio store: multi-arch tag"
@@ -805,7 +844,14 @@ stages:
                 set -euo pipefail
                 dist="$(Agent.TempDirectory)/gg"
                 mkdir -p "$dist"
-                cp "$(Pipeline.Workspace)"/gg-amd64/* "$(Pipeline.Workspace)"/gg-arm64/* "$dist"/
+                # By name, not by glob. Both architectures pack a `gg-reference.tar.gz`
+                # (scripts/ci/gg-dist.sh projects the documents on each, so the command is
+                # gated on each), and the documents are architecture-independent, so a glob
+                # would copy two files onto one name and whichever landed last would win in
+                # silence. These three are exactly what scripts/ci/publish-gg.sh uploads.
+                cp "$(Pipeline.Workspace)/gg-amd64/gg-x86_64-unknown-linux-musl" "$dist"/
+                cp "$(Pipeline.Workspace)/gg-arm64/gg-aarch64-unknown-linux-musl" "$dist"/
+                cp "$(Pipeline.Workspace)/gg-amd64/gg-reference.tar.gz" "$dist"/
                 ./scripts/ci/publish-gg.sh "$dist" "$(Build.SourceBranch)"
 
   - stage: deploy

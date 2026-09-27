@@ -99,8 +99,15 @@
 # backend plays no part in container distribution, so this script never talks to it.
 #
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
-# pushed digest reference. Without PUSH it just builds locally (the offline
-# development path): the images are named `test-cabinet-base:<tag>`,
+# pushed digest reference. With RECLAIM=1 ALONGSIDE IT — which only CI sets — it then also
+# RECLAIMS each one: a pushed image whose place in the build order means nothing later is
+# `FROM` it is removed from the local store and the builder cache is pruned, because the
+# whole set does not fit on a build agent otherwise (see "Reclaiming disk as the build
+# goes"). RECLAIM is a separate switch from PUSH precisely because pushing is something a
+# developer is documented to do from their own box and the reclaim is destructive beyond
+# this build: read its own header before setting it. Without PUSH it just builds locally
+# (the offline development path) and removes nothing, because there the images are the
+# product: the images are named `test-cabinet-base:<tag>`,
 # `test-cabinet-base-wasm:<tag>`, `test-cabinet-sprite:<tag>`,
 # `test-cabinet-sprite-sheet:<tag>`,
 # `test-cabinet-voxel:<tag>`, `test-cabinet-voxel-animation:<tag>`,
@@ -112,6 +119,14 @@
 #
 # Configuration via environment variables:
 #   PUSH          set to 1 to push the images and pin them by digest (default: unset)
+#   RECLAIM       set to 1, together with PUSH=1, to remove each pushed image from the
+#                 local store once nothing later in the build order needs it and to prune
+#                 the builder cache as the build advances (default: unset). It is what
+#                 makes the fifty-five-image set fit on a CI agent, and it is DESTRUCTIVE
+#                 BEYOND THIS BUILD — the builder prune takes every `--mount=type=cache`
+#                 record on the daemon, including ones belonging to other Dockerfiles and
+#                 other projects. `scripts/ci/run-images.sh` sets it; nothing else should.
+#                 Ignored without PUSH, because an unpushed image must not be removed.
 #   IMAGE_REGISTRY  registry/namespace the pushed images live under, e.g.
 #                 testcabinet.azurecr.io (required when PUSH=1; pushing there needs
 #                 `az acr login --name testcabinet` and AcrPush). Matches the
@@ -163,6 +178,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
 readonly PUSH="${PUSH:-}"
+readonly RECLAIM="${RECLAIM:-}"
 readonly IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"
 readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
@@ -227,12 +243,13 @@ readonly GG_SELFCHECK_BIN
 
 # THE FIVE IMAGES THE GATE RUNS IN, AND WHY IT IS FIVE AND NOT TWENTY-SEVEN.
 #
-# Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies
-# `/opt/gg` with `--link`, which builds the layer rooted at `scratch` rather than as a diff
-# against each parent — so all twenty-seven variants get the identical digest for identical
-# bytes (that COPY's comment carries the measurement). What can differ between two variants
-# is therefore not the toolchain but the ENVIRONMENT it has to run in, and the question this
-# list answers is how many distinct environments the twenty-seven are.
+# Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies one
+# builder image's `/opt/gg` to the same absolute path in each, so the bytes are identical
+# variant to variant (7826 files, 2 162 625 760 bytes — that COPY's comment carries the
+# measurement, and separately the fact that the LAYER holding them is not shared, which this
+# argument does not rest on). What can differ between two variants is therefore not the
+# toolchain but the ENVIRONMENT it has to run in, and the question this list answers is how
+# many distinct environments the twenty-seven are.
 #
 # IT IS NOT "THE NUMBER OF PARENTS", which is what this list first said and got wrong. There
 # are two external parents — the Debian `node:*-bookworm-slim` and `blender`'s `ubuntu:26.04`
@@ -352,16 +369,15 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # variant — so publishing it means (a) the exact tree inside those variants is
 # independently pullable and pinned by digest rather than only inspectable by taking a
 # run image apart, and (b) `./build.sh <name>-gg` can be pointed at the published tag
-# through the GG_TOOLCHAINS_IMAGE build arg instead of paying for the fetch again. The
-# registry stores the layers once however many variants carry them, so the push itself
-# costs close to nothing on top of the variants already going up.
+# through the GG_TOOLCHAINS_IMAGE build arg instead of paying for the fetch again.
 #
-# THAT LAST SENTENCE IS TRUE ONLY BECAUSE `containers/gg/Dockerfile` COPIES THE TREE WITH
-# `--link`. Identical content is not enough: a plain `COPY` is diffed against each
-# variant's own parent, which gave the twenty-seven variants twenty-seven DIFFERENT
-# digests for the same bytes and defeated every layer of sharing there is — registry
-# storage, node pulls, and the `docker save` a local import feeds on. Read the comment on
-# that `COPY` before touching it; it is the line this paragraph depends on.
+# IT IS ONE MORE COPY OF THE TREE AND NOT A FREE ONE. `containers/gg/Dockerfile` copies
+# `/opt/gg` with `--link` so that every variant's copy would carry ONE digest and the
+# registry would store the bytes once — and measured against this pipeline's own output
+# that is not what happens: one distinct ~898.6 MB blob per variant, 12.6 GB of the 13.3 GB
+# a run-image build pushes. Read the comment on that COPY, which carries the measurement,
+# before touching it. What keeps the build agent's disk survivable meanwhile is the reclaim
+# below rather than any sharing.
 #
 # Because it is not in image-names.sh, the pipeline's run-image manifest job, which is
 # driven by that list, appends this one by name to what it hands scripts/ci/manifest.sh.
@@ -416,6 +432,153 @@ push_and_pin() {
 		exit 1
 	fi
 	echo "${digest}"
+}
+
+# ---------------------------------------------------------------------------
+# Reclaiming disk as the build goes
+# ---------------------------------------------------------------------------
+# A full PUSH build builds the fifty-five names `containers/image-names.sh` lists, plus the
+# two builder images and the audio store. Twenty-seven of the fifty-five are `-gg` variants
+# carrying a 2.2 GB `/opt/gg`. `containers/gg/Dockerfile` copies that tree with `--link` so
+# that every variant's layer would carry ONE digest and be stored once, and in this pipeline
+# it does not: the registry holds twenty-seven DISTINCT ~898.6 MB blobs for it, 12.6 GB of
+# the 13.3 GB a run-image build pushes, while all other run-image content is 0.8 GB. So the
+# local store accrues ~2.2 GB per variant, twenty-seven of them is ~60 GB, and a build agent
+# has under 40 GB.
+#
+# THE RECLAIM BELOW IS CORRECT WHETHER OR NOT THAT LAYER IS EVER DEDUPED, which is the whole
+# point of it: it does not rest on a property that turned out not to hold. With it the peak
+# is the toolchain builder, one resident variant and the rest of the set — around 8 GB.
+#
+# IT IS OFF UNLESS `RECLAIM=1` IS SET WITH `PUSH=1`, and `scripts/ci/run-images.sh` is the
+# only caller that sets it. Pushing is something `containers/README.md` documents a developer
+# doing from their own box; the prune below is not something that should happen to a
+# developer's daemon as a side effect of it.
+#
+# WHAT IS SAFE TO REMOVE, AND WHEN. Every image here is built FROM a LOCAL tag, so removing
+# one too early breaks a later build. Within one invocation the parent map is:
+#
+#   tools            -> every asset image and both full-stack images
+#   gg-toolchains    -> every -gg variant
+#   base             -> base-wasm and every asset image
+#   base-wasm        -> full-stack-2d/3d, adversarial, performance
+#   full-stack-2d    -> game-jam, and full-stack-2d-gg
+#   any other <name> -> <name>-gg, and nothing else
+#   any <name>-gg    -> nothing at all
+#
+# The last two lines are what makes this cheap, and they are a property of
+# `containers/image-names.sh`'s order: it lists each variant IMMEDIATELY after its parent, so
+# a variant is finished the moment it is pushed and a plain run image is finished the moment
+# its variant is pushed. RECLAIM_KEEP holds back the names that outlive their own position in
+# that list.
+#
+# Two of the five are reachable by the reclaim and would break a later build. `base-wasm` is
+# the parent of full-stack-2d, full-stack-3d, adversarial and performance, all of which come
+# after `base-wasm-gg`; `full-stack-2d` is the parent of `game-jam`, which comes after
+# `full-stack-2d-gg`. The other three are named because they are what the whole set is built
+# FROM: `base` and `tools` have no variant and so never reach the reclaim, and
+# `gg-toolchains` is a `COPY --from` source for every variant there is. A new run image that
+# becomes the parent of anything but its own variant belongs here too — the third line
+# `containers/image-names.sh`'s header asks for when one is added.
+readonly RECLAIM_KEEP=(tools gg-toolchains base base-wasm full-stack-2d)
+
+reclaim_keeps() {
+	local name="$1" keep
+	for keep in "${RECLAIM_KEEP[@]}"; do
+		[[ "${name}" == "${keep}" ]] && return 0
+	done
+	return 1
+}
+
+# The filesystem the container store lives on, and what the daemon says is in it. Printed
+# after every variant under RECLAIM so a "no space left on device" partway through the set is
+# preceded by the number that explains it, and so the reclaim can be seen to HOLD: the
+# available figure should stay flat across the twenty-seven variants rather than fall ~2.2 GB
+# each. Best-effort throughout — a diagnostic that can fail the build is worse than no
+# diagnostic.
+reclaim_report_disk() {
+	local root avail pcent
+	root="$("$DOCKER" info --format '{{.DockerRootDir}}' 2>/dev/null)" || root=""
+	[[ -n "${root}" && -d "${root}" ]] || root=/
+	avail="$(df -h --output=avail "${root}" 2>/dev/null | tail -n 1 | tr -d ' ')" || avail="?"
+	pcent="$(df -h --output=pcent "${root}" 2>/dev/null | tail -n 1 | tr -d ' ')" || pcent="?"
+	echo "==> disk: ${avail:-?} available (${pcent:-?} used) on ${root}" >&2
+	"$DOCKER" system df 2>/dev/null | sed 's/^/    /' >&2 || true
+}
+
+# Drop one image's local and registry-qualified tags. Separate calls so a tag that is not
+# there cannot affect the one that is.
+#
+# THE FAILURE IS REPORTED, unlike the diagnostics below, and the distinction is deliberate:
+# this removal is the fix rather than an observation, so a silent failure here is what a
+# "no space left on device" fourteen variants later would look like — preceded by a run of
+# affirmative-looking lines. It still does not FAIL the build (the registry already has the
+# bytes, and the build may well have room to finish), but it says so. The registry tag is
+# the one that may legitimately be absent, since only a pushed image ever has it, so its
+# status is not reported.
+reclaim_image() {
+	local name="$1" out
+	local local_image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	local pushed="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	echo "==> reclaiming ${local_image} (pushed; nothing later is FROM it)" >&2
+	"$DOCKER" image rm "${pushed}" >/dev/null 2>&1 || true
+	if ! out="$("$DOCKER" image rm "${local_image}" 2>&1)"; then
+		echo "==> WARNING: ${local_image} was NOT reclaimed; its layers still hold disk:" >&2
+		echo "    ${out//$'\n'/$'\n'    }" >&2
+	fi
+}
+
+# `docker image rm` IS NOT ENOUGH ON ITS OWN, and this is the trap a smaller fix falls into.
+# dockerd's BuildKit keeps its own cache record for the snapshot each build step produced,
+# and that record holds the layer alive after the image reference is gone — which is why
+# `docker system df` accounts "Build Cache" separately and why its reclaimable figure is most
+# of the disk by the time this matters.
+#
+# WHAT THE PRUNE COSTS, stated because it is not nothing and because it does not stop at this
+# build. `--all` takes every `--mount=type=cache` record in the builder, not just this
+# build's, and on a dev box the default builder is the one embedded BuildKit instance the
+# whole daemon shares — so it would also take `deployments/images/services.Dockerfile`'s
+# `gg-toolchains` (about 1.9 GB of downloaded SDKs), `gg-target`, `rustup-gg` and
+# `gg-toolchain-downloads` mounts, and every other project's build cache on that daemon.
+# `deployments/local/Makefile` names relinking gg and re-downloading those toolchains as the
+# slowest thing in the repository. THAT IS WHY THE RECLAIM IS GATED ON `RECLAIM=1` RATHER
+# THAN ON `PUSH`: a developer's documented `PUSH=1 IMAGE_REGISTRY=…` publish must not pay it.
+#
+# Inside CI the cost is bounded and small. The agent is a fresh VM whose builder starts empty
+# (proven on both pools: every leg of the last Images stage pulled `docker/dockerfile:1` and
+# its Rust base from Docker Hub at job start), so nothing pre-existing is lost. What is lost
+# is within-build: `containers/adversarial` and `containers/performance` build after several
+# variants have gone past, so each re-downloads the cargo registry `containers/tools` already
+# fetched. That is a few minutes on a job with a six-hour timeout, against a build that
+# otherwise does not finish. A threshold or a size-capped prune would avoid it and would also
+# be a tunable that can be set wrong, which is the wrong trade for a job CI cannot exercise
+# before it merges.
+#
+# Guarded for DOCKER=podman, which has no `builder prune`.
+reclaim_builder_cache() {
+	"$DOCKER" builder prune --all --force >/dev/null 2>&1 || true
+}
+
+# Called after each image in the main loop has been built, self-checked and pushed. It needs
+# BOTH switches: PUSH, because an image that is not in a registry must not be removed from
+# the only place it exists, and RECLAIM, because the removal and the prune reach past this
+# build and only CI wants them (see `reclaim_builder_cache`). Without them it does nothing at
+# all — which is the local path, where the images ARE the product
+# (`deployments/local/Makefile` builds with no PUSH and then `docker save`s the set for
+# `k3d image import`).
+reclaim_after_push() {
+	local name="$1" parent
+	[[ -n "${PUSH}" && -n "${RECLAIM}" ]] || return 0
+	# Only a `-gg` variant is finished the moment it is pushed: nothing anywhere is built FROM
+	# one. A plain run image still has its variant to come, so it is reclaimed on its
+	# variant's way out below, which also keeps it present while the variant pushes and mounts
+	# its parent's layers.
+	[[ "${name}" == *-gg ]] || return 0
+	reclaim_image "${name}"
+	parent="${name%-gg}"
+	reclaim_keeps "${parent}" || reclaim_image "${parent}"
+	reclaim_builder_cache
+	reclaim_report_disk
 }
 
 # Build the shared asset-tooling builder: every asset-generation binary the run
@@ -847,6 +1010,13 @@ build_gg_variant() {
 		--build-arg "GG_TOOLCHAINS_IMAGE=${GG_TOOLCHAINS_IMAGE}" \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/gg/Dockerfile" "${SCRIPT_DIR}/.."
+
+	# The digest of the layer that COPY produced. `containers/gg/Dockerfile` asks `--link` to
+	# give every variant the SAME one, and the registry says they get twenty-seven different
+	# ones. Printing it makes each build answer that in its own log instead of requiring
+	# somebody to read registry manifests by hand, which is how it went unnoticed.
+	echo "==> ${name} /opt/gg layer: $("$DOCKER" image inspect \
+		--format '{{range .RootFS.Layers}}{{println .}}{{end}}' "${image}" 2>/dev/null | tail -n 1)"
 
 	# BETWEEN THE BUILD AND THE PUSH, AND THAT ORDER IS THE POINT: a variant whose toolchain
 	# cannot run in it must never reach a registry, and `set -euo pipefail` plus the `exit 1`
@@ -1322,6 +1492,16 @@ select_needs_tools() {
 	return 1
 }
 
+# THE BASELINE DISK READING, before anything is built. `reclaim_after_push` reports after
+# every variant, but the first of those lands after `base-wasm-gg`, the third of fifty-five
+# names — so a failure in `tools` or `gg-toolchains`, which is where the 2.2 GB toolchain tree
+# is first materialised, used to produce no figure at all. This is the one that says what the
+# agent started with. Under RECLAIM only, so a local build's output is unchanged.
+if [[ -n "${PUSH}" && -n "${RECLAIM}" ]]; then
+	echo "==> disk before the first image"
+	reclaim_report_disk
+fi
+
 # Layer 0 — the shared asset tooling, built before anything that copies out of it.
 # ALWAYS rebuilt (never "reused if present"): it carries the compiled binaries, so a
 # stale one would bake outdated tooling into an otherwise-fresh run image. Its cargo
@@ -1436,8 +1616,12 @@ unset parent_ref
 # Build each selected image. The base layers and the tooling builder are already
 # handled above. The canonical order in image-names.sh places full-stack-2d before
 # game-jam, so a full build builds the parent before the jam image.
+# The reclaim sits HERE and not inside `build_one`, deliberately: layer 4 above calls
+# `build_one` to build a `-gg` variant's absent parent, and that parent has to survive until
+# its variant is built.
 for name in "${selected[@]}"; do
 	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
 	build_one "$name"
+	reclaim_after_push "$name"
 done
 echo "==> done"

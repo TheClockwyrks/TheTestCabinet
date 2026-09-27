@@ -26,7 +26,10 @@
 # then picks a runtime stage, and BuildKit builds only the stages that target
 # actually depends on — asking for `arena` never runs the gg or npm stages. Two
 # targets depend on the gg stage: `driver` bakes the gg binary, and `backend` bakes
-# the reference documents that binary projects.
+# the reference documents that binary projects. In CI neither of them RUNS that stage:
+# scripts/ci/service-image.sh replaces it with `--build-context gg-build=<dir>` carrying
+# the gates stage's already-gated binary, and the stage is what the offline local build
+# uses (see its own header below).
 #
 # The check=skip above silences a false positive: BuildKit's SecretsUsedInArgOrEnv
 # lint flags any ENV whose *name* contains "AUTH" (also TOKEN/KEY/SECRET/PASSWORD).
@@ -155,6 +158,26 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Python, Ruby, C#) and links six compile targets on the way to one static binary. One of
 # them needs a toolchain the eleven-arm list deliberately excludes — see the second
 # installer call below.
+#
+# CI DOES NOT RUN THIS STAGE, and knowing that is the difference between reading this file
+# and understanding what a deployed image contains. scripts/ci/service-image.sh passes
+# `--build-context gg-build=<dir>` for the backend and driver targets, which REPLACES the
+# stage: it never enters the build graph, and each `COPY --from=gg-build` below resolves
+# against a directory scripts/ci/gg-prebuilt.sh staged out of the gates stage's `gg-<arch>`
+# artifact. That artifact is the gg `gg selfcheck` is driven against inside four run images
+# and the one that projected the reference documents beside it, so one binary per commit
+# serves the run images, the driver and the backend.
+#
+# The stage stays because it is the OFFLINE path. Two local entry points build it with no
+# pipeline artifact and no network, so it has to produce a gg of its own:
+# `make -C deployments/local images`, and `docker compose -f deployments/local/compose.yml up
+# backend`, which builds `--target backend`. Those two are also the ONLY things that build this
+# stage now — no pipeline job does — so it is an ungated code path, and a change to the gg
+# toolchain installers, to scripts/build-gg-static.sh or to this stage's base pins can break it
+# with every branch green. On x86_64 that build currently yields a binary that segfaults in
+# `gg reference --out` — the diagnostics on that RUN's tail are there to narrow it — so neither
+# local entry point completes on an x86_64 machine yet, which leaves an aarch64 run of one of
+# them as the only feedback there is. tasks/backlog/ carries the issue.
 FROM docker.io/library/rust:1-bookworm AS gg-build
 WORKDIR /src
 # Node, for the two ECMAScript arms: the TypeScript and JavaScript catalogues are one
@@ -254,17 +277,32 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     # "driver AND backend": `tcab-backend` serves gg's model-facing surface at
     # /gg/reference, cannot depend on test-cabinet-gg (oxc + tiktoken-rs, and the eleven
     # language toolchains this stage installs to build it), and reads twelve JSON documents
-    # at run time instead. Producing
-    # them HERE, from the gg this same build linked, is what makes the console's reference
-    # and the harness a run actually executes one vintage of one checkout — the property a
-    # committed artifact plus a drift gate only approximated.
+    # at run time instead. Projecting them from the same gg the same build produced is what
+    # makes the console's reference and the harness a run actually executes one vintage of one
+    # checkout, which a committed artifact plus a drift gate only approximated. CI holds that
+    # property through the named context instead: both the binary and the documents it staged
+    # come from one gates-stage link of this commit.
     #
     # It runs the static-musl binary under this glibc base, which is exactly what static
     # means, and it needs nothing else: every arm's signature catalogue is compiled into
     # that binary by crates/gg/build.rs, so `reference --out` opens no file, resolves no
     # toolchain and reaches no network. Same RUN as the build so the documents land in this
     # stage's layer beside /gg rather than costing another one.
-    && /gg reference --out /gg-reference
+    #
+    # THE COMMANDS AROUND IT ARE THE DIAGNOSIS, and they are here because this is where
+    # the x86_64 build of this stage fails: `reference --out` exits 139 with no other output,
+    # and the log said nothing about which half of that was broken. The architecture and the
+    # stack limit say what the process was given; `ls -l /gg` says what was linked and how
+    # big it is (the size is what a defective link shows up in, compared against the digest
+    # scripts/build-gg-static.sh now prints); `--version` separates exec and start-up from
+    # the projection; and the final listing says the twelve documents were written rather
+    # than an empty directory.
+    && uname -m \
+    && ulimit -s \
+    && ls -l /gg \
+    && /gg --version \
+    && /gg reference --out /gg-reference \
+    && ls -l /gg-reference
 
 # ── Package store stage (driver only) ────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
@@ -417,12 +455,13 @@ COPY --from=build /out/tcab-backend /usr/local/bin/tcab-backend
 # building it needs the eleven language toolchains the gg-build stage installs), and a file
 # the same build produced cannot disagree with it the way a committed artifact could.
 #
-# NOTE WHAT THIS COSTS: it makes the backend image depend on the gg-build stage, so building
-# `--target backend` now builds gg — eleven program-language toolchains, every arm's
-# catalogue reflected and every arm's artifacts compiled. Previously only the driver leg
-# paid that. It is the price of the console showing exactly what a model is shown, on all
-# eleven arms, with no second copy anywhere; and the two legs run concurrently in CI, so it
-# costs the backend leg's wall clock rather than the workflow's.
+# WHICH BUILD OF gg PROJECTED THEM. In CI, the gates stage's: scripts/ci/service-image.sh
+# replaces the `gg-build` stage with a named build context holding the published `gg-<arch>`
+# artifact and the documents that binary projected, so this COPY reads that directory. The
+# property the paragraph above argues for is unchanged — the documents still come from the
+# very binary the run images are self-checked against and the driver bakes, one link of one
+# checkout — and it is now the only link of that commit rather than the second, unchecked
+# one. A local `--target backend` builds the stage and projects them there instead.
 COPY --from=gg-build /gg-reference /opt/gg-reference/
 
 # State paths are mounted at runtime (a PersistentVolumeClaim in the cluster, a
@@ -495,10 +534,15 @@ RUN apt-get update \
 
 COPY --from=build /out/tcab-driver /usr/local/bin/tcab-driver
 
-# Bake the static-musl gg harness in (built in the gg-build stage above). core,
-# running in this driver pod, reads it from here and copies it into each sandbox run
-# pod, so a Kubernetes gg run installs LOCALLY with no release download or network
-# egress. World-readable (a+rX via the 0755) so the unprivileged `node` user reads it.
+# Bake the static-musl gg harness in. core, running in this driver pod, reads it from here
+# and copies it into each sandbox run pod, so a Kubernetes gg run installs LOCALLY with no
+# release download or network egress. World-readable (a+rX via the 0755) so the
+# unprivileged `node` user reads it.
+#
+# In CI these are the bytes of the gates stage's `gg-<arch>` artifact, which the named build
+# context above supplies in place of the `gg-build` stage: the same binary `gg selfcheck`
+# passed in four run images and the same one the backend's documents were projected by. A
+# local build takes the gg that stage links.
 COPY --from=gg-build /gg /usr/local/lib/tcab/gg
 RUN chmod 0755 /usr/local/lib/tcab/gg
 

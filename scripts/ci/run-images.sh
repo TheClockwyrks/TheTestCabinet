@@ -33,8 +33,16 @@ trap 'rm -f "$log_file"' EXIT
 
 mapfile -t names < <(./containers/image-names.sh)
 
+# RECLAIM=1 is what makes the set fit: build.sh removes each pushed image once nothing later
+# in the build order is FROM it and prunes the builder cache as it advances, because twenty-
+# seven `-gg` variants each holding a 2.2 GB /opt/gg is ~60 GB against an agent's ~40. It is a
+# separate switch from PUSH because it is destructive beyond the build — the builder prune
+# takes every cache mount on the daemon — and `containers/README.md` documents a developer
+# running PUSH=1 from their own box. THIS IS THE ONLY CALLER THAT SHOULD SET IT: here the
+# daemon belongs to a single-use CI agent (both pools give every job a fresh VM with an empty
+# builder), so there is nothing to lose and a full set to gain.
 log "building ${#names[@]} run images as ${CI_REGISTRY}/test-cabinet-<name>:${SHA}-${arch}"
-PUSH=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
+PUSH=1 RECLAIM=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
 	./containers/build.sh --gg-selfcheck "$GG_BINARY" "${names[@]}" 2>&1 | tee "$log_file"
 
 # The self-check has to have run, not merely have been asked for. A refactor that
