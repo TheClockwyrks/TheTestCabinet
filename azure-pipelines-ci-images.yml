@@ -1,22 +1,66 @@
-# Builds the images the gate tracks of azure-pipelines.yml run inside, and pushes
-# them to testcabinet.azurecr.io.
+# Builds the images the gate tracks run inside, and pushes them to
+# testcabinet.azurecr.io.
 #
-# A pipeline of its own, on purpose. A gates run never builds an image: it writes
-# a pinned reference in its `resources.containers` block and lets the agent pull
-# it, so what a gate ran inside is a fact written in the diff. This file is what
-# makes that reference resolve. It runs on a change to an image's inputs and on
-# nothing else, and a run that finds the tag already in the registry ends in
-# under a minute, because the tag is a digest of those same inputs. See
+# This is a pipeline of its own, and that is the whole point of it. A gates run
+# must never build an image: building one was most of what a gates run spent
+# its time on before this, and an image a run builds for itself is an image
+# nobody can name afterwards. azure-pipelines.yml instead names each job's
+# image by the pinned tag ci/images/tags.yml holds and lets the agent pull it,
+# so what a gate ran inside is a fact written in the diff. This file is what makes
+# that reference resolve.
+#
+# It runs on a change to an image's inputs and on nothing else. Most commits
+# touch none of them, so most commits queue no run here at all; and a run that
+# does start usually finds the tag already in the registry and ends in under a
+# minute, because the tag is a digest of those same inputs. See
 # scripts/ci/ci-image.sh, which is the whole of the logic, and
-# ci/images/README.md for what each image holds and the order to do things in
-# when an input changes.
+# ci/images/README.md for what each image holds.
 #
-# No pull request runs this. Azure Repos ignores a `pr:` block and runs a
-# pipeline against a pull request only through a build validation policy, and no
-# policy names this pipeline: an image build is not a check a pull request needs
-# to pass. `pr: none` is written out as a statement of intent. And the tag being
-# a digest of the inputs means a commit can only push an image under the tag its
-# own files describe, which nothing pulls until someone writes that tag into
+# The order to do things in, when an input does change. The tag moves the
+# moment the file is staged, so the commit that changes an input pins a tag the
+# registry does not hold yet and its gate jobs fail at job initialization — the
+# agent cannot pull what has not been pushed. The sequence is: push the branch,
+# which queues this pipeline; let it finish; re-queue the gates run. Because
+# the tag is content-addressed the image is built exactly once, on the branch
+# that introduced the change, and the merge finds it pushed and builds nothing.
+# This is the cost of a hand-written immutable pin and it is accepted rather
+# than worked around: a reference resolved at run time would be a reference
+# nobody reviewed.
+#
+# A fresh render has pushed no image at all, so this is the pipeline to create
+# and queue first. It is a second `az pipelines create`, naming this file; the
+# Building page of the documentation site has the command.
+#
+# ## What stops an untrusted commit pushing an image
+#
+# Three things, and the first of them alone is sufficient.
+#
+# 1. This pipeline has no pull request trigger. Azure Repos ignores a `pr:`
+#    block entirely and runs a pipeline against a pull request only through a
+#    build validation policy on the target branch. No policy should name this
+#    pipeline: an image build is not a check a pull request needs to pass. The
+#    `pr: none` below is therefore a statement of intent rather than a setting
+#    Azure reads, and it is written out so that a copy of this file pointed at
+#    a host where a YAML pull request trigger *is* honoured, and where anyone
+#    at all may raise one from a fork, is refused by default rather than by an
+#    oversight.
+#
+# 2. The `branches` filter below is every branch of this repository, which is
+#    to say every ref a project member has pushed. A fork's branch is not one
+#    of them: it lives in the fork's own repository.
+#
+# 3. Even were a pull request build of a fork somehow to run here, Azure
+#    withholds a service connection's credentials from it unless the project is
+#    configured to make secrets available to builds of forks, which it is not
+#    by default. The Docker@2 login would fail and the push with it, so the
+#    failure mode is a red run rather than an image nobody vouched for sitting
+#    in the registry under a tag the gates pipeline will pull.
+#
+# There is one more property worth naming, because it is what makes the above
+# matter less than it might: the tag is a digest of the inputs, so a commit
+# cannot push an image *under a tag some other commit pins*. The worst an
+# unreviewed commit could do is push an image under the tag that commit's own
+# files describe, which nothing pulls until someone writes that tag into
 # azure-pipelines.yml.
 
 trigger:
@@ -25,81 +69,112 @@ trigger:
       - "*"
   paths:
     include:
-      # The directories that hold every path `scripts/ci/ci-image.sh inputs
-      # <track>` prints, together with the file the pins are read out of. A
-      # change under one of these that no image digests queues a run that finds
-      # every tag already pushed and ends in under a minute; a digested change
-      # outside them would queue no build at all, which is the failure that
-      # cannot be recovered from, so the directories are listed whole.
+      # The sorted union of `scripts/ci/ci-image.sh inputs <track>` over every
+      # track, together with the file the pins are read out of.
+      # ci/tests/test_wiring.py holds the two to each other, because they fail
+      # in opposite directions and neither failure is loud: a path digested but
+      # not listed here is a pin that moves with no image built for it, and a
+      # path listed here but not digested is a build queued for nothing.
+      #
+      # .devcontainer/docker-compose.yml is the one path here that no tag
+      # digests directly. A tag digests the pins ci/images/build-args.sh reads
+      # out of that file rather than the file itself, so that bumping a pin no
+      # CI image installs retires no image. Bumping one an image does install
+      # moves its tag, and a trigger that left the file out would queue no
+      # build for it, which is the failure that cannot be recovered from.
+      # Listing it takes the milder half instead: a run queued for a pin these
+      # images ignore finds every tag already pushed and ends in under a
+      # minute.
       - .devcontainer/docker-compose.yml
-      - ci/images
-      - packages/gg-sandbox
-      - packages/gg-sandbox-cpp
-      - packages/gg-sandbox-csharp
-      - packages/gg-sandbox-java
-      - packages/gg-sandbox-kotlin
-      - packages/gg-sandbox-purescript
-      - packages/gg-sandbox-python
-      - packages/gg-sandbox-ruby
-      - packages/gg-sandbox-rust
-      - packages/gg-sandbox-swift
-      - rust-toolchain.toml
-      - scripts
+      - .devcontainer/languages/node
+      - .devcontainer/languages/rust
+      - .devcontainer/system/browser-deps.sh
+      - .devcontainer/tools/browsers.sh
+      - .devcontainer/tools/kubectl.sh
+      - .devcontainer/tools/uv.sh
+      - ci/images/build-args.sh
+      - ci/images/rust.Dockerfile
+      - ci/images/rust.Dockerfile.dockerignore
+      - ci/images/web.Dockerfile
+      - ci/images/web.Dockerfile.dockerignore
+      - scripts/ci/ci-image.sh
 
+# Stated, though Azure Repos does not read it. See the first paragraph of the
+# section above.
 pr: none
 
 pool:
   vmImage: ubuntu-24.04
 
 jobs:
-  # One job per image and no `dependsOn` between them: they push to different
-  # repositories, so the pipeline costs the slower of the two rather than their
-  # sum. Neither declares a `container:`. These jobs build images; they need the
-  # hosted agent's own docker and buildx, which is the other reason the work is
-  # here and not in the gates pipeline, whose jobs run in images that carry no
-  # docker CLI at all.
+  # One job per image, with no `dependsOn` between them: none reads what
+  # another writes and they push to different repositories, so running them at
+  # once makes the pipeline cost the slowest of them rather than their sum.
+  #
+  # None declares a `container:`. These jobs build images; they do not run
+  # inside one. They need the hosted agent's own docker and buildx, which is
+  # the other reason the work is here and not in the gates pipeline, whose jobs
+  # run in images that deliberately carry no docker CLI at all.
   - job: rustImage
     displayName: Rust CI image
+    # The most a Microsoft-hosted agent gives a private project. A cold build
+    # of an image is a few minutes; the ceiling is for the first build after a
+    # base image moves, when nothing is taken from the layer cache.
+    timeoutInMinutes: 60
     steps:
-      # One commit is enough: the tag digests the index, not the history.
+      # One commit is enough. The tag digests the index, not the history, and
+      # nothing here pushes anywhere git can see.
       - checkout: self
         fetchDepth: 1
 
-      # The hosted image arrives nearly full of SDKs nothing here uses, and a
-      # buildx build of several gigabytes writes its layers twice, once into the
-      # builder's cache and once on the way to the registry.
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
+      # The hosted image arrives about 80% full of SDKs nothing here uses, and
+      # a buildx build of a couple of gigabytes writes its layers twice: once
+      # into the builder's cache and once on the way to the registry.
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
 
-      # `tcab-acr` is the Docker Registry service connection holding AcrPush on
-      # testcabinet.azurecr.io. This writes the credential into the agent's docker
-      # configuration for the rest of the job, which is where the existence check
-      # and the `--push` inside ci-image.sh both read it from.
+      # `the-test-cabinet-acr` is a Docker Registry service connection to
+      # testcabinet.azurecr.io with push rights on it. This task writes the
+      # credential into the agent's docker configuration for the rest of the
+      # job, which is what the existence check and the `--push` inside
+      # ci-image.sh both read it back from.
       - task: Docker@2
         displayName: Sign in to the registry
         inputs:
           command: login
-          containerRegistry: tcab-acr
+          containerRegistry: the-test-cabinet-acr
 
       # Skips the build outright when the registry already holds the tag this
       # checkout names, which is the common case.
-      - script: ./scripts/ci/ci-image.sh build rust
+      - script: scripts/ci/ci-image.sh build rust
         displayName: Build and push the Rust CI image
+
+      # The project's own steps once the image is pushed, which
+      # .azure/project/ci-image-steps.yml holds for every image job alike.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: rust
 
   - job: webImage
     displayName: Web CI image
+    timeoutInMinutes: 60
     steps:
       - checkout: self
         fetchDepth: 1
 
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
 
       - task: Docker@2
         displayName: Sign in to the registry
         inputs:
           command: login
-          containerRegistry: tcab-acr
+          containerRegistry: the-test-cabinet-acr
 
-      - script: ./scripts/ci/ci-image.sh build web
+      - script: scripts/ci/ci-image.sh build web
         displayName: Build and push the web CI image
+
+      # As on the Rust image job.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: web

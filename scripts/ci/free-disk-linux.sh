@@ -23,7 +23,7 @@
 # guarded — so a future image reshuffle can never turn this into a red build.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "disk before reclaim"
 df -h /

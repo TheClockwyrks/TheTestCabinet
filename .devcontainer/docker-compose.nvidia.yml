@@ -1,0 +1,19 @@
+# The dev service with the host's NVIDIA GPUs, for a host that has them behind
+# its container runtime. It is not started on its own: `nvidia/devcontainer.json`
+# lists it after `docker-compose.yml`, and compose merges it over the service
+# declared there, so an editor's Reopen in Container offers that configuration
+# beside the ordinary one and `devcontainer up --config
+# .devcontainer/nvidia/devcontainer.json` starts it. See "GPU access" in
+# README.md.
+services:
+  dev:
+    devices:
+      # Every GPU the host's Container Device Interface specification names.
+      # The specification is generated once on the host by
+      # `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, and Podman
+      # hands the devices, the driver libraries and `nvidia-smi` in from it.
+      - nvidia.com/gpu=all
+    security_opt:
+      # No SELinux relabeling of what the device brings in, which a host
+      # enforcing SELinux would otherwise deny the container.
+      - label=disable

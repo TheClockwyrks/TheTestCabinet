@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
 # Prints the version pins one CI image consumes, as `NAME=VALUE` lines, for
-# scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg` and to fold
-# into that image's content-addressed tag.
+# scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg` and to
+# fold into that image's content-addressed tag.
 #
 # Usage: ci/images/build-args.sh <rust|web>
 #
-# A version is decided in one place, the `x-devcontainer-build-args` anchor in
-# .devcontainer/docker-compose.yml, so that the toolchain a gate runs under in
-# the pipeline is the one a developer runs under in the devcontainer. A CI image
-# with its own copy of a pin would drift, and the first symptom would be a gate
-# that passes in a terminal and fails in the pipeline, or the reverse.
+# There is one place a version is decided in this workspace and it is the
+# `x-devcontainer-build-args` anchor in .devcontainer/docker-compose.yml. A CI
+# image that kept its own copy of a pin would drift from the container a
+# developer works in, and the first symptom would be a gate that passes on a
+# laptop and fails in the pipeline, or the reverse. So the pins are read out of
+# that anchor as text and handed to the build.
 #
-# Which pins is decided by the image: this reads the bare `ARG NAME` lines of
-# ci/images/<track>.Dockerfile and returns the anchor's literal value for each.
-# That is what keeps a bump of a pin no CI image consumes (LAZYGIT_VERSION) from
-# retiring a good image tag, while a bump of one an image does consume rebuilds
-# it. An `ARG` carrying its own default is a value the Dockerfile decided for
-# itself and is not read here.
+# Which pins is decided by the image itself: this reads the `ARG` lines of
+# ci/images/<track>.Dockerfile and returns the ones the anchor has a literal
+# value for. That is what keeps a bump of a pin no CI image consumes —
+# CLAUDE_CODE_VERSION, CODEX_VERSION, LAZYGIT_VERSION — from retiring a
+# perfectly good image tag, while a bump of one an image does consume rebuilds
+# it.
 #
-# The anchor is read with awk rather than a YAML parser: it needs no compose on
-# the agent and behaves identically under Docker and Podman, and it is how
-# .devcontainer/tools/browsers.sh already reads the same file. A value containing
-# `$` is skipped: those are the anchor's interpolated entries (USERNAME, USER_UID,
-# USER_GID, DOCKER_GID, TZ), each a property of the host a devcontainer is built
-# on, which a CI image has none of.
+# Not every version an image installs is in the anchor. The devcontainer's
+# install scripts pin some of their own — uv, pre-commit, kubectl, rustup,
+# cargo-binstall — and those scripts are inputs of the images that run them, so
+# a bump in one moves that image's tag through the other half of the digest.
+# See "Version pins" in README.md.
+#
+# The anchor is read with awk rather than with `docker compose config`, for
+# three reasons. It needs no compose on the agent, it behaves identically under
+# Docker and Podman, and it is the rule this workspace already follows: there is
+# no YAML parser here, by design, and scripts/check-devcontainer.py reads the
+# same file as text for the same reason.
+#
+# A value containing `$` is skipped. Those are the anchor's interpolated
+# entries — USER_UID and USER_GID — and both of them are properties of the
+# host a devcontainer is being built on. A CI image has no host user to match.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +56,9 @@ if [[ ! -f "$DOCKERFILE" ]]; then
 	exit 1
 fi
 
+# The pins the image asks for. Only a bare `ARG NAME` counts: an `ARG` carrying
+# its own default is a value the Dockerfile decided for itself and is none of
+# this script's business.
 mapfile -t declared < <(sed -n 's/^ARG \([A-Z0-9_]*\)$/\1/p' "$DOCKERFILE" | sort -u)
 
 if [[ "${#declared[@]}" -eq 0 ]]; then
@@ -54,8 +67,8 @@ if [[ "${#declared[@]}" -eq 0 ]]; then
 	exit 1
 fi
 
-# The block runs from the anchor's own line to the next line that starts in
-# column zero, which is the next top-level key.
+# The pins the anchor decides. The block runs from the anchor's own line to the
+# next line that starts in column zero, which is the next top-level key.
 declare -A pinned=()
 while IFS='=' read -r name value; do
 	pinned["$name"]="$value"
@@ -79,8 +92,9 @@ if [[ "${#pinned[@]}" -eq 0 ]]; then
 fi
 
 # A declared ARG with no pin behind it would reach the build as an empty string,
-# and an empty string is a version that installs whatever is current, so it
-# fails here rather than producing an image nobody can reproduce.
+# and an empty string is a version that installs whatever is current. That is
+# the drift this whole mechanism exists to prevent, so it fails the build here
+# rather than producing an image nobody can reproduce.
 missing=()
 extracted=()
 

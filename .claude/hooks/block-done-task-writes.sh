@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
-# PreToolUse(Write|Edit|NotebookEdit) hook: make completed issues immutable.
+# PreToolUse(Write|Edit|NotebookEdit) hook: make finished issues immutable.
 #
-# A completed issue moves into a `done/` folder beside the open ones in its area
-# folder. From that moment it is history, not a live document: CLAUDE.md says
-# nothing under tasks/ is authoritative and that a landed issue's durable
-# conclusions belong in apps/docs/, and the repo-tasks skill
-# (.claude/skills/repo-tasks/SKILL.md) makes completed issues immutable.
+# The board holds a finished issue in a `done/` folder beside the open ones
+# (tasks/README.md). Those files are history rather than live documents: they
+# are kept for context while a set of issues is worked through, they are
+# pruned periodically, and nothing may depend on what they say.
 #
-# That makes editing them pure waste. There are hundreds of them today and there
-# will be thousands, so an agent that keeps their cross-links and details
-# current is spending real effort on files nobody reads. This hook denies the
-# write outright rather than trusting each agent to decide.
+# That makes editing them pure waste, so an agent that keeps their cross-links
+# and details current is spending real effort on files nobody reads. This hook
+# denies the write outright rather than trusting each agent to decide.
 #
 # What is blocked: any Write, Edit or NotebookEdit whose target resolves to a
 # path with a `done` segment under the repo's `tasks/` folder.
 #
-# What is NOT blocked, because neither is a write to a completed issue:
-#   - open and blocked issues, and anything else under tasks/
+# What is NOT blocked, because none of them is a write to a finished issue:
+#   - every open and blocked issue, and anything else under tasks/
 #   - a `done/` folder anywhere outside tasks/
-#   - moving an issue INTO done/, which is how an issue is completed. That is a
-#     rename (`git mv`), not a write, so it never reaches this hook.
+#   - finishing an issue, which moves its file into `done/`. That is a rename,
+#     not a write, so it never reaches this hook.
 #
 # Two deliberate limits. Without `jq` the payload cannot be parsed at all, so
 # the hook exits silently and allows the write, matching what the sibling hooks
@@ -44,9 +42,9 @@ deny() {
 
 remedy="$(cat <<'TEXT'
 What to do instead:
-- Correcting or extending live information: put it in the open issue, the docs under apps/docs/src/content/docs/, or a new issue. Never in a completed one.
-- Completing an issue: move the file into done/ with `git mv`. A move is not a write and is not blocked.
-- Reopening an issue: `git mv` it back out of done/, then edit it where it lands.
+- Correcting or extending live information: put it in an open issue, the docs under apps/docs/src/content/docs/, or a new issue. Never in a finished one.
+- Marking an issue done: move its file into the `done/` folder beside it, which is a rename rather than a write.
+- Reopening work a finished issue describes: file a new issue for it, and leave the finished one where it is.
 
 Do not retry this write, and do not work around it with Bash.
 TEXT
@@ -65,7 +63,7 @@ targets_json="$(printf '%s' "$input" | jq -c '
 # A path that is present but is not a string cannot be resolved, so it cannot be
 # cleared either. Refuse it rather than letting an unreadable target through.
 if printf '%s' "$targets_json" | jq -e 'any(.[]; type != "string")' >/dev/null 2>&1; then
-	deny "Blocked: this tool call's target path is not a string, so it cannot be checked against the completed-issue rule.
+	deny "Blocked: this tool call's target path is not a string, so it cannot be checked against the finished-issue rule.
 
 Issues under a \`done/\` folder are immutable and every write to one is refused. Re-issue the call with the file path as a plain string."
 fi
@@ -108,9 +106,9 @@ for target in "${targets[@]}"; do
 	relative="${target#"$tasks_dir"/}"
 	[[ "/$relative" == */done/* || "/$relative" == */done ]] || continue
 
-	deny "Blocked: tasks/$relative is a completed issue, and completed issues are immutable.
+	deny "Blocked: tasks/$relative is a finished issue, and those are immutable.
 
-An issue in a \`done/\` folder is a record of work that is finished. Per .claude/skills/repo-tasks/SKILL.md those files are historical context only and must never hold information anything else depends on; CLAUDE.md puts a landed issue's durable conclusions in apps/docs/ instead. Keeping their links or details current is effort spent on files that are not read.
+An issue in a \`done/\` folder is a record of work that is finished. Per .claude/skills/repo-tasks/SKILL.md such a file is history, is left where it is, and holds nothing anything else depends on. Keeping its links or details current is effort spent on a file that is not read.
 
 $remedy"
 done

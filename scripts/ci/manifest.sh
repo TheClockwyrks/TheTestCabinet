@@ -11,7 +11,7 @@
 # a single-architecture image. The caller is already logged in to the registry.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -lt 2 ]]; then
 	echo "usage: scripts/ci/manifest.sh <sha> <image>..." >&2

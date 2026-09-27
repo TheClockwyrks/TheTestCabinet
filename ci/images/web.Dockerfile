@@ -1,61 +1,97 @@
-# The web track's CI image: everything the `web` and `checks` jobs of
-# azure-pipelines.yml execute, and nothing else. See ci/images/README.md for what
-# is in it and why, and scripts/ci/ci-image.sh for how it is built, tagged and
-# pushed.
+# The web track's CI image: everything the gates in the `web` job of
+# azure-pipelines.yml reach for, and nothing else.
 #
-# This is not the devcontainer, for the reasons ci/images/rust.Dockerfile gives,
-# and it is not the Rust image either: nothing on this track compiles a crate, so
-# it carries no compiler and none of gg's toolchains. It holds Node, the Chromium
-# the front-end suites drive through Playwright, and the kubectl the manifest
-# gate renders kustomizations with. Prettier, markdownlint, cspell, vitest and
-# TypeScript are the workspace's own pinned copies, installed by the job's
-# `npm ci`.
+# This is not the devcontainer. The devcontainer is a place to work — it carries
+# coding agents, the Azure CLI, gh, k3d, kubelogin, lazygit and a shell
+# configured for a person, none of which a gate invokes. Pulling and unpacking
+# that on every run of every track costs more than the checks themselves take.
+# So CI gets its own image per track, built from the same install scripts and
+# the same version pins, holding only what the checks execute.
 #
 # The pins come from the `x-devcontainer-build-args` anchor in
-# .devcontainer/docker-compose.yml, read by ci/images/build-args.sh and passed
-# in as the build arguments below.
+# .devcontainer/docker-compose.yml, extracted by ci/images/build-args.sh and
+# passed in as the build arguments below. There is no second place a version is
+# decided, which is what keeps a browser engine in this image the same build as
+# the one in a developer's container. See ci/images/README.md.
+#
+# Built for linux/amd64 only: Azure's hosted agents are amd64, and the
+# devcontainer stays multi-architecture by being built on the machine that runs
+# it. scripts/ci/ci-image.sh builds and pushes this file.
 FROM docker.io/library/ubuntu:26.04
 
-# apt must never stop for a prompt during the build. An ARG with a default, so
-# build-args.sh does not treat it as a pin and it does not reach a gate.
+# apt must never stop for a prompt during the build — tzdata asks for a region
+# otherwise. This is an ARG rather than an ENV so it holds for the build and
+# does not leak into the environment a gate runs in. It carries its own default,
+# which is what keeps ci/images/build-args.sh from treating it as a version pin.
 ARG DEBIAN_FRONTEND=noninteractive
 
 ARG NODE_VERSION
 ARG PLAYWRIGHT_VERSION
 
-# kubectl's pin is not in the compose anchor: the devcontainer installs it in
-# .devcontainer/tools/k8s.sh, beside k3d and kubelogin, which no gate uses. Keep
-# this equal to KUBECTL_VERSION there.
-ARG KUBECTL_VERSION=1.35.6
+# Built as root, with no USER line, and the steps do not run as root. Azure runs
+# `useradd -m -u 1001 vsts_azpcontainer` against a container job and execs every
+# step as that user, whatever the image's default user is and whatever `--user`
+# the container resource asks for. HOME below is still this image's, so a step
+# runs as uid 1001 with HOME=/root, and every tool keeping a cache under HOME
+# writes there. That is why /root is handed to that uid at the end of this file. The
+# UID/GID-matching apparatus in .devcontainer/system/init-user.sh exists to make
+# a developer's edits land with the right ownership on a bind mount, which buys
+# a CI image nothing, so it is neither copied nor run here.
+ENV HOME=/root \
+	USER=root \
+	LANG=C.UTF-8
 
-# Root throughout, with no USER line and no HOME line. Azure runs a container
-# job's steps as a user it adds to the container with the agent's own uid, and
-# with HOME unset here that user's home is where npm's and Playwright's caches
-# land. Everything this image installs lives under /usr/local and /opt, where
-# every user reads it. The PATH is complete here because a pipeline step reads no
-# rc file. Playwright reads PLAYWRIGHT_BROWSERS_PATH when it installs a browser
-# and again when a test asks for one, so the engine installed below is the one
-# the case-harness suite launches.
-ENV LANG=C.UTF-8 \
-	PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
-	PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+# The PATH has to be complete here. In the devcontainer the interactive shell's
+# rc file fills it in; a pipeline step reads no rc file, and nothing
+# reconstructs a PATH on its way into the job container. Anything a gate calls
+# is on this line or it does not exist.
+ENV PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-# The apt packages:
+# Where the install scripts below put what they install. /usr/local rather than
+# a home directory, because which user Azure runs a step as is the agent's
+# decision and a tool under /root would be one user's alone.
+ENV NODE_INSTALL_DIR=/usr/local/node \
+	NODE_BIN_DIR=/usr/local/bin \
+	KUBECTL_BIN_DIR=/usr/local/bin \
+	UV_INSTALL_DIR=/usr/local/bin \
+	UV_TOOL_DIR=/usr/local/share/uv/tools \
+	UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
+
+# The browser engines go somewhere every user can read, the way Playwright's own
+# images place them, rather than into root's cache. Playwright reads this
+# variable when it installs an engine and again when a test asks for one, so
+# ci/gates/web-browser-test.py resolves them through `executablePath()`
+# unchanged.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
+# The apt packages, written here rather than by splitting
+# .devcontainer/system/apt.sh. That script installs one list for a machine that
+# is both toolchains plus a developer's ergonomics — ripgrep, tmux, vim, tree,
+# ssh, sudo — and splitting it would risk the devcontainer to save nothing. This
+# list is short enough to state with its reasons in place.
 #
-#   - ca-certificates, curl, wget, tar, gzip, unzip, xz-utils, zip: the downloads
-#     below and the archives they arrive in.
-#   - git: the frozen, build-context and submodule-pin gates read the checkout
-#     through it, and the submodule gate fetches with it.
+#   - ca-certificates, curl, wget: every download below.
+#   - git: the gate runner shells out to `git rev-parse` before any gate does
+#     anything else, `no-nul-bytes` asks git for the files to read, and
+#     pre-commit is a git tool throughout.
 #   - jq: the shell scripts under scripts/ read JSON with it.
-#   - build-essential, python3: node-gyp's needs, so an npm dependency without a
-#     prebuilt binary for this platform still installs rather than failing the
-#     track for the want of a compiler.
+#   - python3: `shell-tests` runs every `*.test.sh` under scripts/, and
+#     scripts/check-devcontainer.test.sh drives a Python script with the
+#     interpreter it finds on the PATH. uv's own CPython is not on it, and is no
+#     substitute: it is an implementation detail of how the gates run.
+#   - tar, gzip, unzip, xz-utils: the Node tarball is a .tar.xz, the hook
+#     environments pre-commit builds unpack archives of their own.
+#   - locales, tzdata: a UTF-8 locale and a timezone database, so a test that
+#     formats a date agrees with one run in the devcontainer.
 #   - libstdc++6: Azure mounts its own Node into a container job and runs every
 #     `task:` of the job with it, and that build links against libstdc++.
-#   - locales, tzdata: a UTF-8 locale and a timezone database.
+#
+# Deliberately absent: shellcheck, because the pre-commit hook runs the binary
+# bundled in shellcheck-py's wheel rather than apt's, and build-essential,
+# because nothing this track installs compiles: every native npm dependency in
+# package-lock.json ships a prebuilt linux-x64 binary as an optional dependency.
 RUN apt-get update -y && \
 	apt-get install -y --no-install-recommends \
-		build-essential \
 		ca-certificates \
 		curl \
 		git \
@@ -68,50 +104,87 @@ RUN apt-get update -y && \
 		tzdata \
 		unzip \
 		wget \
-		xz-utils \
-		zip && \
+		xz-utils && \
 	rm -rf /var/lib/apt/lists/*
 
-# Node, from the official tarball, into /usr/local.
-RUN case "$(uname -m)" in \
-		x86_64) arch=x64 ;; \
-		aarch64) arch=arm64 ;; \
-		*) echo "no Node build for $(uname -m)" >&2; exit 1 ;; \
-	esac && \
-	curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" -o /tmp/node.tar.xz && \
-	mkdir -p /usr/local/node && \
-	tar -xJf /tmp/node.tar.xz -C /usr/local/node --strip-components=1 && \
-	ln -s /usr/local/node/bin/node /usr/local/node/bin/npm /usr/local/node/bin/npx /usr/local/bin/ && \
-	rm -f /tmp/node.tar.xz && \
-	node --version && npm --version
+# Each install script is copied in immediately before the step that runs it, so
+# an edit to one of them rebuilds that step and the ones after it rather than
+# every step from the first COPY down.
+COPY .devcontainer/languages/node/ /tmp/scripts/node/
 
-# kubectl, for the one gate that needs it: scripts/ci/k8s-manifests.sh renders
-# every overlay through kubectl's built-in kustomize and reaches no cluster, so
-# there is no kubeconfig, kubelogin or helm here.
-RUN case "$(uname -m)" in \
-		x86_64) arch=amd64 ;; \
-		aarch64) arch=arm64 ;; \
-		*) echo "no kubectl build for $(uname -m)" >&2; exit 1 ;; \
-	esac && \
-	curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${arch}/kubectl" -o /usr/local/bin/kubectl && \
-	chmod +x /usr/local/bin/kubectl && \
-	kubectl version --client
+# Node first, because the two browser steps at the bottom of this file both run
+# `npx` and neither can move above it.
+#
+# languages/node/install.sh is safe to reuse now that it takes its install and
+# link directories from the environment: it resolves the architecture out of the
+# image, and runs `node --version` once before it finishes, which is what
+# catches a tarball for the wrong architecture here rather than four layers
+# later. The C++ headers it unpacks go straight back out in the same layer —
+# they exist for node-gyp, and nothing on this track compiles a native addon.
+RUN bash /tmp/scripts/node/install.sh && \
+	rm -rf "$NODE_INSTALL_DIR/include" /root/.npm
 
-# Chromium and the system libraries it links against, at the Playwright version
-# packages/case-harness and packages/browser-driver pin, the way
-# .devcontainer/system/browser-deps.sh and .devcontainer/tools/browsers.sh
-# install them for a developer. The engine goes under /opt so every user reads
-# it. The step ends by starting the browser headless and rendering a page, which
-# is the only thing between a silently wrong download and a browser gate that
-# fails later without naming a cause.
-RUN apt-get update -y && \
-	npx --yes "playwright@${PLAYWRIGHT_VERSION}" install-deps chromium && \
-	npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium && \
-	npx --yes "playwright@${PLAYWRIGHT_VERSION}" screenshot --browser chromium about:blank /tmp/chromium.png && \
-	rm -f /tmp/chromium.png && \
-	chmod -R a+rX /opt/ms-playwright && \
-	rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache
+# uv, and on top of it pre-commit. Every gate is invoked as
+# `uv run --quiet --project ci gate run <id>`, so uv is the one command the
+# pipeline calls directly.
+#
+# tools/uv.sh is safe to reuse: it installs a static binary and takes its
+# destination from UV_INSTALL_DIR. The CPython it fetches to run pre-commit
+# under lands wherever UV_PYTHON_INSTALL_DIR points, which is why that is set
+# above rather than left to default under a home directory. That interpreter is
+# also the one `uv run --project ci` resolves, so the gate runner's environment
+# is built here rather than downloaded on the first step of every run.
+COPY .devcontainer/tools/uv.sh /tmp/scripts/
+RUN bash /tmp/scripts/uv.sh
 
-# git refuses a repository owned by another uid, and the checkout belongs to the
-# agent rather than to whichever uid a step runs as.
+# kubectl, for the one gate that needs it. `k8s-manifests` renders the overlays
+# under deployments/ through kubectl's built-in kustomize and never reaches a
+# cluster, so there is no kubeconfig here, no kubelogin and no helm. k3d is
+# absent for the same reason: nothing in CI stands a cluster up.
+#
+# tools/kubectl.sh is the kubectl half of tools/k8s.sh, split out so this image
+# installs one binary rather than the three they come to. It is safe to reuse
+# for the same reasons node's installer is: architecture out of the image,
+# destination from the environment, and it runs `kubectl version --client` once
+# before it finishes.
+COPY .devcontainer/tools/kubectl.sh /tmp/scripts/
+RUN bash /tmp/scripts/kubectl.sh
+
+COPY .devcontainer/system/browser-deps.sh .devcontainer/tools/browsers.sh /tmp/scripts/
+
+# The browser engines and the system libraries they link against, in that order,
+# both from the scripts the devcontainer uses. The devcontainer flips user twice
+# around this pair because the libraries are apt's and the engines belong in a
+# person's cache; this image is built as root and puts the engines somewhere
+# shared, so it runs them back to back.
+#
+# system/browser-deps.sh needed one change to be safe here: it required a
+# container user to find `npx` under, and now prepends that user's bin directory
+# only when there is one and insists on `npx` resolving rather than on who owns
+# it. tools/browsers.sh needed none — Playwright reads PLAYWRIGHT_BROWSERS_PATH
+# itself.
+#
+# browsers.sh ends by starting each engine headless and rendering a page in it.
+# That verification is kept, and is the reason this step is worth its minutes: a
+# download for the wrong architecture and a missing system library both install
+# perfectly quietly, and this is the only thing between either one and a browser
+# gate that fails days later without naming a cause.
+RUN bash /tmp/scripts/browser-deps.sh && \
+	bash /tmp/scripts/browsers.sh && \
+	rm -rf /var/lib/apt/lists/* /root/.npm /tmp/scripts
+
+# git refuses a repository owned by another uid, and running as root is not an
+# exemption. Every gate reaches git — the runner shells out to
+# `git rev-parse --show-toplevel` before any gate does anything else — and the
+# checkout belongs to the agent, not to this image.
 RUN git config --system --add safe.directory '*'
+
+# HOME for every step, and not writable by the uid that runs them until this
+# line. Recursive, because the directories the build already created under it
+# are the ones a step reaches for: `uv` made /root/.cache, and pre-commit's
+# store goes inside it. Widening /root alone leaves that one root-owned, which
+# is a permission error one directory deeper rather than none. `a+rwX` adds
+# execute to the directories and not to the files in them, and it is a+ rather
+# than an owner because the uid is Azure's to choose and this image holds
+# nothing secret.
+RUN chmod -R a+rwX /root

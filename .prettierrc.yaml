@@ -1,0 +1,22 @@
+# Prettier configuration for this project.
+#
+# Every value below is Prettier's own default, written out rather than left
+# implicit, so the formatting this project's code is held to stays the same if
+# Prettier's defaults ever move: 80 columns, double quotes, semicolons, trailing
+# commas and two-space indentation.
+#
+# What gets formatted is decided by `.prettierignore`, not here. See the
+# `format` / `format:check` scripts in `package.json`.
+
+printWidth: 80
+tabWidth: 2
+useTabs: false
+semi: true
+singleQuote: false
+quoteProps: as-needed
+jsxSingleQuote: false
+trailingComma: all
+bracketSpacing: true
+bracketSameLine: false
+arrowParens: always
+endOfLine: lf

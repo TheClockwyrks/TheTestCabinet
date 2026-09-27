@@ -35,8 +35,8 @@
 #   scripts/ci/install-wit-bindgen.sh
 #   GG_WIT_BINDGEN_INSTALL_DIR=/opt/gg/toolchains scripts/ci/install-wit-bindgen.sh
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # Read the pin out of every arm that has one, in a subshell each, because these files `export` a
 # common variable name and sourcing them in sequence would leave only the last one's value.

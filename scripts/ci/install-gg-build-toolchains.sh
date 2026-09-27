@@ -33,8 +33,8 @@
 #   scripts/ci/install-gg-build-toolchains.sh
 #   TCAB_GG_BUILD_PREFIX=/opt/gg/build scripts/ci/install-gg-build-toolchains.sh
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # shellcheck source=packages/gg-sandbox-csharp/csharp-version.sh
 source "$REPO_ROOT/packages/gg-sandbox-csharp/csharp-version.sh"

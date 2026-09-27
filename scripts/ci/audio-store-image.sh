@@ -17,7 +17,7 @@
 # `test-cabinet-audio-store:<sha>`. The caller is already logged in to the registry.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 1 ]]; then
 	echo "usage: scripts/ci/audio-store-image.sh <sha>" >&2

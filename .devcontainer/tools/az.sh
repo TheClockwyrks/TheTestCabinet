@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Installs the Azure CLI (`az`) and the `azure-devops` extension, used to query
-# the project's Azure DevOps CI pipeline runs programmatically (`az pipelines
-# runs list`, `az pipelines runs show`, etc.).
+# Installs the Azure CLI (`az`) and the `azure-devops` extension, used to drive
+# Azure resources and to query Azure DevOps pipeline runs programmatically
+# (`az pipelines runs list`, `az pipelines runs show`, etc.).
 #
 # Unlike most tools installed here, `az` is distributed as a system (apt) package
 # rather than a single static binary, so this installs it from Microsoft's apt

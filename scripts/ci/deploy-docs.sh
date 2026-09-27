@@ -12,7 +12,7 @@
 # the environment. The pipeline maps them from its secret variables of the same names.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The wrangler release the publisher image pins (WRANGLER_VERSION in
 # deployments/images/services.Dockerfile).

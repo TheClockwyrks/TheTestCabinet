@@ -9,3 +9,10 @@ fail-fast = false
 # period × terminate-after (120s here). This bounds a wedged test instead of
 # letting it hang the whole run until the CI job's own timeout fires.
 slow-timeout = { period = "60s", terminate-after = 2 }
+
+# The profile the pipeline runs the suite under, selected by NEXTEST_PROFILE=ci
+# in its `make gate` step. It inherits everything above and writes the JUnit
+# report the job publishes as the run's test results, at
+# target/nextest/ci/junit.xml under the checkout.
+[profile.ci.junit]
+path = "junit.xml"

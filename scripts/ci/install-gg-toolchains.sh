@@ -78,8 +78,8 @@
 # does what it looks like it does. That is how `containers/gg-toolchains/Dockerfile` reaches the same
 # installers for a run image.
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The per-arm installers put binaries here, and two of the checks below look for one.
 export PATH="$HOME/.local/bin:$PATH"

@@ -1,60 +1,50 @@
 #!/usr/bin/env bash
-# Installs the GitHub CLI (`gh`), which `tcab publish` shells out to in order to
-# create and push per-run repositories and configure GitHub Pages.
+# Installs the GitHub CLI (`gh`), which is how a repository hosted on GitHub is
+# driven from in here: pull requests, issues, and the runs of whatever Actions
+# workflows it carries. It sits beside tools/az.sh because a project's remote is
+# on one forge or the other, and a container that carries both reaches whichever
+# this project turned out to use. Authenticate once with `gh auth login`.
 #
-# `gh` is NOT part of the base devcontainer image. Run this script once after the
-# container is created (and again after a rebuild) to install it into
-# ~/.local/bin. Authenticate separately with `gh auth login` or a GH_TOKEN that
-# carries the `repo` and `workflow` scopes.
-#
-# THE VERSION IS PINNED, and deliberately so. This script used to resolve the
-# latest stable tag at build time from
-# https://api.github.com/repos/cli/cli/releases/latest, which made it the only
-# step of the image build that depended on the GitHub *API* — every other tool
-# here (lazygit, docker, k3d, kubectl, kubelogin, uv, node, rust) is pinned. That
-# API is rate-limited per client IP for unauthenticated callers and the image
-# build has no token, so the lookup is a request the build cannot retry its way
-# out of and cannot cache: a rebuild on a rootless-Podman NixOS host died on
-#
-#     curl: (22) The requested URL returned error: 404
-#
-# immediately after the azure-cli layer, with nothing else in the RUN changed.
-# The download from github.com itself was never the problem — `lazygit.sh` pulls
-# a release asset off github.com earlier in the same RUN and succeeded — so what
-# failed was the API call, and an unpinned build that also can't be reproduced
-# from one machine to the next is worth nothing here. Bump the pin below when a
-# newer `gh` is wanted; `GH_VERSION=2.98.0 bash gh.sh` overrides it for a
-# one-off, matching how `uv.sh` pins uv and pre-commit.
+# `gh` is not a toolchain the pipeline names, so it carries no build argument
+# and the version is pinned below, in the script that installs it, which is
+# where .devcontainer/README.md puts a tool without one. It ships as a single
+# static binary per platform, installed into ~/.local/bin (already on PATH per
+# the Dockerfile). This runs at container build time and is safe to re-run by
+# hand after a rebuild.
 set -euo pipefail
 
-# See https://github.com/cli/cli/releases for the available versions.
-readonly GH_VERSION="${GH_VERSION:-2.97.0}"
+# See https://github.com/cli/cli/releases for the download URLs.
+readonly GH_VERSION="2.101.0"
 
-# gh publishes Linux archives for amd64 and arm64; map the Debian architecture
-# name onto the one gh uses in its asset file names.
-case "$(dpkg --print-architecture)" in
-	amd64) readonly GH_ARCH="amd64" ;;
-	arm64) readonly GH_ARCH="arm64" ;;
+# gh's name for this architecture is the one dpkg uses. Read out of the image
+# rather than passed in as a build arg — see "Architecture" in
+# .devcontainer/README.md.
+arch="$(dpkg --print-architecture)"
+case "$arch" in
+	amd64 | arm64) readonly ARCH="$arch" ;;
 	*)
-		echo "Unsupported architecture: $(dpkg --print-architecture)" >&2
+		echo "gh.sh: unsupported architecture '$arch'" >&2
 		exit 1
 		;;
 esac
 
-readonly ARCHIVE_NAME="gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
-readonly DOWNLOAD_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${ARCHIVE_NAME}"
-readonly INSTALL_PATH="$HOME/.local/share/gh/${GH_VERSION}"
-# Stage the download under the install dir rather than /tmp, which can be a small
-# tmpfs that cannot hold the archive.
-readonly TAR_PATH="$HOME/.local/share/gh/gh.tar.gz"
-readonly BIN_PATH="$HOME/.local/bin/gh"
+readonly BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
 
-mkdir -p "$INSTALL_PATH" "$HOME/.local/bin"
-curl -fsSL -o "$TAR_PATH" "$DOWNLOAD_URL"
-# The archive contains a single `gh_<version>_linux_<arch>/` top-level directory;
-# strip it so the binary lands directly under the install path.
-tar -xzf "$TAR_PATH" -C "$INSTALL_PATH" --strip-components=1
-ln -sf "$INSTALL_PATH/bin/gh" "$BIN_PATH"
-rm -f "$TAR_PATH"
+# The archive holds one `gh_<version>_linux_<arch>/` directory, and the binary
+# under its bin/ is all that is taken from it.
+readonly ARCHIVE_DIR="gh_${GH_VERSION}_linux_${ARCH}"
+wget -O - "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${ARCHIVE_DIR}.tar.gz" \
+	| tar -xz -C "$BIN_DIR" --strip-components=2 "${ARCHIVE_DIR}/bin/gh"
+chmod +x "$BIN_DIR/gh"
 
-echo "Installed gh ${GH_VERSION} to ${BIN_PATH}"
+# Run it once, so an artifact for the wrong architecture fails the image build
+# rather than a person's first command. See "Architecture" in
+# .devcontainer/README.md.
+if ! "$BIN_DIR/gh" --version >/dev/null 2>&1; then
+	echo "gh.sh: ${ARCHIVE_DIR} does not run in this image" >&2
+	echo "  dpkg --print-architecture: $arch; uname -m: $(uname -m)" >&2
+	exit 1
+fi
+
+echo "Installed gh ${GH_VERSION}"

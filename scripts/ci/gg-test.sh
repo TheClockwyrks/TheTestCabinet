@@ -12,7 +12,7 @@
 # crate's tests are scripts/ci/rust-test.sh.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 usage() {
 	echo "usage: scripts/ci/gg-test.sh [k/N]" >&2

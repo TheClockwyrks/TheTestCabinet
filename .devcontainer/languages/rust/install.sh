@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Installs the Rust toolchain and the extra targets The Test Cabinet needs.
+# Installs the Rust toolchain, the targets targets.sh adds beside the host's
+# own (this architecture's musl target),
+# and cargo-nextest, the test runner the gate uses.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

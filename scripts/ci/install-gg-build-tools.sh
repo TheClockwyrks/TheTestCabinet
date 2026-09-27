@@ -47,8 +47,8 @@
 # Usage:
 #   scripts/ci/install-gg-build-tools.sh
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 export PATH="$HOME/.local/bin:$PATH"
 # shellcheck source=scripts/gg-npm-tools.sh

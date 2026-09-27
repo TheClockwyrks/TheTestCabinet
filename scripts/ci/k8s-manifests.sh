@@ -17,7 +17,7 @@
 # Needs kubectl (for its built-in kustomize) and no cluster.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
 failed=0
@@ -49,7 +49,7 @@ for env in staging prod; do
 	namespace="tcab-${env}"
 	log "azure-${env}"
 
-	deployed="$(./scripts/ci/deploy.sh --render "$env" "$SHA")"
+	deployed="$(./scripts/ci/deploy-environment.sh --render "$env" "$SHA")"
 	if ! ci_assert_namespaced "$namespace" <<<"$deployed"; then
 		fail "the ${env} deploy applies objects outside ${namespace}; move them under deployments/k8s/cluster/"
 	fi

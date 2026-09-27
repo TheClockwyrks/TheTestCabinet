@@ -9,24 +9,80 @@ The standard development pattern within this repository is as follows:
 
 - Manually test an implementation
 - Put together a list of bugs, changes, and improvements that need to be made
-- File and commit issues that covers the list
+- File and commit issues that cover the list
   - This process also updates documentation to match the intended design.
 - Drain the issues queue
 - Repeat
 
 This skill covers how the issues queue should be drained. The `repo-tasks` skill
 is mandatory reading when using this skill as it provides the policies that
-govern how the `tasks/` folder is used.
+govern how the `tasks/` folder is used, and the `coding` skill governs every
+commit the work makes.
+
+This project's changelogs, under `apps/docs/src/content/docs/changelogs/`, are
+written only immediately before a release and only when asked, so draining the
+queue writes no changelog entry. A test-case version whose directory carries a
+`.frozen` marker is never edited: an issue whose fix would change one is fixed in
+a new version of the case, or it is blocked. The unit tests of `crates/gg` are
+not part of `rust-test`: a change under `crates/gg/` also runs
+`scripts/ci/gg-test.sh`, which runs that suite.
 
 ## Scope
 
 All issues are located under `tasks/` in the repo root. The "repo-tasks" skill
 covers policies for issue files.
 
+An issue is a Markdown file, filed under the epic it is work on and then the
+area within it. An open one sits in that area folder, a finished one in a
+`done/` folder beside it, and one awaiting user input in a `blocked/` folder, so
+the open issues are what this finds:
+
+```sh
+find tasks -name '*.md' -not -path '*/done/*' -not -path '*/blocked/*' \
+  -not -name 'README.md'
+```
+
 Whenever this skill is used, the expectation is that **ALL** open issues are to
 be implemented. If any issues are to be excluded, they will be explicitly
 mentioned when using this skill. If no issues are mentioned, then all open
 issues are in scope.
+
+An issue names the work and the requirements it satisfies, and nothing about its
+state: the folder it sits in is the whole of that. Read each issue in scope
+before planning the run, because a dependency between two issues is stated in
+their text rather than recorded anywhere a command can read.
+
+## Gates
+
+The gates are the repository's checks, one file per gate under `ci/gates/`, and
+the file's stem is the gate's id:
+
+```sh
+uv run --quiet --project ci gate list
+uv run --quiet --project ci gate run rust-clippy rust-test
+```
+
+Run the gates that cover what an issue touched while the work is in progress,
+and every gate once before the work is merged. Committing runs the fast gates
+through pre-commit, so a commit a gate rejects is not made at all. A gate
+too slow for a commit, as `rust-test` is, has no hook and is run
+only through the runner.
+
+Given `--report-dir`, the runner prints no gate's output, runs every gate
+whatever the ones before it did, and writes each gate's output to a file with a
+`SUMMARY.md` beside it naming what failed:
+
+```sh
+uv run --quiet --project ci gate run --report-dir <a directory outside> --all
+```
+
+Use that form in a workflow and hand an agent the summary's path and the path of
+a failed gate's log. Never hand an agent a gate's output itself. Put the report
+directory outside the repository, so that a run leaves nothing behind to commit.
+
+The workflow runs the gates, never an agent reporting its own result. An agent
+told that the gates were run takes that result, because the workflow reports
+what the command really returned.
 
 ## Policies
 
@@ -61,9 +117,23 @@ allowed to make design decisions themselves. Additionally, changes to the
 documentation may only be made to clarify the intended behavior or mandate a
 specific implementation, **NEVER** to describe the current implementation.
 Describing the code for the sake of documenting the code instead of to mandate
-specific traits about the implementation inventing a second source of truth.
+specific traits about the implementation invents a second source of truth.
 
 The documentation skill applies any time edits to the documentation are made.
+
+### Reviewing an Implementation
+
+Every change is reviewed by an agent that did not write it and that changes
+nothing itself. The reviewer reads the change as a diff against the branch the
+work forked from, checks that it does all the issue asks, that it holds at the
+edges and on failure, and that it follows the repository's policies. Every edit
+that follows is the implementer's.
+
+Findings accumulate across the cycles of the implement and review loop, and
+every cycle is given all of them, open and resolved. A resolved finding is a
+decision, and is raised again only where the code has changed enough since to
+justify it, with the reviewer saying so when it does. That accumulation is what
+makes the loop halt, and the loop is bounded besides.
 
 ### Do Not Interrupt on Blocked Issues
 
@@ -80,11 +150,11 @@ necessary design details. However, the documentation does **NOT** attempt to
 specify every last detail of the implementation as doing so would make the
 documentation a second source of truth for the implementation. Instead, the
 documentation *only* attempts to specify aspects of the design and drops down
-to low level details only implementation details are a hard requirement.
+to low level details only when implementation details are a hard requirement.
 
 Agents are explicitly **NOT** allowed to make design-level changes to the
 documentation, so there needs to be a mechanism for an implementer to stop
-without implementing a issue if there's an issue. For example, if the
+without implementing an issue if there's a problem. For example, if the
 documentation has contradictions or inconsistencies, an implementation cannot
 satisfy the documented specification.
 
@@ -112,6 +182,13 @@ around). An implementer that objects on grounds that the docs don't match the
 code indicates that the implementer has a fundamental lack of understanding of
 the repository policies.
 
+The one objection about the documentation that is never invalid is the opposite
+claim: that the code is right and the requirement is what should change, because
+it contradicts another requirement, cannot be satisfied, or forces a worse
+implementation than the alternative. A reviewer that reaches that conclusion
+reports the documentation as the defect and changes none of it. The decision is
+the user's, so the issue is blocked on it.
+
 Other notes with respect to how this must be handled:
 
 - Workflow scripts have no filesystem access, so enforcement of these rules must
@@ -133,6 +210,14 @@ Other notes with respect to how this must be handled:
   documentation changes. If an agent thinks documentation needs to be changed,
   it needs to request that the issue it was assigned be reclassified as blocked
   and go through that process.
+
+### Completing an Issue
+
+An issue is complete once the work is committed, the gates that cover it pass
+and the reviewer has no finding left open. Completing it is a move: the issue's
+file goes into a `done/` folder beside where it sat, which is how the board says
+the work is finished without anyone opening the file. Commit that move with the
+work rather than after it.
 
 ### Use Workflows
 
@@ -169,6 +254,8 @@ apply the following:
 - Prefer having agents write their results to disk ("pointers" instead of
   payloads)
   - This avoids length and/or complexity issues when returning output
+  - Write them outside the repository, so that a run leaves nothing behind to
+    commit and no file the board could be mistaken for
   - This only applies if the agent output doesn't need to be branched on in the
     workflow script itself
 - Agent output should be kept terse
@@ -188,6 +275,7 @@ apply the following:
     parallel agents, a concurrency of 8 can be used as long as the workflow
     isn't expected to remain at the concurrency cap for a lengthy duration.
   - Limiting concurrency has to be hand-rolled, e.g.:
+
     ```js
     async function pool(items, fn, limit) {
       const results = new Array(items.length);
@@ -200,6 +288,7 @@ apply the following:
       return results;
     }
     ```
+
 - Require all agents to use `flock` on a path you specify (i.e. shared across
   all workflows) whenever they run a command expected to consume the entire CPU
   to avoid massively oversubscribing the CPU due to concurrent agents' command
@@ -220,6 +309,12 @@ parallelize issues that legitimately depend on each other.
 
 Worktrees use their own cargo target folder to avoid conflicting during parallel
 execution. Instruct agents to set `CARGO_TARGET_DIR` when running cargo commands.
+
+Everything that happens in the main checkout is serialized: a branch's merge,
+the agent that resolves a conflict, and the gates after it. Run the gates in the
+main checkout after any merge that landed, because two branches that each passed
+alone can fail together, and send a failure there to an agent started in the
+main checkout rather than to the worktree that is already gone.
 
 ## Cleanup
 

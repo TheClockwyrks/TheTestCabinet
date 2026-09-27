@@ -6,7 +6,7 @@
 # and the Rust CI image carries them.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo build -p test-cabinet-gg --all-targets"
 cargo build --locked -p test-cabinet-gg --all-targets

@@ -6,9 +6,7 @@
 # .pre-commit-config.yaml run on every `git commit`. Safe to re-run any time.
 #
 # Because git never runs committed hooks until something wires them into a clone,
-# this is the single command that does that wiring. CI (scripts/ci/*, driven by
-# azure-pipelines.yml) runs the same formatting/lint/spell gates, so it stays the
-# backstop even if a clone never runs this.
+# this is the single command that does that wiring.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -19,6 +17,10 @@ cd "$(git rev-parse --show-toplevel)"
 if ! command -v pre-commit >/dev/null 2>&1; then
 	if command -v uv >/dev/null 2>&1; then
 		echo "pre-commit not found; installing it with uv..."
+		# Keep this version on PRE_COMMIT_VERSION in .devcontainer/tools/uv.sh,
+		# which is where the image's own pre-commit is pinned; a clone that falls
+		# through to here should end up with the same framework the devcontainer
+		# has, not a newer one that judges the hooks differently.
 		uv tool install "pre-commit==4.6.0"
 		# uv links tools into ~/.local/bin; make sure it's reachable this run.
 		export PATH="$HOME/.local/bin:$PATH"

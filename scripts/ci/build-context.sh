@@ -61,7 +61,7 @@
 #   scripts/ci/build-context.sh
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # --- the .dockerignore matcher ----------------------------------------------
 

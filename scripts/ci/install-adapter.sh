@@ -30,8 +30,8 @@
 #   scripts/ci/install-adapter.sh
 #   GG_ADAPTER_INSTALL_DIR=/opt/gg/toolchains/adapters scripts/ci/install-adapter.sh
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # Each in a subshell, because the two files export the same variable names and the second would
 # otherwise overwrite the first — which is exactly the disagreement this is here to detect.
