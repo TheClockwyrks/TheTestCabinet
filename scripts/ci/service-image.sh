@@ -18,6 +18,21 @@
 #
 # Layers are cached in the registry per image and architecture, so a build whose
 # inputs did not change skips those stages.
+#
+# TCAB_PREBUILT_GG — the gg the backend and driver bake
+# ----------------------------------------------------
+# Set it to a directory holding `gg` and `gg-reference/` and the two images that consume
+# the Dockerfile's `gg-build` stage take those bytes instead of linking a gg of their own:
+# the flag becomes `--build-context gg-build=<dir>`, which REPLACES that stage, so it never
+# enters the build graph and each `COPY --from=gg-build` resolves against the directory.
+# scripts/ci/gg-prebuilt.sh is what stages it, out of the gates stage's `gg-<arch>` artifact,
+# and every check on those bytes lives there.
+#
+# The pipeline always sets it. It exists as an opt-in rather than as an edit to the
+# Dockerfile because `deployments/local/Makefile` builds the same targets with no pipeline
+# artifacts and no network, so that path must keep the self-contained stage — and because
+# the variable is read only for `backend` and `driver`, the six other services' command
+# lines are identical whether it is set or not.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
@@ -61,6 +76,11 @@ args=(
 )
 [[ -n "$target" ]] && args+=(--target "$target")
 [[ "$SERVICE" == driver ]] && args+=(--build-arg "AUDIO_STORE_IMAGE=${CI_REGISTRY}/test-cabinet-audio-store:${SHA}")
+# The two targets that COPY out of the `gg-build` stage, and the only two the override may
+# touch: `backend` takes /gg-reference and `driver` takes /gg. Naming them keeps an unrelated
+# leg from being handed a named context for a stage it never resolves.
+[[ -n "${TCAB_PREBUILT_GG:-}" && ("$SERVICE" == backend || "$SERVICE" == driver) ]] \
+	&& args+=(--build-context "gg-build=${TCAB_PREBUILT_GG}")
 
 # The default builder can write neither a registry cache nor a multi-platform
 # manifest. `docker login`'s credentials reach this one through the CLI config.

@@ -11,8 +11,16 @@
 #
 # This is a NATIVE build (target arch == host arch); it does not cross-compile. In
 # the aarch64 devcontainer it yields an aarch64-musl gg; on x86_64 CI an x86_64-musl
-# gg. The driver image's gg-build stage (deployments/images/services.Dockerfile) runs
-# this same script, so the gg it bakes in always matches the image's platform.
+# gg.
+#
+# WHO RUNS THIS, AND HOW MANY gg BINARIES A COMMIT HAS. In CI, exactly one: the gates
+# stage's `gg_<arch>` job runs scripts/ci/gg-dist.sh, which runs this, and the resulting
+# `gg-<arch>` artifact is what the run images are self-checked against, what the driver and
+# backend images bake (scripts/ci/gg-prebuilt.sh stages it as the `gg-build` named build
+# context) and what is uploaded to the `gg-releases` container. The `gg-build` stage of
+# deployments/images/services.Dockerfile also runs this script, and that is the OFFLINE path
+# — `make -C deployments/local images` builds gg inside the image with no pipeline artifact
+# to take it from — so the gg an image bakes always matches the image's platform either way.
 #
 # Usage:
 #   scripts/build-gg-static.sh [OUT_PATH]
@@ -93,6 +101,14 @@ if [ "${1:-}" != "" ]; then
   chmod 0755 "$1"
   bin="$1"
 fi
+
+# The identity of what this produced, on stderr so the stdout contract above is untouched.
+# It is the cheapest thing in the file and the most useful: every consumer of this binary
+# prints the same digest, so a gg that misbehaves can be matched to the build that linked it
+# and to the other copies of it. Two links of the same commit that disagree on size are the
+# whole diagnosis of a link defect, and the size was not in any log before this.
+log "build-gg-static: $(ls -l "$bin")"
+log "build-gg-static: $(sha256sum "$bin")"
 
 log "build-gg-static: done -> $bin"
 printf '%s\n' "$bin"

@@ -35,10 +35,10 @@ browser for rendering references. As a `StatefulSet`
 The backend image also bakes gg's reference documents at `/opt/gg-reference` and
 sets `TCAB_GG_REFERENCE` to point at them. Those are the files the backend serves
 at `GET /gg/reference`, projected by the same `gg` binary the `tcab-driver` image
-ships. A backend deployed from the release tarballs instead needs gg's
-`v<version>/gg-reference.tar.gz` unpacked and the variable pointed at it;
-otherwise the console's gg Reference section answers `503` and the rest of the
-backend works normally.
+ships and the run images are self-checked against. A backend deployed from the
+release tarballs instead needs gg's `v<version>/gg-reference.tar.gz` unpacked and
+the variable pointed at it; otherwise the console's gg Reference section answers
+`503` and the rest of the backend works normally.
 
 The backend `Service` is `ClusterIP` with no `Ingress`. The dispatcher, the
 artifact service, the arena, and operators reach it in-cluster, and its outbound

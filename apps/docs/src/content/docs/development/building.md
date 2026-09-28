@@ -755,11 +755,19 @@ scripts/gg-reference.sh            # -> target/gg-reference/
 
 That writes `index.json` plus one `<language>.json` per program language. The
 backend finds them there by default through `TCAB_GG_REFERENCE`, which resolves
-under `TCAB_BACKEND_CHECKOUT` when unset. The service images bake the same files
-at `/opt/gg-reference` out of the build stage that produces the `gg` binary the
-driver image ships, so a deployed console and the harness its runs execute come
-from one build of one checkout. A backend with no documents serves everything
-else normally and answers `503` on the two reference endpoints.
+under `TCAB_BACKEND_CHECKOUT` when unset. The backend image bakes the same files
+at `/opt/gg-reference` and the driver image bakes the binary that projected them,
+so a deployed console and the harness its runs execute come from one build of one
+checkout. A backend with no documents serves everything else normally and answers
+`503` on the two reference endpoints.
+
+The pipeline builds that binary once, in the `gg_<arch>` jobs, and publishes it as a
+per-architecture artifact together with the documents it projects. The backend and
+driver image builds consume that artifact in place of the Dockerfile stage that
+would link a second copy, which is what makes the run images' self-check, the
+driver's baked harness and the console's reference one binary per commit. The
+Dockerfile stage remains what an offline `make -C deployments/local images`
+builds.
 
 The script builds gg, so it needs the toolchains described under
 [gg and its eleven toolchains](#gg-and-its-eleven-toolchains). Running the
@@ -789,11 +797,24 @@ containers/build.sh --gg-selfcheck target/gg-selfcheck/gg \
   sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
 ```
 
-Five images answer for all twenty-seven variants, because `/opt/gg` is byte-identical
-across them and what differs is the environment it runs in — the image the lineage
-is rooted at plus every package a run image installs on the way down. `build.sh`
-re-derives that grouping from the Dockerfiles on every gated build. CI passes the
-same `--gg-selfcheck` flag post-merge, before the images are published.
+Five images answer for all twenty-seven variants, because each copies one builder
+image's `/opt/gg` to one absolute path and so carries the same tree byte for byte,
+and what differs is the environment it runs in: the image the lineage is rooted at
+plus every package a run image installs on the way down. `build.sh` re-derives that
+grouping from the Dockerfiles on every gated build. CI passes the same
+`--gg-selfcheck` flag post-merge, before the images are published.
+
+The tree being identical is a fact about the files, not about how the registry
+stores them. Each variant carries its own layer for those bytes, so a host that
+pulls two variants pulls the tree twice, and fifty-five images with twenty-seven
+copies of a 2.2 GB tree do not fit on a build agent. So the CI build sets
+`RECLAIM=1` alongside `PUSH=1`, and `containers/build.sh` then removes each image
+from the local store once nothing later is `FROM` it and prunes the builder cache
+as it advances. `RECLAIM` is deliberately a separate switch: the builder prune
+takes every cache mount on the daemon, including ones belonging to other
+Dockerfiles, so a publish from a development machine does not set it. A local
+build sets neither and keeps everything, because there the images are what is
+being produced.
 
 `cargo run -p test-cabinet-gg -- selfcheck` asks the same question of this
 machine's own toolchains, which is the form to run while working on an arm. See
@@ -934,6 +955,17 @@ An image's tag is a digest of the files it is built from, and
 does), run `scripts/ci/ci-image.sh tag`, commit the file, and let the image
 pipeline, `azure-pipelines-ci-images.yml`, push the image before the gates run.
 `scripts/ci/tcab-image-pin.sh` then writes the new tag into `jobs.yml`.
+
+A job pulls its CI image from the registry before its first step runs, so a
+registry answer that times out would fail the job before it has checked
+anything. Every project container job therefore sets
+`VSTSAGENT_DOCKER_ACTION_RETRIES`, which makes the agent retry each Docker
+login, pull and start, three attempts ten seconds apart. The template's `rust`
+and `web` jobs take no job variable from the project, so the main pipeline's
+definition in Azure DevOps sets the same variable for them. Every registry login
+and manifest fuse in the image jobs carries a step retry of its own. Only those
+registry round trips are retried; a build runs once, so a failed one keeps its
+reason in the log.
 
 ### Credentials
 

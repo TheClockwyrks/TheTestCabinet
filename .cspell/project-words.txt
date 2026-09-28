@@ -150,6 +150,7 @@ bincore
 bindgen
 binfmt
 binstall
+binutils
 bioluminescent
 bitcrush
 bitfield
@@ -182,6 +183,7 @@ burnup
 bursty
 bylight
 Cabe
+cacheonly
 camo
 Capturable
 Carom
@@ -617,6 +619,7 @@ Opencode
 opencode
 openrouter
 optimiser
+organisation
 organisation's
 Osize
 overcounts
@@ -807,6 +810,7 @@ rupturenode
 rustc
 rustdoc
 rustdocflags
+RUSTFLAGS
 rustlint
 rustls
 rustup
@@ -943,6 +947,7 @@ tokenised
 tomli
 tomllib
 toolsets
+toomanyrequests
 topbar
 topdown
 topup
@@ -1070,6 +1075,7 @@ vitest
 vnet
 voicings
 voltite
+VSTSAGENT
 WASD
 wasi
 wasip

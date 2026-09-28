@@ -5,8 +5,8 @@
 # scripts/build-gg-static.sh is a stub that writes a small `gg` answering
 # --version and `reference --out`, with `uname` stubbed to the machine the case
 # declares. The subject is what lands in the output directory on each
-# architecture: the binary named for its target, and the reference tarball on
-# x86_64 only.
+# architecture: the binary named for its target and the reference tarball, on
+# both, since each architecture's backend image bakes the documents.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,7 +108,14 @@ gg-reference/index.md" "$(tar -tzf "$tmp/dist-x86/gg-reference.tar.gz" | sort)"
 
 out="$(run aarch64 "$tmp/dist-arm")"
 check_equal "an aarch64 build succeeds" "0" "$?"
-check_equal "writes the binary alone" "gg-aarch64-unknown-linux-musl" "$(ls "$tmp/dist-arm")"
+check_equal "writes the binary and the reference tarball there too" \
+	"gg-aarch64-unknown-linux-musl
+gg-reference.tar.gz" "$(ls "$tmp/dist-arm")"
+check_equal "whose tarball holds the same reference" \
+	"gg-reference/
+gg-reference/index.md" "$(tar -tzf "$tmp/dist-arm/gg-reference.tar.gz" | sort)"
+check_contains "and prints the binary's digest, which gg-prebuilt.sh prints on the consuming side" \
+	"$(sha256sum "$tmp/dist-arm/gg-aarch64-unknown-linux-musl" | cut -d' ' -f1)" "$out"
 
 out="$(cd "$tmp" && run x86_64 relative/out)"
 check_equal "a relative output directory succeeds" "0" "$?"

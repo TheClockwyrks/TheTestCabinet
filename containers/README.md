@@ -838,10 +838,16 @@ fetched from five upstreams and pruned, and it is byte-identical in every `-gg` 
 so publishing it means the tree inside those variants is pullable and pinned by digest on
 its own terms rather than only inspectable by taking a run image apart, and
 `./build.sh <name>-gg` can be pointed at the published tag through `GG_TOOLCHAINS_IMAGE`
-instead of paying for the fetch again. The registry stores the layers once however many
-variants carry them. Because it is not in `image-names.sh`, the pipeline's run-image
-manifest job, which is driven by that list, appends it to the images it hands
+instead of paying for the fetch again. Because it is not in `image-names.sh`, the pipeline's
+run-image manifest job, which is driven by that list, appends it to the images it hands
 `scripts/ci/manifest.sh`.
+
+Publishing it is one more copy of the tree rather than a free one. `gg/Dockerfile`
+copies `/opt/gg` with `--link` so that every variant's layer would carry one digest and
+the registry would store those bytes once; the pipeline's builder does not deliver that,
+and the registry holds one distinct ~898.6 MB blob per variant instead. The comment on
+that `COPY` carries the measurement and `build.sh` prints each variant's layer digest as
+it builds, so the next build reports it.
 
 Three constraints bind every toolchain added to it, and all three are written down in the
 Dockerfile's header. It must be **relocatable and distribution-portable** — the same tree
@@ -1000,6 +1006,27 @@ pushed there. Runners resolve the
 published image directly from their own registry configuration; the script does
 **not** register anything with the backend, which plays no part in container
 distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
+
+`RECLAIM=1`, set alongside `PUSH=1`, additionally reclaims as it goes: once an image is
+pushed and nothing later in the build order is `FROM` it, `build.sh` removes it from the
+local store and prunes the builder cache, and prints the remaining disk. The whole set
+does not fit on a build agent otherwise, because each `-gg` variant holds its own copy of
+the 2.2 GB toolchain tree.
+
+**`RECLAIM` is for CI, and a publish from your own machine should not set it.** The
+builder prune is `docker builder prune --all`, which takes every `--mount=type=cache`
+record in the builder — and on a development box the default builder is the one BuildKit
+instance the whole Docker daemon shares. So it would also take
+[`deployments/images/services.Dockerfile`](../deployments/images/services.Dockerfile)'s
+`gg-toolchains`, `gg-target`, `rustup-gg` and `gg-toolchain-downloads` mounts, which is
+the ~1.9 GB of downloaded language SDKs and the gg link that
+[`deployments/local/Makefile`](../deployments/local/Makefile) names as the slowest thing
+in the repository, plus every other project's build cache on that daemon. The `PUSH=1`
+command above therefore leaves your local store and builder untouched;
+[`scripts/ci/run-images.sh`](../scripts/ci/run-images.sh) is the only caller that sets
+`RECLAIM`, and there the daemon belongs to a single-use agent. `RECLAIM` without `PUSH` is
+ignored, so an image that exists nowhere else is never removed. A local build sets neither
+and removes nothing, because there the images are the product.
 
 ### The audio store image
 

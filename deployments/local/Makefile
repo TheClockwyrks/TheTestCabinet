@@ -238,20 +238,20 @@ GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE
 
 # The five variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and the binary it
 # builds to drive them with. One variant per ENVIRONMENT: every `-gg` image carries the same
-# `/opt/gg` (copied with `--link`, so byte-identical), so what differs between them is the
-# environment that tree has to run in — the image the lineage is rooted at, plus every package
-# the run images `apt-get install` on the way down. That is five and not two, because a dozen
-# run images install their own packages on top of `base` and apt brings each package's whole
-# closure with it: the mesa render images carry an ICU nothing in their Dockerfiles asked for,
-# which is the very library the C# arm was shipped without. `full-stack-3d-gg` is the fifth
-# and the least obvious: it carries the same mesa ICU `voxel-gg` does, but on top of
-# base-wasm's packages rather than the bare base's, and it is the only run image that is
-# both. Named here rather than derived
-# because they are the same five `containers/build.sh` names in GG_SELFCHECK_IMAGES and the
-# same five `scripts/ci/run-images.sh` asserts by name. What keeps three lists
-# from drifting apart is not agreement between them: `assert_gg_environments`, in build.sh,
-# re-derives the grouping from the Dockerfiles and fails a gated build if any variant's
-# environment has no representative.
+# `/opt/gg`, byte for byte, because each copies one builder image's tree to one absolute
+# path, so what differs between them is the environment that tree has to run in — the image
+# the lineage is rooted at, plus every package the run images `apt-get install` on the way
+# down. That is five and not two, because a dozen run images install their own packages on
+# top of `base` and apt brings each package's whole closure with it: the mesa render images
+# carry an ICU nothing in their Dockerfiles asked for, which is the very library the C# arm
+# was shipped without. `full-stack-3d-gg` is the fifth and the least obvious: it carries the
+# same mesa ICU `voxel-gg` does, but on top of base-wasm's packages rather than the bare
+# base's, and it is the only run image that is both. Named here rather than derived because
+# they are the same five `containers/build.sh` names in GG_SELFCHECK_IMAGES and the same
+# five `scripts/ci/run-images.sh` asserts by name. What keeps three lists from drifting
+# apart is not agreement between them: `assert_gg_environments`, in build.sh, re-derives the
+# grouping from the Dockerfiles and fails a gated build if any variant's environment has no
+# representative.
 GG_SELFCHECK_IMAGE_NAMES := sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
 GG_SELFCHECK_BIN         := $(REPO)/target/gg-selfcheck/gg
 
@@ -423,8 +423,13 @@ kubeconfig:
 # free once the gg set is in it. Every byte saved here is paid three times over, because it
 # is written to disk, streamed into the node, and unpacked into the node's snapshotter.
 #
-# Sharing only works if the images genuinely share layer DIGESTS, which for the `-gg`
-# variants is what `--link` in containers/gg/Dockerfile buys; see the comment there.
+# HOW MUCH THE `-gg` SET COSTS DEPENDS ON THE BUILDER, and the figure above was taken on a
+# dev box rather than on a CI agent. Sharing needs the images to share layer DIGESTS for
+# `/opt/gg`, which `--link` in containers/gg/Dockerfile asks for and which the Azure agents'
+# builder does not deliver (one distinct ~898.6 MB blob per variant; the comment on that COPY
+# carries the measurement). A `make run-images` here that produces twenty-seven distinct
+# copies writes an archive several times the size above, so re-take the measurement rather
+# than trusting it if a local import starts running the disk out.
 #
 # Images are imported as a saved archive rather than by name: `k3d image import` does its
 # own `save` from a name through the runtime, which fails on podman (the name resolves under
@@ -550,6 +555,13 @@ audio-store:
 # which since the backend leads the list below is normally the backend. This is the
 # fastest way to find out that the gg stage is broken, which is why it is worth knowing it
 # is normal for it to take minutes rather than seconds.
+#
+# CI NO LONGER BUILDS THAT STAGE AT ALL: it replaces it with the gates stage's published
+# `gg-<arch>` artifact (scripts/ci/gg-prebuilt.sh), so a break in the stage reaches only the
+# local paths that still build it — this target, and `docker compose -f compose.yml up backend`,
+# which builds `--target backend` too. Nothing gates it, so this target is the feedback loop.
+# On x86_64 the stage currently links a gg that segfaults in `gg reference --out`, so neither
+# local path completes there; tasks/backlog/ carries the issue.
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images: audio-store
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
@@ -694,14 +706,14 @@ run-images-gg:
 # invocation `scripts/ci/run-images.sh` publishes behind, which is what makes a
 # green run here mean something: not a local approximation of the gate, the gate.
 #
-# FIVE IMAGES, NOT TWENTY-SEVEN. `/opt/gg` is byte-identical across every variant (the
-# `--link` COPY in containers/gg/Dockerfile), so what can differ is the environment it runs
-# in — and there are five of those, not the two parents it looks like: `sprite-gg` is the
-# shared base, `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds the mesa stack the
-# render images install, `full-stack-3d-gg` is the one image that has BOTH base-wasm's
-# packages and that mesa stack, and `blender-gg` is the Ubuntu lineage. build.sh refuses the
-# flag against a selection containing none of them, and re-derives the grouping from the
-# Dockerfiles before it builds anything.
+# FIVE IMAGES, NOT TWENTY-SEVEN. `/opt/gg` is byte-identical across every variant, each
+# copying one builder image's tree to one absolute path, so what can differ is the
+# environment it runs in — and there are five of those, not the two parents it looks like:
+# `sprite-gg` is the shared base, `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds
+# the mesa stack the render images install, `full-stack-3d-gg` is the one image that has BOTH
+# base-wasm's packages and that mesa stack, and `blender-gg` is the Ubuntu lineage. build.sh
+# refuses the flag against a selection containing none of them, and re-derives the grouping
+# from the Dockerfiles before it builds anything.
 #
 # It BUILDS but does not IMPORT: this is a question about the images, not a way to put them
 # in the cluster — `run-images-gg` is what the cluster needs. Expect minutes: the check

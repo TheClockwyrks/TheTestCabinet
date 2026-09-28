@@ -126,6 +126,25 @@ out="$(STUB_CREATE_EXIT=1 run backend "$SHA")"
 check_equal "a builder that already exists is reused" "0" "$?"
 check_contains "by name" "docker buildx use tcab-ci" "$(cat "$tmp/docker.log")"
 
+# TCAB_PREBUILT_GG replaces the `gg-build` stage for the two targets that copy out of it,
+# and only those: the flag goes last, after every other argument.
+out="$(TCAB_PREBUILT_GG=/stage/gg run backend "$SHA")"
+check_equal "backend with a prebuilt gg builds" "0" "$?"
+check_equal "and takes it as the gg-build named context" \
+	"$(expected tcab-backend deployments/images/services.Dockerfile amd64 "--target backend --build-context gg-build=/stage/gg")" \
+	"$(build_line)"
+out="$(TCAB_PREBUILT_GG=/stage/gg run driver "$SHA")"
+check_equal "driver with a prebuilt gg builds" "0" "$?"
+check_equal "and takes it after the audio store" \
+	"$(expected tcab-driver deployments/images/services.Dockerfile amd64 "--target driver --build-arg AUDIO_STORE_IMAGE=$R/test-cabinet-audio-store:$SHA --build-context gg-build=/stage/gg")" \
+	"$(build_line)"
+for service in dispatcher web; do
+	out="$(TCAB_PREBUILT_GG=/stage/gg run "$service" "$SHA")"
+	check_lacks "$service ignores a prebuilt gg" "gg-build" "$(build_line)"
+done
+out="$(TCAB_PREBUILT_GG="" run backend "$SHA")"
+check_lacks "an empty TCAB_PREBUILT_GG keeps the Dockerfile's own stage" "--build-context" "$(build_line)"
+
 out="$(run gateway "$SHA")"
 check_equal "an unknown service fails" "1" "$?"
 check_contains "naming it" "unknown service 'gateway'" "$out"

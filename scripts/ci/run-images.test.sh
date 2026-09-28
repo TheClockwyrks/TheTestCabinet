@@ -77,7 +77,7 @@ printf '%s\n' base sprite-gg
 STUB
 cat >"$repo/containers/build.sh" <<'STUB'
 #!/usr/bin/env bash
-echo "args=$* PUSH=${PUSH:-} IMAGE_REGISTRY=${IMAGE_REGISTRY:-} IMAGE_TAG=${IMAGE_TAG:-}" >"$STUB_LOG"
+echo "args=$* PUSH=${PUSH:-} RECLAIM=${RECLAIM:-} IMAGE_REGISTRY=${IMAGE_REGISTRY:-} IMAGE_TAG=${IMAGE_TAG:-}" >"$STUB_LOG"
 for image in $STUB_SELFCHECKED; do
 	echo "gg selfcheck ok: $image"
 done
@@ -96,7 +96,7 @@ run() {
 out="$(STUB_SELFCHECKED="$ALL" run /opt/gg "$SHA")"
 check_equal "a build that self-checked every representative passes" "0" "$?"
 check_equal "builds every listed image with the self-check, pushed, as <sha>-amd64" \
-	"args=--gg-selfcheck /opt/gg base sprite-gg PUSH=1 IMAGE_REGISTRY=testcabinet.azurecr.io IMAGE_TAG=${SHA}-amd64" \
+	"args=--gg-selfcheck /opt/gg base sprite-gg PUSH=1 RECLAIM=1 IMAGE_REGISTRY=testcabinet.azurecr.io IMAGE_TAG=${SHA}-amd64" \
 	"$(cat "$tmp/build.log")"
 for image in $ALL; do
 	check_contains "confirms the self-check ran in $image" "gg selfcheck ran in ${image}" "$out"
