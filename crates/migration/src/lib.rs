@@ -71,6 +71,7 @@ mod m20260906_000044_add_job_started_at;
 mod m20260922_000045_add_provider_pin;
 mod m20260923_000046_add_model_list_price;
 mod m20260923_000047_add_model_provider_policy;
+mod m20260928_000048_widen_model_list_price;
 
 pub struct Migrator;
 
@@ -129,6 +130,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260922_000045_add_provider_pin::Migration),
             Box::new(m20260923_000046_add_model_list_price::Migration),
             Box::new(m20260923_000047_add_model_provider_policy::Migration),
+            Box::new(m20260928_000048_widen_model_list_price::Migration),
         ]
     }
 }
