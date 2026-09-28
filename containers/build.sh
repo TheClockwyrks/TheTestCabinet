@@ -244,10 +244,11 @@ readonly GG_SELFCHECK_BIN
 # THE FIVE IMAGES THE GATE RUNS IN, AND WHY IT IS FIVE AND NOT TWENTY-SEVEN.
 #
 # Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies one
-# builder image's `/opt/gg` to the same absolute path in each, so the bytes are identical
+# builder image's `/opt` to the same absolute path in each, so the bytes are identical
 # variant to variant (7826 files, 2 162 625 760 bytes — that COPY's comment carries the
-# measurement, and separately the fact that the LAYER holding them is not shared, which this
-# argument does not rest on). What can differ between two variants is therefore not the
+# measurement, and separately the fact that the LAYER holding them is one digest in every
+# variant, which this argument does not rest on). What can differ between two variants is
+# therefore not the
 # toolchain but the ENVIRONMENT it has to run in, and the question this list answers is how
 # many distinct environments the twenty-seven are.
 #
@@ -371,13 +372,13 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # run image apart, and (b) `./build.sh <name>-gg` can be pointed at the published tag
 # through the GG_TOOLCHAINS_IMAGE build arg instead of paying for the fetch again.
 #
-# IT IS ONE MORE COPY OF THE TREE AND NOT A FREE ONE. `containers/gg/Dockerfile` copies
-# `/opt/gg` with `--link` so that every variant's copy would carry ONE digest and the
-# registry would store the bytes once — and measured against this pipeline's own output
-# that is not what happens: one distinct ~898.6 MB blob per variant, 12.6 GB of the 13.3 GB
-# a run-image build pushes. Read the comment on that COPY, which carries the measurement,
-# before touching it. What keeps the build agent's disk survivable meanwhile is the reclaim
-# below rather than any sharing.
+# IT IS ONE MORE COPY OF THE TREE IN THE REGISTRY, AND THE ONLY EXTRA ONE.
+# `containers/gg/Dockerfile` copies its `/opt` with `--link`, so every variant carries ONE
+# digest for the tree and the registry stores those bytes once, mounting them into each
+# variant's repository after the first push. Read the comment on that COPY, which carries
+# the measurement and says why the source path is `/opt` and not `/opt/gg`, before touching
+# it. What keeps the build agent's disk survivable is the reclaim below rather than the
+# sharing: the local store still chains each variant's copy under its own parent.
 #
 # Because it is not in image-names.sh, the pipeline's run-image manifest job, which is
 # driven by that list, appends this one by name to what it hands scripts/ci/manifest.sh.
@@ -440,14 +441,13 @@ push_and_pin() {
 # A full PUSH build builds the fifty-five names `containers/image-names.sh` lists, plus the
 # two builder images and the audio store. Twenty-seven of the fifty-five are `-gg` variants
 # carrying a 2.2 GB `/opt/gg`. `containers/gg/Dockerfile` copies that tree with `--link` so
-# that every variant's layer would carry ONE digest and be stored once, and in this pipeline
-# it does not: the registry holds twenty-seven DISTINCT ~898.6 MB blobs for it, 12.6 GB of
-# the 13.3 GB a run-image build pushes, while all other run-image content is 0.8 GB. So the
-# local store accrues ~2.2 GB per variant, twenty-seven of them is ~60 GB, and a build agent
-# has under 40 GB.
+# that every variant's layer carries ONE digest and the registry stores it once — but the
+# LOCAL store does not share it: a layer sits under its parent's chain there, and every
+# variant has a different parent. So the local store accrues ~2.2 GB per variant,
+# twenty-seven of them is ~60 GB, and a build agent has under 40 GB.
 #
-# THE RECLAIM BELOW IS CORRECT WHETHER OR NOT THAT LAYER IS EVER DEDUPED, which is the whole
-# point of it: it does not rest on a property that turned out not to hold. With it the peak
+# THE RECLAIM BELOW IS CORRECT WHETHER OR NOT THAT LAYER IS DEDUPED ANYWHERE, which is the
+# whole point of it: it rests on no property of the builder or the registry. With it the peak
 # is the toolchain builder, one resident variant and the rest of the set — around 8 GB.
 #
 # IT IS OFF UNLESS `RECLAIM=1` IS SET WITH `PUSH=1`, and `scripts/ci/run-images.sh` is the
@@ -1011,12 +1011,16 @@ build_gg_variant() {
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/gg/Dockerfile" "${SCRIPT_DIR}/.."
 
-	# The digest of the layer that COPY produced. `containers/gg/Dockerfile` asks `--link` to
-	# give every variant the SAME one, and the registry says they get twenty-seven different
-	# ones. Printing it makes each build answer that in its own log instead of requiring
-	# somebody to read registry manifests by hand, which is how it went unnoticed.
+	# The diff ID of the layer that COPY produced. `containers/gg/Dockerfile` asks `--link`
+	# to give every variant the SAME one, and says what made them differ once. Printing it
+	# makes each build answer that in its own log instead of requiring somebody to read
+	# registry manifests by hand, which is how the duplication went unnoticed: the
+	# twenty-seven lines of one build must agree. `--format` ends its output with a newline
+	# of its own after the template's last `println`, so the blank line is dropped before
+	# the last line is taken; taking it before that printed nothing.
 	echo "==> ${name} /opt/gg layer: $("$DOCKER" image inspect \
-		--format '{{range .RootFS.Layers}}{{println .}}{{end}}' "${image}" 2>/dev/null | tail -n 1)"
+		--format '{{range .RootFS.Layers}}{{println .}}{{end}}' "${image}" 2>/dev/null \
+		| sed '/^$/d' | tail -n 1)"
 
 	# BETWEEN THE BUILD AND THE PUSH, AND THAT ORDER IS THE POINT: a variant whose toolchain
 	# cannot run in it must never reach a registry, and `set -euo pipefail` plus the `exit 1`
