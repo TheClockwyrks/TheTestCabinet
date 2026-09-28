@@ -173,6 +173,7 @@ browsable
 buildability
 buildables
 Buildah
+buildcache
 buildcontext
 buildkit
 buildkits

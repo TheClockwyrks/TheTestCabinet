@@ -85,19 +85,19 @@ project exclude. `.azure/project/steps.yml` prunes the linked binaries
 
 The project's jobs, from `.azure/project/jobs.yml`:
 
-| Job                                                 | Runs on                        | Runs in                           | Scripts                                                                                                                                                                                          |
-| --------------------------------------------------- | ------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gg_tests_<k>_of_4` ×4                              | every run                      | Rust CI image, 120 min            | `gg-test-build.sh`, `gg-test.sh <k>/4`, `cargo-target-prune.sh`                                                                                                                                  |
-| `rust_build`                                        | every run                      | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                     |
-| `binary_linux`                                      | every run                      | Rust CI image, 90 min             | `release-build.sh`, `release-test.sh`, `release-doctest.sh`, `binary-smoke.sh`, `cargo-target-prune.sh`                                                                                          |
-| `binary_windows`                                    | every run                      | hosted `windows-2022`             | `install-nextest.sh`, then the same four and the prune, through Git Bash                                                                                                                         |
-| `submodule_pins`                                    | every run                      | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token                                                                                                                                                          |
-| `gg_amd64`, `gg_arm64`                              | `master`, `staging`            | Rust CI image; arm64 pool         | `gg-dist.sh`, kept as the `gg-<arch>` artifact                                                                                                                                                   |
-| `checks`                                            | every run                      | agentless                         | none: it succeeds when every check job above and the template's `rust` and `web` did                                                                                                             |
-| `mirror`                                            | `master`, `staging`, `nightly` | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed and each gg build passed or was skipped                                                                                                                        |
-| `audiostore_<arch>`, `audiostore_manifest`          | `master`, `staging`            | hosted amd64; arm64 pool          | `audio-store-image.sh`, then `manifest.sh`                                                                                                                                                       |
-| `runimages_<arch>`, `runimages_manifest`            | `master`, `staging`            | hosted amd64; arm64 pool, 360 min | `free-disk-linux.sh` on both architectures, `report-disk.sh` either side of `run-images.sh` with this run's gg, then `manifest.sh` over `containers/image-names.sh` and the gg toolchain builder |
-| `service_<service>_<arch>` ×16, `services_manifest` | `master`, `staging`            | hosted amd64; arm64 pool, 240 min | `service-image.sh`, for `backend` and `driver` after `gg-prebuilt.sh` stages this run's `gg-<arch>`, then `manifest.sh` over the eight `tcab-*` images                                           |
+| Job                                        | Runs on                        | Runs in                           | Scripts                                                                                                                                                                                                                                         |
+| ------------------------------------------ | ------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gg_tests_<k>_of_4` ×4                     | every run                      | Rust CI image, 120 min            | `gg-test-build.sh`, `gg-test.sh <k>/4`, `cargo-target-prune.sh`                                                                                                                                                                                 |
+| `rust_build`                               | every run                      | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                                                                    |
+| `binary_linux`                             | every run                      | Rust CI image, 90 min             | `release-build.sh`, `release-test.sh`, `release-doctest.sh`, `binary-smoke.sh`, `cargo-target-prune.sh`                                                                                                                                         |
+| `binary_windows`                           | every run                      | hosted `windows-2022`             | `install-nextest.sh`, then the same four and the prune, through Git Bash                                                                                                                                                                        |
+| `submodule_pins`                           | every run                      | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token                                                                                                                                                                                                         |
+| `gg_amd64`, `gg_arm64`                     | `master`, `staging`            | Rust CI image; arm64 pool         | `gg-dist.sh`, kept as the `gg-<arch>` artifact                                                                                                                                                                                                  |
+| `checks`                                   | every run                      | agentless                         | none: it succeeds when every check job above and the template's `rust` and `web` did                                                                                                                                                            |
+| `mirror`                                   | `master`, `staging`, `nightly` | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed and each gg build passed or was skipped                                                                                                                                                                       |
+| `audiostore_<arch>`, `audiostore_manifest` | `master`, `staging`            | hosted amd64; arm64 pool          | `audio-store-image.sh`, then `manifest.sh`                                                                                                                                                                                                      |
+| `runimages_<arch>`, `runimages_manifest`   | `master`, `staging`            | hosted amd64; arm64 pool, 360 min | `free-disk-linux.sh` on both architectures, `report-disk.sh` either side of `run-images.sh` with this run's gg, then `manifest.sh` over `containers/image-names.sh` and the gg toolchain builder                                                |
+| `services_<arch>`, `services_manifest`     | `master`, `staging`            | hosted amd64; arm64 pool, 240 min | `free-disk-linux.sh` on amd64, `gg-prebuilt.sh` stages this run's `gg-<arch>`, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the eight `tcab-*` images |
 
 The **check jobs** are the template's `rust` and `web`, the gg test partitions,
 `rust_build`, both binary jobs and `submodule_pins`. The image jobs wait on `checks`
@@ -109,11 +109,12 @@ is built natively, amd64 on a hosted agent and arm64 on the organisation's pool
 fused by `manifest.sh` into the multi-arch `<image>:<commit>` a deployment pins.
 
 The **backend and driver images bake this run's gg** rather than linking one of their
-own. Their jobs download the `gg-<arch>` artifact of the matching `gg_<arch>` job and
-`gg-prebuilt.sh <artifact-dir> <out-dir>` stages it: it checks that the binary runs on
-the agent and that the reference tarball unpacks, then writes `gg` and
-`gg-reference/`. `service-image.sh` reads that directory from `TCAB_PREBUILT_GG`, for
-`backend` and `driver` only, and passes it as `--build-context gg-build=<dir>`, which
+own. The services job of each architecture downloads the `gg-<arch>` artifact of the
+matching `gg_<arch>` job and `gg-prebuilt.sh <artifact-dir> <out-dir>` stages it: it
+checks that the binary runs on the agent and that the reference tarball unpacks, then
+writes `gg` and `gg-reference/`. `service-image.sh` reads that directory from
+`TCAB_PREBUILT_GG`, for `backend` and `driver` only, and passes it as
+`--build-context gg-build=<dir>`, which
 replaces the `gg-build` stage of `deployments/images/services.Dockerfile`. So the
 driver bakes the binary the run images were self-checked against and the backend the
 documents it projected, instead of a second, ungated link. The stage itself remains
@@ -123,6 +124,21 @@ architectures for this, so `gg reference --out` is gated on each; the documents 
 architecture-independent, and `gg_publish` copies the three objects it uploads by
 name, taking the x86_64 tarball.
 
+**One job builds the eight service images of an architecture.** `services_<arch>` waits
+on `checks`, both gg builds and `audiostore_manifest` (the driver bakes the audio
+store), and `service-images.sh` runs `service-image.sh` once per service, in the order
+backend, auth, dispatcher, driver, artifacts, arena, publisher, web, on one
+`docker-container` builder (`tcab-ci`). The `build` stage of
+`deployments/images/services.Dockerfile` is one `cargo build --release` of all seven
+Rust service binaries, so it compiles once and the six other Rust targets take it from
+the builder's local cache; `web` has its own Dockerfile and goes last. A job per image
+ran that compile in every one of the seven Rust jobs (twenty minutes on a hosted amd64
+agent, ten on the arm64 pool, measured on staging run 10763), and the arm64 pool runs
+one job at a time with a VM provision of about three minutes per job, so the eight
+arm64 service jobs alone took 100 minutes of that run's four hours. A failing service
+stops the job and is named; a re-run of the same commit takes every stage already in
+the registry cache (`<image>:buildcache-<arch>`), the compiled `build` stage included.
+
 The **run-image job** is the one that ran out of disk on both architectures, so it
 runs `free-disk-linux.sh` on arm64 too (that pool hands every job a fresh VM, so
 there is nothing to lose), and `run-images.sh` sets `RECLAIM=1`: `containers/build.sh`
@@ -130,7 +146,9 @@ removes each pushed image once nothing later in the build order is `FROM` it and
 prunes the builder cache as it goes (`containers/README.md` says why a developer's
 publish must not). `report-disk.sh` prints every filesystem a build can fill, the
 container store and the agent work folder as well as `/`, before the build and, even
-after a failed one, after it.
+after a failed one, after it. The `-gg` variants share one `/opt/gg` layer in the
+registry (see `containers/gg/Dockerfile`), so a run-image push uploads that tree once
+per architecture and mounts it into the other twenty-six.
 
 **Registry round trips retry.** A container job's CI image pull happens before its
 first step, where no step retry reaches, and the registry's OAuth token exchange can
@@ -237,6 +255,7 @@ a gg whose version is not the tag's; `gg_publish`; and `mirror`, which pushes th
 | `run-images.sh <gg> <commit>`                                                                         | every run-container image, self-checked with `gg selfcheck`, pushed per architecture, reclaiming disk as it goes (`RECLAIM=1`)                                        | `run-images.test.sh`                  |
 | `gg-prebuilt.sh <artifact-dir> <out-dir>`                                                             | stage a `gg-<arch>` artifact as the `gg-build` build context the backend and driver bake, checking it first                                                           | `gg-prebuilt.test.sh`                 |
 | `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture; `TCAB_PREBUILT_GG` replaces the `gg-build` stage for `backend` and `driver`                                               | `service-image.test.sh`               |
+| `service-images.sh <commit>`                                                                          | every service image of one architecture, on one builder: `service-image.sh` per service in a fixed order                                                              | `service-images.test.sh`              |
 | `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                            | `manifest.test.sh`                    |
 | `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                            | `deploy-environment.test.sh`          |
 | `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                   | each has its `.test.sh`               |

@@ -153,7 +153,7 @@ run
 # 3. Only jobs outside the check set failed (images, the stage, a deploy): the run passes.
 case_dir images
 builds "11:$COMMIT:completed" >"$STATE/builds.json"
-timeline "gates.service_backend_arm64=completed/failed" "gates.runimages_amd64=completed/failed" \
+timeline "gates.services_arm64=completed/failed" "gates.runimages_amd64=completed/failed" \
 	"prod.deploy_prod=completed/skipped" >"$STATE/timeline-11.json"
 run
 [[ "$status" -eq 0 ]] || fail "images: exited $status: $out"
