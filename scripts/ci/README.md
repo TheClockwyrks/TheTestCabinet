@@ -137,10 +137,10 @@ first step, where no step retry reaches, and the registry's OAuth token exchange
 time out on its side. Every project container job therefore sets
 `VSTSAGENT_DOCKER_ACTION_RETRIES`, the agent knob that gives each docker login, pull
 and start three attempts. The template's `rust` and `web` jobs take no job variable
-from the project, so the same variable is set on the main pipeline's definition in
-Azure DevOps. Every `Docker@2` registry login and every `manifest.sh` fuse carries
-`retryCountOnTaskFailure: 2`; the builds themselves never retry, so a failed build
-keeps its reason in the log.
+from the project, so the same variable is set, as a pipeline variable, on the main
+pipeline's definition in Azure DevOps (`the-test-cabinet`). Every `Docker@2` registry
+login and every `manifest.sh` fuse carries `retryCountOnTaskFailure: 2`; the builds
+themselves never retry, so a failed build keeps its reason in the log.
 
 ### The Rust jobs and their caches
 

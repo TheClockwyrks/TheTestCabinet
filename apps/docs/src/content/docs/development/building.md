@@ -828,7 +828,8 @@ deploys the `staging` overlay. The project's own jobs and stages come from the
 files under `.azure/project/`, which it includes. Every job delegates to a
 script, so a failure reproduces locally by running the same script;
 `scripts/ci/README.md` lists them. The YAML names the image a job runs inside,
-its caches, and the credentials a step runs under, and nothing else.
+its caches, the credentials a step runs under, and which registry round trips
+are retried, and nothing else.
 
 Pushes to `master`, `staging` and `nightly` trigger it, batched: pushes that
 arrive while a run of the same branch is in flight get one run, for the newest
@@ -962,7 +963,8 @@ anything. Every project container job therefore sets
 `VSTSAGENT_DOCKER_ACTION_RETRIES`, which makes the agent retry each Docker
 login, pull and start, three attempts ten seconds apart. The template's `rust`
 and `web` jobs take no job variable from the project, so the main pipeline's
-definition in Azure DevOps sets the same variable for them. Every registry login
+definition in Azure DevOps (`the-test-cabinet`) sets the same variable, as a
+pipeline variable, for them. Every registry login
 and manifest fuse in the image jobs carries a step retry of its own. Only those
 registry round trips are retried; a build runs once, so a failed one keeps its
 reason in the log.
