@@ -440,10 +440,10 @@ describe("ModelConfigPage's provider policy", () => {
     fireEvent.change(screen.getByLabelText("Native quantization"), {
       target: { value: "FP8" },
     });
-    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+    fireEvent.change(screen.getByLabelText("Price ceiling, input / Mtok"), {
       target: { value: "0.6" },
     });
-    fireEvent.change(screen.getByLabelText("Price ceiling, output per Mtok"), {
+    fireEvent.change(screen.getByLabelText("Price ceiling, output / Mtok"), {
       target: { value: "2.2" },
     });
     fireEvent.change(screen.getByLabelText("Banned providers"), {
@@ -469,7 +469,7 @@ describe("ModelConfigPage's provider policy", () => {
     const createModel = vi.fn();
     renderPage(vi.fn(), createModel);
     fireEvent.change(nameInput(), { target: { value: "GLM 5.3" } });
-    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+    fireEvent.change(screen.getByLabelText("Price ceiling, input / Mtok"), {
       target: { value: "0.6" },
     });
     fireEvent.click(saveButton());

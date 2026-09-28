@@ -16,35 +16,41 @@
   margin-bottom: t.$space-xl;
 }
 
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: t.$space-md;
-  margin-bottom: t.$space-lg;
-
-  // The grid's own bottom margin sets the gap to the next row, and the column gap
-  // spaces the fields within it — so the gridded fields must not add their own
-  // bottom margin on top, or the first-row gap reads as double the ones below it.
-  .field {
-    margin-bottom: 0;
-  }
+// One group of rows: the first the entry itself, then the list price, then the
+// providers a gg run may use. Each row is a `SettingRow` — its name and a line
+// about it on the left, its control on the right, a hairline between rows — and a
+// group after the first leads with a small uppercase title.
+.group + .group {
+  margin-top: t.$space-lg;
 }
 
-.field {
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin: 0;
+  padding-bottom: t.$space-xs;
+  font-size: t.$font-sm;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+// A row's control column. Every input takes the column's width, so the fields
+// line up on the panel's right edge; the wide column holds the controls that are
+// a list, a picker, or prose.
+.control {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
-  margin-bottom: t.$space-lg;
+  width: 22rem;
+  max-width: 100%;
 }
 
-// A field that follows another stacked field, kept flush with the grid rhythm.
-.fieldStacked {
-  margin-top: 0;
-}
-
-.fieldLabel {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
+.controlWide {
+  width: 34rem;
 }
 
 .input,
@@ -79,13 +85,6 @@
   min-height: 5rem;
 }
 
-// A hint that qualifies a whole row of fields rather than one field, set under
-// the row with the same rhythm a field's own bottom margin gives.
-.fieldBlockHint {
-  display: block;
-  margin: calc(-1 * #{t.$space-md}) 0 t.$space-lg;
-}
-
 // --- OpenRouter fill-in --------------------------------------------------------
 
 // The slug input and its fill action on one line, wrapping when cramped — the
@@ -97,7 +96,7 @@
   flex-wrap: wrap;
 
   .input {
-    flex: 1 1 20rem;
+    flex: 1 1 12rem;
     min-width: 0;
   }
 }
@@ -136,30 +135,7 @@
   @include h.halo;
 }
 
-// --- List price ---------------------------------------------------------------
-
-// The three per-Mtok figures plus the taken-on date on one row, wrapping when
-// cramped — one price triple reads as a unit, not four scattered fields.
-.priceRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: t.$space-md;
-}
-
-.priceField {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
 // --- Aliases: a repeatable id list --------------------------------------------
-
-.aliasBlock {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
-  margin-bottom: t.$space-lg;
-}
 
 .aliasList {
   list-style: none;
@@ -193,12 +169,6 @@
     border-color: t.$color-accent;
     box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
   }
-}
-
-// A small explanatory note shown under a field label.
-.fieldHint {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
 }
 
 // The per-row remove control: a muted destructive glyph, brightening on hover;
