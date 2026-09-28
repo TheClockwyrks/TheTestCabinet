@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
 import { LoadFailureState } from "../../components/LoadFailureState";
@@ -12,6 +12,8 @@ import { perMillion } from "../../format";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { SettingRow } from "../../components/SettingRow";
+import { HelpTip } from "../../components/HelpTip";
 import { ModelLogoPicker } from "../../components/ModelLogoPicker";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -476,330 +478,363 @@ export function ModelConfigPage() {
       )}
 
       <div className={styles.form}>
-        {/* The OpenRouter slug leads the form: it is what prices the model, and
-          the one field that can fill the rest of them in. */}
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>
-            OpenRouter slug (for pricing)
-          </span>
-          <div className={styles.fillRow}>
-            <input
-              className={styles.input}
-              value={openrouterSlug}
-              onChange={(e) => setOpenrouterSlug(e.target.value)}
-              placeholder="e.g. anthropic/claude-opus-4.8"
-              aria-label="OpenRouter slug"
-            />
-            <button
-              type="button"
-              className={styles.fill}
-              onClick={onFill}
-              disabled={!openrouterSlug.trim() || filling}
-              title={
-                openrouterSlug.trim()
-                  ? "Replace the name, provider, and description with what OpenRouter publishes for this slug"
-                  : "Enter an OpenRouter slug to fill the form from"
-              }
-            >
-              {filling ? "Filling…" : "Fill from OpenRouter"}
-            </button>
-          </div>
-          <span className={styles.fieldHint}>
-            Fill replaces the name, provider, and description below with what
-            OpenRouter publishes, and seeds the list-price fields from the
-            model's official endpoint. The billed rate, the context window, and
-            the input modalities are recorded automatically; the list price
-            below is the operator's.
-          </span>
-          {fillError && (
-            <span className={styles.fillError} role="alert">
-              {fillError}
-            </span>
-          )}
+        <div className={styles.group}>
+          {/* The OpenRouter slug leads the form: it is what prices the model, and
+            the one field that can fill the rest of them in. */}
+          <SettingRow
+            label="OpenRouter slug"
+            description="Fill copies the name, provider, description and list price OpenRouter publishes."
+            help="Fill replaces those fields rather than filling only the blanks, and claims the slug as the first model id while the list is empty. Nothing is saved until Save."
+          >
+            {(id) => (
+              <Control wide>
+                <div className={styles.fillRow}>
+                  <input
+                    id={id}
+                    className={styles.input}
+                    value={openrouterSlug}
+                    onChange={(e) => setOpenrouterSlug(e.target.value)}
+                    placeholder="e.g. anthropic/claude-opus-4.8"
+                  />
+                  <button
+                    type="button"
+                    className={styles.fill}
+                    onClick={onFill}
+                    disabled={!openrouterSlug.trim() || filling}
+                  >
+                    {filling ? "Filling…" : "Fill from OpenRouter"}
+                  </button>
+                </div>
+                {fillError && (
+                  <span className={styles.fillError} role="alert">
+                    {fillError}
+                  </span>
+                )}
+              </Control>
+            )}
+          </SettingRow>
+
+          <SettingRow label="Name" description="Required.">
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Claude Opus 4.8"
+                />
+              </Control>
+            )}
+          </SettingRow>
+
+          <SettingRow label="Provider">
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  placeholder="e.g. Anthropic"
+                />
+              </Control>
+            )}
+          </SettingRow>
+
+          {/* Provider mark: an svgl.app URL fetched + sanitized by the backend, with a
+            live preview. Holds both the sanitized SVG and its source URL. */}
+          <SettingRow
+            label="Provider logo"
+            description="An svgl.app URL, fetched and sanitized by the backend."
+          >
+            <Control wide>
+              <ModelLogoPicker
+                value={logoSvg}
+                url={logoUrl}
+                provider={provider}
+                onUrlChange={setLogoUrl}
+                onFetched={setLogoSvg}
+              />
+            </Control>
+          </SettingRow>
+
+          <SettingRow
+            label="Description"
+            description="Markdown, shown on the model's page."
+          >
+            {(id) => (
+              <Control wide>
+                <textarea
+                  id={id}
+                  className={styles.textarea}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What the model is, when to reach for it…"
+                />
+              </Control>
+            )}
+          </SettingRow>
+
+          {/* Aliases: the canonical model ids this entry claims, each paired with the
+            harness family it is usable with — a repeatable list that always keeps at
+            least one row. */}
+          <SettingRow
+            label="Model ids"
+            description="Each id with the harness family it runs under."
+            help="A Claude Code id such as claude-opus-4-8 goes under Claude Code; an OpenRouter slug such as anthropic/claude-opus-4.8 goes under Others. The run form offers a harness only the ids in its family."
+          >
+            <Control wide>
+              <ul className={styles.aliasList}>
+                {aliases.map((entry, index) => (
+                  <li key={index} className={styles.aliasRow}>
+                    <input
+                      className={styles.input}
+                      value={entry.slug}
+                      onChange={(e) => setAliasSlug(index, e.target.value)}
+                      placeholder="e.g. claude-opus-4-8"
+                      aria-label={`Model id ${index + 1}`}
+                    />
+                    <select
+                      className={styles.aliasFamily}
+                      value={entry.harnessFamily}
+                      onChange={(e) =>
+                        setAliasFamily(index, e.target.value as HarnessFamily)
+                      }
+                      aria-label={`Harness family for model id ${index + 1}`}
+                    >
+                      {FAMILIES.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.displayName}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.aliasRemove}
+                      onClick={() => removeAlias(index)}
+                      disabled={aliases.length <= 1}
+                      title="Remove this id"
+                      aria-label="Remove this id"
+                    >
+                      &times;
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className={styles.aliasAdd}
+                onClick={addAlias}
+              >
+                + Add id
+              </button>
+            </Control>
+          </SettingRow>
         </div>
 
         {/* The list price: the developer's published figures, per Mtok because
           that is the unit a pricing page publishes. The save parses them
           all-or-nothing. */}
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>List price</span>
-          <span className={styles.fieldHint}>
-            The developer&apos;s published list prices — the figures a
-            run&apos;s comparable cost is computed from. Enter them from the
-            developer&apos;s pricing page; Fill from OpenRouter seeds them from
-            the model&apos;s official endpoint for confirmation.
-          </span>
-          <div className={styles.priceRow}>
-            <label className={styles.priceField}>
-              <span className={styles.fieldLabel}>Input / Mtok</span>
-              <input
-                className={styles.input}
-                value={listPriceInput}
-                onChange={(e) => setListPriceInput(e.target.value)}
-                inputMode="decimal"
-                step="any"
-                min="0"
-                placeholder="e.g. 5"
-              />
-            </label>
-            <label className={styles.priceField}>
-              <span className={styles.fieldLabel}>Cached input / Mtok</span>
-              <input
-                className={styles.input}
-                value={listPriceCachedInput}
-                onChange={(e) => setListPriceCachedInput(e.target.value)}
-                inputMode="decimal"
-                step="any"
-                min="0"
-                placeholder="e.g. 0.50"
-              />
-            </label>
-            <label className={styles.priceField}>
-              <span className={styles.fieldLabel}>Output / Mtok</span>
-              <input
-                className={styles.input}
-                value={listPriceOutput}
-                onChange={(e) => setListPriceOutput(e.target.value)}
-                inputMode="decimal"
-                step="any"
-                min="0"
-                placeholder="e.g. 25"
-              />
-            </label>
-            <label className={styles.priceField}>
-              <span className={styles.fieldLabel}>Prices taken on</span>
-              <input
-                className={styles.input}
-                type="date"
-                value={listPriceAsOf}
-                onChange={(e) => setListPriceAsOf(e.target.value)}
-              />
-            </label>
-          </div>
-        </div>
+        <div className={styles.group}>
+          <h2 className={styles.groupTitle}>
+            List price
+            <HelpTip text="The developer's published rates in USD per Mtok, which a run's comparable cost is priced from. Saved as a set with their date, or not at all; a blank set on an existing model keeps the stored one." />
+          </h2>
 
-        <div className={styles.fields}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Name</span>
-            <input
-              className={styles.input}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Claude Opus 4.8"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Provider</span>
-            <input
-              className={styles.input}
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              placeholder="e.g. Anthropic"
-            />
-          </label>
-        </div>
-
-        {/* Aliases: the canonical model ids this entry claims, each paired with the
-          harness family it is usable with — a repeatable list that always keeps at
-          least one row. */}
-        <div className={styles.aliasBlock}>
-          <span className={styles.fieldLabel}>Model ids by harness family</span>
-          <span className={styles.fieldHint}>
-            Pair each model id with the harness family it works with: a Claude
-            Code slug (e.g. <code>claude-opus-4-8</code>) under Claude Code, an
-            OpenRouter slug (e.g. <code>anthropic/claude-opus-4.8</code>) under
-            Others. The run form offers a harness only the slugs in its family.
-          </span>
-          <ul className={styles.aliasList}>
-            {aliases.map((entry, index) => (
-              <li key={index} className={styles.aliasRow}>
+          <SettingRow
+            label="Input / Mtok"
+            description="From the developer's pricing page."
+          >
+            {(id) => (
+              <Control>
                 <input
+                  id={id}
                   className={styles.input}
-                  value={entry.slug}
-                  onChange={(e) => setAliasSlug(index, e.target.value)}
-                  placeholder="e.g. claude-opus-4-8"
-                  aria-label={`Model id ${index + 1}`}
+                  value={listPriceInput}
+                  onChange={(e) => setListPriceInput(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="e.g. 5"
                 />
-                <select
-                  className={styles.aliasFamily}
-                  value={entry.harnessFamily}
-                  onChange={(e) =>
-                    setAliasFamily(index, e.target.value as HarnessFamily)
-                  }
-                  aria-label={`Harness family for model id ${index + 1}`}
-                >
-                  {FAMILIES.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.displayName}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className={styles.aliasRemove}
-                  onClick={() => removeAlias(index)}
-                  disabled={aliases.length <= 1}
-                  title="Remove this id"
-                  aria-label="Remove this id"
-                >
-                  &times;
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className={styles.aliasAdd} onClick={addAlias}>
-            + Add id
-          </button>
-        </div>
+              </Control>
+            )}
+          </SettingRow>
 
-        {/* Provider mark: an svgl.app URL fetched + sanitized by the backend, with a
-          live preview. Holds both the sanitized SVG and its source URL. */}
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Provider logo</span>
-          <ModelLogoPicker
-            value={logoSvg}
-            url={logoUrl}
-            provider={provider}
-            onUrlChange={setLogoUrl}
-            onFetched={setLogoSvg}
-          />
-        </div>
+          <SettingRow label="Cached input / Mtok">
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={listPriceCachedInput}
+                  onChange={(e) => setListPriceCachedInput(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="e.g. 0.50"
+                />
+              </Control>
+            )}
+          </SettingRow>
 
-        <label className={`${styles.field} ${styles.fieldStacked}`}>
-          <span className={styles.fieldLabel}>Description (Markdown)</span>
-          <textarea
-            className={styles.textarea}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What the model is, when to reach for it…"
-          />
-        </label>
+          <SettingRow label="Output / Mtok">
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={listPriceOutput}
+                  onChange={(e) => setListPriceOutput(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="e.g. 25"
+                />
+              </Control>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            label="Prices taken on"
+            description="The date the rates were read."
+          >
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  type="date"
+                  value={listPriceAsOf}
+                  onChange={(e) => setListPriceAsOf(e.target.value)}
+                />
+              </Control>
+            )}
+          </SettingRow>
+        </div>
 
         {/* The provider policy: what a gg run's candidate list is filtered by.
           Every field is optional; blank takes the figure from OpenRouter's
           endpoints listing. */}
-        <div className={styles.aliasBlock}>
-          <span className={styles.fieldLabel}>Providers for gg runs</span>
-          <span className={styles.fieldHint}>
-            A gg run of this model runs on the providers OpenRouter lists that
-            serve it at its native quantization, at or below its developer's
-            prices, with a cache-read price. The model's Stats tab shows the
-            list the next run would use.
-          </span>
-        </div>
+        <div className={styles.group}>
+          <h2 className={styles.groupTitle}>
+            Providers for gg runs
+            <HelpTip text="A gg run uses the providers OpenRouter lists that serve the model at its native quantization, at or below the developer's prices, with a cache-read price. The model's Stats tab shows the list the next run would use." />
+          </h2>
 
-        <div className={styles.fields}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Developer provider</span>
-            <input
-              className={styles.input}
-              value={providerPin}
-              onChange={(e) => setProviderPin(e.target.value)}
-              placeholder="e.g. Alibaba"
-              aria-label="Developer provider"
-            />
-            <span className={styles.fieldHint}>
-              OpenRouter's name for the developer's own endpoint. Leave blank to
-              take the provider matching the model id's author segment; set it
-              where they differ (<code>qwen/…</code> served by Alibaba).
-            </span>
-          </label>
+          <SettingRow
+            label="Developer provider"
+            description="OpenRouter's name for the developer's own endpoint."
+            help="Blank takes the provider matching the model id's author segment. Set it where they differ, such as qwen/… served by Alibaba."
+          >
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={providerPin}
+                  onChange={(e) => setProviderPin(e.target.value)}
+                  placeholder="e.g. Alibaba"
+                />
+              </Control>
+            )}
+          </SettingRow>
 
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Native quantization</span>
-            <input
-              className={styles.input}
-              value={nativeQuantization}
-              onChange={(e) => setNativeQuantization(e.target.value)}
-              placeholder="e.g. fp8"
-              aria-label="Native quantization"
-              list="model-quantization-levels"
-            />
-            <datalist id="model-quantization-levels">
-              {QUANTIZATION_LEVELS.map((level) => (
-                <option key={level} value={level} />
-              ))}
-            </datalist>
-            <span className={styles.fieldHint}>
-              The level every provider must serve the model at. Leave blank to
-              take the highest level any endpoint declares.
-            </span>
-          </label>
-        </div>
+          <SettingRow
+            label="Native quantization"
+            description="The level every provider must serve the model at."
+            help="Blank takes the highest level any endpoint declares."
+          >
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  value={nativeQuantization}
+                  onChange={(e) => setNativeQuantization(e.target.value)}
+                  placeholder="e.g. fp8"
+                  list="model-quantization-levels"
+                />
+                <datalist id="model-quantization-levels">
+                  {QUANTIZATION_LEVELS.map((level) => (
+                    <option key={level} value={level} />
+                  ))}
+                </datalist>
+              </Control>
+            )}
+          </SettingRow>
 
-        <div className={styles.fields}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              Price ceiling, input / Mtok (USD)
-            </span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="any"
-              inputMode="decimal"
-              value={maxInputPrice}
-              onChange={(e) => setMaxInputPrice(e.target.value)}
-              placeholder="e.g. 0.60"
-              aria-label="Price ceiling, input per Mtok"
-            />
-          </label>
+          <SettingRow
+            label="Price ceiling, input / Mtok"
+            description="USD. Set both halves or neither."
+            help="Used only when OpenRouter lists no developer endpoint; otherwise that endpoint's own rates are the ceiling."
+          >
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={maxInputPrice}
+                  onChange={(e) => setMaxInputPrice(e.target.value)}
+                  placeholder="e.g. 0.60"
+                />
+              </Control>
+            )}
+          </SettingRow>
 
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              Price ceiling, output / Mtok (USD)
-            </span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="any"
-              inputMode="decimal"
-              value={maxOutputPrice}
-              onChange={(e) => setMaxOutputPrice(e.target.value)}
-              placeholder="e.g. 2.20"
-              aria-label="Price ceiling, output per Mtok"
-            />
-          </label>
-        </div>
-        <span className={`${styles.fieldHint} ${styles.fieldBlockHint}`}>
-          Used only when OpenRouter lists no developer endpoint, since that
-          endpoint's own rates are the ceiling. Set both or neither.
-        </span>
+          <SettingRow label="Price ceiling, output / Mtok" description="USD.">
+            {(id) => (
+              <Control>
+                <input
+                  id={id}
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={maxOutputPrice}
+                  onChange={(e) => setMaxOutputPrice(e.target.value)}
+                  placeholder="e.g. 2.20"
+                />
+              </Control>
+            )}
+          </SettingRow>
 
-        <div className={styles.fields}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Banned providers</span>
-            <textarea
-              className={`${styles.textarea} ${styles.textareaShort}`}
-              value={bannedProviders}
-              onChange={(e) => setBannedProviders(e.target.value)}
-              placeholder={"One provider per line"}
-              aria-label="Banned providers"
-            />
-            <span className={styles.fieldHint}>
-              Providers a gg run of this model never uses.
-            </span>
-          </label>
+          <SettingRow
+            label="Banned providers"
+            description="One per line. A gg run never uses them."
+          >
+            {(id) => (
+              <Control>
+                <textarea
+                  id={id}
+                  className={`${styles.textarea} ${styles.textareaShort}`}
+                  value={bannedProviders}
+                  onChange={(e) => setBannedProviders(e.target.value)}
+                  placeholder="One provider per line"
+                />
+              </Control>
+            )}
+          </SettingRow>
 
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              Unknown-quantization providers
-            </span>
-            <textarea
-              className={`${styles.textarea} ${styles.textareaShort}`}
-              value={unknownQuantizationProviders}
-              onChange={(e) => setUnknownQuantizationProviders(e.target.value)}
-              placeholder={"One provider per line"}
-              aria-label="Unknown-quantization providers"
-            />
-            <span className={styles.fieldHint}>
-              Providers kept despite declaring <code>unknown</code>{" "}
-              quantization. Every other <code>unknown</code> endpoint is left
-              out.
-            </span>
-          </label>
+          <SettingRow
+            label="Unknown-quantization providers"
+            description="One per line. Kept despite declaring unknown quantization."
+            help="Every other endpoint declaring unknown quantization is left out."
+          >
+            {(id) => (
+              <Control>
+                <textarea
+                  id={id}
+                  className={`${styles.textarea} ${styles.textareaShort}`}
+                  value={unknownQuantizationProviders}
+                  onChange={(e) =>
+                    setUnknownQuantizationProviders(e.target.value)
+                  }
+                  placeholder="One provider per line"
+                />
+              </Control>
+            )}
+          </SettingRow>
         </div>
 
         <SubmitNotice message={error} />
@@ -827,6 +862,26 @@ export function ModelConfigPage() {
         </div>
       </div>
     </PageLayout>
+  );
+}
+
+// A row's control column: a fixed width so every input lines up on the panel's
+// right edge, `wide` for the controls that hold a list, a picker, or prose.
+function Control({
+  wide = false,
+  children,
+}: {
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={
+        wide ? `${styles.control} ${styles.controlWide}` : styles.control
+      }
+    >
+      {children}
+    </div>
   );
 }
 
