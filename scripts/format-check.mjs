@@ -9,6 +9,12 @@
 // frozen list is derived from the `.frozen` markers on every run, so it never
 // goes stale.
 //
+// `.prettierignore` is rendered from the project template, whose broad rules
+// also cover a few tracked sources this project has always formatted: the
+// Kubernetes manifests under `deployments/k8s/` and the case-harness fixture page
+// under `packages/case-harness/test/build/`. Those are checked in a pass of their
+// own that honours `.gitignore` alone (see `REINCLUDED`).
+//
 // Prettier is handed the files git tracks rather than the checkout to expand:
 // a reference implementation's installed dependencies and built site are trees
 // of tens of thousands of files that no ignore rule keeps prettier from walking.
@@ -121,15 +127,35 @@ const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
   });
 const targets = tracked.filter(known);
 
+// Tracked sources the template's `.prettierignore` leaves out that this project
+// formats anyway: the Kubernetes manifests (its `deployments/k8s/` rule) and the
+// case-harness fixture page (its `build/` rule, meant for build output, which
+// this directory is not). They are checked without that ignore file.
+const REINCLUDED = [
+  (path) => path.startsWith("deployments/k8s/") && /\.(ya?ml|json)$/.test(path),
+  (path) => path.startsWith("packages/case-harness/test/build/"),
+];
+const reincluded = (path) => REINCLUDED.some((test) => test(path));
+
 // One shard per core, each its own prettier process and its own cache file. The
 // shard is chosen by hashing the path so that it is stable from run to run: a
 // file that moved between shards would miss the cache every time.
 const shardCount = Math.max(1, Math.min(availableParallelism(), 16));
-const shards = Array.from({ length: shardCount }, () => []);
+// Each shard holds two lists: the paths checked against `.prettierignore` too,
+// and the `REINCLUDED` ones, checked against `.gitignore` alone.
+const shards = Array.from({ length: shardCount }, () => ({
+  standard: [],
+  reincluded: [],
+}));
 for (const path of targets) {
   const digest = createHash("sha1").update(path).digest();
-  shards[digest.readUInt32BE(0) % shardCount].push(path);
+  const shard = shards[digest.readUInt32BE(0) % shardCount];
+  (reincluded(path) ? shard.reincluded : shard.standard).push(path);
 }
+const IGNORE_PATHS = {
+  standard: ["--ignore-path", ".gitignore", "--ignore-path", ".prettierignore"],
+  reincluded: ["--ignore-path", ".gitignore"],
+};
 
 const cacheDir = join(repoRoot, "node_modules", ".cache", "format-check");
 if (cache) mkdirSync(cacheDir, { recursive: true });
@@ -172,15 +198,15 @@ async function runShard(index) {
   const unformatted = [];
   const errors = [];
   let failed = false;
-  for (const batch of batches(shards[index])) {
+  const work = Object.entries(IGNORE_PATHS).flatMap(([kind, ignorePaths]) =>
+    batches(shards[index][kind]).map((batch) => ({ batch, ignorePaths })),
+  );
+  for (const { batch, ignorePaths } of work) {
     const { status, out, err } = await run([
       write ? "--write" : "--check",
       "--log-level",
       "warn",
-      "--ignore-path",
-      ".gitignore",
-      "--ignore-path",
-      ".prettierignore",
+      ...ignorePaths,
       ...(cache
         ? [
             "--cache",

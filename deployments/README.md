@@ -37,7 +37,11 @@ deployments/
 │   │                          #   Chromium), auth, dispatcher, driver, artifacts,
 │   │                          #   arena, publisher
 │   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
-│   └── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
+│   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
+│   └── web/                   # its nginx.conf, config.js.template and the
+│                              #   30-render-config.sh entrypoint that fills it in
+├── azure/
+│   └── aks-command-invoke.role.json # the deploy identity's custom AKS role
 ├── k8s/
 │   ├── base/                  # the kustomize BASE, namespaced objects only
 │   │   ├── kustomization.yaml

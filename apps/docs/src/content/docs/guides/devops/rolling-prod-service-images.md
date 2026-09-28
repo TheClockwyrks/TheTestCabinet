@@ -105,7 +105,10 @@ deploys.
 ## Rolling back
 
 Run the deploy by hand with the earlier sha. The registry keeps every sha the
-pipeline pushed:
+pipeline pushed. The backend is pulled as `the-test-cabinet-backend:<sha>`, an
+image the pipeline has pushed only since the move onto the project template; a
+sha from before that has none, so its backend fails to pull and the deploy
+undoes the rollout. Revert on `master` to put such a commit back.
 
 ```sh
 scripts/ci/deploy-environment.sh prod <earlier-sha>

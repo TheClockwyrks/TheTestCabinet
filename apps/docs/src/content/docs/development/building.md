@@ -151,8 +151,9 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   that may be **seeded**: the voxel and particle runtimes depend on it and are
   vendored into a model's workspace, so whatever they depend on travels with
   them. `run-record` re-exports these types, so a console keeps importing them
-  from there. `scripts/ci/seeded-contract-check.sh` is the gate that keeps the
-  evaluation half out of a run.
+  from there. The `seeded-contract` gate (`ci/gates/seeded-contract.py`, which
+  runs `scripts/ci/seeded-contract-check.sh`) keeps the evaluation half out of
+  a run.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
@@ -296,7 +297,7 @@ The template's gates:
 | `web-build` | The web console's `vite build` |
 | `markdownlint` | The Markdown style, from `.markdownlint-cli2.yaml`, at 90 columns |
 | `cspell` | The prose's spelling, from `cspell.json` and `.cspell/project-words.txt` |
-| `format` | Prettier, with `.prettierignore` as its scope and the frozen versions left out |
+| `format` | Prettier, with `.prettierignore` as its scope (plus the k8s manifests and the case-harness fixture page) and the frozen versions left out |
 | `docs-typecheck` | This site's `astro check` |
 | `docs-build` | This site's build |
 | `python-lint` | ruff over `ci/` |
@@ -710,8 +711,12 @@ reference implementations. A formatting warning anywhere fails the check. Two
 things are left out: what `.prettierignore` names (build trees, vendored copies,
 the Handlebars templates prettier does not parse, and prose, which markdownlint
 and cspell own), and the frozen test-case versions, which
-`scripts/format-check.mjs` derives from their `.frozen` markers on each run. It
-is the `format` gate.
+`scripts/format-check.mjs` derives from their `.frozen` markers on each run.
+`.prettierignore` comes from the project template, and two of its rules are
+broader than this project: the Kubernetes manifests under `deployments/k8s/` and
+the case-harness fixture page under `packages/case-harness/test/build/` are
+still checked, in a pass that honours `.gitignore` alone. It is the `format`
+gate.
 
 ## Generating the data contract
 
@@ -814,7 +819,7 @@ not trigger it; a `v*` tag runs the release pipeline instead (see
 
 | Stage | Runs on | What it does |
 | --- | --- | --- |
-| `gates` | every run | The template's `rust` and `web` jobs, and the project's jobs below; on `master` and `staging` also the static gg builds and every image, then the GitHub mirror |
+| `gates` | every run | The template's `rust` and `web` jobs, and the project's jobs below; on `master` and `staging` also the static gg builds and every image; the GitHub mirror on `master`, `staging` and `nightly` |
 | `publish` | `staging` | The template's: builds `deployments/images/backend.Dockerfile` and pushes `the-test-cabinet-backend:<commit>` |
 | `deploy` | `staging` | The template's: rolls the `staging` overlay onto the commit; see [Kubernetes](/deployment/kubernetes/overview/#deploying) |
 | `prod` | `master` | The project's: the same backend publish, then `scripts/ci/deploy-environment.sh prod <commit>` |

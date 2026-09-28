@@ -85,8 +85,8 @@ there.
   run-container images from. The Azure pipeline builds every one of them for
   `linux/amd64` and `linux/arm64` on each push to `master` and `staging` and
   pushes them to `testcabinet.azurecr.io` tagged by the commit sha. Each
-  cluster's kubelet identity holds `AcrPull` on that registry, so the `azure-*`
-  overlays need no pull secret. A deployment pulling from a private registry
+  cluster's kubelet identity holds `AcrPull` on that registry, so the `staging`
+  and `prod` overlays need no pull secret. A deployment pulling from a private registry
   without such a grant creates an `imagePullSecret` and names it in
   `TCAB_K8S_IMAGE_PULL_SECRETS`.
 - A `StorageClass` for the backend, auth, and artifact `PersistentVolumeClaim`s.
@@ -243,9 +243,13 @@ with (see [Ingesting definitions](/deployment/kubernetes/control-plane/#ingestin
 
 Run by hand, signed in to Azure with the same roles,
 `scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment to
-any sha the registry holds. That is how an earlier commit is put back; reverting
-the change on the branch and letting the pipeline deploy the revert is the other
-route.
+any sha whose images the registry holds. That is how an earlier commit is put
+back; reverting the change on the branch and letting the pipeline deploy the
+revert is the other route. The backend image is `the-test-cabinet-backend:<sha>`,
+which the pipeline has pushed only since the move onto the project template. A
+sha from before it has no such image, so its backend cannot be pulled
+(`ImagePullBackOff`) and the deploy undoes the rollout; put such a commit back
+by reverting on the branch instead.
 
 ### The deploy identity
 
