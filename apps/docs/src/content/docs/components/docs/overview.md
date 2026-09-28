@@ -9,5 +9,9 @@ project developers and covers running The Test Cabinet locally.
 
 The docs are their own Cloudflare Pages project under the `docs.testcabinet.ai`
 custom domain, separate from the public site. The build is a pure static Astro
-build with no external inputs. The Azure pipeline's `docs` job builds it and
-pushes the bundle with `wrangler` (`scripts/ci/deploy-docs.sh`).
+build with no external inputs. The Azure pipeline's `docs` stage builds it and
+pushes the bundle with `wrangler` (`scripts/ci/deploy-docs.sh`), on every
+`master` and `staging` run that passed the gates. The site's `package.json`, as
+`@the-test-cabinet/docs`, is the workspace template's, which pins Astro and
+Starlight; its configuration and pages are the project's. The `docs-typecheck`
+and `docs-build` gates check it on every commit that touches it.

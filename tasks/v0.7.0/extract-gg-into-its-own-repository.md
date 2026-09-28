@@ -3,8 +3,8 @@
 This issue follows the v0.7.0 tag and
 [`create-the-contracts-repo-and-move-the-shared-contracts-into-it.md`](create-the-contracts-repo-and-move-the-shared-contracts-into-it.md).
 Move gg, its SDKs and its toolchains into the `gg` repository
-(`git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/gg`), keeping their history, and have The Test Cabinet consume gg as a
-released binary.
+(`git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/gg`), keeping their history, and have
+The Test Cabinet consume gg as a released binary.
 
 ## Current state
 
@@ -36,9 +36,9 @@ subdirectory filtering so their history comes along: `crates/gg`,
 site, and `tasks/gg-*`. gg depends on the contracts crate and on nothing else
 of this project.
 
-The gg repository gets its own Azure pipeline running its gates, and on a tag
-it publishes the static-musl binaries for both architectures and the
-`gg-reference` tarball to the blob container described in
+The gg repository gets its own Azure pipeline running its gates, and on a tag it publishes
+the static-musl binaries for both architectures and the `gg-reference` tarball to the blob
+container described in
 [`publish-gg-release-binaries-to-azure-blob-storage.md`](done/publish-gg-release-binaries-to-azure-blob-storage.md).
 It mirrors to GitHub as a plain source mirror after its gates.
 

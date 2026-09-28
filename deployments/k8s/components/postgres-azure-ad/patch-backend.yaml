@@ -7,7 +7,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tcab-backend
+  name: the-test-cabinet-backend
   namespace: tcab-prod
 spec:
   template:

@@ -20,9 +20,23 @@ publish.workspace = true
 # a failure. See the header of `build.rs` for why the catalogues are generated instead of committed.
 build = "build.rs"
 
+# gg's unit tests are not run by the workspace's `rust-test` gate, and that is the whole reason
+# for the three `false`s below. The template's CI runs every Rust gate in one `rust` job capped at
+# 60 minutes, and gg's suite alone (most of its tests compile a program in one of its arms) takes
+# over an hour on a hosted agent. So `cargo nextest run --workspace`, and with it `rust-test` and
+# `make gate`, skips gg's tests, and the project's `gg_tests_<k>_of_4` pipeline jobs run them as
+# hash partitions through `scripts/ci/gg-test.sh`, whose `--lib` overrides `test = false`. The
+# suite is still linted: `cargo clippy --workspace --all-targets` compiles gg's `#[cfg(test)]` code
+# whatever these say. `doctest = false` gives up nothing: gg's doc comments hold no compiled
+# example, only `text`, `ignore` and foreign-language fences. The bin holds no tests.
+[lib]
+test = false
+doctest = false
+
 [[bin]]
 name = "gg"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 # gg's data contract (the capability set and the schema-v1 telemetry types) is

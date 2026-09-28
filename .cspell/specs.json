@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "globRoot": "..",
+  "dictionaryDefinitions": [
+    {
+      "name": "project-words",
+      "path": "./project-words.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": ["project-words"],
+  "noConfigSearch": true,
+  "useGitignore": true,
+  "files": [
+    "test-cases/**/*.{md,html,css,toml,hbs}",
+    "game-jams/**/*.{md,html,css,toml,hbs}",
+    "test-case-groups/**/*.{md,toml}"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/target/**",
+    "**/tmp/**",
+    "**/reference/screenshots/**",
+    "**/*.png",
+    "**/vendor/**",
+    "**/.vendor/**"
+  ],
+  "words": []
+}

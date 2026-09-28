@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # The one `curl` the toolchain installers under scripts/ci/ fetch a large file with.
 #
-# Sourced (not executed), and deliberately NOT part of scripts/ci/lib.sh: that file `cd`s to
-# the repository root when it is sourced, and these installers are also run from inside
+# Sourced (not executed), and deliberately NOT part of scripts/ci/tcab-lib.sh (the project's
+# helper, beside the workspace template's lib.sh): that file `cd`s to the repository root when
+# it is sourced, and these installers are also run from inside
 # containers/gg-toolchains/Dockerfile, which COPYs each of them into a `/tmp/gg-<arm>` tree
 # that is not a checkout. A helper with a side effect could not be shared by both callers, so
 # this one has none.

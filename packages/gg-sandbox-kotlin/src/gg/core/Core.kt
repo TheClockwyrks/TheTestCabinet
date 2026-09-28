@@ -124,4 +124,3 @@ public sealed interface Patch<out T> {
     /** Empty the field, leaving it with nothing. */
     public data object Clear : Patch<Nothing>
 }
-

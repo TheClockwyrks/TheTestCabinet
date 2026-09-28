@@ -235,3 +235,72 @@ async fn salvaging_reports_nothing_recovered_when_the_copy_produces_no_file() {
         "the destination's directory is prepared before the copy is attempted",
     );
 }
+
+// ── runtime detection ───────────────────────────────────────────────────────
+
+/// A probe that answers for exactly the named runtimes.
+fn answering(runtimes: &'static [&'static str]) -> impl FnMut(&str) -> bool {
+    move |binary| runtimes.contains(&binary)
+}
+
+#[test]
+fn detection_skips_a_podman_that_does_not_answer_for_a_docker_that_does() {
+    // The dev container's podman-remote on a Docker host: installed, but no libpod
+    // service behind it.
+    let chosen = choose_runtime(&["podman", "docker"], answering(&["docker"])).unwrap();
+    assert_eq!(chosen, "docker");
+}
+
+#[test]
+fn detection_prefers_podman_when_both_answer() {
+    let chosen = choose_runtime(&["podman", "docker"], answering(&["podman", "docker"])).unwrap();
+    assert_eq!(chosen, "podman");
+}
+
+#[test]
+fn detection_falls_back_to_the_first_present_when_none_answers() {
+    // The error a run then meets names the runtime the user has.
+    let chosen = choose_runtime(&["podman", "docker"], answering(&[])).unwrap();
+    assert_eq!(chosen, "podman");
+}
+
+#[test]
+fn detection_takes_docker_when_it_is_the_only_one_present() {
+    assert_eq!(
+        choose_runtime(&["docker"], answering(&["docker"])).unwrap(),
+        "docker"
+    );
+    assert_eq!(
+        choose_runtime(&["docker"], answering(&[])).unwrap(),
+        "docker"
+    );
+}
+
+#[test]
+fn detection_fails_when_no_runtime_is_present() {
+    let err = choose_runtime(&[], answering(&["podman", "docker"])).unwrap_err();
+    let message = err.to_string();
+    assert!(
+        message.contains("no container runtime on PATH"),
+        "{message}"
+    );
+    assert!(message.contains("podman, docker"), "{message}");
+    assert!(message.contains("TCAB_CONTAINER_RUNTIME"), "{message}");
+}
+
+#[test]
+fn detection_probes_in_order_and_stops_at_the_first_answer() {
+    let mut probed = Vec::new();
+    let chosen = choose_runtime(&["podman", "docker"], |binary| {
+        probed.push(binary.to_string());
+        true
+    })
+    .unwrap();
+    assert_eq!(chosen, "podman");
+    assert_eq!(probed, ["podman"]);
+}
+
+#[test]
+fn a_runtime_that_is_not_installed_does_not_answer() {
+    assert!(!runtime_answers("tcab-no-such-container-runtime"));
+}

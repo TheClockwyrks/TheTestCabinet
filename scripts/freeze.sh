@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Freeze one or more directories: record a `.frozen` marker so the commit hook
-# and CI reject any later change to their contents.
+# Freeze one or more directories: record a `.frozen` marker so the frozen-paths
+# gate (at commit and in CI) rejects any later change to their contents.
 #
 # Freeze a test-case version as soon as you trigger the first run against it —
 # that is the moment it stops being editable, and the moment you are least

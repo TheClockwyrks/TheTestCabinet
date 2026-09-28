@@ -112,8 +112,13 @@ const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
   .map((entry) => entry.slice(entry.indexOf("\t") + 1))
   // A frozen version cannot be modified, so it is not formatted either.
   .filter((path) => !frozen.some((dir) => path.startsWith(dir)))
-  // A tracked symbolic link is not a file prettier can read.
-  .filter((path) => !lstatSync(path).isSymbolicLink());
+  // A tracked symbolic link is not a file prettier can read, and a tracked file
+  // deleted from the working tree (a removal not yet committed) is not there to
+  // read at all.
+  .filter((path) => {
+    const stats = lstatSync(path, { throwIfNoEntry: false });
+    return stats !== undefined && !stats.isSymbolicLink();
+  });
 const targets = tracked.filter(known);
 
 // One shard per core, each its own prettier process and its own cache file. The

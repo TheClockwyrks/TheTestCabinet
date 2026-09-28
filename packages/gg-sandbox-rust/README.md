@@ -21,9 +21,9 @@ every Rust program in the study. It carries the hand-written, idiomatic SDK a mo
 calls, the shell that answers gg's world and calls the model's own `main`, and the
 generated bindings both are written against.
 
-The SDK is **twelve capability modules** — `files`, `shell`, `board`, `tasks`,
-`memories`, `views`, `docs`, `context`, `delegation`, `skills`, `programs`, `session` —
-plus a thirteenth, `core`, which declares no function and holds the three types every other
+The SDK is **twelve capability modules** — `files`, `shell`, `board`, `tasks`, `memories`,
+`views`, `docs`, `context`, `delegation`, `skills`, `programs`, `session` — plus a
+thirteenth, `core`, which declares no function and holds the three types every other
 module's signatures name. Each module owns the types it produces, so `gg::files::FileRead`
 is at once the path a program writes and the key its documentation view is opened by, and
 two modules are free to declare a type of the same name. There is no prelude and gg
@@ -46,8 +46,8 @@ Nothing here is committed. Every file below is generated during an ordinary
 
 There is no `rust.component.wasm`: the component is the program, compiled per turn.
 
-To put the artifacts somewhere you can open them, run `scripts/gg-artifacts.sh`; the catalogue's
-equivalent is `scripts/gg-signatures.sh`.
+To put the artifacts somewhere you can open them, run `scripts/gg-artifacts.sh`; the
+catalogue's equivalent is `scripts/gg-signatures.sh`.
 
 ## Why the set rides inside gg and the compiler does not
 
@@ -63,16 +63,17 @@ separately — so a set that lived in the image could be a different vintage fro
 binary reading it, which once the SDK is in it would mean a model shown one surface in
 its prompt and compiled against another.
 
-**The two halves are pinned to each other harder than any other arm's are.** An `.rlib`
-is a compiler-version-private format: `rustc` refuses one built by another release
-outright, with `E0514`. So this arm has **no compiler pin of its own** — it uses
+**The two halves are pinned to each other harder than any other arm's are.** An `.rlib` is
+a compiler-version-private format: `rustc` refuses one built by another release outright,
+with `E0514`. So this arm has **no compiler pin of its own** — it uses
 [`rust-toolchain.toml`](../../rust-toolchain.toml)'s, the one every checkout already
 builds with, so there is only one Rust release in the repository to keep in step. A bump
 re-cuts the set on the next `cargo build` and cannot fail to: `rust-toolchain.toml` is in
 this arm's artifact-crate rerun set, and `build.sh` refuses to run at all if the `rustc`
 on `PATH` is not the pinned one, before it produces a single rlib. That check used to be
-made from the other end, by a test comparing the compiler recorded in `rust.toolchain.json`
-with the one on the machine; there is no longer an interval in which the two can differ.
+made from the other end, by a test comparing the compiler recorded in
+`rust.toolchain.json` with the one on the machine; there is no longer an interval in which
+the two can differ.
 
 ## Layout
 
@@ -96,26 +97,28 @@ with the one on the machine; there is no longer an interval in which the two can
 macro leaves a dependency on the `wit-bindgen-rust-macro` **proc macro** in the rlib's
 metadata, and a proc macro is a _host_ dynamic library — so `rustc` then refuses to load
 the library set unless that `.so` is beside it, which would mean shipping one build of the
-set per host architecture (measured: `E0463: can't find crate for wit_bindgen_rust_macro
-which gg depends on`). Generating ahead of time leaves the set depending on nothing but the
-`wit-bindgen` runtime crate, which is ordinary Rust and architecture-free.
+set per host architecture (measured:
+`E0463: can't find crate for wit_bindgen_rust_macro which gg depends on`). Generating
+ahead of time leaves the set depending on nothing but the `wit-bindgen` runtime crate,
+which is ordinary Rust and architecture-free.
 
-Two generator options are load-bearing and neither is a default.
-`--pub-export-macro` makes the generated `export!` macro reachable from outside this crate,
-and `--default-bindings-module gg::bindings` makes it expand against these bindings — which
+Two generator options are load-bearing and neither is a default. `--pub-export-macro`
+makes the generated `export!` macro reachable from outside this crate, and
+`--default-bindings-module gg::bindings` makes it expand against these bindings — which
 together are what let the _program_'s crate export the world while the bindings stay
-prebuilt. Without them the whole strategy collapses back to recompiling the binding surface
-on every turn.
+prebuilt. Without them the whole strategy collapses back to recompiling the binding
+surface on every turn.
 
 ## The curated library set
 
 `std` is free, and `Cargo.toml`'s `[dependencies]` declares five crates a program may
 `use` with no manifest to edit: `regex`, `serde_json`, `base64`, `itertools` and
 `indexmap`. They sit under `# --- heading ---` comments, and those headings are
-**machine-readable**: `build.sh` marks exactly those crates `extern` in the manifest (which
-is what `rustc --extern` puts in a program's extern prelude) and `tools/signatures.py`
-groups the catalogue's library list by them. One declaration, two readers, so what a model
-is told it may use and what the compile lets it name cannot drift.
+**machine-readable**: `build.sh` marks exactly those crates `extern` in the manifest
+(which is what `rustc --extern` puts in a program's extern prelude) and
+`tools/signatures.py` groups the catalogue's library list by them. One declaration, two
+readers, so what a model is told it may use and what the compile lets it name cannot
+drift.
 
 Two constraints decide what may be in it, and both are hard:
 
@@ -123,9 +126,9 @@ Two constraints decide what may be in it, and both are hard:
   rlib whose metadata names one cannot be loaded on any other architecture (measured:
   `E0463`). That rules out `serde`'s `derive`, `thiserror` and `clap`; `build.sh` fails on
   one rather than trusting nobody adds it.
-- **It must compile for `wasm32-wasip1`**, which the sandbox gives no clock, no filesystem,
-  no sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`. Reaching the
-  world is what `gg::files` and `gg::shell` are for.
+- **It must compile for `wasm32-wasip1`**, which the sandbox gives no clock, no
+  filesystem, no sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`.
+  Reaching the world is what `gg::files` and `gg::shell` are for.
 
 ## Building it
 
@@ -144,27 +147,27 @@ You never have to run `signatures.sh` for correctness: `crates/gg/build.rs` runs
 every build of `test-cabinet-gg`, so a doc comment or a signature edited in `src/` reaches
 the model's prompt on the next `cargo build`. It needs this checkout's own `rustdoc`, the
 `wasm32-wasip1` standard library (`scripts/ci/install-rust-wasm.sh`) and
-`src/bindings.rs`, which it generates with `bindings.sh` when it is missing. Run it by hand
-— with `GG_SIGNATURES_OUT_DIR` set, or through `scripts/gg-signatures.sh` — when you want
-to _read_ the emitted JSON, which is where a reflector bug shows and nowhere else.
+`src/bindings.rs`, which it generates with `bindings.sh` when it is missing. Run it by
+hand — with `GG_SIGNATURES_OUT_DIR` set, or through `scripts/gg-signatures.sh` — when you
+want to _read_ the emitted JSON, which is where a reflector bug shows and nowhere else.
 
 **`signatures.sh` writes the catalogue and nothing else, and that is why the bindings are
-their own script.** Both halves are generated during `cargo build`, by two different crates
-with two different rerun sets: `crates/gg-sandbox-artifacts/rust` runs `build.sh`, and
-`crates/gg/build.rs` runs `signatures.sh`. A signature step that reached `build.sh` for its
-bindings would collapse those two sets into one, so editing a doc comment would re-link
-9.4 MB of rlibs — which is the whole inner-loop cost the artifact crates exist to avoid. It
-is also the shape that makes a build script invalidate its own inputs, which is why
-`crates/gg/build.rs` names this package's `src` and `tools` and never its `.build/`.
+their own script.** Both halves are generated during `cargo build`, by two different
+crates with two different rerun sets: `crates/gg-sandbox-artifacts/rust` runs `build.sh`,
+and `crates/gg/build.rs` runs `signatures.sh`. A signature step that reached `build.sh`
+for its bindings would collapse those two sets into one, so editing a doc comment would
+re-link 9.4 MB of rlibs — which is the whole inner-loop cost the artifact crates exist to
+avoid. It is also the shape that makes a build script invalidate its own inputs, which is
+why `crates/gg/build.rs` names this package's `src` and `tools` and never its `.build/`.
 
-**The set is byte-reproducible across checkouts.** An `.rlib` records the absolute paths it
-was compiled from and the directory `rustc` ran in, so `build.sh` remaps this package and
-`CARGO_HOME` onto fixed logical roots. Cargo leaves the values of `--remap-path-prefix` out
-of the unit hash it derives `-C metadata` from, so that does not itself put the path back;
-verified by building at two roots and under two `$HOME`s and comparing every rlib's digest.
-Nothing depends on that any more — the set is generated rather than committed, so there is
-no second copy to diff against — but an artifact that changed when nothing did is one nobody
-can reason about, so the property is kept.
+**The set is byte-reproducible across checkouts.** An `.rlib` records the absolute paths
+it was compiled from and the directory `rustc` ran in, so `build.sh` remaps this package
+and `CARGO_HOME` onto fixed logical roots. Cargo leaves the values of
+`--remap-path-prefix` out of the unit hash it derives `-C metadata` from, so that does not
+itself put the path back; verified by building at two roots and under two `$HOME`s and
+comparing every rlib's digest. Nothing depends on that any more — the set is generated
+rather than committed, so there is no second copy to diff against — but an artifact that
+changed when nothing did is one nobody can reason about, so the property is kept.
 
 ## What a Rust program looks like
 

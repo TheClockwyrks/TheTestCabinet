@@ -206,4 +206,3 @@ fn deterministic_month_by_month() {
         assert_eq!(a.vehicles.len(), b.vehicles.len(), "vehicle count diverged at month {month}");
     }
 }
-

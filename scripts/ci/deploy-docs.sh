@@ -39,8 +39,9 @@ esac
 log "npm ci"
 npm ci
 
-log "build @clockwyrks/docs"
-npm run build -w @clockwyrks/docs
+# By its directory rather than its package name, which the workspace template decides.
+log "build apps/docs"
+npm run build -w apps/docs
 
 log "deploy to ${project}"
 npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy apps/docs/dist \

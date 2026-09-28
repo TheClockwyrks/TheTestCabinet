@@ -31,16 +31,18 @@ deployments/
 ├── local/
 │   ├── compose.yml            # backend + auth service in containers (a minimal stack)
 │   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
-├── images/                    # service images, built into the ACR by the Azure pipeline (see below)
+├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
 │   │                          #   Chromium), auth, dispatcher, driver, artifacts,
 │   │                          #   arena, publisher
+│   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 │   └── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
 ├── k8s/
 │   ├── base/                  # the kustomize BASE, namespaced objects only
 │   │   ├── kustomization.yaml
-│   │   ├── rbac.yaml          # tcab-driver SA/Role (sandbox pods) + tcab-dispatcher SA/Role (Jobs)
+│   │   ├── namespace.yaml     # the `tcab` stem overlays' namespaces are named from
+│   │   ├── rbac.yaml          # driver SA/Role (sandbox pods), dispatcher SA/Role (Jobs)
 │   │   ├── secrets.example.yaml # Secret templates (placeholders only)
 │   │   ├── backend.yaml       # backend StatefulSet (1 replica) + PVC + Service
 │   │   ├── auth.yaml          # auth StatefulSet (1 replica) + PVC + Service
@@ -49,24 +51,23 @@ deployments/
 │   │   ├── arena.yaml         # arena Deployment (1 replica) + Service + SA
 │   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
 │   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
-│   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi, web, internal-ingress
+│   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi,
+│   │                          #   web, internal-ingress
 │   ├── cluster/               # cluster-scoped objects, applied by hand by a cluster administrator
 │   │   ├── namespace/         # the environment's Namespace
 │   │   ├── observability/     # the LGTM stack's node-metrics ClusterRole + binding
 │   │   ├── internal-ingress/  # the cert-manager ClusterIssuer
-│   │   ├── azure-staging/     # the bootstrap for tcab-staging
-│   │   └── azure-prod/        # the bootstrap for tcab-prod
+│   │   └── azure-{staging,prod}/ # the bootstraps for tcab-staging and tcab-prod
 │   ├── overlays/
-│   │   ├── prod/              # production overlay (placeholder registry pinned)
-│   │   ├── staging/           # staging overlay (tcab-staging, TCAB_ENV=staging)
-│   │   ├── azure-prod/        # prod on managed PostgreSQL, deployed by the Azure pipeline from master
-│   │   ├── azure-staging/     # staging on managed PostgreSQL, deployed by the Azure pipeline from staging
+│   │   ├── prod/              # prod on managed PostgreSQL, deployed from master
+│   │   ├── staging/           # staging on managed PostgreSQL, deployed from staging
 │   │   └── local/             # k3d development mirror (driven by ../local/Makefile)
 │   └── README.md              # cluster prerequisites, apply, per-environment notes
 ├── backups/
-│   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
+│   └── litestream.yml         # example Litestream config: stream SQLite to object storage
 ├── telemetry/
-│   └── otel-collector.yaml    # example OTel Collector config (external-collector path; the default is in-cluster LGTM — see k8s/components/observability)
+│   └── otel-collector.yaml    # example OTel Collector config, for an external collector
+│                              #   (the default is in-cluster LGTM, k8s/components/observability)
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example
@@ -89,10 +90,49 @@ service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
 Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-auth-service`,
 `…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
-`…/tcab-publisher`, and `…/tcab-web`. Its deploy then sets every image of the
-`azure-*` overlays to that sha; the overlays carry no image tags of their own. To
-build and push them by hand instead, see the build instructions in each
-Dockerfile's header.
+`…/tcab-publisher`, and `…/tcab-web`. The workspace template's publish stage then
+builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
+steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
+the repository the template's deploy runs. To build and push the images by hand
+instead, see the build instructions in each Dockerfile's header.
+
+## Deploying
+
+The `staging` and `prod` overlays name every Test Cabinet image at the tag
+`unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
+[`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
+commit: all eight images, and the dispatcher's driver and publisher images and
+run-container registry and tag. Every deployment goes through it.
+
+A push to `staging` deploys staging in the workspace template's deployment job
+(`tcab-staging` on `testcabinet-staging-westus2-aks`):
+
+1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
+   overlay, records the commit the namespace runs now, gives every rollout 600
+   seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
+   holds the backend's disk
+   ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)).
+2. **The template's deploy**: `scripts/ci/deploy.sh` applies the overlay and waits on
+   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+3. **Post-deploy**: once the backend is ready,
+   [`scripts/ci/post-deploy.sh`](../scripts/ci/post-deploy.sh) settles every other
+   workload through
+   [`scripts/ci/settle-workloads.sh`](../scripts/ci/settle-workloads.sh), which waits
+   on each and undoes each that does not become ready.
+4. **After a failure**: `settle-workloads.sh --after-failure` settles the rest,
+   prints the pods and events, and prints the recovery: the command that puts the
+   namespace back on the commit it ran before, or "fix forward" when there is no
+   earlier revision of the renamed backend.
+
+A push to `master` deploys prod in the pipeline's own prod stage, which publishes
+the same retag and runs `scripts/ci/deploy-environment.sh prod <sha>`
+([source](../scripts/ci/deploy-environment.sh)): it pins a temporary copy, refuses
+a render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and
+waits on every workload, undoing each that fails. The same script rolls either
+environment by hand onto any commit the registry holds, and `--render` prints what it
+would apply.
+[`scripts/ci/k8s-deploy-sets.sh`](../scripts/ci/k8s-deploy-sets.sh), the
+`k8s-deploy-sets` gate, holds both deploy sets to that shape.
 
 These are the long-running **service** images, distinct from the **run-container**
 images a run executes inside ([`containers/`](../containers/README.md)), which the

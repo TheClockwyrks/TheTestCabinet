@@ -17,14 +17,16 @@
 // allow cross-origin POSTs from the console's origin, and the backend + workers
 // must allow the inbound `traceparent` request header (and not reject the
 // CORS preflight it triggers). See the followups note.
+import { ZoneContextManager } from "@opentelemetry/context-zone";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
   WebTracerProvider,
 } from "@opentelemetry/sdk-trace-web";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { ZoneContextManager } from "@opentelemetry/context-zone";
-import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -32,30 +34,36 @@ import {
 // `deployment.environment.name` is still incubating in the JS semconv package,
 // matching the Rust side which gated it behind `semconv_experimental`.
 import { ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from "@opentelemetry/semantic-conventions/incubating";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
-import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
+
+// The console's own version, reported as `service.version`.
+import { version } from "../package.json";
 
 const DEFAULT_SERVICE_NAME = "tcab-web";
 
-// Injected by Vite at build time from the package version (see vite.config.ts).
-declare const __APP_VERSION__: string;
+// A variable's trimmed value, or `fallback` where it is unset or blank.
+function nonBlank(raw: string | undefined, fallback: string): string {
+  const trimmed = raw?.trim();
+  return trimmed === undefined || trimmed === "" ? fallback : trimmed;
+}
 
 // Read the OTLP endpoint, treating unset/blank as disabled (mirrors the Rust
 // crate's master-switch semantics for `OTEL_EXPORTER_OTLP_ENDPOINT`).
 function otlpEndpoint(): string | null {
   const raw = import.meta.env.VITE_OTEL_EXPORTER_OTLP_ENDPOINT;
   const trimmed = raw?.trim();
-  return trimmed ? trimmed : null;
+  return trimmed === undefined || trimmed === "" ? null : trimmed;
 }
 
-let initialized = false;
+// Whether `initTelemetry` has run. An object rather than a `let`, so the
+// function marks it without assigning to a module-level binding.
+const state = { initialized: false };
 
 // Initialize browser telemetry. Safe to call multiple times (only the first
 // call has an effect) and safe to call when telemetry is disabled (no-op).
 // Call once at the top of the app entry, before the first render.
 export function initTelemetry(): void {
-  if (initialized) return;
-  initialized = true;
+  if (state.initialized) return;
+  state.initialized = true;
 
   const endpoint = otlpEndpoint();
   if (!endpoint) {
@@ -65,11 +73,15 @@ export function initTelemetry(): void {
   }
 
   const resource = resourceFromAttributes({
-    [ATTR_SERVICE_NAME]:
-      import.meta.env.VITE_OTEL_SERVICE_NAME?.trim() || DEFAULT_SERVICE_NAME,
-    [ATTR_SERVICE_VERSION]: __APP_VERSION__,
-    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
-      import.meta.env.VITE_TCAB_ENV?.trim() || "local",
+    [ATTR_SERVICE_NAME]: nonBlank(
+      import.meta.env.VITE_OTEL_SERVICE_NAME,
+      DEFAULT_SERVICE_NAME,
+    ),
+    [ATTR_SERVICE_VERSION]: version,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: nonBlank(
+      import.meta.env.VITE_TCAB_ENV,
+      "local",
+    ),
   });
 
   // The SDK appends the signal path (`/v1/traces`) to the base endpoint, so the

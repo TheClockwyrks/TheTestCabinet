@@ -6,8 +6,8 @@
 # add a new version directory instead of editing this one.
 #
 # `digest` is the SHA-256 of this directory's `git ls-files -s` listing with
-# this marker excluded. The commit hook (scripts/hooks/frozen-paths.sh) and CI
-# (scripts/ci/frozen-check.sh) both recompute it and fail on any difference.
+# this marker excluded. The frozen-paths gate (ci/gates/frozen-paths.py) recomputes
+# it at every commit that touches this directory and in CI, and fails on any difference.
 #
 # Deliberately unfreezing means deleting this file in its own reviewable commit.
 digest = "433754f656461f4537e49ec354f9bc75d7c3a475e4b36176e356003f37fab5f4"

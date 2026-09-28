@@ -2,7 +2,15 @@
 # base's single-replica StatefulSet + PVC (deleted by this component's kustomization).
 # The base's `tcab-backend` ClusterIP Service is kept and still selects this pod by
 # its `app.kubernetes.io/name: tcab-backend` label. TCAB_ENV defaults to `prod` here
-# (matching the base); the azure-staging overlay patches it to `staging`.
+# (matching the base); the staging overlay patches it to `staging`.
+#
+# The Deployment itself is named `the-test-cabinet-backend`, the name the workspace
+# template's deploy script (scripts/ci/deploy.sh) waits on and rolls back. Only the
+# name changed: its selector and pod labels are still `tcab-backend`, so the Service
+# and every NetworkPolicy select it as before. A namespace that still runs the old
+# `tcab-backend` Deployment has it deleted before each deploy
+# (scripts/ci/retire-legacy-backend.sh), because the old pod holds the RWO
+# `tcab-backend-state` claim the new one mounts.
 #
 # With the record store on managed PostgreSQL the database leaves local disk, so the
 # single-writer pin goes away. Two base constraints still hold (see
@@ -41,7 +49,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tcab-backend
+  name: the-test-cabinet-backend
   namespace: tcab-prod
 spec:
   # Postgres lifts the SQLite single-writer pin. Kept at 1 because this pod still
@@ -73,7 +81,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-backend:<git-sha>
+          image: REPLACE_REGISTRY/tcab-backend:latest # the staging and prod overlays name testcabinet.azurecr.io/the-test-cabinet-backend
           ports:
             - containerPort: 8787
           env:

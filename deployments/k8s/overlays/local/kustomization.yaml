@@ -38,7 +38,7 @@ resources:
 # `make -C deployments/local local-grafana`.
 #
 # The web console is deliberately NOT served in the cluster locally (prod still is —
-# via the internal-ingress component in the azure-prod overlay). Baking the console
+# via the internal-ingress component in the prod overlay). Baking the console
 # into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
 # which makes iterating on the console painfully slow. Locally we run it straight from
 # source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430, pre-pointed at

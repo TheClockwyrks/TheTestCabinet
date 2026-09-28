@@ -1,4 +1,4 @@
-# The cluster-scoped objects the azure-staging overlay depends on. A cluster
+# The cluster-scoped objects the staging overlay depends on. A cluster
 # administrator applies them by hand before the pipeline's first deploy and again
 # whenever one of them changes (see "Cluster prerequisites" in ../../README.md). The
 # pipeline's deploy identity cannot write any of them.

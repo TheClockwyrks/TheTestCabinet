@@ -90,7 +90,7 @@ Where the two diverge sharply the gap is page cache, which is normal for a
 container that has just written a build tree to disk.
 
 Prod keeps metrics for **30 days** while logs and traces keep 3
-([`patch-lgtm-retention.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/azure-prod/patch-lgtm-retention.yaml)).
+([`patch-lgtm-retention.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/prod/patch-lgtm-retention.yaml)).
 The windows differ because the questions do: a trace answers "what happened in this
 run" and is read within days, whereas a peak-memory figure is only trustworthy over
 a window wide enough to contain the rare heavy test case.
@@ -298,7 +298,7 @@ that was killed.
 Each store has a retention window, set by the `LOKI_RETENTION_PERIOD`,
 `TEMPO_BLOCK_RETENTION`, and `PROMETHEUS_RETENTION` environment variables on the
 `tcab-lgtm` container, which the `*_EXTRA_ARGS` variables beside them
-interpolate. The component sets 24h, and `overlays/azure-prod` raises it to 72h,
+interpolate. The component sets 24h, and `overlays/prod` raises it to 72h,
 because a production issue is often investigated a day or more after the run
 that caused it. These stores are a live debugging surface. To keep telemetry
 long-term, forward it to a system built for retention rather than growing these

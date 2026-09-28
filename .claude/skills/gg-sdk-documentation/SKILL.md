@@ -3,7 +3,7 @@ description: Policies that apply to documentation for gg SDK functions and types
 name: gg-sdk-documentation
 ---
 
-# gg SDK Documentaiton
+# gg SDK Documentation
 
 ## Overview
 

@@ -133,4 +133,3 @@ pub struct ViewOptions {
     /// a value outside it refuses the open.
     pub max_line_chars: Option<u32>,
 }
-

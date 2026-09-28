@@ -1,0 +1,8 @@
+# The shell scripts under this case are reference implementations: authored
+# model output (game-asset generators full of intentional word-splitting), kept
+# as they were produced, not maintained tooling. The repository's commit hook
+# never linted them before the template's shellcheck hook took over, so this
+# file turns shellcheck off for everything beneath it. It sits beside the
+# version directories rather than inside them, because a frozen version may
+# never change.
+disable=all

@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
 	"crates/core",
 	"crates/code-analysis",
@@ -89,8 +89,8 @@ publish = false
 
 # Warnings-as-errors, baked into the manifests for every member crate that opts
 # in with `[lints] workspace = true`. CI already denies warnings on the clippy
-# command line (`scripts/ci/rust-clippy.sh` runs `cargo clippy … -- -D warnings`),
-# but that flag only fires under that one invocation; defining the policy here
+# command line (the `rust-clippy` gate runs `cargo clippy … -- -D warnings`), but
+# that flag only fires under that one invocation; defining the policy here
 # means a plain `cargo build` or `cargo clippy` enforces it locally too — no flag
 # required — and keeps the rule in one place instead of scattered across scripts.
 [workspace.lints.rust]
@@ -543,4 +543,3 @@ tiktoken-rs = "0.7"
 # Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
 # minor releases, and a silent bump would change what the analyzer reports.
 oxc = { version = "0.141" }
-

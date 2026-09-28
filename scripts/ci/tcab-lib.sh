@@ -1,5 +1,14 @@
 # shellcheck shell=bash
-# Shared helpers for the CI scripts under scripts/ci/.
+# The project's shared helpers for its own CI scripts under scripts/ci/.
+#
+# This directory holds two kinds of script. The workspace template renders some
+# of them (the gates' pipeline plumbing, deploy.sh, build-image.sh, ci-image.sh
+# and the rest), and those source the template's lib.sh beside this file. The
+# project's own scripts, which run its own pipeline jobs and stages
+# (.azure/project/, .azure/tcab/, azure-pipelines-release.yml), source this
+# file; scripts/ci/README.md lists both. It is named for the project so a
+# template update never renders over it, and a script that needs the
+# template's helpers too (`build_arg`, `aks_invoke`) sources both.
 #
 # Sourced (not executed) by each script. It resolves the repository root from
 # this file's own location and changes into it, so every CI script behaves

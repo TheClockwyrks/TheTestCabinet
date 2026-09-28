@@ -106,7 +106,9 @@ SDK sources in the same checkout.
 
 What that costs is that building gg requires every arm's documentation
 toolchain. `scripts/ci/install-gg-toolchains.sh` installs the lot, idempotently,
-and every surface that builds gg runs it.
+and every surface that builds gg runs it: `scripts/devcontainer-setup.sh` in the
+dev container, `scripts/ci/gg-ci-toolchains.sh` in the pipeline, and the
+service image's gg build stage.
 
 ### WASI
 
@@ -175,8 +177,8 @@ below.
    Re-include every `packages/` directory the arm reads in the root
    `.dockerignore`, which is an allowlist. The images that build gg copy the
    whole context and compile these packages, so a missing entry fails inside the
-   arm's own build rather than at a `COPY`. `scripts/ci/build-context.sh` is the
-   gate.
+   arm's own build rather than at a `COPY`. The `build-context` gate catches a
+   missing entry.
 
 6. Add the row to `scripts/gg-arms.sh`, which is the one list of gg's arms. A
    row names the id, the package, the label a person reads while it runs, the
@@ -205,9 +207,8 @@ below.
     those images do not supply, and is drivable with a per-invocation working
     tree and output directory. A `COPY` that reads the build context must have its
     path re-included in the applicable `.dockerignore`, which is an allowlist;
-    `scripts/ci/build-context.sh` is the gate that catches a missing
-    re-inclusion. Add the arm's documentation tool to
-    `scripts/ci/install-gg-toolchains.sh`.
+    the `build-context` gate catches a missing re-inclusion. Add the arm's
+    documentation tool to `scripts/ci/install-gg-toolchains.sh`.
 11. Add the console's row: one name in `PROGRAM_LANGUAGE_NAMES`
     (`packages/ui/src/app/pages/gg/programLanguages.ts`). The capability
     editor's picker spreads that same table, so it needs an entry only when the

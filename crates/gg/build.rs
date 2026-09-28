@@ -267,7 +267,9 @@ fn reflect(root: &Path, signatures: &Path, artifacts: &BTreeMap<String, PathBuf>
          answers that fix almost every one of them:\n\
          \n\
          * a missing toolchain — run scripts/ci/install-gg-toolchains.sh, which installs every \
-         arm's documentation tool and is safe to re-run;\n\
+         arm's documentation tool and is safe to re-run; in the dev container, run \
+         `bash scripts/devcontainer-setup.sh`, which also installs the apt prerequisites and \
+         resumes an interrupted provisioning;\n\
          * a checkout whose npm workspaces were never installed (no node_modules, so no `tsc`) — \
          run `npm ci` at the repository root.\n\
          \n\

@@ -30,32 +30,48 @@
 # `no items matching glob ".../apt.sh" copied (1 filtered out using .dockerignore)` —
 # which is how the root file came to carry `!/.devcontainer/…` entries at all.
 #
-# `.devcontainer/ubuntu.dockerfile` is the one Dockerfile here with a sibling ignore
-# file, so it can answer to ITS file or to the ROOT one depending on who builds it, and
-# a source admitted by one and not the other is a build that works for whoever added it
-# and fails for the next person on the other runtime.
+# A Dockerfile with a sibling ignore file can therefore answer to ITS file or to the
+# ROOT one depending on who builds it, and a source admitted by one and not the other
+# is a build that works for whoever added it and fails for the next person on the
+# other runtime. None of this project's own Dockerfiles has one today; the check stays
+# so that the first one to gain a sibling is held to both.
 #
 # So this gate checks every Dockerfile against the root allowlist, and additionally
 # against its sibling one where it has it. The failure message names the file that
 # rejected the source, which is the file to widen.
+#
+# WHICH DOCKERFILES. This project's own: `deployments/images/*` and `containers/**`,
+# built from the repository root. The devcontainer image and the CI images
+# (`.devcontainer/ubuntu.dockerfile`, `ci/images/*.Dockerfile`) and their ignore files
+# are rendered from the workspace template and must stay byte-identical to it: they
+# build from contexts of their own (`.devcontainer/` for the devcontainer), the
+# template tests their builds, and any fix this gate could ask for would be an edit to a
+# template-owned file. They are left out by name (TEMPLATE_DOCKERFILES below).
+#
+# THE RUST PIN. The template decides the compiler, in `rust-toolchain.toml`. The
+# case images under `containers/` pin their own Rust (`FROM … rust:<v>-bookworm`,
+# `ARG RUST_VERSION=<v>`), and a case built with a different compiler than the
+# checkout is a case nobody tested. So every such pin must equal the toolchain's
+# `channel`, and a template update that moves the compiler fails here until
+# `containers/` follows.
 #
 # Whole-context copies (`COPY . .`) are inspected for neither of the two checks: they
 # take whatever the allowlist admits, which is exactly the question the allowlist
 # answers. A DIRECTORY source is a weaker version of the same thing — `COPY dir dst`
 # copies the directory's surviving contents — so it is checked for whether the copy
 # transfers *anything*, not for whether the directory itself was re-included. That
-# distinction is load-bearing rather than pedantic: `.devcontainer/ubuntu.dockerfile`
-# copies `./packages`, whose allowlist entry is the glob
-# `!/packages/gg-sandbox-*/*-version.sh` — the directory is ignored, the nine files under
-# it are not, and the build works. What the check still catches is the real failure:
-# a directory none of whose contents survive, which copies nothing at all.
+# distinction is load-bearing rather than pedantic: the devcontainer image once copied
+# `./packages`, whose allowlist entry was the glob
+# `!/packages/gg-sandbox-*/*-version.sh` — the directory was ignored, the nine files
+# under it were not, and the build worked. What the check still catches is the real
+# failure: a directory none of whose contents survive, which copies nothing at all.
 #
 # The evaluation mirrors Docker's own: patterns apply in order, the last one to match
 # wins, a `!` pattern re-includes, and a path is ignored when it or any ancestor
 # directory is. `*` and `?` do not cross `/`; `**` does.
 #
-# Needs no toolchain and no history — it reads the checked-out tree — so it runs as a
-# pre-commit hook and as a standalone CI job.
+# Needs no toolchain and no history — it reads the checked-out tree — so the
+# `build-context` gate (ci/gates/build-context.py) runs it as a commit hook and in CI.
 #
 # Usage:
 #   scripts/ci/build-context.sh
@@ -284,7 +300,20 @@ checked=0
 # `*.dockerfile` is the devcontainer's spelling, and it was outside this glob until
 # that image started building from the repository root — so the one Dockerfile whose
 # COPY paths this gate is most useful for was the one it silently skipped.
-mapfile -t dockerfiles < <(git ls-files '*Dockerfile' '*.Dockerfile' '*.dockerfile' | sort)
+# The template's Dockerfiles, left out by name (see the header): each must still be
+# tracked, so a template that renames one fails here rather than letting the list rot.
+TEMPLATE_DOCKERFILES=(.devcontainer/ubuntu.dockerfile ci/images/rust.Dockerfile ci/images/web.Dockerfile)
+for template_dockerfile in "${TEMPLATE_DOCKERFILES[@]}"; do
+	git ls-files --error-unmatch -- "$template_dockerfile" >/dev/null 2>&1 || {
+		echo "error: $template_dockerfile is named in TEMPLATE_DOCKERFILES and is not tracked; update the list." >&2
+		exit 1
+	}
+done
+mapfile -t dockerfiles < <(
+	git ls-files '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
+		grep -vxF -f <(printf '%s\n' "${TEMPLATE_DOCKERFILES[@]}") |
+		sort
+)
 ((${#dockerfiles[@]} > 0)) || {
 	echo "error: no tracked Dockerfiles found; this gate would pass vacuously." >&2
 	exit 1
@@ -395,15 +424,12 @@ done
 #
 # The directory itself must survive, not merely something under it: these are read as
 # trees, so `context_includes_dir`'s weaker question (does the copy transfer
-# ANYTHING) would pass a package admitted only through the devcontainer's
-# `*-version.sh` glob and still leave the build without an `src`.
+# ANYTHING) would pass a package admitted only through a `*-version.sh` glob and
+# still leave the build without an `src`.
 #
 # Root allowlist only, and here that phrase means what it says rather than "the file
 # that happened to be loaded": this is a statement about the builds that COMPILE gg,
-# every one of which reads the root allowlist. `.devcontainer/ubuntu.dockerfile` bakes
-# toolchains from pins and compiles none of this, and its own narrower allowlist is
-# correct to keep the arms' sources out — which is why the check below is not run
-# against that file.
+# every one of which reads the root allowlist.
 load_dockerignore "$REPO_ROOT/.dockerignore"
 mapfile -t guest_packages < <(
 	git ls-files 'packages/gg-sandbox*' | cut -d/ -f1-2 | sort -u |
@@ -463,7 +489,7 @@ done
 #
 # Root allowlist only, for the reason the guest-package check gives: this is a
 # statement about the builds that COMPILE this workspace, every one of which reads the
-# root file. `.devcontainer/ubuntu.dockerfile` compiles none of it.
+# root file.
 
 # Resolve `.`/`..` textually, without touching the filesystem: the answer must be the
 # path AS THE ALLOWLIST WOULD SEE IT (repo-relative, no symlink resolution), which is
@@ -678,7 +704,7 @@ done
 # the other question, which nothing here used to ask: does it contain anything a build
 # does NOT read. An allowlist makes that failure silent — `!/crates` re-includes a
 # directory, not a file list, so every future untracked or generated file under it joins
-# the context of all seven whole-context builds without a line changing anywhere.
+# the context of every whole-context build without a line changing anywhere.
 #
 # THE COST IS NOT DISK, IT IS THE CACHE. `COPY . .`'s cache key covers the whole context,
 # so a file no build reads still invalidates it when it changes — and the first thing the
@@ -700,9 +726,9 @@ done
 # committed is a real build input, and a gate that ran before `git add` and rejected it
 # would be wrong.
 #
-# Checked against EVERY allowlist that can apply, for the reason pass two above exists:
-# `.devcontainer/ubuntu.dockerfile.dockerignore` re-includes `!/.devcontainer` whole, which
-# is exactly the shape that lets ignored scratch in.
+# Checked against EVERY allowlist that can apply, for the reason pass two above exists: a
+# sibling allowlist that re-includes a directory whole is exactly the shape that lets
+# ignored scratch in.
 #
 # `--directory` collapses a wholly-ignored directory to one entry, so this neither walks
 # `target/` nor reports ten thousand paths inside it; it is a few hundred entries on a
@@ -736,8 +762,8 @@ done
 # --- what a COPY cannot tell you, part four: the paths the toolchain installers read ---
 
 # `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
-# three images, the devcontainer, the Rust CI image and the driver image's gg stage, along
-# with a slice of `packages/`, and they read pins, lockfiles and manifests out of that
+# the driver image's gg stage (`deployments/images/services.Dockerfile`), along with a
+# slice of `packages/`, and they read pins, lockfiles and manifests out of that
 # slice by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a
 # missing one fails the image build minutes in with cargo's "manifest path ... does not
 # exist".
@@ -773,13 +799,18 @@ for path in "${installer_paths[@]}"; do
 	echo "       Fix: add 'path = \"src/lib.rs\"' under its [lib] table." >&2
 	problems=$((problems + 1))
 done
+# The root allowlist always applies; a sibling applies where an installer-running
+# Dockerfile has one. A Dockerfile must still run the installer, or the check is about
+# nothing.
 installer_ignore_files=(".dockerignore")
+installer_dockerfiles=0
 for dockerfile in "${dockerfiles[@]}"; do
 	grep -q 'install-gg-toolchains\.sh' "$REPO_ROOT/$dockerfile" || continue
+	installer_dockerfiles=$((installer_dockerfiles + 1))
 	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && installer_ignore_files+=("$dockerfile.dockerignore")
 done
-((${#installer_ignore_files[@]} > 1)) || {
-	echo "error: no Dockerfile names scripts/ci/install-gg-toolchains.sh; the installer-input check would cover only the root allowlist." >&2
+((installer_dockerfiles > 0)) || {
+	echo "error: no Dockerfile names scripts/ci/install-gg-toolchains.sh; the installer-input check would pass vacuously." >&2
 	exit 1
 }
 for ignore_file in "${installer_ignore_files[@]}"; do
@@ -837,7 +868,6 @@ done
 
 # allowlist → the git pathspecs whose every tracked file it must admit.
 enumerated_families_root=('scripts/gg-*.sh')
-enumerated_families_devcontainer=('scripts/ci/install-*.sh' 'scripts/gg-*.sh' 'packages/gg-sandbox-*/*-version.sh')
 family_checked=0
 check_family() {
 	local ignore_file="$1" pathspec="$2" path count=0
@@ -860,18 +890,51 @@ check_family() {
 for pathspec in "${enumerated_families_root[@]}"; do
 	check_family ".dockerignore" "$pathspec"
 done
-# The devcontainer and the Rust CI image both carry gg's toolchains, so both
-# allowlists enumerate the same three families.
-for ignore_file in .devcontainer/ubuntu.dockerfile.dockerignore ci/images/rust.Dockerfile.dockerignore; do
-	[[ -f "$REPO_ROOT/$ignore_file" ]] || continue
-	for pathspec in "${enumerated_families_devcontainer[@]}"; do
-		check_family "$ignore_file" "$pathspec"
-	done
-done
+
+# --- the Rust the case images pin, against the Rust the template decides -------
+
+# See THE RUST PIN in the header. `rust-toolchain.toml` is template-owned, so this
+# is the one place a compiler bump reaches the case images: every
+# `FROM … rust:<v>-…` and every `ARG RUST_VERSION=<v>` default under `containers/`
+# must name the toolchain's channel. An `ARG RUST_VERSION` without a default takes
+# its value from the build, and is left alone.
+rust_channel="$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$REPO_ROOT/rust-toolchain.toml")"
+[[ -n "$rust_channel" ]] || {
+	echo "error: rust-toolchain.toml names no channel, so the case images' Rust pins cannot be checked." >&2
+	exit 1
+}
+rust_pins_checked=0
+while IFS= read -r pin; do
+	pin_file="${pin%%:*}"
+	pin="${pin#*:}"
+	pin_line="${pin%%:*}"
+	pin_text="${pin#*:}"
+	if [[ "$pin_text" =~ ^[[:space:]]*ARG[[:space:]]+RUST_VERSION=([^[:space:]]+) ]]; then
+		pin_version="${BASH_REMATCH[1]}"
+	elif [[ "$pin_text" =~ (^|[/[:space:]])rust:([^-[:space:]@]+) ]]; then
+		pin_version="${BASH_REMATCH[2]}"
+	else
+		continue
+	fi
+	rust_pins_checked=$((rust_pins_checked + 1))
+	[[ "$pin_version" == "$rust_channel" ]] && continue
+	echo "error: $pin_file:$pin_line pins Rust $pin_version, and rust-toolchain.toml's channel is $rust_channel." >&2
+	echo "       The template decides the compiler; a case image built with another one is untested." >&2
+	echo "       Fix: set the pin to $rust_channel." >&2
+	problems=$((problems + 1))
+done < <(
+	git -C "$REPO_ROOT" ls-files -z -- 'containers/**Dockerfile' 'containers/**.Dockerfile' 'containers/**.dockerfile' |
+		xargs -0 -r -I{} grep -HnE '^[[:space:]]*(FROM[[:space:]].*[/[:space:]]rust:|ARG[[:space:]]+RUST_VERSION=)' "$REPO_ROOT/{}" |
+		sed "s#^$REPO_ROOT/##"
+)
+((rust_pins_checked > 0)) || {
+	echo "error: no Rust pin found under containers/; the Rust pin check would pass vacuously." >&2
+	problems=$((problems + 1))
+}
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $family_checked enumerated-family files." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions, $family_checked enumerated-family files and $rust_pins_checked Rust pins." >&2
 	exit 1
 }
 
@@ -881,3 +944,4 @@ echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} 
 echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."
+echo "$rust_pins_checked Rust pin(s) under containers/ name rust-toolchain.toml's channel, $rust_channel."

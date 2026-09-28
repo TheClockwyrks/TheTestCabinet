@@ -235,7 +235,8 @@ scripts/gg-reference.sh /tmp/ref   # -> anywhere else
 Running the projection needs no toolchain, but building gg reflects all eleven
 catalogues out of their guest SDKs and compiles every arm's artifacts, so it is
 [the same toolchain territory](/gg/languages/compilation/) any other build of
-the crate is in. The devcontainer has them.
+the crate is in. The devcontainer provisions them after it is created (see
+[The dev container](/development/running/#background-provisioning)).
 
 ## Serving the documents
 

@@ -104,22 +104,27 @@ run-container images are resolved by the driver at run time from
 `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG`, which the dispatcher forwards
 into every driver `Job`.
 
-The `azure-staging` and `azure-prod` overlays carry no image names or tags. The
-pipeline's deploy sets all of them to `testcabinet.azurecr.io/<image>:<sha>` for
-the commit being deployed (see [Deploying](#deploying)), so the service images,
+The `staging` and `prod` overlays name every Test Cabinet image at
+`testcabinet.azurecr.io/<image>:unpinned`, a tag nothing pushes, so an overlay
+applied as it stands fails to pull rather than running whatever a moving tag
+last named. The backend's repository there is `the-test-cabinet-backend`, the
+image the pipeline's publish retags from `tcab-backend`. Before anything applies
+an overlay, `scripts/ci/pin-images.sh <overlay> <sha>` rewrites every tag to the
+commit being deployed and adds the dispatcher's `TCAB_DRIVER_IMAGE`,
+`TCAB_PUBLISHER_IMAGE`, `TCAB_CONTAINER_REGISTRY=testcabinet.azurecr.io` and
+`TCAB_CONTAINER_TAG=<sha>` (see [Deploying](#deploying)), so the service images,
 the driver, and the run images it stages
 [audio packs](/components/core/execution/#staged-audio) into always come from
-the same build. The generic `staging` and `prod` overlays pin every image to the
-ACR at a placeholder commit, `REPLACE_SHA`, with an `images:` block and a
-`patch-dispatcher-driver-image.yaml` that also sets `TCAB_CONTAINER_TAG`, for a
-deployment that sets its images by hand. The run images need no registry
-setting, because the driver's default registry is `testcabinet.azurecr.io`.
+the same build. It fails when an `unpinned` image survives the pin. The run
+images need no registry setting, because the driver's default registry is
+`testcabinet.azurecr.io`.
 
 ## Cluster prerequisites
 
 The deploy identity may write only the environment's namespace, so the objects
 outside it are a one-time cluster bootstrap that a cluster administrator applies
-by hand. `deployments/k8s/cluster/azure-staging` and `azure-prod` hold them: the
+by hand. `deployments/k8s/cluster/azure-staging` and
+`deployments/k8s/cluster/azure-prod` hold them: the
 environment's `Namespace`, the observability stack's `ClusterRole` and
 `ClusterRoleBinding` `tcab-lgtm-node-metrics`, and the cert-manager
 `ClusterIssuer` `letsencrypt-internal`. Before the pipeline's first deploy to an
@@ -135,7 +140,7 @@ environment:
 3. Apply the cluster-scoped objects:
 
    ```sh
-   kubectl apply -k deployments/k8s/cluster/azure-prod   # or azure-staging
+   kubectl apply -k deployments/k8s/cluster/azure-prod   # or cluster/azure-staging
    ```
 
    The API servers are private, so run this over the VPN, or inside the cluster
@@ -170,40 +175,77 @@ change that needs one lands in `deployments/k8s/cluster/` and is applied here.
 ## Deploying
 
 The [Azure pipeline](/development/building/#continuous-integration) deploys the
-`azure-*` overlays. A push to `staging` rolls `tcab-staging` on
+`staging` and `prod` overlays, once the gates have passed and the commit's
+images are in the registry. A push to `staging` rolls `tcab-staging` on
 `testcabinet-staging-westus2-aks`, and a push to `master` rolls `tcab-prod` on
-`testcabinet-prod-westus2-aks`, once the gates have passed and the commit's
-images are in the registry. Each deploy runs `scripts/ci/deploy.sh <env> <sha>`
-on the `tcab-staging` or `tcab-prod` pipeline environment, which has no approval
-check. The script:
+`testcabinet-prod-westus2-aks`. The pipeline environments `tcab-staging` and
+`tcab-prod` have no approval check. The two take different routes.
 
-1. writes a throwaway kustomization over `deployments/k8s/overlays/azure-<env>`
-   that sets every service image to `testcabinet.azurecr.io/<image>:<sha>` and
-   the dispatcher's `TCAB_DRIVER_IMAGE`, `TCAB_PUBLISHER_IMAGE`,
-   `TCAB_CONTAINER_REGISTRY=testcabinet.azurecr.io`, and
-   `TCAB_CONTAINER_TAG=<sha>`;
-2. renders it with `kubectl kustomize` on the agent into one manifest file;
-3. refuses the file if it holds anything outside the environment's namespace;
+**Staging** is the workspace template's own deploy stage, which rolls one
+overlay onto one published commit, and the project's `before` and `after` steps
+around it (`.azure/project/deploy-steps.yml`):
+
+1. before: `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay with
+   `pin-images.sh`, records the commit the backend runs now as
+   `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout timeout, and retires the
+   legacy `tcab-backend` Deployment (see below);
+2. the template's `scripts/ci/deploy.sh <sha>` renders the overlay with the
+   backend's image set to `the-test-cabinet-backend:<sha>`, applies it inside the
+   cluster, and waits on `deployment/the-test-cabinet-backend`, undoing it if it
+   does not become ready;
+3. it then runs the project's `scripts/ci/post-deploy.sh <sha>`, which runs
+   `scripts/ci/settle-workloads.sh`: one wait, concurrently, on every other
+   `Deployment` and `StatefulSet` in the namespace, each bounded by the rollout
+   timeout, undoing each that does not become ready, describing its pods and
+   printing recent events, and failing if any did;
+4. after, on failure only: `scripts/ci/settle-workloads.sh --after-failure <sha>`
+   settles and diagnoses whatever the failed apply rolled, and prints the
+   backend's recovery command,
+   `scripts/ci/deploy-environment.sh staging <previous sha>`, or "fix forward"
+   when there is no previous commit.
+
+**Prod** is the project's `prod` stage on `master`. It publishes the same
+backend retag through the template's `.azure/publish-image.yml`, then runs
+`scripts/ci/deploy-environment.sh prod <sha>`, which:
+
+1. copies `deployments/k8s` to a temporary directory and pins the `prod` overlay
+   there with `pin-images.sh`;
+2. renders it with `kubectl kustomize` on the agent into one manifest file, and
+   refuses the file if it holds anything outside the environment's namespace;
+3. retires the legacy `tcab-backend` Deployment;
 4. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
-5. waits up to 600 seconds on each `Deployment` and `StatefulSet` rollout, each
-   through its own `az aks command invoke`. A rollout that does not become ready
-   is described, its logs are printed, and it is undone, and the deploy fails.
+5. waits up to 600 seconds, concurrently, on every `Deployment` and
+   `StatefulSet` rollout, the backend's included. A rollout that does not become
+   ready is described, its logs are printed, and it is undone, and the deploy
+   fails.
 
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft
 Entra identity, so the cluster's Azure RBAC decides what it may do.
-`scripts/ci/deploy.sh --render <env> <sha>` prints the manifest file without
-touching a cluster, and `scripts/ci/k8s-manifests.sh` gates the same bytes.
+`scripts/ci/deploy-environment.sh --render <staging|prod> <sha>` prints the
+manifest file without touching a cluster or the checkout, and the
+`k8s-deploy-sets` gate checks the same bytes for both overlays on every commit
+that touches `deployments/k8s/` or the deploy scripts.
+
+The backend's Deployment is `the-test-cabinet-backend`, the name the template's
+deploy waits on; it was `tcab-backend`. Its Service, ServiceAccount, Secret and
+PersistentVolumeClaim keep their `tcab-backend` names, so every other workload
+reaches it unchanged. The old Deployment holds the `ReadWriteOnce` claim
+`tcab-backend-state`, so every deploy first deletes it if it still exists
+(`scripts/ci/retire-legacy-backend.sh`, a no-op once it is gone). The first
+deploy of each environment after the rename therefore has a brief backend outage
+while the claim re-attaches, and no earlier backend revision to undo to.
 
 Every deploy changes the backend's image tag, so every deploy restarts
 the backend pod, and its ingest sidecar force-ingests the branch tip it shipped
 with (see [Ingesting definitions](/deployment/kubernetes/control-plane/#ingesting-definitions)).
 
-Run by hand, signed in to Azure with the same roles, `deploy.sh` rolls an
-environment to any sha the registry holds. That is how an earlier commit is put
-back; reverting the change on the branch and letting the pipeline deploy the
-revert is the other route.
+Run by hand, signed in to Azure with the same roles,
+`scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment to
+any sha the registry holds. That is how an earlier commit is put back; reverting
+the change on the branch and letting the pipeline deploy the revert is the other
+route.
 
 ### The deploy identity
 
@@ -228,30 +270,32 @@ credentials, and the Contributor roles.
 RBAC Admin at namespace scope decides what those commands may do: create,
 change, and delete every namespaced object in the application namespace, and
 nothing outside it. The pipeline therefore applies namespaced objects only:
-the overlays render nothing cluster-scoped, `deploy.sh` checks each render before
-applying it, and `scripts/ci/k8s-manifests.sh` gates every commit on the same
-check. A compromised pipeline can at worst rewrite its own environment's
-namespace.
+the overlays render nothing cluster-scoped, `deploy-environment.sh` checks each
+render before applying it, and the `k8s-manifests` and `k8s-deploy-sets` gates
+hold every commit to the same check. A compromised pipeline can at worst rewrite
+its own environment's namespace.
 
 ## Applying an overlay by hand
 
-The generic `staging` and `prod` overlays, and any overlay outside the pipeline,
-are applied by hand. Create the environment's secrets first, from your secret
-manager, then apply an overlay. Apply the overlay, never the individual base
-files.
+An overlay outside the pipeline is applied by hand. Create the environment's
+secrets first, from your secret manager, then apply an overlay. Apply the
+overlay, never the individual base files. The `staging` and `prod` overlays name
+their images at `unpinned`, so render them pinned rather than applying them as
+they stand:
 
 ```sh
-kubectl kustomize deployments/k8s/overlays/prod      # preview the rendered manifests
-kubectl apply    -k deployments/k8s/overlays/prod    # or .../overlays/staging
+scripts/ci/deploy-environment.sh --render prod <sha>   # preview, no cluster needed
+scripts/ci/deploy-environment.sh prod <sha>            # pin, apply, and wait
 ```
 
 The base lists the RBAC, backend, auth, dispatcher, artifacts, arena, ingest
 `CronJob`, and `NetworkPolicy` resources, all namespaced. An overlay sets the
 namespace and `TCAB_ENV`, patches in the environment's secret references, and
-layers on the components it needs. The `staging`, `prod`, and `local` overlays
-also include `deployments/k8s/cluster/namespace` and
-`deployments/k8s/cluster/observability`, so one apply creates their `Namespace`
-and node-metrics grant.
+layers on the components it needs. The `local` overlay also includes
+`deployments/k8s/cluster/namespace` and `deployments/k8s/cluster/observability`,
+so one apply creates its `Namespace` and node-metrics grant; the remote
+overlays render only namespaced objects, and their cluster-scoped objects are
+the bootstrap above.
 
 | Component                      | What it adds                                                             |
 | ------------------------------ | ------------------------------------------------------------------------ |
@@ -262,9 +306,9 @@ and node-metrics grant.
 | `components/web`               | The in-cluster `tcab-web` console workload                               |
 | `components/internal-ingress`  | The console plus the service hostnames over a VPN-only ingress           |
 
-The `staging` and `prod` overlays run the SQLite shape; `azure-staging` and
-`azure-prod` run the same base with the PostgreSQL, Key Vault, observability, and
-internal-ingress components layered on.
+The base alone runs the SQLite shape, as the `local` overlay does. The `staging`
+and `prod` overlays run the same base with the PostgreSQL, Key Vault,
+observability, and internal-ingress components layered on.
 
 ## NetworkPolicy
 

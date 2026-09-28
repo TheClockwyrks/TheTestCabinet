@@ -1,0 +1,30 @@
+# Every text file under this directory checks out with LF on every host, which
+# the root .gitattributes (rendered by the workspace template) does not say for
+# the whole tree: a CRLF checkout breaks shebang lines and multi-line string
+# literals on the Windows CI agent.
+* text=auto eol=lf
+
+# Formats committed as binary, declared rather than inferred from a NUL byte so
+# the no-nul-bytes gate can tell them apart from text. The first block is the
+# media this project commits; the second repeats the root file's formats, since
+# the line above would otherwise turn their `-text` back into `text=auto`.
+*.wasm binary
+*.glb  binary
+*.webm binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
+*.mid  binary
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.icns binary
+*.pdf  binary
+*.zip  binary
+*.jar  binary
+*.gz   binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary

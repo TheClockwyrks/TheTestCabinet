@@ -16,16 +16,28 @@ by [Running](/development/running/); building locally is covered by
 
 ## Release tags
 
-A release is a `vX.Y.Z` tag on `master` in Azure Repos. Pushing it runs the
-[Azure pipeline](/development/building/#continuous-integration) for the tag:
+A release is a `vX.Y.Z` tag on `master` in Azure Repos. The main pipeline does
+not trigger on tags; pushing one runs the
+[release pipeline](/development/building/#the-release-pipeline),
+`azure-pipelines-release.yml`:
 
-- the gates, including the `binary` job on Linux and Windows and the gg version
-  gate;
-- `gg_publish`, which uploads gg's release objects;
+- `gated`, which runs `scripts/ci/require-gated-commit.sh`. It finds a run of
+  the main pipeline at the tagged commit, on any branch, and waits until that
+  run's check jobs have passed: `rust`, `web`, the four gg test partitions,
+  `rust_build`, `binary_linux`, `binary_windows` and `submodule_pins`. The image,
+  publish, deploy and docs results never gate a release. When no run exists at
+  that commit (the main pipeline batches pushes, so an intermediate commit may
+  have none), it queues one on the tag ref, which runs the gates stage alone,
+  and waits on that. It fails naming the check that failed, or after 200
+  minutes; a failed run is not queued again, so re-run it and re-run the
+  release;
+- then the `binary_linux` and `binary_windows` jobs, publishing `tcab`;
+- the `gg_amd64` and `gg_arm64` jobs with the gg version gate, then
+  `gg_publish`, which uploads gg's release objects;
 - the `mirror` job, which pushes the tag to the GitHub mirror.
 
-The services ship as the images the pipeline deploys from `master`, and the docs
-site from the pipeline's `docs` job, so a tag releases no service or site of its
+The services ship as the images the main pipeline deploys from `master`, and the
+docs site from its `docs` stage, so a tag releases no service or site of its
 own.
 
 The tag names the version of `gg`, so `crates/gg` and `crates/core` are bumped
@@ -33,17 +45,18 @@ to it before tagging; see [Releasing `gg`](#releasing-gg).
 
 ## Releasing `tcab`
 
-The `binary` job release-builds `tcab` on Linux and Windows, runs the suite in
-the release profile, and smoke-tests the produced binary with
-`scripts/ci/smoke-binary.sh`. On a tag run it publishes that smoke-tested binary
-as a pipeline artifact:
+The `binary_linux` and `binary_windows` jobs release-build `tcab`, run the suite
+in the release profile, and smoke-test the produced binary with
+`scripts/ci/smoke-binary.sh`, on every main-pipeline run. The release pipeline
+runs the same jobs for the tag and publishes that smoke-tested binary as a
+pipeline artifact:
 
 | Artifact       | Contents                  |
 | -------------- | ------------------------- |
 | `tcab-linux`   | `tcab` for Linux `x86_64` |
 | `tcab-windows` | `tcab.exe` for Windows    |
 
-The tag's pipeline run is where a release of `tcab` is downloaded from. Every
+The tag's release-pipeline run is where a release of `tcab` is downloaded from. Every
 other platform builds `tcab` from source with `cargo build --release -p
 test-cabinet-cli`.
 
@@ -63,8 +76,9 @@ is laid out under its own prefix:
 | `v<version>/gg-aarch64-unknown-linux-musl` | The static-musl `gg` for `aarch64`                |
 | `v<version>/gg-reference.tar.gz`           | gg's reference documents, identical on every arch |
 
-The Azure pipeline uploads all three on every `master` build and every `v*` tag
-build. The `gg_amd64` and `gg_arm64` gate jobs build the binaries natively with
+The main pipeline's `gg_release` stage uploads all three on every `master`
+build, and the release pipeline on every `v*` tag. The `gg_amd64` and `gg_arm64`
+jobs build the binaries natively with
 `scripts/ci/gg-dist.sh`, which runs `scripts/build-gg-static.sh`, the same
 script the driver image runs to bake gg in, so the release objects and the
 image's binary come off one build path. The `gg_publish` job then runs
@@ -85,8 +99,9 @@ The crate version is the release version. `gg --version` is read out of the
 run container and recorded as a run's `subject.harnessVersion`, and `core`
 derives the version it fetches from its own package version. Bump both
 `crates/gg` and `crates/core` to the release version before tagging. A test pins
-them to each other. On a tag build the gates fail when `gg --version` differs
-from the tag with its `v` stripped, naming the two crates to bump, and
+them to each other. On a tag, the release pipeline's gg jobs fail when
+`gg --version` differs from the tag with its `v` stripped, naming the two crates
+to bump, and
 `publish-gg.sh` runs the same check before it uploads anything.
 
 A prerelease tag such as `v0.7.0-rc1` equals no crate version, so nothing
@@ -116,12 +131,12 @@ identical on every platform.
 The project deploys four static sites, all on Cloudflare Pages. Each is its own
 Pages project under its own domain; they differ in how they are built.
 
-| Site                                                                             | Project                   | Address                         | Built by                                                      |
-| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ------------------------------------------------------------- |
-| [Gallery](/components/site/overview/) (`apps/site`)                              | `test-cabinet-site`       | `testcabinet.ai` (apex)         | Cloudflare (git-connected)                                    |
-| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | the Azure pipeline → `wrangler` (`scripts/ci/deploy-docs.sh`) |
-| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                                   |
-| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`                         |
+| Site                                                                             | Project                   | Address                         | Built by                                                                     |
+| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ---------------------------------------------------------------------------- |
+| [Gallery](/components/site/overview/) (`apps/site`)                              | `test-cabinet-site`       | `testcabinet.ai` (apex)         | Cloudflare (git-connected)                                                   |
+| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | the Azure pipeline's `docs` stage → `wrangler` (`scripts/ci/deploy-docs.sh`) |
+| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                                                  |
+| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`                                        |
 
 The docs, per-run builds, and reference implementations are Direct Upload
 projects, built elsewhere and pushed with `wrangler`. The gallery is
@@ -183,9 +198,9 @@ branch-alias subdomains.
 ## Docs (Cloudflare Pages, one-time)
 
 The developer docs (`apps/docs`) deploy to Cloudflare Pages at
-`docs.testcabinet.ai` from the Azure pipeline's `docs` job, which runs
+`docs.testcabinet.ai` from the Azure pipeline's `docs` stage, which runs
 `scripts/ci/deploy-docs.sh` on every `master` and `staging` build that passed the
-gates and the image builds. The deploy target follows the branch: `master`
+gates stage. The deploy target follows the branch: `master`
 publishes to `test-cabinet-docs` and `staging` to `test-cabinet-docs-staging`.
 It is a pure static build with no Rust step.
 

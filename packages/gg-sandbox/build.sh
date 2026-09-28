@@ -124,4 +124,3 @@ npm run --workspace @clockwyrks/gg-sandbox checker
 #   package.json         pins the `typescript` release that does the emitting, so a program would
 #                        otherwise be judged by a compiler this component was not built with.
 #   build.sh             the recipe.
-

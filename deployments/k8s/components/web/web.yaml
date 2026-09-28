@@ -51,7 +51,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: REPLACE_REGISTRY/tcab-web:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-web:<git-sha>
+          image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-web
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an

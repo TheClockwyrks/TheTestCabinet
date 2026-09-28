@@ -138,23 +138,26 @@ impl CliContainerRuntime {
 
     /// Detect an available runtime, preferring Podman, then Docker.
     ///
-    /// Honors the `TCAB_CONTAINER_RUNTIME` environment variable as an override.
+    /// Honors the `TCAB_CONTAINER_RUNTIME` environment variable as an override. Otherwise
+    /// it prefers the first of `podman` and `docker` that is on `PATH` **and answers**:
+    /// `<binary> version` exits 0 within five seconds. Being on `PATH` is
+    /// not enough. The dev container's image links `podman-remote` as
+    /// `~/.local/bin/podman`, and a remote client speaks the libpod API, which a Docker
+    /// daemon does not serve; on a Docker host, preferring `podman` because it is
+    /// installed would pick a runtime that fails every run. When neither answers, the
+    /// first on `PATH` is chosen anyway, so the error a run then meets names the runtime
+    /// the user has.
     pub fn detect() -> Result<Self> {
         if let Ok(binary) = std::env::var("TCAB_CONTAINER_RUNTIME")
             && !binary.trim().is_empty()
         {
             return Ok(Self::with_binary(binary));
         }
-        for candidate in ["podman", "docker"] {
-            if which::which(candidate).is_ok() {
-                return Ok(Self::with_binary(candidate));
-            }
-        }
-        Err(Error::ContainerRuntime(
-            "no container runtime on PATH (looked for podman, docker); set \
-             TCAB_CONTAINER_RUNTIME to override"
-                .to_string(),
-        ))
+        let present: Vec<&str> = RUNTIME_CANDIDATES
+            .into_iter()
+            .filter(|candidate| which::which(candidate).is_ok())
+            .collect();
+        choose_runtime(&present, runtime_answers).map(Self::with_binary)
     }
 
     /// The runtime binary name.
@@ -497,6 +500,59 @@ fn run_failure(output: &std::process::Output) -> String {
         format!(" (exit {code})")
     } else {
         format!(": {stderr} (exit {code})")
+    }
+}
+
+/// The runtimes [`CliContainerRuntime::detect`] looks for, in order of preference.
+const RUNTIME_CANDIDATES: [&str; 2] = ["podman", "docker"];
+
+/// How long a runtime has to answer `<binary> version` before detection moves on.
+const RUNTIME_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Choose a runtime among the `present` candidates (those on `PATH`, in order of
+/// preference): the first that `answers`, else the first present, else an error.
+fn choose_runtime<'a>(
+    present: &[&'a str],
+    mut answers: impl FnMut(&str) -> bool,
+) -> Result<&'a str> {
+    if let Some(answering) = present.iter().find(|candidate| answers(candidate)) {
+        return Ok(answering);
+    }
+    present.first().copied().ok_or_else(|| {
+        Error::ContainerRuntime(format!(
+            "no container runtime on PATH (looked for {}); set TCAB_CONTAINER_RUNTIME to \
+             override",
+            RUNTIME_CANDIDATES.join(", ")
+        ))
+    })
+}
+
+/// Whether `<binary> version` exits 0 within [`RUNTIME_PROBE_TIMEOUT`], with its
+/// output discarded. A client whose daemon is absent or speaks another API fails or
+/// hangs; a hung one is killed.
+fn runtime_answers(binary: &str) -> bool {
+    let Ok(mut child) = std::process::Command::new(binary)
+        .arg("version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let deadline = std::time::Instant::now() + RUNTIME_PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
     }
 }
 

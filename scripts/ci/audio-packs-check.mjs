@@ -6,8 +6,8 @@
 // backend ingest, where `containers/sample-packs/` is absent, so it cannot check a
 // ref against the registry. This is where that happens, and it is the only
 // enforcement of the rule that every non-frozen full-stack version and every game
-// jam declares the key at all. It runs on the commit hook and in CI, exactly as
-// `frozen-check.sh` backstops the `frozen-paths.sh` hook.
+// jam declares the key at all. The `audio-packs` gate (ci/gates/audio-packs.py) runs
+// it as a commit hook and in CI.
 //
 //   node scripts/ci/audio-packs-check.mjs
 //

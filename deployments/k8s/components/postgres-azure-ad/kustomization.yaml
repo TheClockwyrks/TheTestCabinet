@@ -30,7 +30,7 @@
 #   3. Switch the Key Vault DB-URL secrets to the passwordless form and restart
 #      tcab-keyvault-sync so the K8s Secrets re-materialise.
 #   4. Add this component to the overlay's `components:` list and re-apply the overlay.
-# The bake-in clientIDs below are PROD's identities; overlays/azure-staging patches
+# The bake-in clientIDs below are PROD's identities; overlays/staging patches
 # them to the staging identities (patch-db-workload-identity.yaml).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

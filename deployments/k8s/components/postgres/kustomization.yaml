@@ -1,7 +1,7 @@
 # Managed-PostgreSQL component — the reusable, environment-agnostic conversion of
 # the backend + auth service from their default embedded-SQLite shape to a managed
 # database. Layered onto an environment overlay via its `components:` list; today
-# both overlays/azure-prod and overlays/azure-staging include it, so the staging↔prod
+# both overlays/prod and overlays/staging include it, so the staging↔prod
 # parity the base+overlay split buys is preserved (one definition of the Postgres
 # shape, applied to both). See deployment/kubernetes/control-plane.md#backend and
 # deployment/backups.md#managed-postgresql for the why.

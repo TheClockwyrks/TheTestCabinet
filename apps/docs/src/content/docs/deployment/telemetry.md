@@ -59,7 +59,7 @@ adds:
 
 Retention is tuned per environment by patching `LOKI_RETENTION_PERIOD`,
 `TEMPO_BLOCK_RETENTION`, and `PROMETHEUS_RETENTION` on the `StatefulSet`. The
-component defaults to 24 hours, and `azure-prod` raises it to three days.
+component defaults to 24 hours, and the `prod` overlay raises it to three days.
 
 The `Service` is `ClusterIP` and carries no public `Ingress`. Reach Grafana with
 `kubectl port-forward svc/tcab-lgtm 3000:3000`, or, on the overlays that include

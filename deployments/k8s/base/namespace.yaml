@@ -1,0 +1,13 @@
+# The project's namespace stem, which no deployment applies.
+#
+# It is deliberately NOT a resource of kustomization.yaml. The k8s-manifests gate
+# reads this file for the stem every overlay's namespace is named from: an overlay
+# places its objects in `tcab-<overlay>` (`tcab-local`, `tcab-prod`), and the
+# overlay the pipeline deploys, `staging`, places them in `tcab-staging`. Each
+# environment's real Namespace is cluster-scoped, so a cluster administrator
+# applies it by hand from ../cluster/ (the deploy identity may write inside one
+# namespace and cannot create one); see "Cluster prerequisites" in ../README.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tcab

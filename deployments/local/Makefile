@@ -111,11 +111,17 @@ KUBE_CTX := k3d-$(CLUSTER)
 # named cluster entry and are independent of the current context.)
 KUBECTL := kubectl --context '$(KUBE_CTX)'
 
-# Container runtime used to build the images. Prefers podman when installed,
-# falling back to docker; override with `CONTAINER_TOOL=… make …`. (podman is
-# checked first on purpose: a host that points `docker` at podman would otherwise
-# always resolve to docker, so the fallback would never pick the real runtime.)
-CONTAINER_TOOL ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
+# Container runtime used to build the images: podman when `podman version` answers,
+# else docker; override with `CONTAINER_TOOL=… make …`. The probe asks the runtime
+# rather than looking for a binary, because the devcontainer image links
+# podman-remote as `podman`: a remote client is on PATH whatever the host runs, and
+# it cannot drive a Docker daemon. (podman is still asked first on purpose: a host
+# that points `docker` at podman would otherwise always resolve to docker, so the
+# fallback would never pick the real runtime.) It is evaluated once per make run,
+# and `timeout` keeps a client whose socket never answers from holding the run.
+ifeq ($(origin CONTAINER_TOOL),undefined)
+CONTAINER_TOOL := $(shell timeout 5 podman version >/dev/null 2>&1 && echo podman || echo docker)
+endif
 
 # Images are tagged with the fully-qualified `docker.io/library/` prefix so podman
 # does not store them under a `localhost/` prefix (which `k3d image import` then
@@ -305,13 +311,13 @@ BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 # probe is `/readyz`, which stays 503 until its definition store holds versions (see
 # crates/backend/src/readiness.rs) — and locally NOTHING fills that store but the
 # `local-ingest` below: the overlay drops the base `tcab-ingest` CronJob and, unlike the
-# azure-staging/azure-prod overlays, ships no ingest sidecar, precisely because the
+# staging and prod overlays, ships no ingest sidecar, precisely because the
 # Makefile ingests from the mounted checkout instead. So on a cluster whose `state`
 # volume is cold — a freshly created one, or any `local-down` that took the PVCs with
 # it — waiting for tcab-backend to go Ready BEFORE ingesting waits for something only
 # the ingest can produce, and `local-up` burns $(ROLLOUT_TIMEOUT) and then fails with
 # `statefulset/tcab-backend` never ready. It is the same self-deadlock the in-pod ingest
-# sidecars call out (deployments/k8s/overlays/azure-*/patch-backend-ingest.yaml: "Wait on
+# sidecars call out (deployments/k8s/overlays/{staging,prod}/patch-backend-ingest.yaml: "Wait on
 # /healthz (LIVENESS), never /readyz"), reached from the other side. `local-ingest` only
 # needs the backend LIVE, not ready, so it runs happily in the gap; `apply-wait` then
 # confirms the whole stack, backend readiness included.
@@ -517,7 +523,7 @@ audio-store:
 #
 # It is a BuildKit Dockerfile (`# syntax=…` + `--mount=type=cache` Rust build
 # caches), so the build needs the buildx plugin — the devcontainer ships it in the
-# system cli-plugins dir (see .devcontainer/tools/docker.sh); a bare host gets it
+# system cli-plugins dir (see .devcontainer/tools/container.sh); a bare host gets it
 # from its docker install. DOCKER_CONFIG is pinned to a credsStore-free config dir
 # for the builds (see BUILD_DOCKER_CONFIG above for why).
 #

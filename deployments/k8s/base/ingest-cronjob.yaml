@@ -45,6 +45,15 @@ spec:
               volumeMounts:
                 - name: work
                   mountPath: /work
+              # A shallow clone and one POST. Stated so the pod is never BestEffort
+              # and cannot take a node's memory from its neighbours; the k8s-manifests
+              # gate requires both requests and the memory limit on every container.
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
           volumes:
             - name: work
               emptyDir: {}

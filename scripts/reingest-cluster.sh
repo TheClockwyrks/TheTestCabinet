@@ -52,7 +52,8 @@
 # from scripts/lib/env.sh for the chosen env (staging → `staging`, prod → `master`).
 # The branch tip is fetched, so a re-ingest picks up whatever catalog + reference-build
 # lockfile changes have been pushed — that on-demand refresh is what this script is for.
-# The service CODE version is the commit the pipeline last deployed (scripts/ci/deploy.sh).
+# The service CODE version is the commit the pipeline last deployed (scripts/ci/deploy.sh
+# for staging, scripts/ci/deploy-environment.sh for prod).
 set -euo pipefail
 
 # Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
@@ -102,7 +103,7 @@ echo "Re-ingesting ${scope} on ${cluster}/${namespace} (force)…"
 # cluster-side shells. `origin` is the remote the sidecar's clone set up.
 remote=$(cat <<REMOTE
 set -e
-kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
+kubectl -n ${namespace} exec deploy/the-test-cabinet-backend -c ingest -- sh -c 'set -e
 echo "ingest: refreshing /state/checkout to origin/\$1"
 git -C /state/checkout fetch --depth 1 origin "\$1"
 git -C /state/checkout reset --hard FETCH_HEAD
