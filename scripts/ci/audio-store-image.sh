@@ -25,5 +25,10 @@ if [[ $# -ne 1 ]]; then
 fi
 readonly SHA="$1"
 
-PUSH=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-$(ci_arch)" \
+# Resolved on its own line: a command substitution in the build's own
+# environment prefix would not stop the script when it fails.
+arch="$(ci_arch)"
+readonly arch
+
+PUSH=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
 	./containers/build.sh audio-store
