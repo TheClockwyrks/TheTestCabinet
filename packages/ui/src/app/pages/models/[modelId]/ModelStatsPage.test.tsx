@@ -50,6 +50,7 @@ const MODEL = {
   prices: null,
   listPrice: null,
   listPriceAsOf: null,
+  listPriceSource: null,
   priceHistory: [],
   contextLength: null,
   providerPin: null,
@@ -316,6 +317,7 @@ describe("the Stats tab's price sections", () => {
         output: 15e-6,
       },
       listPriceAsOf: "2026-08-15",
+      listPriceSource: "hand",
       // The observed billed rate: input discounted 10%, output surcharged 10%,
       // the cached class unchanged.
       prices: {
@@ -334,6 +336,7 @@ describe("the Stats tab's price sections", () => {
     expect(within(listSection).getByText("$0.30")).toBeTruthy();
     expect(within(listSection).getByText("$15.00")).toBeTruthy();
     expect(within(listSection).getByText("Aug 15, 2026")).toBeTruthy();
+    expect(within(listSection).getByText("Entered by hand")).toBeTruthy();
     // The billed figures per Mtok beside them.
     const billedSection = screen.getByText("Billed rate").closest("section")!;
     expect(within(billedSection).getByText("$2.70")).toBeTruthy();
@@ -344,17 +347,45 @@ describe("the Stats tab's price sections", () => {
     expect(within(billedSection).getByText("+0.0% vs list")).toBeTruthy();
   });
 
-  it("names the enqueue refusal when the model has no list price", async () => {
+  it("marks a list price filled from OpenRouter as one to confirm", async () => {
+    renderPriced({
+      ...MODEL,
+      listPrice: {
+        uncachedInput: 3e-6,
+        cachedInput: 3e-7,
+        output: 15e-6,
+      },
+      listPriceAsOf: "2026-09-28",
+      listPriceSource: "openrouter",
+      prices: null,
+    });
+
+    const listSection = (await screen.findByText("List price")).closest(
+      "section",
+    )!;
+    expect(
+      within(listSection).getByText("Filled from OpenRouter"),
+    ).toBeTruthy();
+    expect(
+      within(listSection).getByText(
+        "Source — confirm against the developer's pricing page",
+      ),
+    ).toBeTruthy();
+    expect(within(listSection).queryByText("Entered by hand")).toBeNull();
+  });
+
+  it("names the fill when the model has no list price yet", async () => {
     renderPriced({
       ...MODEL,
       listPrice: null,
       listPriceAsOf: null,
+      listPriceSource: null,
       prices: { uncachedInput: 3e-6, cachedInput: null, output: 15e-6 },
     });
 
     expect(
       await screen.findByText(
-        "No list price — runs of this model are refused at enqueue",
+        "No list price — filled from OpenRouter when a run is first enqueued",
       ),
     ).toBeTruthy();
     // The billed rate still renders; with no list figure there is no
@@ -372,6 +403,7 @@ describe("the Stats tab's price sections", () => {
         output: 15e-6,
       },
       listPriceAsOf: "2026-08-15",
+      listPriceSource: "hand",
       prices: null,
     });
 

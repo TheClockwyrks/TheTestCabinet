@@ -10,7 +10,10 @@
 //!
 //! A run's comparable cost is priced at the model developer's published **list
 //! price**, curated on the model's catalog entry; the refresh records the billed
-//! rate beside it and never rewrites what a run is scored at.
+//! rate beside it and never rewrites what a run is scored at. A curated entry
+//! that carries no list price when a launch binds it has one filled from the
+//! official endpoint's rate right then ([`list_price_for_launch`]), so the first
+//! run of a freshly added model is not refused over a figure OpenRouter publishes.
 //!
 //! A model is also priced the moment it first *appears* — when it is curated in the
 //! app, when a launch binds it, and at startup for every known model still missing
@@ -29,12 +32,129 @@ use test_cabinet_core::model_id::{canonical_model_id, openrouter_price_id};
 use test_cabinet_core::pricing::{ModelDetails, OpenRouterPrices};
 use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
 
-use crate::db::{AliasEntry, Db, ModelConfigWrite, PriceWrite};
+use crate::db::{AliasEntry, Db, ListPriceWrite, ModelConfigWrite, PriceWrite};
 use crate::error::Result;
 use crate::model_seed::SEED_MODELS;
 
 /// How often the periodic refresher re-prices every known model.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// The `list_price_source` an enqueue-time fill files its rates under, as
+/// opposed to `hand` for a set the operator entered or confirmed.
+pub const LIST_PRICE_SOURCE_OPENROUTER: &str = "openrouter";
+
+/// The list price a launch's model is scored at, filling a curated entry that carries
+/// none from OpenRouter, or the reason the launch is refused.
+///
+/// The catalog answers first ([`Db::list_price_for_run_model`]). A curated entry with no
+/// list price gets one now: the official endpoint's rate, read by the rule the billed
+/// rate follows — the route of the entry's hand-set developer provider, else of the
+/// observed one, else the listing's headline rate — written onto the entry dated today
+/// and sourced [`LIST_PRICE_SOURCE_OPENROUTER`], for the operator to confirm or correct
+/// against the developer's pricing page. The launch is stamped with the same figures.
+/// The entry is looked up by the [same id](openrouter_lookup_id) the billed rate is.
+///
+/// `on_fill` is called once the entry has been written: the catalog changed, and the
+/// caller owns what follows from that (the public snapshot's refresh). It is called from
+/// here, at the moment of the write, so a launch that fills one model and is then
+/// refused over another still reports the change it made.
+///
+/// A model the catalog has no entry for is refused: there is nothing to fill. So is a
+/// curated model OpenRouter lists no complete rate for, with the lookup's failure named
+/// beside the catalog's reason, so the operator knows both what to set and why the fill
+/// could not.
+///
+/// `Ok(Ok(_))` is the price to stamp; `Ok(Err(reason))` refuses the launch; `Err` is a
+/// database failure, which is an unknown rather than "no price".
+pub async fn list_price_for_launch(
+    db: &Db,
+    prices: &OpenRouterPrices,
+    model_id: &str,
+    harness: HarnessSlug,
+    on_fill: &(dyn Fn() + Sync),
+) -> Result<std::result::Result<TokenPrices, String>> {
+    let reason = match db.list_price_for_run_model(model_id, harness).await? {
+        Ok(prices) => return Ok(Ok(prices)),
+        Err(reason) => reason,
+    };
+    let canonical = canonical_model_id(model_id, harness);
+    let Some(entry) = db.model_config_for_alias(&canonical).await? else {
+        return Ok(Err(reason));
+    };
+    let lookup = entry
+        .config
+        .openrouter_slug
+        .clone()
+        .unwrap_or_else(|| openrouter_price_id(model_id, harness));
+    let refusal = |why: String| {
+        format!(
+            "model `{canonical}` ({}) has no list price, and none could be filled from \
+             OpenRouter ({why}); set it on the model's catalog entry (the Models section) \
+             to run it",
+            entry.config.display_name
+        )
+    };
+    let rate =
+        match openrouter_list_rate(prices, &lookup, entry.config.provider_pin.as_deref()).await {
+            Ok(rate) => rate,
+            Err(err) => {
+                return Ok(Err(refusal(format!(
+                    "looking it up as `{lookup}` failed: {err}"
+                ))));
+            }
+        };
+    let (Some(uncached_input), Some(cached_input), Some(output)) =
+        (rate.uncached_input, rate.cached_input, rate.output)
+    else {
+        return Ok(Err(refusal(format!(
+            "OpenRouter lists no complete rate for it as `{lookup}`"
+        ))));
+    };
+    let now = OffsetDateTime::now_utc();
+    let as_of = now
+        .date()
+        .format(&time::macros::format_description!("[year]-[month]-[day]"))?;
+    db.set_list_price(ListPriceWrite {
+        slug: entry.config.slug.clone(),
+        uncached_input,
+        cached_input,
+        output,
+        as_of,
+        source: LIST_PRICE_SOURCE_OPENROUTER.to_string(),
+        now: now.format(&Rfc3339)?,
+    })
+    .await?;
+    tracing::info!(
+        slug = entry.config.slug,
+        lookup,
+        uncached_input,
+        cached_input,
+        output,
+        "filled a model's list price from OpenRouter at enqueue"
+    );
+    on_fill();
+    Ok(Ok(TokenPrices {
+        uncached_input: Some(uncached_input),
+        cached_input: Some(cached_input),
+        output: Some(output),
+    }))
+}
+
+/// The rate OpenRouter publishes for `lookup`, by the rule the billed rate follows: the
+/// official endpoint's price — the route `hand_pin` names, else the observed developer
+/// provider's — and the listing's headline price for a model with no priced official
+/// route. An unlisted model is an `Err`.
+async fn openrouter_list_rate(
+    prices: &OpenRouterPrices,
+    lookup: &str,
+    hand_pin: Option<&str>,
+) -> test_cabinet_core::Result<TokenPrices> {
+    let facts = prices.model_launch_facts(lookup).await?;
+    match facts.official_prices(hand_pin) {
+        Some(rate) => Ok(rate),
+        None => Ok(prices.model_details(lookup).await?.prices),
+    }
+}
 
 /// Seed the curated model configs into the store when it holds none.
 ///

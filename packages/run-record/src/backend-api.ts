@@ -227,10 +227,16 @@ export type ModelOut = {
    */
   listPrice: ModelPricesOut | null;
   /**
-   * The date the list-price figures were taken, as the operator recorded it,
-   * or null.
+   * The date the list-price figures were taken, or null.
    */
   listPriceAsOf: string | null;
+  /**
+   * Where the list price came from: `hand` for a set the operator entered or
+   * confirmed, `openrouter` for one filled from the official endpoint's rate
+   * at enqueue (see [`crate::bootstrap::list_price_for_launch`]), or null
+   * when the model carries none.
+   */
+  listPriceSource: string | null;
   /**
    * The observed price history, ascending, consecutive-equal deduped.
    */

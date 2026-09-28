@@ -1,5 +1,6 @@
 import { canonicalModelId } from "../../modelId";
 import type {
+  ListPriceSource,
   Model,
   ModelAlias,
   ModelPrices,
@@ -41,8 +42,10 @@ export interface ModelSummary {
   /** The curated developer list price (per token) a run's comparable cost is
    * computed from, or null while the model has none. */
   listPrice: ModelPrices | null;
-  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  /** The date (`YYYY-MM-DD`) the list-price figures were taken, or null. */
   listPriceAsOf: string | null;
+  /** Where the list price came from, or null while the model has none. */
+  listPriceSource: ListPriceSource | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
@@ -85,6 +88,7 @@ export function toModelSummary(model: Model): ModelSummary {
     prices: model.price,
     listPrice: model.listPrice,
     listPriceAsOf: model.listPriceAsOf,
+    listPriceSource: model.listPriceSource,
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
     providerPin: model.providerPin,

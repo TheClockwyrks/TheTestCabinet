@@ -479,7 +479,12 @@ pub async fn launch_gg(
     // whose window cannot be resolved (not in the catalog, and not listed by
     // OpenRouter either) is rejected here rather than run against a guess.
     let record = super::stats::recorded_run_facts(&state).await;
-    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut launch)
+    // A bound model's list price filled at this enqueue changes the catalog the public
+    // snapshot shows.
+    let on_fill = || {
+        state.publisher.queue_refresh();
+    };
+    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut launch, &on_fill)
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;

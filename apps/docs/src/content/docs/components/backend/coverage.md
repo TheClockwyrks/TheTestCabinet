@@ -103,9 +103,9 @@ catalog can resolve no context window for. The matrix reports the reason on the
 cell, and a top-up skips that cell and says so, leaving the rest of the plan
 being fed.
 
-A top-up likewise skips a harness member whose model carries no
-[list price](/components/core/metrics/#cost), and a gg member binding such a
-model, reporting the reason.
+A top-up likewise skips a harness member whose model the catalog cannot
+resolve a [list price](/components/core/metrics/#cost) for, and a gg member
+binding such a model, reporting the reason.
 
 ## The matrix
 

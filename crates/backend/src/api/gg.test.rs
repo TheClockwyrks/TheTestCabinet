@@ -392,11 +392,19 @@ fn launch_of(set: GgCapabilitySet) -> LaunchBody {
 }
 
 /// A gg launch's pricing rides per-bound-model in `gg_model_prices`, resolved from
-/// the model catalog at enqueue: a model without a curated list price refuses the
-/// launch. Curate `model_id` fully priced, so the tests below hinge on the fact they
-/// mean to exercise (the window, the pin, the modalities), never on pricing.
+/// the model catalog at enqueue: a model without a curated list price has one filled
+/// from OpenRouter, and is refused when that fails. Curate `model_id` fully priced, so
+/// the tests below hinge on the fact they mean to exercise (the window, the pin, the
+/// modalities), never on pricing.
 async fn curate_priced(db: &Db, model_id: &str) {
-    db.upsert_model_config(crate::db::ModelConfigWrite {
+    db.upsert_model_config(priced_write(model_id))
+        .await
+        .unwrap();
+}
+
+/// The fully priced curated entry [`curate_priced`] writes for `model_id`.
+fn priced_write(model_id: &str) -> crate::db::ModelConfigWrite {
+    crate::db::ModelConfigWrite {
         slug: model_id.replace('/', "-"),
         display_name: model_id.to_string(),
         provider: model_id.split('/').next().unwrap_or(model_id).to_string(),
@@ -416,9 +424,114 @@ async fn curate_priced(db: &Db, model_id: &str) {
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
         ..Default::default()
+    }
+}
+
+/// A curated entry for `model_id` with no list price on it yet.
+async fn curate_unpriced(db: &Db, model_id: &str) {
+    db.upsert_model_config(crate::db::ModelConfigWrite {
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
+        ..priced_write(model_id)
     })
     .await
     .unwrap();
+}
+
+/// A bound model whose catalog entry carries no list price has one filled from its
+/// official endpoint at enqueue: the launch carries the filled price in
+/// `gg_model_prices`, the entry keeps it, and the fill is reported once.
+#[tokio::test]
+async fn launch_fills_a_bound_models_missing_list_price() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+    curate_unpriced(&db, "anthropic/claude-opus-4.8").await;
+    let mut launch = launch_of(GgCapabilitySet::minimal("anthropic/claude-opus-4.8"));
+    let fills = std::sync::atomic::AtomicUsize::new(0);
+
+    resolve_gg_model_facts(
+        &db,
+        &every_developer_listing().await,
+        &[],
+        &mut launch,
+        &|| {
+            fills.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
+    .await
+    .expect("the fill prices the launch");
+
+    assert_eq!(fills.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // `every_developer_listing` prices the Anthropic route at $1 / $0.10 / $2 per Mtok.
+    let stamped = launch
+        .gg_model_prices
+        .get("anthropic/claude-opus-4.8")
+        .expect("the filled price is stamped onto the launch");
+    let close = |actual: Option<f64>, expected: f64| {
+        (actual.expect("a filled rate") - expected).abs() < 1e-15
+    };
+    assert!(close(stamped.uncached_input, 1e-6), "{stamped:?}");
+    assert!(close(stamped.cached_input, 1e-7), "{stamped:?}");
+    assert!(close(stamped.output, 2e-6), "{stamped:?}");
+    let stored = db
+        .get_model_config("anthropic-claude-opus-4.8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(close(stored.config.list_price_output, 2e-6), "{stored:?}");
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some("openrouter")
+    );
+}
+
+/// A launch that fills one bound model's list price and is then refused over another
+/// still reports the fill: the catalog changed whether or not the run goes ahead.
+#[tokio::test]
+async fn a_refused_launch_still_reports_the_list_price_it_filled() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
+        .await
+        .unwrap();
+    curate_unpriced(&db, "anthropic/claude-opus-4.8").await;
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+        slug: "subagent".to_string(),
+        name: "subagent".to_string(),
+        model_id: "unlisted/model".to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    });
+    let mut launch = launch_of(set);
+    let fills = std::sync::atomic::AtomicUsize::new(0);
+
+    let err = resolve_gg_model_facts(
+        &db,
+        &every_developer_listing().await,
+        &[],
+        &mut launch,
+        &|| {
+            fills.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
+    .await
+    .expect_err("an uncurated bound model refuses the launch");
+
+    assert!(err.contains("`unlisted/model`"), "{err}");
+    assert_eq!(fills.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let stored = db
+        .get_model_config("anthropic-claude-opus-4.8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some("openrouter")
+    );
 }
 
 /// Enqueuing a gg run resolves the context window of **every model it binds** from the
@@ -445,9 +558,15 @@ async fn launch_resolves_the_bound_models_context_windows() {
     });
     let mut launch = launch_of(set);
 
-    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
-        .await
-        .expect("every bound model is in the catalog");
+    resolve_gg_model_facts(
+        &db,
+        &every_developer_listing().await,
+        &[],
+        &mut launch,
+        &|| {},
+    )
+    .await
+    .expect("every bound model is in the catalog");
 
     assert_eq!(
         launch.gg_model_windows,
@@ -500,9 +619,15 @@ async fn launch_resolves_the_bound_models_input_modalities() {
     });
     let mut launch = launch_of(set);
 
-    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
-        .await
-        .expect("every bound model has a window, which is what a launch hinges on");
+    resolve_gg_model_facts(
+        &db,
+        &every_developer_listing().await,
+        &[],
+        &mut launch,
+        &|| {},
+    )
+    .await
+    .expect("every bound model has a window, which is what a launch hinges on");
 
     assert_eq!(
         launch.gg_model_modalities,
@@ -531,9 +656,15 @@ async fn unknown_modalities_do_not_block_a_launch() {
         .unwrap();
 
     let mut launch = launch_of(GgCapabilitySet::minimal("anthropic/claude-opus-4.8"));
-    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
-        .await
-        .expect("a missing modality list is not a launch failure");
+    resolve_gg_model_facts(
+        &db,
+        &every_developer_listing().await,
+        &[],
+        &mut launch,
+        &|| {},
+    )
+    .await
+    .expect("a missing modality list is not a launch failure");
     assert!(launch.gg_model_modalities.is_empty());
     assert!(!launch.gg_model_windows.is_empty());
     assert!(!launch.gg_model_providers.is_empty());
@@ -549,7 +680,7 @@ async fn launch_is_refused_when_the_endpoints_listing_cannot_be_read() {
         .unwrap();
 
     let mut launch = launch_of(GgCapabilitySet::minimal("mystery/model"));
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch, &|| {})
         .await
         .expect_err("no listing, no list");
     assert!(
@@ -585,7 +716,7 @@ async fn launch_builds_the_candidate_list_developer_first() {
     .await;
 
     let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
-    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .expect("the developer serves it");
     assert_eq!(
@@ -630,7 +761,7 @@ async fn launch_orders_candidates_by_recorded_fault_rate() {
     })];
 
     let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
-    resolve_gg_model_facts(&db, &prices, &record, &mut launch)
+    resolve_gg_model_facts(&db, &prices, &record, &mut launch, &|| {})
         .await
         .expect("three providers pass");
     assert_eq!(
@@ -657,7 +788,7 @@ async fn a_reasoning_agent_needs_candidates_that_support_reasoning() {
     .await;
 
     let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
-    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .unwrap();
     assert_eq!(providers_of(&launch, "z-ai/glm-5.2"), ["Z.AI", "Plain"]);
@@ -668,7 +799,7 @@ async fn a_reasoning_agent_needs_candidates_that_support_reasoning() {
         ..Default::default()
     });
     let mut launch = launch_of(set);
-    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .unwrap();
     assert_eq!(providers_of(&launch, "z-ai/glm-5.2"), ["Z.AI"]);
@@ -685,7 +816,7 @@ async fn launch_refuses_a_model_with_no_candidate_with_the_reason() {
     let prices = endpoints_listing(serde_json::json!([endpoint("Novita", "fp8", 0.5, 2.0)])).await;
 
     let mut launch = launch_of(GgCapabilitySet::minimal("moonshotai/kimi-k2"));
-    let err = resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    let err = resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .expect_err("no developer endpoint and no ceiling");
     assert!(
@@ -743,7 +874,7 @@ async fn the_catalog_entry_shapes_the_candidate_list() {
         .await
         .unwrap();
     let mut launch = launch_of(GgCapabilitySet::minimal("qwen/qwen3-coder"));
-    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .expect("the hand-set developer serves it");
     assert_eq!(
@@ -754,7 +885,7 @@ async fn the_catalog_entry_shapes_the_candidate_list() {
     // With no developer endpoint on the listing, the entry's ceiling stands in.
     db.upsert_model_config(write(None)).await.unwrap();
     let mut launch = launch_of(GgCapabilitySet::minimal("qwen/qwen3-coder"));
-    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
         .await
         .expect("the ceiling bounds the third parties");
     assert_eq!(
@@ -776,7 +907,7 @@ async fn launch_is_rejected_when_a_models_window_cannot_be_resolved() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut launch = sample_request().into_launch_body().unwrap();
 
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch, &|| {})
         .await
         .expect_err("an unresolvable window is a launch failure");
     assert!(err.contains("mock/echo"), "unexpected reason: {err}");
@@ -795,7 +926,7 @@ async fn launch_rejects_the_scripted_mock_provider() {
     .into_launch_body()
     .unwrap();
 
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch, &|| {})
         .await
         .expect_err("a mock model cannot be launched");
     assert!(
@@ -816,7 +947,7 @@ async fn launch_overwrites_client_supplied_windows() {
         .insert("mock/echo".to_string(), 999_999);
 
     assert!(
-        resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+        resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch, &|| {})
             .await
             .is_err()
     );
@@ -847,7 +978,7 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         model_prices: None,
     };
 
-    resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+    resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch, &|| {})
         .await
         .expect("a non-gg run resolves nothing");
     assert!(launch.gg_model_windows.is_empty());

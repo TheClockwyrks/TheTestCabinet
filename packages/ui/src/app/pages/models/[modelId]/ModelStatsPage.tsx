@@ -174,8 +174,11 @@ function StatsContent({ model }: { model: ModelSummary }) {
       )}
 
       {/* List price: the developer's published figures the comparable cost is
-          computed from, per Mtok, with the date the operator took them. A model
-          without one is refused at enqueue, which the empty state names. */}
+          computed from, per Mtok, with the date they were taken and where they
+          came from. A set filled from OpenRouter at enqueue is provisional until
+          the operator confirms it against the developer's pricing page, which the
+          source line says. A model without one has it filled at the first
+          enqueue, which the empty state names. */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>List price</h2>
         <div className={styles.grid}>
@@ -199,10 +202,21 @@ function StatsContent({ model }: { model: ModelSummary }) {
                   value={formatReleaseDate(model.listPriceAsOf)}
                 />
               )}
+              {model.listPriceSource === "openrouter" ? (
+                <Stat
+                  label="Source — confirm against the developer's pricing page"
+                  value="Filled from OpenRouter"
+                  muted
+                />
+              ) : (
+                model.listPriceSource === "hand" && (
+                  <Stat label="Source" value="Entered by hand" />
+                )
+              )}
             </>
           ) : (
             <Stat
-              label="No list price — runs of this model are refused at enqueue"
+              label="No list price — filled from OpenRouter when a run is first enqueued"
               value="—"
               muted
             />

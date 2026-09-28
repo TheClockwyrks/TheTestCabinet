@@ -85,9 +85,17 @@ Every run records cost two ways:
 
 The backend resolves the model's list price when a run is enqueued and stamps it
 onto the launch, so a run is scored at the list price its model carried at
-enqueue. A launch naming a model with no list price is refused. A gg run is
-scored at the list price of the model it is published under, and every model its
-capability set binds must carry one.
+enqueue. A gg run is scored at the list price of the model it is published
+under, and every model its capability set binds is priced the same way.
+
+A catalog entry that carries no list price is filled at enqueue from OpenRouter:
+the backend reads the model's official endpoint rate, by the same rule the
+[billed rate](#price-history) follows, and writes the three rates onto the entry
+dated that day and marked as sourced from OpenRouter. The operator confirms or
+corrects the filled rates against the developer's pricing page later; the runs
+already enqueued keep the rates they were stamped with. A launch naming a model
+the catalog has no entry for, or one OpenRouter lists no rate for, is refused
+with the reason named.
 
 Comparable cost is derived from the recorded token classes and the list price's
 rates for uncached input, cached input, and output, with reasoning tokens priced

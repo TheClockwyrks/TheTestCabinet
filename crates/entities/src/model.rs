@@ -60,8 +60,9 @@ pub struct Model {
     /// or `NULL` when the model carries no curated list price.
     #[sea_orm(nullable)]
     pub list_price_as_of: Option<String>,
-    /// Where the list-price figures came from (for example `hand` for an
-    /// operator-entered set), or `NULL` when the model carries none.
+    /// Where the list-price figures came from: `hand` for an operator-entered
+    /// set, `openrouter` for one filled from the official endpoint's rate at
+    /// enqueue, or `NULL` when the model carries none.
     #[sea_orm(nullable)]
     pub list_price_source: Option<String>,
     /// The native quantization set by hand (`fp8`, `bf16`, …), lowercased: the level every
