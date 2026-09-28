@@ -147,12 +147,13 @@ pub struct LaunchBody {
     /// bind is scored at, resolved from the model catalog at enqueue and stamped
     /// here on the same terms as [`gg_model_windows`](Self::gg_model_windows).
     ///
-    /// A run's comparable cost is computed from the developer's published list
-    /// price — entered on the model's catalog entry — and nothing else, so the
-    /// figure is stable across providers and discounts. A gg run binding a model
-    /// with no list price is refused at enqueue rather than priced off whatever
-    /// a provider happened to charge that day. Empty for every non-gg run, whose
-    /// single model's price rides in [`model_prices`](Self::model_prices).
+    /// A run's comparable cost is computed from the list price on the model's
+    /// catalog entry — entered by the operator, or filled from the official
+    /// endpoint's OpenRouter rate at enqueue when the entry carried none — and
+    /// nothing else, so the figure is stable across providers and discounts. A
+    /// gg run binding a model the catalog cannot price is refused at enqueue.
+    /// Empty for every non-gg run, whose single model's price rides in
+    /// [`model_prices`](Self::model_prices).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub gg_model_prices: std::collections::BTreeMap<String, TokenPrices>,
     /// The curated list price (USD per token) of the launch's model, resolved from

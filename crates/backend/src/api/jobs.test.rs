@@ -197,6 +197,12 @@ fn launch_body_for(harness: HarnessSlug, model: &str) -> LaunchBody {
     }
 }
 
+/// An OpenRouter endpoint nothing listens on, so a resolution that must not fill from
+/// OpenRouter fails loudly if it tries.
+fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
+    test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
+}
+
 #[tokio::test]
 async fn resolve_model_price_stamps_the_curated_list_price() {
     let db = crate::db::Db::connect_in_memory().await.unwrap();
@@ -209,7 +215,7 @@ async fn resolve_model_price_stamps_the_curated_list_price() {
     .unwrap();
 
     let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
-    let prices = resolve_model_price(&db, &body)
+    let prices = resolve_model_price(&db, &unreachable_prices(), &body, &|| {})
         .await
         .unwrap()
         .expect("a priced OpenRouter-routed model resolves");
@@ -217,6 +223,9 @@ async fn resolve_model_price_stamps_the_curated_list_price() {
     assert_eq!(prices.output, Some(15e-6));
 }
 
+/// An unpriced curated model whose list price cannot be filled (OpenRouter is
+/// unreachable here) refuses the launch with the reason; the fill itself is covered by
+/// the bootstrap tests.
 #[tokio::test]
 async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
     let db = crate::db::Db::connect_in_memory().await.unwrap();
@@ -229,7 +238,7 @@ async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
     .unwrap();
 
     let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
-    let reason = resolve_model_price(&db, &body)
+    let reason = resolve_model_price(&db, &unreachable_prices(), &body, &|| {})
         .await
         .expect_err("an unpriced model refuses the launch");
     assert!(reason.contains("`deepseek/deepseek-v4`"), "{reason}");
@@ -237,7 +246,7 @@ async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
 
     // And an id the catalog does not know at all refuses too.
     let body = launch_body_for(HarnessSlug::Kilo, "unlisted/model");
-    let reason = resolve_model_price(&db, &body)
+    let reason = resolve_model_price(&db, &unreachable_prices(), &body, &|| {})
         .await
         .expect_err("an uncurated model refuses the launch");
     assert!(reason.contains("not in the model catalog"), "{reason}");
@@ -250,7 +259,7 @@ async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
 async fn resolve_model_price_prices_a_provider_native_harness_from_the_list_price() {
     let db = crate::db::Db::connect_in_memory().await.unwrap();
     let body = launch_body_for(HarnessSlug::Claude, "claude-opus-4-8");
-    let reason = resolve_model_price(&db, &body)
+    let reason = resolve_model_price(&db, &unreachable_prices(), &body, &|| {})
         .await
         .expect_err("an uncurated native model refuses the launch");
     assert!(reason.contains("`claude-opus-4-8`"), "{reason}");
@@ -263,7 +272,7 @@ async fn resolve_model_price_prices_a_provider_native_harness_from_the_list_pric
     .await
     .unwrap();
     assert!(
-        resolve_model_price(&db, &body)
+        resolve_model_price(&db, &unreachable_prices(), &body, &|| {})
             .await
             .unwrap()
             .expect("a priced native model is stamped")

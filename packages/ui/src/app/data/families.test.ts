@@ -17,6 +17,7 @@ function model(name: string, aliases: ModelAlias[]): Model {
     price: null,
     listPrice: null,
     listPriceAsOf: null,
+    listPriceSource: null,
     priceHistory: [],
     contextLength: null,
     providerPin: null,

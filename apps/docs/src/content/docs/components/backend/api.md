@@ -1010,10 +1010,12 @@ The model catalog is the list of subjects a run can be attributed to (see
 
 Each `GET /models` entry carries its display fields, aliases with their harness
 families, OpenRouter slug, developer provider (`providerPin`), and provider
-policy. `listPrice` is the operator-entered list price, per token, with
-`listPriceAsOf` the date the figures were taken; it is null until all three
-rates are set. `price` is the latest billed rate, and
-`priceHistory` the billed-rate history.
+policy. `listPrice` is the curated list price, per token, with `listPriceAsOf`
+the date the figures were taken and `listPriceSource` where they came from:
+`hand` for a set the operator entered or confirmed, `openrouter` for one filled
+from the official endpoint's rate at enqueue. All three are null until all three
+rates are set. `price` is the latest billed rate, and `priceHistory` the
+billed-rate history.
 
 A write carries the list price per Mtok as `listPriceInputPerMtok`,
 `listPriceCachedInputPerMtok`, and `listPriceOutputPerMtok`, with
@@ -1028,10 +1030,13 @@ fields from them for the operator to confirm or correct against the developer's
 pricing page. A slug OpenRouter does not list is a `404`.
 
 A run's [comparable cost](/components/core/metrics/#cost) is priced from the
-list price, so every enqueue path refuses a launch naming a model with none, or a
-gg launch binding one, with the reason named. The billed rate is observed from
-the official endpoint on run completion, on a 24-hour refresh, and missing-only
-at enqueue and on save. It never changes the list price.
+list price. Every enqueue path fills a curated entry's missing list price from
+the official endpoint's rate, and refuses a launch naming a model the catalog has
+no entry for, or one OpenRouter lists no rate for, with the reason named; a gg
+launch binding such a model is refused the same way. The billed rate is observed
+from the official endpoint on run completion, on a 24-hour refresh, and
+missing-only at enqueue and on save. An observation never changes the list
+price.
 
 ## Model probes
 

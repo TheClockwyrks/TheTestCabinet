@@ -8261,3 +8261,75 @@ async fn live_run_ids_of_nothing_is_empty() {
     let db = Db::connect_in_memory().await.unwrap();
     assert!(db.live_run_ids(&[]).await.unwrap().is_empty());
 }
+
+/// The list-price write puts a complete, dated, sourced price onto a curated entry and
+/// stamps the entry updated, leaving every other field as it was.
+#[tokio::test]
+async fn set_list_price_writes_a_complete_dated_price_onto_the_entry() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    db.set_list_price(ListPriceWrite {
+        slug: "deepseek-v4".to_string(),
+        uncached_input: 2e-6,
+        cached_input: 2e-7,
+        output: 8e-6,
+        as_of: "2026-09-28".to_string(),
+        source: "openrouter".to_string(),
+        now: "2026-09-28T12:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+
+    let stored = db.get_model_config("deepseek-v4").await.unwrap().unwrap();
+    assert_eq!(stored.config.display_name, "DeepSeek V4");
+    assert_eq!(
+        stored.config.openrouter_slug.as_deref(),
+        Some("deepseek/deepseek-v4")
+    );
+    assert_eq!(stored.config.list_price_input, Some(2e-6));
+    assert_eq!(stored.config.list_price_cached_input, Some(2e-7));
+    assert_eq!(stored.config.list_price_output, Some(8e-6));
+    assert_eq!(
+        stored.config.list_price_as_of.as_deref(),
+        Some("2026-09-28")
+    );
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some("openrouter")
+    );
+    assert_eq!(stored.config.created_at, "2026-07-09T00:00:00Z");
+    assert_eq!(stored.config.updated_at, "2026-09-28T12:00:00Z");
+    assert_eq!(stored.aliases.len(), 1);
+
+    // And the launch-time read now resolves it.
+    let resolved = db
+        .list_price_for_run_model("deepseek/deepseek-v4", HarnessSlug::Kilo)
+        .await
+        .unwrap()
+        .expect("the written price resolves");
+    assert_eq!(resolved.uncached_input, Some(2e-6));
+}
+
+/// A slug no curated model has is an error, not a silent no-op.
+#[tokio::test]
+async fn set_list_price_refuses_an_unknown_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.set_list_price(ListPriceWrite {
+        slug: "nobody".to_string(),
+        uncached_input: 1e-6,
+        cached_input: 1e-7,
+        output: 2e-6,
+        as_of: "2026-09-28".to_string(),
+        source: "openrouter".to_string(),
+        now: "2026-09-28T12:00:00Z".to_string(),
+    })
+    .await
+    .expect_err("an unknown slug is refused");
+}

@@ -152,8 +152,11 @@ name is required.
 
 A run's comparable cost is computed from the list price curated on the model's
 catalog entry, entered from the developer's pricing page (see
-[Metrics](/components/core/metrics/#cost)). The comparable cost is a published
-statistic, so a launch naming a model with no list price is refused at enqueue
+[Metrics](/components/core/metrics/#cost)). An entry saved without a list price
+has one filled the first time a run binding it is enqueued: the official
+endpoint's rate on OpenRouter, dated that day. Confirm or correct a filled list
+price against the developer's pricing page. A launch naming a model the catalog
+has no entry for, or one OpenRouter lists no rate for, is refused at enqueue
 with the reason named.
 
 Beside the list price the backend retains a per-model history of the official

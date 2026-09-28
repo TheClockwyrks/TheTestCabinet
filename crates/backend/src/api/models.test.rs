@@ -5,6 +5,14 @@ use test_cabinet_entities::model;
 /// [`write_config`] directly. The `TempDir` is returned so the store outlives the
 /// test.
 async fn test_state() -> (tempfile::TempDir, AppState) {
+    test_state_with_prices(test_cabinet_core::OpenRouterPrices::new()).await
+}
+
+/// [`test_state`] with its OpenRouter price source pointed at `prices`, for a path that
+/// must reach a (fake) listing.
+async fn test_state_with_prices(
+    prices: test_cabinet_core::OpenRouterPrices,
+) -> (tempfile::TempDir, AppState) {
     // nextest runs each test in its own process, so this environment is this
     // test's alone (the same reasoning `api.test.rs`'s harness gives).
     let dir = tempfile::tempdir().unwrap();
@@ -41,7 +49,7 @@ async fn test_state() -> (tempfile::TempDir, AppState) {
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
-        prices: test_cabinet_core::OpenRouterPrices::new(),
+        prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     (dir, state)
@@ -683,4 +691,76 @@ async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_top_up
         .as_deref()
         .expect("an unpriced member is unlaunchable");
     assert!(reason.contains("`claude-unpriced-1`"), "{reason}");
+}
+
+/// Serve `endpoints` as every model's `/models/{id}/endpoints` body on a loopback port,
+/// and return a price source pointed at it.
+async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
+    let app = axum::Router::new().fallback(move || {
+        let body = body.clone();
+        async move { axum::Json(body) }
+    });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+}
+
+/// A top-up fills a harness member's missing list price from OpenRouter when it resolves
+/// the member, so the member launches and its entry carries the filled price for the
+/// per-cell stamp to read.
+#[tokio::test]
+async fn a_harness_members_missing_list_price_is_filled_before_the_top_up() {
+    let prices = endpoints_listing(serde_json::json!([{
+        "provider_name": "Anthropic",
+        "pricing": {
+            "prompt": "0.000005",
+            "completion": "0.000025",
+            "input_cache_read": "0.0000005",
+        },
+    }]))
+    .await;
+    let (_dir, state) = test_state_with_prices(prices).await;
+    state
+        .db
+        .upsert_model_config(crate::db::ModelConfigWrite {
+            openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+            ..crate::db::tests::model_write(
+                "claude-opus-4-8",
+                "Claude Opus 4.8",
+                &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+            )
+        })
+        .await
+        .unwrap();
+    let combo = super::super::coverage::ReviewPlanCombo {
+        harness: HarnessSlug::Claude,
+        model: "claude-opus-4-8".to_string(),
+        provider: None,
+        gg_config_id: None,
+        gg_slot_models: Default::default(),
+        gg_config_name: None,
+    };
+    let library = super::super::coverage::GgLibrary::default();
+    let mut members = vec![super::super::coverage::resolve_member(&combo, &library)];
+
+    super::super::coverage::resolve_launch_facts(&state, &mut members).await;
+
+    assert_eq!(members[0].unlaunchable, None);
+    let stored = state
+        .db
+        .get_model_config("claude-opus-4-8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.config.list_price_input, Some(0.000005));
+    assert_eq!(stored.config.list_price_cached_input, Some(0.0000005));
+    assert_eq!(stored.config.list_price_output, Some(0.000025));
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some("openrouter")
+    );
 }

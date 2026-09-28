@@ -99,13 +99,17 @@ pub async fn launch(
     }
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
     let record = candidate_record(&state, [&body]).await;
-    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body)
+    // A list price filled at this enqueue changes the catalog the public snapshot shows.
+    let on_fill = || {
+        state.publisher.queue_refresh();
+    };
+    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body, &on_fill)
         .await
         .map_err(ApiError::bad_request)?;
-    // Stamp the model's curated list price onto the launch, refusing a model
-    // that has none. A gg run's per-bound-model prices ride in
-    // `gg_model_prices`, resolved inside `resolve_gg_model_facts`.
-    if let Some(prices) = resolve_model_price(&state.db, &body)
+    // Stamp the model's list price onto the launch, refusing a model the catalog
+    // cannot price. A gg run's per-bound-model prices ride in `gg_model_prices`,
+    // resolved inside `resolve_gg_model_facts`.
+    if let Some(prices) = resolve_model_price(&state.db, &state.prices, &body, &on_fill)
         .await
         .map_err(ApiError::bad_request)?
     {
@@ -194,6 +198,10 @@ pub async fn launch_batch(
     // `items` vector stays index-aligned with `body.runs`.
     let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
+    // A list price filled for any run changes the catalog the public snapshot shows.
+    let on_fill = || {
+        state.publisher.queue_refresh();
+    };
     // A batch usually fans one case out over many models/harnesses, so resolve each
     // (case, version)'s type once instead of re-reading the same manifest per run.
     let mut types: HashMap<(String, String), TestType> = HashMap::new();
@@ -230,17 +238,21 @@ pub async fn launch_batch(
         };
         let minted = match bound {
             Ok(()) => {
-                match resolve_gg_model_facts(&state.db, &state.prices, &record, &mut run).await {
-                    Ok(()) => match resolve_model_price(&state.db, &run).await {
-                        // A gg run's per-bound-model prices ride in `gg_model_prices`;
-                        // a flat run's model price is stamped here.
-                        Ok(Some(prices)) => {
-                            run.model_prices = Some(prices);
-                            build_new_job(&run, test_type, &now, &attribution)
+                match resolve_gg_model_facts(&state.db, &state.prices, &record, &mut run, &on_fill)
+                    .await
+                {
+                    Ok(()) => {
+                        match resolve_model_price(&state.db, &state.prices, &run, &on_fill).await {
+                            // A gg run's per-bound-model prices ride in `gg_model_prices`;
+                            // a flat run's model price is stamped here.
+                            Ok(Some(prices)) => {
+                                run.model_prices = Some(prices);
+                                build_new_job(&run, test_type, &now, &attribution)
+                            }
+                            Ok(None) => build_new_job(&run, test_type, &now, &attribution),
+                            Err(reason) => Err(reason),
                         }
-                        Ok(None) => build_new_job(&run, test_type, &now, &attribution),
-                        Err(reason) => Err(reason),
-                    },
+                    }
                     Err(reason) => Err(reason),
                 }
             }
@@ -351,11 +363,17 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///
 /// Whatever the client sent is discarded first — these are backend-resolved facts, not
 /// client input.
+///
+/// `on_fill` is called for each bound model whose list price the resolution
+/// [filled from OpenRouter](crate::bootstrap::list_price_for_launch), whether or not the
+/// launch then goes ahead: the catalog changed, and the caller refreshes the public
+/// snapshot it feeds.
 pub(super) async fn resolve_gg_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
     body: &mut LaunchBody,
+    on_fill: &(dyn Fn() + Sync),
 ) -> Result<(), String> {
     body.gg_model_windows.clear();
     body.gg_model_providers.clear();
@@ -364,7 +382,7 @@ pub(super) async fn resolve_gg_model_facts(
     let Some(set) = body.gg_capability_set.as_ref() else {
         return Ok(());
     };
-    let facts = gg_model_facts(db, prices, record, set, &body.model, body.harness).await?;
+    let facts = gg_model_facts(db, prices, record, set, &body.model, body.harness, on_fill).await?;
     facts.apply(body);
     Ok(())
 }
@@ -406,7 +424,8 @@ pub(super) struct GgModelFacts {
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
     /// The curated list price (USD per token) every bound model is scored at. A
-    /// model with none refuses the launch, so every bound model is present.
+    /// model the catalog cannot price refuses the launch, so every bound model is
+    /// present.
     prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
 }
 
@@ -422,7 +441,8 @@ impl GgModelFacts {
 }
 
 /// Resolve one capability set's [per-model facts](GgModelFacts), or the reason a run of it
-/// cannot start. The body of [`resolve_gg_model_facts`], callable before there is a body.
+/// cannot start. The body of [`resolve_gg_model_facts`], callable before there is a body;
+/// `on_fill` is as documented there.
 pub(super) async fn gg_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
@@ -430,6 +450,7 @@ pub(super) async fn gg_model_facts(
     set: &test_cabinet_core::gg::GgCapabilitySet,
     launch_model: &str,
     harness: HarnessSlug,
+    on_fill: &(dyn Fn() + Sync),
 ) -> Result<GgModelFacts, String> {
     // Every model the set can run an agent on, plus the launch's own model id (the
     // primary, which the form also records outside the set).
@@ -442,7 +463,8 @@ pub(super) async fn gg_model_facts(
     for model_id in models {
         let reasoning = binds_reasoning(set, model_id);
         let resolved =
-            resolve_one_model_facts(db, prices, record, model_id, harness, reasoning).await?;
+            resolve_one_model_facts(db, prices, record, model_id, harness, reasoning, on_fill)
+                .await?;
         facts.windows.insert(model_id.to_string(), resolved.window);
         facts
             .providers
@@ -469,24 +491,31 @@ fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str)
 }
 
 /// The list price a third-party-harness launch's model is scored at, or the reason the
-/// launch is refused: the model is not in the catalog, or its entry carries no list price.
-/// Every harness is priced this way, whatever cost it reports of its own, because the
-/// comparable cost is a published statistic.
+/// launch is refused: the model is not in the catalog, or its entry carries no list price
+/// and OpenRouter lists none to fill it with (see
+/// [`crate::bootstrap::list_price_for_launch`]). Every harness is priced this way,
+/// whatever cost it reports of its own, because the comparable cost is a published
+/// statistic.
 ///
 /// `Ok(None)` for a gg launch, whose per-bound-model prices ride in `gg_model_prices`
-/// (see [`gg_model_facts`]).
+/// (see [`gg_model_facts`]). `on_fill` is called when the model's list price was filled
+/// from OpenRouter just now, so the caller can refresh the public snapshot.
 pub(super) async fn resolve_model_price(
     db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
     body: &LaunchBody,
+    on_fill: &(dyn Fn() + Sync),
 ) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
     if body.harness == HarnessSlug::Gg {
         return Ok(None);
     }
-    match db.list_price_for_run_model(&body.model, body.harness).await {
+    match crate::bootstrap::list_price_for_launch(db, prices, &body.model, body.harness, on_fill)
+        .await
+    {
         Ok(Ok(prices)) => Ok(Some(prices)),
         Ok(Err(reason)) => Err(reason),
         Err(db_err) => Err(format!(
-            "could not read the model catalog's list price for `{}`: {db_err}",
+            "could not resolve the model catalog's list price for `{}`: {db_err}",
             body.model
         )),
     }
@@ -516,6 +545,7 @@ async fn resolve_one_model_facts(
     model_id: &str,
     harness: HarnessSlug,
     reasoning: bool,
+    on_fill: &(dyn Fn() + Sync),
 ) -> Result<ResolvedModelFacts, String> {
     let stored = match super::models::launch_facts_for(db, model_id, harness).await {
         Ok(facts) => facts,
@@ -527,16 +557,15 @@ async fn resolve_one_model_facts(
             ));
         }
     };
-    // The list price the run is scored at comes only from the catalog — never
-    // from a live fetch: a run must not be priced off whatever a provider
-    // happened to charge that day. A catalog read that fails is, exactly like a
-    // failed window read, an unknown rather than "no price".
-    let list_prices = db
-        .list_price_for_run_model(model_id, harness)
-        .await
-        .map_err(|err| {
-            format!("could not read the model catalog's list price for `{model_id}`: {err}")
-        })?;
+    // The list price the run is scored at is the catalog entry's, filled from the
+    // official endpoint's rate when the entry carries none yet. A catalog read that
+    // fails is, exactly like a failed window read, an unknown rather than "no price".
+    let list_prices =
+        crate::bootstrap::list_price_for_launch(db, prices, model_id, harness, on_fill)
+            .await
+            .map_err(|err| {
+                format!("could not resolve the model catalog's list price for `{model_id}`: {err}")
+            })?;
     let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
     let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
         format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")

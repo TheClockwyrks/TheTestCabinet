@@ -72,6 +72,11 @@ export interface ModelAlias {
 
 /** One catalog entry: a curated model merged with its runs + price history, or a
  * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
+/** Where a model's list price came from: entered or confirmed by the operator
+ * (`hand`), or filled from the official endpoint's OpenRouter rate at enqueue
+ * (`openrouter`), for the operator to confirm against the developer's page. */
+export type ListPriceSource = "hand" | "openrouter";
+
 export interface Model {
   slug: string;
   name: string;
@@ -94,11 +99,13 @@ export interface Model {
    * first observation. */
   price: ModelPrices | null;
   /** The curated developer list price (per-token USD, all-or-nothing) a run's
-   * comparable cost is computed from, or null while the model has none —
-   * a launch naming such a model is refused at enqueue. */
+   * comparable cost is computed from, or null while the model has none — the
+   * first launch naming such a model fills it from OpenRouter. */
   listPrice: ModelPrices | null;
-  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  /** The date (`YYYY-MM-DD`) the list-price figures were taken, or null. */
   listPriceAsOf: string | null;
+  /** Where the list price came from, or null while the model has none. */
+  listPriceSource: ListPriceSource | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */

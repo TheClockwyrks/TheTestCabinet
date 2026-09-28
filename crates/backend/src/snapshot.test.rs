@@ -440,6 +440,7 @@ async fn snapshot_emits_the_composed_model_catalog() {
         price: None,
         list_price: None,
         list_price_as_of: None,
+        list_price_source: None,
         price_history: vec![],
         context_length: None,
         released_at: None,
