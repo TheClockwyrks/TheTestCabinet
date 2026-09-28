@@ -6442,15 +6442,36 @@ pub struct ModelConfigWrite {
     /// The developer's published list price per **token** of output, in USD.
     /// See [`list_price_input`](Self::list_price_input).
     pub list_price_output: Option<f64>,
-    /// The date the operator took the list-price figures.
+    /// The date the list-price figures were taken.
     pub list_price_as_of: Option<String>,
-    /// Where the list-price figures came from (`hand` for an operator-entered
-    /// set).
+    /// Where the list-price figures came from: `hand` for an operator-entered
+    /// set, `openrouter` for one the enqueue-time fill wrote (see
+    /// [`Db::set_list_price`]).
     pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
     /// RFC 3339 timestamp for the created/updated stamp.
+    pub now: String,
+}
+
+/// The write payload for [`Db::set_list_price`]: a complete, dated list price
+/// for one curated model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListPriceWrite {
+    /// The curated model's slug.
+    pub slug: String,
+    /// USD per token of uncached input.
+    pub uncached_input: f64,
+    /// USD per token of cached input.
+    pub cached_input: f64,
+    /// USD per token of output.
+    pub output: f64,
+    /// The date the rates were taken, `YYYY-MM-DD`.
+    pub as_of: String,
+    /// Where the rates came from (`openrouter` for the enqueue-time fill).
+    pub source: String,
+    /// RFC 3339 timestamp for the updated stamp.
     pub now: String,
 }
 
@@ -6763,6 +6784,26 @@ impl Db {
                 config.display_name
             ))),
         }
+    }
+
+    /// Write a complete list price onto a curated model's catalog entry, replacing
+    /// whatever it held, and stamp the entry updated. The enqueue-time fill from
+    /// OpenRouter writes through here; an operator's own edits go through
+    /// [`Self::upsert_model_config`]. A slug no curated model has is an error.
+    pub async fn set_list_price(&self, write: ListPriceWrite) -> Result<()> {
+        model::ActiveModel {
+            slug: Set(write.slug),
+            list_price_input: Set(Some(write.uncached_input)),
+            list_price_cached_input: Set(Some(write.cached_input)),
+            list_price_output: Set(Some(write.output)),
+            list_price_as_of: Set(Some(write.as_of)),
+            list_price_source: Set(Some(write.source)),
+            updated_at: Set(write.now),
+            ..Default::default()
+        }
+        .update(&self.conn())
+        .await?;
+        Ok(())
     }
 
     /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used

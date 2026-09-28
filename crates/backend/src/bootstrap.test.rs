@@ -441,3 +441,289 @@ async fn a_model_with_no_official_route_records_the_headline_price() {
     assert_eq!(observed.uncached_input, Some(0.000003));
     assert_eq!(observed.output, Some(0.000015));
 }
+
+// --- The enqueue-time list-price fill ------------------------------------------
+
+/// Today's date as the fill stamps it, `YYYY-MM-DD`.
+fn today() -> String {
+    OffsetDateTime::now_utc()
+        .date()
+        .format(&time::macros::format_description!("[year]-[month]-[day]"))
+        .unwrap()
+}
+
+/// A curated entry with no list price has one filled from the official endpoint's rate
+/// at enqueue: the launch is stamped with it, and the entry carries it from then on,
+/// dated today and sourced `openrouter`, so the next launch reads it from the catalog
+/// without reaching OpenRouter.
+#[tokio::test]
+async fn a_launch_fills_a_curated_models_missing_list_price_from_the_official_endpoint() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
+    })
+    .await
+    .unwrap();
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
+            .await;
+
+    let fills = std::sync::atomic::AtomicUsize::new(0);
+    let on_fill = || {
+        fills.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    };
+    let resolved = list_price_for_launch(&db, &prices, "z-ai/glm-5.3", HarnessSlug::Kilo, &on_fill)
+        .await
+        .unwrap()
+        .expect("the fill prices the launch");
+    assert_eq!(
+        fills.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the fill reports the catalog change once"
+    );
+    assert_eq!(resolved.uncached_input, Some(0.0000014));
+    assert_eq!(resolved.cached_input, Some(0.00000026));
+    assert_eq!(resolved.output, Some(0.0000044));
+
+    let stored = db.get_model_config("glm-5-3").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, Some(0.0000014));
+    assert_eq!(stored.config.list_price_cached_input, Some(0.00000026));
+    assert_eq!(stored.config.list_price_output, Some(0.0000044));
+    assert_eq!(
+        stored.config.list_price_as_of.as_deref(),
+        Some(today().as_str())
+    );
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some(LIST_PRICE_SOURCE_OPENROUTER)
+    );
+
+    // Filled once: the next launch is priced from the catalog and reaches nothing.
+    let again = list_price_for_launch(
+        &db,
+        &unreachable_prices(),
+        "z-ai/glm-5.3:free",
+        HarnessSlug::Kilo,
+        &on_fill,
+    )
+    .await
+    .unwrap()
+    .expect("a filled entry prices the next launch from the catalog");
+    assert_eq!(
+        fills.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a catalog read is not a fill"
+    );
+    assert_eq!(again, resolved);
+}
+
+/// A provider-native launch id fills through the entry's configured OpenRouter slug, the
+/// same lookup the billed rate uses, so a Claude Code run of a freshly seeded Opus entry
+/// is priced rather than refused.
+#[tokio::test]
+async fn the_fill_looks_a_native_id_up_by_the_entrys_openrouter_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        ..crate::db::tests::model_write(
+            "claude-opus-4-8",
+            "Claude Opus 4.8",
+            &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+        )
+    })
+    .await
+    .unwrap();
+    let endpoints = serde_json::json!({
+        "data": {
+            "name": "Anthropic: Claude Opus 4.8",
+            "endpoints": [{
+                "provider_name": "Anthropic",
+                "pricing": {
+                    "prompt": "0.000005",
+                    "completion": "0.000025",
+                    "input_cache_read": "0.0000005",
+                },
+            }],
+        },
+    });
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("anthropic/claude-opus-4.8"), endpoints).await;
+
+    let resolved =
+        list_price_for_launch(&db, &prices, "claude-opus-4-8", HarnessSlug::Claude, &|| {})
+            .await
+            .unwrap()
+            .expect("the native id fills through the slug");
+    assert_eq!(resolved.uncached_input, Some(0.000005));
+    assert_eq!(resolved.cached_input, Some(0.0000005));
+    assert_eq!(resolved.output, Some(0.000025));
+    let stored = db
+        .get_model_config("claude-opus-4-8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.config.list_price_output, Some(0.000025));
+}
+
+/// The fill follows a hand-set developer provider, exactly as the billed rate does, and
+/// takes the prompt rate for cached input when the route lists no cache-read rate.
+#[tokio::test]
+async fn the_fill_follows_a_hand_set_pin() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("qwen/qwen3-coder".to_string()),
+        provider_pin: Some("Alibaba".to_string()),
+        ..crate::db::tests::model_write("qwen3-coder", "Qwen3 Coder", &["qwen/qwen3-coder"])
+    })
+    .await
+    .unwrap();
+    let endpoints = serde_json::json!({
+        "data": {
+            "name": "Qwen: Qwen3 Coder",
+            "endpoints": [
+                {
+                    "provider_name": "Cheapo",
+                    "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+                },
+                {
+                    "provider_name": "Alibaba",
+                    "pricing": { "prompt": "0.000005", "completion": "0.00001" },
+                },
+            ],
+        },
+    });
+    let prices = fake_openrouter_with_endpoints(catalog_of("qwen/qwen3-coder"), endpoints).await;
+
+    let resolved =
+        list_price_for_launch(&db, &prices, "qwen/qwen3-coder", HarnessSlug::Kilo, &|| {})
+            .await
+            .unwrap()
+            .expect("the pinned route prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.000005));
+    assert_eq!(resolved.cached_input, Some(0.000005));
+    assert_eq!(resolved.output, Some(0.00001));
+}
+
+/// A model with no priced official route fills from the listing's headline rate, the
+/// same fallback the billed rate takes.
+#[tokio::test]
+async fn the_fill_takes_the_headline_rate_for_a_model_with_no_official_route() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("newco/brand-new".to_string()),
+        ..crate::db::tests::model_write("brand-new", "Brand New", &["newco/brand-new"])
+    })
+    .await
+    .unwrap();
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("newco/brand-new"),
+        endpoints_with_official_route(),
+    )
+    .await;
+
+    let resolved =
+        list_price_for_launch(&db, &prices, "newco/brand-new", HarnessSlug::Kilo, &|| {})
+            .await
+            .unwrap()
+            .expect("the headline rate prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.000003));
+    assert_eq!(resolved.cached_input, Some(0.0000003));
+    assert_eq!(resolved.output, Some(0.000015));
+}
+
+/// When OpenRouter cannot be reached the launch is refused, naming the model, the missing
+/// list price and why the fill failed, and the entry is left unpriced rather than half
+/// written.
+#[tokio::test]
+async fn a_launch_is_refused_when_the_fill_cannot_reach_openrouter() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
+    })
+    .await
+    .unwrap();
+
+    let fills = std::sync::atomic::AtomicUsize::new(0);
+    let reason = list_price_for_launch(
+        &db,
+        &unreachable_prices(),
+        "z-ai/glm-5.3",
+        HarnessSlug::Kilo,
+        &|| {
+            fills.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
+    .await
+    .unwrap()
+    .expect_err("an unreachable OpenRouter refuses the launch");
+    assert_eq!(
+        fills.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a failed fill reports no catalog change"
+    );
+    assert!(reason.contains("`z-ai/glm-5.3`"), "{reason}");
+    assert!(reason.contains("GLM 5.3"), "{reason}");
+    assert!(reason.contains("no list price"), "{reason}");
+    assert!(
+        reason.contains("none could be filled from OpenRouter"),
+        "{reason}"
+    );
+    assert!(reason.contains("Models section"), "{reason}");
+
+    let stored = db.get_model_config("glm-5-3").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, None);
+    assert_eq!(stored.config.list_price_source, None);
+}
+
+/// A model the catalog has no entry for is refused outright: there is no entry to fill,
+/// so OpenRouter is never asked.
+#[tokio::test]
+async fn an_uncurated_model_is_refused_without_reaching_openrouter() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let reason = list_price_for_launch(
+        &db,
+        &unreachable_prices(),
+        "unlisted/model",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect_err("an uncurated model refuses the launch");
+    assert!(reason.contains("`unlisted/model`"), "{reason}");
+    assert!(reason.contains("not in the model catalog"), "{reason}");
+}
+
+/// A curated entry that already carries a list price is priced from it and reaches
+/// nothing: the fill is for the entry that has none.
+#[tokio::test]
+async fn a_priced_entry_is_read_from_the_catalog_without_reaching_openrouter() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let fills = std::sync::atomic::AtomicUsize::new(0);
+    let resolved = list_price_for_launch(
+        &db,
+        &unreachable_prices(),
+        "deepseek/deepseek-v4",
+        HarnessSlug::Kilo,
+        &|| {
+            fills.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
+    .await
+    .unwrap()
+    .expect("a priced entry resolves");
+    assert_eq!(fills.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(resolved.uncached_input, Some(3e-6));
+    assert_eq!(resolved.output, Some(15e-6));
+}

@@ -80,9 +80,13 @@ pub struct ModelOut {
     /// is computed from — all-or-nothing: `Some` only when all three prices are
     /// set. Null for a derived or unpriced model.
     pub list_price: Option<ModelPricesOut>,
-    /// The date the list-price figures were taken, as the operator recorded it,
-    /// or null.
+    /// The date the list-price figures were taken, or null.
     pub list_price_as_of: Option<String>,
+    /// Where the list price came from: `hand` for a set the operator entered or
+    /// confirmed, `openrouter` for one filled from the official endpoint's rate
+    /// at enqueue (see [`crate::bootstrap::list_price_for_launch`]), or null
+    /// when the model carries none.
+    pub list_price_source: Option<String>,
     /// The observed price history, ascending, consecutive-equal deduped.
     pub price_history: Vec<PriceObservationOut>,
     /// The latest observed context window in tokens, or null.
@@ -897,6 +901,10 @@ pub fn compose_catalog(
             .is_some()
             .then(|| config.list_price_as_of.clone())
             .flatten();
+        let list_price_source = list_price
+            .is_some()
+            .then(|| config.list_price_source.clone())
+            .flatten();
         out.push(ModelOut {
             slug: config.slug.clone(),
             name: config.display_name.clone(),
@@ -916,6 +924,7 @@ pub fn compose_catalog(
             price: facts.price,
             list_price,
             list_price_as_of,
+            list_price_source,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
@@ -961,6 +970,7 @@ pub fn compose_catalog(
             price: facts.price,
             list_price: None,
             list_price_as_of: None,
+            list_price_source: None,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,

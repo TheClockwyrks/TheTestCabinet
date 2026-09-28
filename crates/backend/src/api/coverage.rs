@@ -2154,25 +2154,34 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
     } else {
         std::sync::Arc::new(Vec::new())
     };
+    // A list price filled for any member changes the catalog the public snapshot shows.
+    let on_fill = || {
+        state.publisher.queue_refresh();
+    };
     for member in members {
         if member.unlaunchable.is_some() {
             continue;
         }
         let launch_model = member.launch_model.clone();
         let Some(gg) = member.gg.as_mut() else {
-            // A harness member is refused at enqueue when its model carries no list price,
-            // so it is refused here first, before the scheduler spends buffer on it. The
-            // price itself is stamped per cell at enqueue.
-            match state
-                .db
-                .list_price_for_run_model(&launch_model, member.combo.harness)
-                .await
+            // A harness member is refused at enqueue when its model cannot be priced, so it
+            // is refused here first, before the scheduler spends buffer on it. A missing
+            // list price is filled from OpenRouter here, once for the member; the price
+            // itself is stamped per cell at enqueue, where the filled entry answers.
+            match crate::bootstrap::list_price_for_launch(
+                &state.db,
+                &state.prices,
+                &launch_model,
+                member.combo.harness,
+                &on_fill,
+            )
+            .await
             {
                 Ok(Ok(_)) => {}
                 Ok(Err(reason)) => member.unlaunchable = Some(reason),
                 Err(err) => {
                     member.unlaunchable = Some(format!(
-                        "could not read the model catalog's list price for `{launch_model}`: {err}"
+                        "could not resolve the model catalog's list price for `{launch_model}`: {err}"
                     ));
                 }
             }
@@ -2197,6 +2206,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
             &gg.capability_set,
             &launch_model,
             HarnessSlug::Gg,
+            &on_fill,
         )
         .await
         {
@@ -2732,6 +2742,10 @@ pub(super) async fn enqueue_top_up(
     let mut jobs: Vec<crate::db::NewJob> = Vec::new();
     let mut launched: Vec<TopUpLaunch> = Vec::with_capacity(cells.len());
     let mut blocked: Vec<TopUpBlocked> = Vec::new();
+    // A list price filled for any cell changes the catalog the public snapshot shows.
+    let on_fill = || {
+        state.publisher.queue_refresh();
+    };
     // Every model the harness cells bind, so their prices can be seeded at enqueue exactly
     // as `POST /jobs` seeds a by-hand launch's — once for the batch, below. A gg cell's are
     // seeded as it is lowered instead, because its window resolution needs them on record
@@ -2770,6 +2784,7 @@ pub(super) async fn enqueue_top_up(
                     &state.prices,
                     &record,
                     &mut body,
+                    &on_fill,
                 )
                 .await
                 {
@@ -2779,9 +2794,11 @@ pub(super) async fn enqueue_top_up(
             }
             None => {
                 // A non-gg cell: stamp the model's curated list price onto the
-                // launch, blocking the cell when the model has none (a gg cell's
-                // per-bound-model prices ride in the facts above).
-                match super::jobs::resolve_model_price(&state.db, &body).await {
+                // launch, blocking the cell when the model cannot be priced (a gg
+                // cell's per-bound-model prices ride in the facts above).
+                match super::jobs::resolve_model_price(&state.db, &state.prices, &body, &on_fill)
+                    .await
+                {
                     Ok(Some(prices)) => body.model_prices = Some(prices),
                     Ok(None) => {}
                     Err(reason) => {

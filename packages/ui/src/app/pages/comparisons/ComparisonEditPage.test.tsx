@@ -70,6 +70,7 @@ const MODEL = {
   price: null,
   listPrice: null,
   listPriceAsOf: null,
+  listPriceSource: null,
   priceHistory: [],
   contextLength: null,
   providerPin: null,

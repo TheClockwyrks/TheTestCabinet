@@ -60,9 +60,12 @@ filling only the empty fields, and seeds the three list-price rates from the
 official endpoint, so reach for it when you want OpenRouter's wording back.
 Confirm or correct the seeded rates against the developer's pricing page.
 
-A run's comparable cost is priced from the model's entered list price. The
-comparable cost is a published statistic, so a model with no list price is
-refused at enqueue, with the reason named. The backend records the official
+A run's comparable cost is priced from the model's list price. A model saved
+without one has it filled from the official endpoint's OpenRouter rate when a
+run binding it is first enqueued; confirm or correct the filled rates against
+the developer's pricing page. A model the catalog has no entry for, or one
+OpenRouter lists no rate for, is refused at enqueue with the reason named. The
+backend records the official
 endpoint's per-Mtok rates beside the list price as the billed rate, when the
 model is saved, when a run using it is enqueued, when a run completes, and on a
 24-hour refresh. The model's Stats tab shows the list price and the billed rate
