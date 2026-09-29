@@ -41,8 +41,16 @@ mapfile -t names < <(./containers/image-names.sh)
 # running PUSH=1 from their own box. THIS IS THE ONLY CALLER THAT SHOULD SET IT: here the
 # daemon belongs to a single-use CI agent (both pools give every job a fresh VM with an empty
 # builder), so there is nothing to lose and a full set to gain.
-log "building ${#names[@]} run images as ${CI_REGISTRY}/test-cabinet-<name>:${SHA}-${arch}"
-PUSH=1 RECLAIM=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
+# REUSE_INPUTS is what makes an unchanged image cost one registry round trip: the table
+# names every image's inputs digest, and build.sh retags the pushed image that digest
+# already names instead of building and pushing it again (its header section "Reusing
+# what the registry already holds"). The table is written here, from this checkout's
+# index, so the digests describe the commit being built.
+inputs_file="$(mktemp)"
+trap 'rm -f "$log_file" "$inputs_file"' EXIT
+scripts/ci/run-image-inputs.sh >"$inputs_file"
+log "building ${#names[@]} run images as ${CI_REGISTRY}/test-cabinet-<name>:${SHA}-${arch}, reusing those whose inputs are unchanged"
+PUSH=1 RECLAIM=1 REUSE_INPUTS="$inputs_file" IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
 	./containers/build.sh --gg-selfcheck "$GG_BINARY" "${names[@]}" 2>&1 | tee "$log_file"
 
 # The self-check has to have run, not merely have been asked for. A refactor that

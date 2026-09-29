@@ -251,6 +251,18 @@ sha from before it has no such image, so its backend cannot be pulled
 (`ImagePullBackOff`) and the deploy undoes the rollout; put such a commit back
 by reverting on the branch instead.
 
+Which shas the registry holds is a short list, by design. The registry's tier
+has no retention policy, so each deployment ends by running
+`scripts/ci/registry-purge.sh`, which reads what the staging and prod
+namespaces run and keeps those commits' images, the commit just deployed and
+the newest commit in the registry, and deletes every other commit's service and
+run images (a cluster it cannot read stops it with nothing deleted). So the
+commit an environment runs and the one before it, which the other environment
+or a failed deploy's undo still runs, can be put back by hand; anything older is
+put back by reverting on the branch, which rebuilds only the images whose
+inputs changed (see
+[Reusing unchanged run images](/development/building/#reusing-unchanged-run-images)).
+
 ### The deploy identity
 
 The deploy runs under the `tcab-deploy` Azure Resource Manager service
