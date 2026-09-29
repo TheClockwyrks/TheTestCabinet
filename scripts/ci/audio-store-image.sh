@@ -17,7 +17,7 @@
 # `test-cabinet-audio-store:<sha>`. The caller is already logged in to the registry.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 1 ]]; then
 	echo "usage: scripts/ci/audio-store-image.sh <sha>" >&2
@@ -25,5 +25,10 @@ if [[ $# -ne 1 ]]; then
 fi
 readonly SHA="$1"
 
-PUSH=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-$(ci_arch)" \
+# Resolved on its own line: a command substitution in the build's own
+# environment prefix would not stop the script when it fails.
+arch="$(ci_arch)"
+readonly arch
+
+PUSH=1 IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
 	./containers/build.sh audio-store

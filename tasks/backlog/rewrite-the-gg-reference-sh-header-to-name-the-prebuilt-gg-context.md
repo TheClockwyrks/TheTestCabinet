@@ -20,12 +20,9 @@ and the run images are self-checked against.
 
 ## Why it is not already done
 
-`scripts/gg-*.sh` is one of the paths the Rust CI image's tag is content-addressed over,
-which `scripts/ci/ci-image.sh inputs rust` prints. Editing this file, even in a comment,
-changes that digest, so `scripts/ci/ci-image-pins.sh` fails the `checks` gate until
-`azure-pipelines-ci-images.yml` has built the new image and `azure-pipelines.yml` pins it.
-
-Land this alongside another change that already moves one of those inputs, so the rebuild
-and the pin bump are paid once. The authoritative description in
+When this was filed, `scripts/gg-*.sh` was one of the paths the Rust CI image's tag was
+content-addressed over, so editing this file forced a CI image rebuild and pin bump. On the
+template layout it no longer is: `scripts/ci/ci-image.sh inputs rust` names only the
+image's own files, so the edit is free. The authoritative description in
 `apps/docs/src/content/docs/gg/reference.md` is already correct, so the stale text is
 confined to this one header.

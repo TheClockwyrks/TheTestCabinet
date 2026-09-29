@@ -2,7 +2,7 @@
 # base's single-replica StatefulSet + PVC (deleted by this component's kustomization).
 # The base's `tcab-auth` ClusterIP Service is kept and still selects this pod by its
 # `app.kubernetes.io/name: tcab-auth` label. TCAB_ENV defaults to `prod` here
-# (matching the base); the azure-staging overlay patches it to `staging`.
+# (matching the base); the staging overlay patches it to `staging`.
 #
 # The accounts database is the auth service's only state, so on managed PostgreSQL
 # it becomes genuinely stateless: no volume at all, and it can scale. It renders
@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: auth
-          image: REPLACE_REGISTRY/tcab-auth-service:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-auth-service:<git-sha>
+          image: REPLACE_REGISTRY/tcab-auth-service:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-auth-service
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an

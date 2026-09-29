@@ -53,7 +53,7 @@
  *
  * The engines are consumed from their builds, like every other workspace package
  * this repository's front ends import, so `npm run build:packages` has to have
- * run — which is what `scripts/ci/web-test.sh` does before it runs the suites.
+ * run — which is what the `workspace-test` gate does before it runs the suites.
  *
  * **Why Node and `@napi-rs/canvas`.** The player draws into a `<canvas>` and jsdom
  * has no canvas backend at all, so the suite's default environment cannot hold a

@@ -119,7 +119,8 @@ The pass emits three events on the engine's broadcaster, reachable as
 ```ts
 "overlap:begin": { a: Actor; b: Actor; colliders: [ColliderComponent, ColliderComponent] };
 "overlap:end":   { a: Actor; b: Actor; colliders: [ColliderComponent, ColliderComponent] };
-"hit":           { a: Actor; b: Actor; colliders: [ColliderComponent, ColliderComponent]; manifold: Manifold };
+"hit":           { a: Actor; b: Actor; colliders: [ColliderComponent, ColliderComponent];
+                   manifold: Manifold };
 ```
 
 | Event           | Emitted                                                                                                     |

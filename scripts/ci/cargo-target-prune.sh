@@ -18,7 +18,7 @@
 # publish `tcab` before it runs.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The literal `target/` the Cache task saves, whatever CARGO_TARGET_DIR says.
 readonly TARGET="target"

@@ -15,11 +15,12 @@
 # devcontainer so that every developer has ONE environment rather than eleven personal ones, and a
 # toolchain that is required is therefore a toolchain that is *installed*. There is no machine that
 # builds gg without them and no artifact committed to spare one the install. **This is the single
-# script that makes a machine such a machine** — the devcontainer IMAGE runs it as its last build
-# layer (`.devcontainer/languages/gg/install.sh`) and its `postCreateCommand` runs it again to
-# reconcile an image built before a pin moved, the CI scripts and the pipeline's gg jobs run it,
-# and the driver image's gg build stage runs it. One pinned list, run everywhere, rather than a per-surface
-# sequence that drifts arm by arm.
+# script that makes a machine such a machine** — `scripts/devcontainer-setup.sh` runs it in the
+# devcontainer after the container is created (and again, to resume a provisioning that was
+# interrupted, whenever it is run by hand), `scripts/ci/gg-ci-toolchains.sh` runs it in every
+# pipeline job that compiles gg, into a cached directory, and the driver image's gg build stage
+# runs it. One pinned list, run everywhere, rather than a per-surface sequence that drifts arm by
+# arm.
 #
 # It composes the per-arm installers rather than reimplementing any of them. Each of those owns one
 # toolchain, reads its pin from that arm's own `*-version.sh`, prunes what a run container does not
@@ -43,7 +44,8 @@
 #
 #   * Node and the npm workspaces. The TypeScript and JavaScript catalogues come out of the pinned
 #     `typescript` a repo-root `npm ci` installs. Node is part of the machine (the devcontainer's
-#     image, a CI job's `setup-node`), and `npm ci` deletes and re-creates `node_modules` — which is
+#     image, `scripts/ci/gg-ci-toolchains.sh` in a pipeline job), and `npm ci` deletes and re-creates
+#     `node_modules` — which is
 #     a thing to do to a checkout on purpose, not a side effect of installing compilers. This script
 #     checks and says so; it does not do it for you.
 #   * The Ruby INTERPRETER, which is a distribution package and needs root. What this script does
@@ -65,8 +67,9 @@
 # and it exits 1 rather than skipping when it can find neither — deliberately, because on a machine
 # that runs this for real a missing wasm32 std is a defect and not a choice. That obligation is
 # invisible on an interactive shell, where rustup's own `~/.bashrc` edit has already met it, and
-# very visible inside a Dockerfile `RUN`, which sources no profile: it is what
-# `.devcontainer/ubuntu.dockerfile` sets an `ENV PATH` for.
+# very visible inside a Dockerfile `RUN` or a pipeline step, which source no profile: it is why the
+# devcontainer's image and the Rust CI image each set an `ENV PATH` naming their cargo bin
+# directory.
 # Everything else installs under a prefix `crates/gg` and the reflectors look for by name, so
 # nothing else has to be exported.
 #
@@ -78,8 +81,8 @@
 # does what it looks like it does. That is how `containers/gg-toolchains/Dockerfile` reaches the same
 # installers for a run image.
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The per-arm installers put binaries here, and two of the checks below look for one.
 export PATH="$HOME/.local/bin:$PATH"
@@ -108,8 +111,8 @@ if ! command -v ruby >/dev/null 2>&1; then
 	echo "       A distribution Ruby is all it needs and any recent one will do; installing one" >&2
 	echo "       takes root, which is why this script will not do it for you:" >&2
 	echo "           sudo apt-get install -y ruby        # Debian, Ubuntu" >&2
-	echo "       The devcontainer image installs it in .devcontainer/system/apt.sh, so a container" >&2
-	echo "       built before that line landed wants a rebuild." >&2
+	echo "       In the devcontainer, \`bash scripts/devcontainer-setup.sh\` installs it with the other" >&2
+	echo "       apt prerequisites; the Rust CI image carries it through the rust_ci_packages answer." >&2
 	exit 1
 fi
 if ruby -e 'gem "yard", ARGV[0]' "$YARD_VERSION" >/dev/null 2>&1; then

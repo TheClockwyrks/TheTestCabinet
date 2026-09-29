@@ -58,7 +58,7 @@ spec:
       serviceAccountName: tcab-arena # no API access — its own identity only
       containers:
         - name: arena
-          image: REPLACE_REGISTRY/tcab-arena:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-arena:<git-sha>
+          image: REPLACE_REGISTRY/tcab-arena:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-arena
           ports:
             - containerPort: 8791
           env:

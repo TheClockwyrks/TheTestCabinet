@@ -45,13 +45,13 @@ open them, run `scripts/gg-artifacts.sh` and `scripts/gg-signatures.sh`.
 turn can pay. So it is compiled once, here, and shipped inside gg's binary — where
 it cannot drift from the SDK compiled into it, because they are one file.
 
-`purs` itself goes the other way. It is a ~100 MB statically linked Haskell
-executable with a separate build per platform, so it is installed into the gg
-toolchain image ([`containers/gg-toolchains/Dockerfile`](../../containers/gg-toolchains/Dockerfile))
-and found on `PATH` at run time. `esbuild` is there for the same reason. A machine
-running gg's test suite gets both from
-[`scripts/ci/install-purescript.sh`](../../scripts/ci/install-purescript.sh), pinned
-to the same versions.
+`purs` itself goes the other way. It is a ~100 MB statically linked Haskell executable
+with a separate build per platform, so it is installed into the gg toolchain image
+([`containers/gg-toolchains/Dockerfile`](../../containers/gg-toolchains/Dockerfile)) and
+found on `PATH` at run time. `esbuild` is there for the same reason. A machine running
+gg's test suite gets both from
+[`scripts/ci/install-purescript.sh`](../../scripts/ci/install-purescript.sh), pinned to
+the same versions.
 
 The pins live in one place — [`purescript-version.sh`](purescript-version.sh) —
 because externs are a compiler-version-private format: a tree built by one `purs`
@@ -76,7 +76,7 @@ One artifact has to be rebuilt by hand after a change to `src/`, and it is the t
 not the catalogue:
 
 ```sh
-packages/gg-sandbox-purescript/build.sh        # the library tree, with the SDK compiled into it
+packages/gg-sandbox-purescript/build.sh   # the library tree, with the SDK compiled in
 
 GG_SIGNATURES_OUT_DIR=/tmp/sigs \
   packages/gg-sandbox-purescript/signatures.sh # the catalogue, to READ
@@ -94,10 +94,10 @@ next `cargo build`, with nothing to regenerate, nothing to commit and nothing to
 Running it by hand is for reading the emitted JSON, which is where a reflector bug shows.
 
 **The direction this arm used to be able to go wrong in is worth knowing about, because it
-is the reason `build.sh` and `signatures.sh` are wired the way they are.** The catalogue is
-reflected from the working tree's `src/`; a compile resolves `Gg` against the _tarball's_
-`libs/gg-sdk`. While the tarball was committed, an SDK edit reached the catalogue on the next
-build and the compile only when somebody remembered to re-cut it —
+is the reason `build.sh` and `signatures.sh` are wired the way they are.** The catalogue
+is reflected from the working tree's `src/`; a compile resolves `Gg` against the
+_tarball's_ `libs/gg-sdk`. While the tarball was committed, an SDK edit reached the
+catalogue on the next build and the compile only when somebody remembered to re-cut it —
 `the_shipped_sdk_is_the_sdk_in_the_working_tree` existed to name the drifted file, and is
 deleted, because both are now cut from the same `src/` by the same `cargo build`. The
 ordering that makes it work is a dependency edge: `crates/gg` depends on

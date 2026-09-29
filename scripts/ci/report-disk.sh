@@ -19,10 +19,9 @@
 # `containers/build.sh` reports after every `-gg` variant under RECLAIM; this covers the two
 # edges outside it, and `scripts/ci/free-disk-linux.sh` uses it either side of its removals.
 #
-# It deliberately does NOT live in scripts/ci/lib.sh. That file is one of the inputs the Rust CI
-# image's tag is content-addressed over (`scripts/ci/ci-image.sh inputs rust`), so editing it
-# invalidates the pin in azure-pipelines.yml and fails the `checks` gate until a new image is
-# built and pinned. A pure diagnostic is not worth that, so it is a script of its own.
+# It is a script of its own rather than a helper in scripts/ci/tcab-lib.sh because the
+# run-image job's steps (.azure/project/jobs.yml) call it directly, and it needs nothing from
+# that helper: it defines its own `log` and sets no `-e`, so nothing in it can fail a step.
 set -uo pipefail
 
 log() {

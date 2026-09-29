@@ -37,9 +37,9 @@
 // change to reread.
 //
 // FROZEN VERSIONS are skipped for pass/fail but never silently. A `.frozen` marker
-// means runs are recorded against that version; `frozen-check.sh` and the commit
-// hook refuse any edit to it, so a hit there is one nobody can fix, and a gate that
-// can never go green is a gate nobody keeps. The hits are still counted and
+// means runs are recorded against that version; the `frozen-paths` gate, at commit
+// and in CI, refuses any edit to it, so a hit there is one nobody can fix, and a
+// gate that can never go green is a gate nobody keeps. The hits are still counted and
 // summarized on one line (`--show-frozen` lists them) so the leak stays visible: it
 // is a reason to cut a new version, not a reason to relax the list.
 //

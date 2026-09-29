@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-backend:<git-sha>
+          image: REPLACE_REGISTRY/tcab-backend:latest # the local overlay runs it as built; the Azure overlays use the postgres component
           ports:
             - containerPort: 8787
           env:

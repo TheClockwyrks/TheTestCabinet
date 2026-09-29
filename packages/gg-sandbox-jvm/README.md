@@ -1,7 +1,7 @@
 # `gg-sandbox-jvm`
 
-**What both JVM program languages compile.** Not a package with a build of its own: each arm's
-`build.sh` reads these two trees and compiles them into its own SDK jar.
+**What both JVM program languages compile.** Not a package with a build of its own: each
+arm's `build.sh` reads these two trees and compiles them into its own SDK jar.
 
 |                                                                        |                                                                                                                               |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -13,16 +13,17 @@
 
 ## Why it is shared rather than translated
 
-A [Java](../gg-sandbox-java/) and a [Kotlin](../gg-sandbox-kotlin/) program are both compiled to
-bytecode and then to a WebAssembly component by TeaVM, and both reach gg through one imported
-function — there is no `wit-bindgen` for the JVM. The canonical ABI under that door and the encoding
-inside it are decided by gg's own WIT rather than by which compiler wrote the bytecode, so a second
-copy would be a second implementation of one contract to keep in step, forever, by hand.
+A [Java](../gg-sandbox-java/) and a [Kotlin](../gg-sandbox-kotlin/) program are both
+compiled to bytecode and then to a WebAssembly component by TeaVM, and both reach gg
+through one imported function — there is no `wit-bindgen` for the JVM. The canonical ABI
+under that door and the encoding inside it are decided by gg's own WIT rather than by
+which compiler wrote the bytecode, so a second copy would be a second implementation of
+one contract to keep in step, forever, by hand.
 
-What is **not** here is the one function above the frames that raises a failure. Each arm's
-`ApiError` is a model-facing class with its own documentation and its own catalogue entry, so
-`gg.internal.Coding` on the Java side and `gg.internal.ggCall` on the Kotlin side are each that
-arm's own.
+What is **not** here is the one function above the frames that raises a failure. Each
+arm's `ApiError` is a model-facing class with its own documentation and its own catalogue
+entry, so `gg.internal.Coding` on the Java side and `gg.internal.ggCall` on the Kotlin
+side are each that arm's own.
 
 Everything here is `gg.internal`, which no catalogue describes and no prompt names. See
 `Abi.java`'s class note for what that does and does not mean.

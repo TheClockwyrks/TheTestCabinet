@@ -5,8 +5,8 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There is **one image per run kind**, selected by a run's
-[test type](../apps/docs/src/content/docs/testing/), by — for asset-generation — its
+There is **one image per run kind**, selected by a run's [test
+type](../apps/docs/src/content/docs/testing/), by — for asset-generation — its
 [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md),
 and by — for full-stack — its
 [`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md). The
@@ -128,14 +128,14 @@ version, rather than whatever was current when an image was last built. The
 runner picks the image by test type, asset kind, and asset dimension via
 [`harness::resolve_run_image`](../crates/core/src/harness.rs).
 
-### The exception: the `-gg` variants
+## The exception: the `-gg` variants
 
 `gg` is The Test Cabinet's own in-container harness, and under
-[responses-as-code](../apps/docs/src/content/docs/gg/responses-as-code/overview.md) a model
-answers with a **program**. The language that program is written in is a run
-variable, and a compiled language needs its **compiler on the turn path** — inside
-the run container, on every turn. gg itself is a single static binary copied in at
-run time, which works because a binary copies fine; a JDK does not.
+[responses-as-code](../apps/docs/src/content/docs/gg/responses-as-code/overview.md) a
+model answers with a **program**. The language that program is written in is a run
+variable, and a compiled language needs its **compiler on the turn path** — inside the run
+container, on every turn. gg itself is a single static binary copied in at run time, which
+works because a binary copies fine; a JDK does not.
 
 So each run image has a `<name>-gg` variant: the same image plus the toolchain tree,
 one `COPY` on top of its parent
@@ -163,58 +163,80 @@ one `COPY` on top of its parent
 
 ```
 containers/
-├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a run image itself
-├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust → wasm toolchain
-├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary compiled in ONE
-│                               #   cargo pass, exported as a `scratch` image. Not a run image and never
-│                               #   published — the asset images below `COPY --from` it (see Building)
-├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D asset binaries
-├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents plus `voxel`,
-│                               #   `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime those
-│                               #   three render their previews through. A SIBLING of full-stack-2d, not FROM it
-├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
-├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
-│                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
-│                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc, a pruned
-│                               #   Swift + its wasm SDK, wasi-sdk, a pruned .NET). Not a run image —
-│                               #   the `-gg` variants `COPY --from` it — but it IS published, so the
-│                               #   tree inside them is pullable and pinned by digest on its own
-├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
+├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a
+│                               #   run image itself
+├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust →
+│                               #   wasm toolchain
+├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary
+│                               #   compiled in ONE cargo pass, exported as a `scratch`
+│                               #   image. Not a run image and never published — the asset
+│                               #   images below `COPY --from` it (see Building)
+├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D
+│                               #   asset binaries
+├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents
+│                               #   plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa
+│                               #   software-Vulkan runtime those three render their
+│                               #   previews through. A SIBLING of full-stack-2d, not
+│                               #   FROM it
+├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own
+│                               #   identity (separately pinnable)
+├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg
+│                               #   run's responses-as-code programs may need, under
+│                               #   /opt/gg (purs+esbuild, a JDK+TeaVM, the Kotlin
+│                               #   compiler, a pruned rustc, a pruned Swift + its wasm
+│                               #   SDK, wasi-sdk, a pruned .NET). Not a run image — the
+│                               #   `-gg` variants `COPY --from` it — but it IS published,
+│                               #   so the tree inside them is pullable and pinned by
+│                               #   digest on its own
+├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image
+│                               #   plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
-├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr` binaries
+├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr`
+│                               #   binaries
 ├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
 ├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
-├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching Cubes)
+├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching
+│                               #   Cubes)
 ├── mc-animation/Dockerfile     # the base image plus the baked-in `mc-anim` binary
-├── sn/Dockerfile               # the base image plus the baked-in `sn` binary (Surface Nets)
+├── sn/Dockerfile               # the base image plus the baked-in `sn` binary (Surface
+│                               #   Nets)
 ├── sn-animation/Dockerfile     # the base image plus the baked-in `sn-anim` binary
-├── dc/Dockerfile               # the base image plus the baked-in `dc` binary (Dual Contouring)
+├── dc/Dockerfile               # the base image plus the baked-in `dc` binary (Dual
+│                               #   Contouring)
 ├── dc-animation/Dockerfile     # the base image plus the baked-in `dc-anim` binary
-├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary (skinned character)
+├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary
+│                               #   (skinned character)
 ├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
 ├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
-├── blender/                    # self-contained ubuntu:26.04 + headless Blender + `tcab-blend` (NOT FROM base)
-│   ├── Dockerfile              #   (a `blender-character` run authors via a build.py bpy script)
-│   ├── tcab-blend              #   the runner: execs `blender --background --python build.py`
-│   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py calls
+├── blender/                    # self-contained ubuntu:26.04 + headless Blender +
+│                               #   `tcab-blend` (NOT FROM base)
+│   ├── Dockerfile              #   (a `blender-character` run authors via a build.py
+│   │                           #   bpy script)
+│   ├── tcab-blend              #   the runner: execs
+│   │                           #   `blender --background --python build.py`
+│   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py
+│                               #   calls
 ├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
 ├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary
 ├── music/Dockerfile            # the base image plus the baked-in `music` binary
-├── audio-store/Dockerfile      # the AUDIO STORE image: a `scratch` image carrying every published
-│                               #   pack under /opt/tcab-audio, which the driver image copies in and a
-│                               #   run's declared packs are staged out of. Not a run image (see Building)
-├── sample-packs/               # the clip registry (clips.toml), one <pack>.toml per pack, and
-│                               #   objects.lock.json; the audio is NOT committed — clip bytes live
-│                               #   in the audio object store and are staged into the audio store
+├── audio-store/Dockerfile      # the AUDIO STORE image: a `scratch` image carrying every
+│                               #   published pack under /opt/tcab-audio, which the driver
+│                               #   image copies in and a run's declared packs are staged
+│                               #   out of. Not a run image (see Building)
+├── sample-packs/               # the clip registry (clips.toml), one <pack>.toml per
+│                               #   pack, and objects.lock.json; the audio is NOT
+│                               #   committed — clip bytes live in the audio object store
+│                               #   and are staged into the audio store
 ├── adversarial/                # the base image plus the wasm toolchain + Foray tooling
 │   ├── Dockerfile              #   (foray CLI, references + map, controller buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
 ├── performance/                # the base image plus the wasm toolchain + Lattice tooling
-│   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine buildkit)
+│   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine
+│   │                           #   buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
 └── build.sh                    # builds (and optionally pushes) all images
 ```
@@ -327,13 +349,13 @@ type-only dependency on `asset-contract`) is rewritten to a relative `file:` pat
 within the store, so the staged set resolves with no npm-published
 `@clockwyrks/*` package required.
 
-Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
-run in a builder stage of the shared services Dockerfile (the build context is the
-repository root, so the stage can see `packages/`). The script builds the
-npm workspace, then for each package in its **shippable list** copies the package's
-`package.json` and the files its `files` field publishes into
-`/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting transitive
-`@clockwyrks/*` dependencies. The runtime stage `COPY --from`s that tree in.
+Staging is done by
+[`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs), run in a builder
+stage of the shared services Dockerfile (the build context is the repository root, so the
+stage can see `packages/`). The script builds the npm workspace, then for each package in
+its **shippable list** copies the package's `package.json` and the files its `files` field
+publishes into `/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting
+transitive `@clockwyrks/*` dependencies. The runtime stage `COPY --from`s that tree in.
 
 **How a case uses them, end to end.** A case declares
 `packages = ["@clockwyrks/particle-runtime"]` **and** ships a workspace whose
@@ -397,9 +419,10 @@ To add one:
 
 ## Asset-generation images
 
-Asset-generation runs split by [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md):
-a single-sprite case draws with `draw`, a sprite-sheet case draws with
-`draw-sheet`. Each gets its own image so a run carries only the tool it uses:
+Asset-generation runs split by
+[`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md):
+a single-sprite case draws with `draw`, a sprite-sheet case draws with `draw-sheet`. Each
+gets its own image so a run carries only the tool it uses:
 
 - `sprite/` is the base image plus exactly the **`draw`** binary, the drawing tool
   a single-sprite
@@ -432,17 +455,17 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `dc/` and `dc-animation/` are the base image plus exactly the **`dc`** /
   **`dc-anim`** binary, the Dual Contouring meshing tool (static / rigged) a
   high-fidelity, sharp-feature meshing run uses.
-- `mc-skinned/`, `sn-skinned/`, and `dc-skinned/` are the base image plus exactly
-  the **`mc-skin`** / **`sn-skin`** / **`dc-skin`** binary, the
+- `mc-skinned/`, `sn-skinned/`, and `dc-skinned/` are the base image plus exactly the
+  **`mc-skin`** / **`sn-skin`** / **`dc-skin`** binary, the
   [skinned-character](../apps/docs/src/content/docs/testing/asset-generation/skinned-binaries.md)
-  tool a run uses to sculpt one continuous body field, bind it to a
-  model-invented skeleton, and animate it as a deforming skin — one image per
-  algorithm (low-poly / smooth / sharp), each inherently rigged.
-- `particle-2d/` and `particle-3d/` are the base image plus exactly the
-  **`particle-2d`** / **`particle-3d`** binary, the
+  tool a run uses to sculpt one continuous body field, bind it to a model-invented
+  skeleton, and animate it as a deforming skin — one image per algorithm (low-poly /
+  smooth / sharp), each inherently rigged.
+- `particle-2d/` and `particle-3d/` are the base image plus exactly the **`particle-2d`**
+  / **`particle-3d`** binary, the
   [particle-effect](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
-  tool a run uses to author an emitter system the review UI and a game play by
-  simulating it live.
+  tool a run uses to author an emitter system the review UI and a game play by simulating
+  it live.
 - `sfx-synth/`, `sfx-sample/`, and `music/` are the base image plus exactly the
   **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
   [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
@@ -517,10 +540,11 @@ allowlist too.
 
 ## The audio store
 
-The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-tool mixes over a sample library and the `music` tool plays an instrument bank. A
-test case declares the packs it draws from in `[audio] packs`, and its run
-container is given those packs and no others.
+The
+[`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
+tool mixes over a sample library and the `music` tool plays an instrument bank. A test
+case declares the packs it draws from in `[audio] packs`, and its run container is given
+those packs and no others.
 
 The audio files themselves are **not committed to this repository**. What lives
 under `sample-packs/` is the metadata: `clips.toml`, the registry naming every
@@ -697,8 +721,10 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                     # build all images (the base, every asset-generation kind, adversarial, performance, and the `-gg` variants)
-./build.sh voxel-animation     # build ONLY the named image(s) — base is (re)built as needed for the FROM
+./build.sh                     # build all images: the base, every asset-generation
+                               #   kind, adversarial, performance and the `-gg` variants
+./build.sh voxel-animation     # build ONLY the named image(s); base is (re)built as
+                               #   needed for the FROM
 ./build.sh adversarial performance
 DOCKER=podman ./build.sh       # build with Podman instead
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
@@ -794,17 +820,16 @@ stages (with the same cache mounts applied directly).
 
 ### The gg toolchain builder
 
-`gg-toolchains/Dockerfile` is a second builder of exactly the same shape and for
-exactly the same reason: it assembles every language toolchain a gg run's programs
-may be compiled with under one prefix (`/opt/gg/toolchains`), exports it as a
-`scratch` image, and each `-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE`
-build arg and copies the tree out. It is not a run image and never appears in
-`image-names.sh` — that list is the set of images a _run resolves_, and `build.sh`'s
-`build_one` dispatches on it by name, so an entry would route `make run-images` through
-the asset-image builder. (The Rust suite is not what blocks it: that test keeps a
-`NOT_A_RUN_IMAGE` exception list, which already holds `base`.) Like the asset tooling it is **always**
-rebuilt when any variant is selected, because it carries the compilers a run's
-programs are judged by.
+`gg-toolchains/Dockerfile` is a second builder of exactly the same shape and for exactly
+the same reason: it assembles every language toolchain a gg run's programs may be compiled
+with under one prefix (`/opt/gg/toolchains`), exports it as a `scratch` image, and each
+`-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE` build arg and copies the tree
+out. It is not a run image and never appears in `image-names.sh` — that list is the set of
+images a _run resolves_, and `build.sh`'s `build_one` dispatches on it by name, so an
+entry would route `make run-images` through the asset-image builder. (The Rust suite is
+not what blocks it: that test keeps a `NOT_A_RUN_IMAGE` exception list, which already
+holds `base`.) Like the asset tooling it is **always** rebuilt when any variant is
+selected, because it carries the compilers a run's programs are judged by.
 
 Unlike the asset tooling it **is** pushed under `PUSH=1`, and the difference between the
 two is worth stating. The asset tooling is ~20 Rust binaries compiled from this checkout
@@ -817,24 +842,26 @@ instead of paying for the fetch again. Because it is not in `image-names.sh`, th
 run-image manifest job, which is driven by that list, appends it to the images it hands
 `scripts/ci/manifest.sh`.
 
-Publishing it is one more copy of the tree rather than a free one. `gg/Dockerfile` copies
-`/opt/gg` with `--link` so that every variant's layer would carry one digest and the registry
-would store those bytes once; the pipeline's builder does not deliver that, and the registry
-holds one distinct ~898.6 MB blob per variant instead. The comment on that `COPY` carries the
-measurement and `build.sh` prints each variant's layer digest as it builds, so the next build
-reports it.
+Publishing it is one more copy of the tree in the registry; the variants themselves add
+none. `gg/Dockerfile` copies `/opt` (the builder image's whole filesystem, which is
+`/opt/gg` and nothing else) with `--link`, so every variant carries one digest for those
+bytes and the registry stores them once, mounting the blob into each variant's repository
+after the first push. Copying `/opt/gg` rather than `/opt` used to make the copy create
+the parent directory at build time, stamped with that build's moment, which is what made
+twenty-seven distinct blobs. The comment on that `COPY` carries the measurement and
+`build.sh` prints each variant's layer digest as it builds, so the next build reports it.
 
-Three constraints bind every toolchain added to it, and all three are written down
-in the Dockerfile's header. It must be **relocatable and distribution-portable** — the same
-tree is copied to the same absolute path onto the Debian-based images and onto
-`blender-gg`, whose parent is Ubuntu. And it must be drivable **isolated per invocation**:
-several compilers run concurrently inside one run, and a shared build strategy and
-a shared output tree have each been measured interleaving two agents' programs
-while every process exited zero. The calling side supplies most of that — gg runs every
-compiler with its working directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that
-preparation's own tree — so what this constrains is the toolchain that can _only_ be
-driven through a process shared between compilations. See
-[per-agent compiler isolation](../apps/docs/src/content/docs/gg/languages/compilation.md#per-agent-compiler-isolation).
+Three constraints bind every toolchain added to it, and all three are written down in the
+Dockerfile's header. It must be **relocatable and distribution-portable** — the same tree
+is copied to the same absolute path onto the Debian-based images and onto `blender-gg`,
+whose parent is Ubuntu. And it must be drivable **isolated per invocation**: several
+compilers run concurrently inside one run, and a shared build strategy and a shared output
+tree have each been measured interleaving two agents' programs while every process exited
+zero. The calling side supplies most of that — gg runs every compiler with its working
+directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that preparation's own tree — so what
+this constrains is the toolchain that can _only_ be driven through a process shared
+between compilations. See [per-agent compiler
+isolation](../apps/docs/src/content/docs/gg/languages/compilation.md#per-agent-compiler-isolation).
 
 And it must be **self-contained, and proven so where it runs**. This is the same
 constraint as the first taken to its conclusion: a toolchain vendors under `/opt/gg`
@@ -862,93 +889,93 @@ the gate is a check per environment rather than a check on one.
 The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
 linked, both a single file, and both pinned by
 [`packages/gg-sandbox-purescript/purescript-version.sh`](../packages/gg-sandbox-purescript/purescript-version.sh)
-and installed by
-[`scripts/ci/install-purescript.sh`](../scripts/ci/install-purescript.sh) — which the
-Dockerfile runs rather than duplicating, so a pin is edited in one place. (It used to pass
-the two versions in as build args over `ARG` defaults that restated them; a default is a
-second answer, correct only until somebody edits the version file, and it was reachable by
-any `docker build -f` that skipped `containers/build.sh`.) What is _not_ here is the library
-set a PureScript program is compiled against: that is compiled at build time into a cargo
-`OUT_DIR` and embedded in gg's binary, because this image is built separately from the
-binary that runs in it and a library tree of a different vintage from the SDK compiled into
-it would mean a model shown one surface and compiled against another.
+and installed by [`scripts/ci/install-purescript.sh`](../scripts/ci/install-purescript.sh)
+— which the Dockerfile runs rather than duplicating, so a pin is edited in one place. (It
+used to pass the two versions in as build args over `ARG` defaults that restated them; a
+default is a second answer, correct only until somebody edits the version file, and it was
+reachable by any `docker build -f` that skipped `containers/build.sh`.) What is _not_ here
+is the library set a PureScript program is compiled against: that is compiled at build
+time into a cargo `OUT_DIR` and embedded in gg's binary, because this image is built
+separately from the binary that runs in it and a library tree of a different vintage from
+the SDK compiled into it would mean a model shown one surface and compiled against
+another.
 
-It carries **Java**'s too, and that one is not a single file: a Temurin JDK (javac is a JDK,
-not a JRE) and ~29 MB of TeaVM jars, pinned by
-[`packages/gg-sandbox-java/java-version.sh`](../packages/gg-sandbox-java/java-version.sh) and
-installed by [`scripts/ci/install-java.sh`](../scripts/ci/install-java.sh) — which the
+It carries **Java**'s too, and that one is not a single file: a Temurin JDK (javac is a
+JDK, not a JRE) and ~29 MB of TeaVM jars, pinned by
+[`packages/gg-sandbox-java/java-version.sh`](../packages/gg-sandbox-java/java-version.sh)
+and installed by [`scripts/ci/install-java.sh`](../scripts/ci/install-java.sh) — which the
 Dockerfile runs rather than duplicating, so the list of jars exists once. A JDK is not
 excluded by the "shared process" constraint above: gg drives it through a **pool** of warm
 JVMs that lends each to one preparation at a time, which is what makes a warm build
 (0.33–0.56 s) affordable where a cold one is 4–9 s, and what makes the measured TeaVM
 corruption's precondition impossible. gg's own compiler driver is _not_ here — it is one
-`.java` file inside gg's binary, run by the JDK's single-file source-code launcher, for the
-vintage reason PureScript's library set is not here either.
+`.java` file inside gg's binary, run by the JDK's single-file source-code launcher, for
+the vintage reason PureScript's library set is not here either.
 
-**Kotlin** rides on top of that, and adds ~67 MB of compiler jars and nothing else: a Kotlin
-program is compiled to JVM bytecode and handed to the _same_ TeaVM, so everything from
-bytecode onwards already exists here. Its installer
-([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one rather
-than installing a second JDK beside it. Everything it writes is a classpath entry: a model's
-program is an ordinary Kotlin file with its own `fun main()`, so the compiler needs its own
-jars and nothing else.
+**Kotlin** rides on top of that, and adds ~67 MB of compiler jars and nothing else: a
+Kotlin program is compiled to JVM bytecode and handed to the _same_ TeaVM, so everything
+from bytecode onwards already exists here. Its installer
+([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one
+rather than installing a second JDK beside it. Everything it writes is a classpath entry:
+a model's program is an ordinary Kotlin file with its own `fun main()`, so the compiler
+needs its own jars and nothing else.
 
 **Rust** is the heaviest thing in the tree — **~380 MB** — and the first that is not a
 compiler _for_ a guest. Every arm above compiles a model's program into something an
 interpreter already inside a committed component evaluates; `rustc` emits the component
-itself, per turn, because there is no Rust runtime to commit. What is installed is a rustup
-`minimal` toolchain pruned to `rustc`, its two shared libraries, the
+itself, per turn, because there is no Rust runtime to commit. What is installed is a
+rustup `minimal` toolchain pruned to `rustc`, its two shared libraries, the
 `wasm32-unknown-unknown` standard library and `rust-lld` — with `cargo`, `rustdoc`, the
 lint tools, the standard-library sources, the documentation share and the _host_ standard
 library all removed, none of which a cross-compile of a program with no proc macros
 touches. A rustup toolchain directory is relocatable (`rustc` derives its sysroot from its
-own path), and the Dockerfile proves it by compiling a `cdylib` with the pruned copy before
-the layer is exported. Its version is not pinned in this image or in its package: it is
-[`rust-toolchain.toml`](../rust-toolchain.toml)'s, because an `.rlib` is a
+own path), and the Dockerfile proves it by compiling a `cdylib` with the pruned copy
+before the layer is exported. Its version is not pinned in this image or in its package:
+it is [`rust-toolchain.toml`](../rust-toolchain.toml)'s, because an `.rlib` is a
 compiler-version-private format and the compiler here must be exactly the one that built
-the library set inside gg's binary — so there is only one Rust release in the repository at
-all. That set is not here, for the vintage reason PureScript's is not.
+the library set inside gg's binary — so there is only one Rust release in the repository
+at all. That set is not here, for the vintage reason PureScript's is not.
 
 **Swift** is the second arm of that shape and the second heaviest thing in the tree —
 **~835 MB**, against `rustc`'s 380 MB — because a Swift cross-compile needs a compiler, a
-target SDK holding a wasm sysroot and standard library, _and_ a vendored copy of the shared
-libraries the published linker was built against. That last one is the whole reason its
-install is a script rather than two `curl`s: the toolchain is built for Debian 12 and its
-`lld` links against that distribution's `libxml2` soname, which the Debian-derived run images
-have and `blender-gg`'s Ubuntu does not — and this tree is copied to the same absolute path in
-both. So [`scripts/ci/install-swift.sh`](../scripts/ci/install-swift.sh) puts that library and
-its closure under `<home>/lib`, and gg names that directory on `LD_LIBRARY_PATH` for every
-compile. What is kept out of 3.3 GB is the driver, the front end, `clang`, `lld` and the
-transitive closure of the shared objects those actually need — walked rather than copied by
-directory, which is what leaves Foundation's networking half and `libcurl`'s system closure
-behind; what goes with them is the editor services, the debugger, the formatter, the
-documentation tool, the build system, the _host_ standard library and 577 MB of Embedded Swift
-resources for every target. The Dockerfile proves the pruning by compiling both a C file
-and a Swift file for the wasm target with the pruned copy, because each of those exercises a
-different half of what was deleted. The bindings a program is compiled against are not here,
-for the vintage reason PureScript's library set is not.
+target SDK holding a wasm sysroot and standard library, _and_ a vendored copy of the
+shared libraries the published linker was built against. That last one is the whole reason
+its install is a script rather than two `curl`s: the toolchain is built for Debian 12 and
+its `lld` links against that distribution's `libxml2` soname, which the Debian-derived run
+images have and `blender-gg`'s Ubuntu does not — and this tree is copied to the same
+absolute path in both. So [`scripts/ci/install-swift.sh`](../scripts/ci/install-swift.sh)
+puts that library and its closure under `<home>/lib`, and gg names that directory on
+`LD_LIBRARY_PATH` for every compile. What is kept out of 3.3 GB is the driver, the front
+end, `clang`, `lld` and the transitive closure of the shared objects those actually need —
+walked rather than copied by directory, which is what leaves Foundation's networking half
+and `libcurl`'s system closure behind; what goes with them is the editor services, the
+debugger, the formatter, the documentation tool, the build system, the _host_ standard
+library and 577 MB of Embedded Swift resources for every target. The Dockerfile proves the
+pruning by compiling both a C file and a Swift file for the wasm target with the pruned
+copy, because each of those exercises a different half of what was deleted. The bindings a
+program is compiled against are not here, for the vintage reason PureScript's library set
+is not.
 
-**C++** is the third arm of that shape and the **lightest** of the three — ~200 MB, against
-`rustc`'s 380 MB and Swift's 835 MB — because wasi-sdk is one relocatable tree holding a
-clang, a `wasm-ld`, a wasi-libc sysroot and a libc++. It is also the least work to make
-portable, and that is the toolchain rather than the script: `clang` finds its own sysroot
-from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only things
-outside the tree it needs are the sonames its Debian build links that glibc does not
-provide — the two GCC-runtime ones and `libtinfo` — so
-[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies each of them in
-beside it, where that rpath finds them and nothing else in the image does. No
-`LD_LIBRARY_PATH`; the closure is walked to decide that list rather than to place it.
-What is dropped out of ~650 MB is `lldb`, the lint and
-format tools, the object utilities, the other linker drivers, `wasm-component-ld` — and, the
-largest deletion by far, four of the wasi-sysroot's five _targets_, since gg compiles to
-exactly the one its package pins. The Dockerfile proves the pruning by compiling both a C
-file and a C++ one for the wasm target with the pruned copy, because a C++ compile
-additionally needs libc++'s headers, its archives and `libunwind`, and a C compile touches
-none of them. Two things are not here: the bindings a program is compiled against, for the
-vintage reason PureScript's library set is not; and the **precompiled header** of the ~55
-standard-library headers every program is compiled with — that one is built once per
-_machine_, into a content-keyed shared directory, because a PCH is readable only by the clang
-that wrote it.
+**C++** is the third arm of that shape and the **lightest** of the three — ~200 MB,
+against `rustc`'s 380 MB and Swift's 835 MB — because wasi-sdk is one relocatable tree
+holding a clang, a `wasm-ld`, a wasi-libc sysroot and a libc++. It is also the least work
+to make portable, and that is the toolchain rather than the script: `clang` finds its own
+sysroot from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only
+things outside the tree it needs are the sonames its Debian build links that glibc does
+not provide — the two GCC-runtime ones and `libtinfo` — so
+[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies each of them
+in beside it, where that rpath finds them and nothing else in the image does. No
+`LD_LIBRARY_PATH`; the closure is walked to decide that list rather than to place it. What
+is dropped out of ~650 MB is `lldb`, the lint and format tools, the object utilities, the
+other linker drivers, `wasm-component-ld` — and, the largest deletion by far, four of the
+wasi-sysroot's five _targets_, since gg compiles to exactly the one its package pins. The
+Dockerfile proves the pruning by compiling both a C file and a C++ one for the wasm target
+with the pruned copy, because a C++ compile additionally needs libc++'s headers, its
+archives and `libunwind`, and a C compile touches none of them. Two things are not here:
+the bindings a program is compiled against, for the vintage reason PureScript's library
+set is not; and the **precompiled header** of the ~55 standard-library headers every
+program is compiled with — that one is built once per _machine_, into a content-keyed
+shared directory, because a PCH is readable only by the clang that wrote it.
 
 **.NET** is the one toolchain here whose missing dependency is invisible to the tools that
 find missing dependencies. What is kept out of a published ~770 MB SDK — the launcher, the
@@ -960,8 +987,8 @@ with no ICU beside it `FailFast`s with SIGABRT before it writes a line to stdout
 [`scripts/ci/install-dotnet.sh`](../scripts/ci/install-dotnet.sh) vendors the three
 libraries into `<home>/lib`, and gg names that directory on `LD_LIBRARY_PATH` for every
 `dotnet` it runs — the Swift arrangement, for the same reason and by a different route.
-Invariant-globalization mode would also start the compiler and is not used: it changes what
-Roslyn does with a program, and this arm's `-deterministic` output is compared across
+Invariant-globalization mode would also start the compiler and is not used: it changes
+what Roslyn does with a program, and this arm's `-deterministic` output is compared across
 machines. The bindings a program is compiled against are not here, for the vintage reason
 PureScript's library set is not.
 
@@ -984,24 +1011,24 @@ distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
 
 `RECLAIM=1`, set alongside `PUSH=1`, additionally reclaims as it goes: once an image is
 pushed and nothing later in the build order is `FROM` it, `build.sh` removes it from the
-local store and prunes the builder cache, and prints the remaining disk. The whole set does
-not fit on a build agent otherwise, because each `-gg` variant holds its own copy of the
-2.2 GB toolchain tree.
+local store and prunes the builder cache, and prints the remaining disk. The whole set
+does not fit on a build agent otherwise, because each `-gg` variant holds its own copy of
+the 2.2 GB toolchain tree.
 
-**`RECLAIM` is for CI, and a publish from your own machine should not set it.** The builder
-prune is `docker builder prune --all`, which takes every `--mount=type=cache` record in the
-builder — and on a development box the default builder is the one BuildKit instance the whole
-Docker daemon shares. So it would also take
+**`RECLAIM` is for CI, and a publish from your own machine should not set it.** The
+builder prune is `docker builder prune --all`, which takes every `--mount=type=cache`
+record in the builder — and on a development box the default builder is the one BuildKit
+instance the whole Docker daemon shares. So it would also take
 [`deployments/images/services.Dockerfile`](../deployments/images/services.Dockerfile)'s
-`gg-toolchains`, `gg-target`, `rustup-gg` and `gg-toolchain-downloads` mounts, which is the
-~1.9 GB of downloaded language SDKs and the gg link that
-[`deployments/local/Makefile`](../deployments/local/Makefile) names as the slowest thing in
-the repository, plus every other project's build cache on that daemon. The `PUSH=1` command
-above therefore leaves your local store and builder untouched;
+`gg-toolchains`, `gg-target`, `rustup-gg` and `gg-toolchain-downloads` mounts, which is
+the ~1.9 GB of downloaded language SDKs and the gg link that
+[`deployments/local/Makefile`](../deployments/local/Makefile) names as the slowest thing
+in the repository, plus every other project's build cache on that daemon. The `PUSH=1`
+command above therefore leaves your local store and builder untouched;
 [`scripts/ci/run-images.sh`](../scripts/ci/run-images.sh) is the only caller that sets
 `RECLAIM`, and there the daemon belongs to a single-use agent. `RECLAIM` without `PUSH` is
-ignored, so an image that exists nowhere else is never removed. A local build sets neither and
-removes nothing, because there the images are the product.
+ignored, so an image that exists nowhere else is never removed. A local build sets neither
+and removes nothing, because there the images are the product.
 
 ### The audio store image
 

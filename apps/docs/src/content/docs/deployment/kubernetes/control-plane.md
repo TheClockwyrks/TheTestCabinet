@@ -85,7 +85,8 @@ overlay uses one of them.
   repository and calls `POST /ingest` over the cluster network. It fits a
   deployment whose backend serves its checkout from a shared volume the job can
   mount.
-- An ingest sidecar in the backend pod, which the `azure-*` overlays patch in.
+- An ingest sidecar in the backend pod, which the `staging` and `prod` overlays
+  patch in (`patch-backend-ingest.yaml`).
   It shares the backend's `state` volume, writes the checkout the backend
   reads, and calls `POST /ingest` over localhost, so intra-pod traffic bypasses
   the `NetworkPolicy` and no service token is needed. It runs one forced ingest

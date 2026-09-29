@@ -1,14 +1,13 @@
 # Point every workload at the in-cluster Grafana LGTM collector (the observability
 # component) by setting OTEL_EXPORTER_OTLP_ENDPOINT. The base already tags TCAB_ENV
-# as `prod`, so unlike the staging overlay this patch only adds the exporter
-# endpoint. Each doc is a strategic-merge patch keyed by the workload name + its
-# container name; kustomize merges the env list by `name`, so only this var is added.
-# backend + auth are StatefulSets here (the SQLite shape); the azure-prod overlay's
-# copy targets them as Deployments instead.
+# as `prod`, so this patch only adds the exporter endpoint (mirrors
+# overlays/prod/patch-otel.yaml). Difference from overlays/prod: backend and auth are
+# `kind: Deployment` here, because components/postgres replaced their StatefulSets —
+# a patch's `kind` must match its target.
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: tcab-backend
+  name: the-test-cabinet-backend
   namespace: tcab-prod
 spec:
   template:
@@ -20,7 +19,7 @@ spec:
               value: "http://tcab-lgtm:4318"
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: tcab-auth
   namespace: tcab-prod

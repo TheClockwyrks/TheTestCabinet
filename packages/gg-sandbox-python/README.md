@@ -10,11 +10,11 @@ program calls gg through, the interpreter shim it is evaluated by, the curated s
 of libraries it may reach for, and the two scripts that produce the artifacts the
 Rust host embeds.
 
-It is **not** an npm workspace and shares no code with
-[`gg-sandbox`](../gg-sandbox/), the TypeScript guest. It has no dependents and is
-never published. Its outputs are two artifacts the Rust host embeds, and **neither is committed**:
-each is generated into the `OUT_DIR` of a crate that builds it, on every build of
-`test-cabinet-gg` whose declared inputs moved.
+It is **not** an npm workspace and shares no code with [`gg-sandbox`](../gg-sandbox/), the
+TypeScript guest. It has no dependents and is never published. Its outputs are two
+artifacts the Rust host embeds, and **neither is committed**: each is generated into the
+`OUT_DIR` of a crate that builds it, on every build of `test-cabinet-gg` whose declared
+inputs moved.
 
 | Artifact                 | What it is                                                                                                                                         | Made by                                                                                  |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -23,14 +23,14 @@ each is generated into the `OUT_DIR` of a crate that builds it, on every build o
 
 ## The strategy, in one paragraph
 
-CPython is _inside_ the component. `componentize-py` links a real CPython against
-gg's WIT world, so a model's program crosses the membrane as an ordinary string and
-is `exec`'d by an interpreter that is already there, in a namespace of its own that
-holds nothing until the program's own `import` lines fill it. Nothing is installed in the run
-container, there is no compiler on the turn path, and gg's binary stays the single
-static file it has to be. That makes this arm the exact peer of the JavaScript one —
-a language whose programs are evaluated rather than compiled — which is precisely what
-makes the pair worth running as two arms of a study.
+CPython is _inside_ the component. `componentize-py` links a real CPython against gg's WIT
+world, so a model's program crosses the membrane as an ordinary string and is `exec`'d by
+an interpreter that is already there, in a namespace of its own that holds nothing until
+the program's own `import` lines fill it. Nothing is installed in the run container, there
+is no compiler on the turn path, and gg's binary stays the single static file it has to
+be. That makes this arm the exact peer of the JavaScript one — a language whose programs
+are evaluated rather than compiled — which is precisely what makes the pair worth running
+as two arms of a study.
 
 ## The SDK, and what "idiomatic" cost
 
@@ -60,16 +60,15 @@ gg.files.EntryKind.FILE`, never a string comparison a misspelling would turn int
   out to keep it, pass `None` to empty it — because Python already spells "absent"
   as `None` and the third state needs a name.
 
-What must _not_ differ from any other arm is the **capability**: which gg operations
-this SDK offers. The shape is free — Java may hang a call off an object where this
-one declares a function — and the identity is not: every model-facing function
-carries the gg operation it binds, written on the declaration as
-`@operation("files.read_file")` and read both by `gg._registry.bound_operations` at
-run time and by the reflector out of the source. gg holds the set to its own operations table, and
-[`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) runs every one of
-the 35 tools through the real membrane and requires the JSON that reaches gg's
-dispatch to be **byte identical** to what the TypeScript arm produces for the same
-capability.
+What must _not_ differ from any other arm is the **capability**: which gg operations this
+SDK offers. The shape is free — Java may hang a call off an object where this one declares
+a function — and the identity is not: every model-facing function carries the gg operation
+it binds, written on the declaration as `@operation("files.read_file")` and read both by
+`gg._registry.bound_operations` at run time and by the reflector out of the source. gg
+holds the set to its own operations table, and
+[`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) runs every one of the
+35 tools through the real membrane and requires the JSON that reaches gg's dispatch to be
+**byte identical** to what the TypeScript arm produces for the same capability.
 
 Documentation is authored in PEP 257's own shape: a docstring's **first line is its
 brief** and everything after the blank line that follows it is its detail. The
@@ -81,14 +80,15 @@ gate.
 
 `python` is a value an operator configures, and the whole arm is in the tree: the
 component and its build, the interpreter shim, the SDK, the signature catalogue and the
-reflection that produces it, the error reporting, the library set, end-to-end execution through gg's own
-linker, membrane and store, and — in `crates/gg/src/sandbox/language/python.rs` and its
-siblings — the `ProgramLanguage` implementation, this arm's gated language
-segment of the two shared prompt templates (`crates/gg/templates/system-code.hbs` and
-`crates/gg/templates/code-nothing-shown.hbs`, which every language reaches its own paragraphs of
-through an `eq` on `language.id`), and the `bootstrap_program` that writes the program gg's opening
-turn runs. Its host half is small on purpose: preparing a Python program does **nothing**
-to it, because CPython is inside the component and is the first thing to read it.
+reflection that produces it, the error reporting, the library set, end-to-end execution
+through gg's own linker, membrane and store, and — in
+`crates/gg/src/sandbox/language/python.rs` and its siblings — the `ProgramLanguage`
+implementation, this arm's gated language segment of the two shared prompt templates
+(`crates/gg/templates/system-code.hbs` and `crates/gg/templates/code-nothing-shown.hbs`,
+which every language reaches its own paragraphs of through an `eq` on `language.id`), and
+the `bootstrap_program` that writes the program gg's opening turn runs. Its host half is
+small on purpose: preparing a Python program does **nothing** to it, because CPython is
+inside the component and is the first thing to read it.
 
 ## Layout
 
@@ -125,12 +125,13 @@ to it, because CPython is inside the component and is the first thing to read it
   can state exactly what this arm was given.
 
   It is also the catalogue's record of the set, without anyone writing the list twice:
-  `signatures.sh` reflects those module-scope imports (and the `# --- … ---` headings
-  they are grouped under) into the catalogue's `libraries` section. Adding or removing an
-  import here changes that record on the next **build**, with nothing to regenerate — and a name in the catalogue that the committed
-  component cannot import fails `the_embedded_guest_carries_every_library_its_catalogue_declares`,
-  which is the direction that can still go wrong: the catalogue moves the moment the source
-  does, and the component is the half that has to be rebuilt by hand to catch up.
+  `signatures.sh` reflects those module-scope imports (and the `# --- … ---` headings they
+  are grouped under) into the catalogue's `libraries` section. Adding or removing an
+  import here changes that record on the next **build**, with nothing to regenerate — and
+  a name in the catalogue that the committed component cannot import fails
+  `the_embedded_guest_carries_every_library_its_catalogue_declares`, which is the
+  direction that can still go wrong: the catalogue moves the moment the source does, and
+  the component is the half that has to be rebuilt by hand to catch up.
 
 - **The whole WASI p2 surface** gg's host links: the clock, the RNG, the container
   filesystem preopened at `/`, the network, and the process environment. The
@@ -161,31 +162,31 @@ to it, because CPython is inside the component and is the first thing to read it
 interruption, which fires only where the guest is running wasm — and a program parked in a
 synchronous WASI call is running none. TypeScript's guest cannot get there (its timers are
 shadowed and it has no filesystem or socket API); this one can, because `time.sleep` is
-ordinary Python. Measured: `time.sleep(8)` against a **2 s** budget was stopped at 2.5, 2.7,
-4.3, 7.0 and 9.4 seconds across five runs of the same program. It is always stopped
-eventually and the elapsed figure is honest, but the deadline bounds nothing — a long enough
-sleep would sit until the run-level idle watchdog fires. A runaway that _computes_ traps on
-the deadline every time, and that case has a test.
+ordinary Python. Measured: `time.sleep(8)` against a **2 s** budget was stopped at 2.5,
+2.7, 4.3, 7.0 and 9.4 seconds across five runs of the same program. It is always stopped
+eventually and the elapsed figure is honest, but the deadline bounds nothing — a long
+enough sleep would sit until the run-level idle watchdog fires. A runaway that _computes_
+traps on the deadline every time, and that case has a test.
 
 **Settled with the registration, as an acceptance:** gg does not extend the timeout to a
 parked WASI call, and the bound on a parked turn stays the run-level idle watchdog. The
-behaviour underneath is not new — `gg.shell.shell("sleep 3600")` parks for an hour on every arm
-gg has — and both closures cost more than they buy today. The full argument, and the condition
-under which it is reopened, is in
-[The sandbox](../../apps/docs/src/content/docs/gg/responses-as-code/sandbox.md).
+behaviour underneath is not new — `gg.shell.shell("sleep 3600")` parks for an hour on
+every arm gg has — and both closures cost more than they buy today. The full argument, and
+the condition under which it is reopened, is in [The
+sandbox](../../apps/docs/src/content/docs/gg/responses-as-code/sandbox.md).
 
 ## Rebuilding
 
 ```sh
-packages/gg-sandbox-python/build.sh                 # the component  (by hand, needs uv + network)
+packages/gg-sandbox-python/build.sh      # the component (by hand, needs uv + network)
 GG_SIGNATURES_OUT_DIR=/tmp/sigs \
   packages/gg-sandbox-python/signatures.sh          # this arm's catalogue, to read
 scripts/gg-signatures.sh                            # all eleven, into target/gg-signatures/
 ```
 
-Both need `uv` and, the first time, network access. Rebuild the **component** by hand after
-changing the WIT, the shim, the SDK, the library set or a pin, and commit it in the same
-commit as the change that motivated it.
+Both need `uv` and, the first time, network access. Rebuild the **component** by hand
+after changing the WIT, the shim, the SDK, the library set or a pin, and commit it in the
+same commit as the change that motivated it.
 
 The **catalogue** is never rebuilt by hand for correctness — every build of
 `test-cabinet-gg` reflects it out of `src/gg/` afresh, so a docstring edit reaches the

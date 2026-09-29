@@ -24,7 +24,7 @@
 # install-gg-build-toolchains.sh), `npm ci` and a musl C toolchain are prerequisites.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 1 ]]; then
 	echo "usage: scripts/ci/gg-dist.sh <out-dir>" >&2

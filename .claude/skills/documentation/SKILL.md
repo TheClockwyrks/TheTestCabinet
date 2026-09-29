@@ -19,9 +19,9 @@ commit prior to making edits for the in-flight work.
 
 ### Authoritative Documentation
 
-The Test Cabinet documentation is a declarative version of the source code. It
-must identify the key aspects of the code that must exist and omit any details
-that are insignificant. Any detail left out of the documentation is an
+This project's documentation is a declarative version of the source code. It must
+identify the key aspects of the code that must exist and omit any details that
+are insignificant. Any detail left out of the documentation is an
 implementation detail and may be written as the implementation sees fit. Only
 elements that must be implemented in a specific manner should be present in the
 documentation.
@@ -39,6 +39,9 @@ Bold, italics, and fully-capitalized words should be reserved for only the most
 critical of words or phrases. Overuse of bold/italics/capitalization reduces
 readability while simultaneously making it less obvious what's actually
 important, defeating the entire point of using emphasis on critical text.
+
+The RFC2119 keywords in a requirement are the exception. They are written in
+capitals because RFC2119 requires it, and they are not emphasis.
 
 ### Minimize Historical Information
 
@@ -77,16 +80,9 @@ excessive.
 ### Minimize Negatives
 
 Documentation should state what designs should do and minimize mentions of what
-a design should _not_ do. Specifying what a design should do has an exact
+a design should *not* do. Specifying what a design should do has an exact
 target. Specifying what a design should not do is attempting to enumerate
 elements of an infinite set.
-
-### No Implementation Status Notes
-
-Documentation is written and then immediately implemented. **NEVER** write
-phrases like "The design is specified in full on these pages and awaiting its
-implementation". All documentation should be written as though the documented
-design were already implemented.
 
 ### No "Narrative" Documentation
 
@@ -136,7 +132,7 @@ unnecessarily.
 
 Documentation must be optimized for the reader. This means being concise, clear,
 and organized. A gigantic paragraph that fills the screen with text without
-breaking the text up into organized pargraphs fails to follow these principles
+breaking the text up into organized paragraphs fails to follow these principles
 and is more likely to be outright skipped or skimmed over by readers, defeating
 the point of documentation.
 

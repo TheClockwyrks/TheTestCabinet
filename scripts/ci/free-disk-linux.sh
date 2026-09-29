@@ -12,7 +12,7 @@
 # That reclaim alone is NOT sufficient and never was: `target/` reached ~36 GB, so
 # the tree plus the tar the cache save writes beside it still ran the disk out.
 # The other half of the fix is capping dev/test debug info to line tables
-# (CARGO_PROFILE_DEV_DEBUG in azure-pipelines.yml), which takes `target/` to
+# (CARGO_PROFILE_DEV_DEBUG on every Rust job), which takes `target/` to
 # ~14 GB. Both are needed: keep this script when touching that setting.
 #
 # Azure-only and Linux-only. The Windows `binary` leg skips this (its step is gated on
@@ -26,10 +26,10 @@
 # is disposable. `pool-dev-linux-arm64-wus3-4c-eph-01` is an Azure Managed DevOps Pool
 # (agent cloud "DevOpsInfrastructure Pool Provider rm-prod"), not a hand-run box: four agents
 # on Ubuntu 24.04, each reported with its own `provisioningState`, and every job gets a fresh
-# VM. That is measured, not assumed — in the last Images stage the arm64 legs never overlapped
-# in time, each was preceded by a ~2.5 minute provisioning gap, and a service-image job that
-# landed on the same agent slot half an hour after the run-image job pulled `rust:1-bookworm`
-# and `debian:bookworm-slim` from Docker Hub completely cold. So there is no warm store to
+# VM. That is measured, not assumed — in the last run of the image jobs the arm64 legs never
+# overlapped in time, each was preceded by a ~2.5 minute provisioning gap, and a service-image
+# job that landed on the same agent slot half an hour after the run-image job pulled
+# `rust:1-bookworm` and `debian:bookworm-slim` from Docker Hub completely cold. So there is no warm store to
 # protect and no concurrent job on the same daemon to disturb, and the image prune below is a
 # near no-op there rather than a hazard. Being an Ubuntu 24.04 runner image it also carries
 # most of the toolchain paths below, so the removals are worth making.
@@ -43,13 +43,13 @@
 # that is not there.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The readings come from scripts/ci/report-disk.sh, which reports the container store's
 # filesystem and the agent work folder as well as `/` — on the arm64 agents those are not the
 # same mount, and `/` alone is how the last disk failure arrived with no usable figure. It is a
-# separate script rather than a helper in lib.sh because lib.sh is one of the inputs the Rust CI
-# image's tag is content-addressed over.
+# separate script rather than a helper in tcab-lib.sh because pipeline steps also call it on its
+# own, around the run-image build.
 readonly REPORT_DISK="${CI_LIB_DIR}/report-disk.sh"
 
 "$REPORT_DISK" "before reclaim"

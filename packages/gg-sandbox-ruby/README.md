@@ -1,6 +1,7 @@
 # `gg-sandbox-ruby`
 
-The **Ruby guest** for gg's [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
+The **Ruby guest** for gg's
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 sandbox: the hand-written Ruby SDK a model is given, the libraries a program may require,
 and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
 
@@ -16,15 +17,15 @@ entry module and a directory of Ruby. All four things it produces are generated 
 | `ruby.compiler.json`, in the same place          | `build.sh`, run by `gg-artifact-ruby`        | which Opal that is, and which Ruby it emulates                                                                                                      |
 
 The last two used to be committed under `crates/gg/src/sandbox/checkers/`, cut by a third
-script (`compiler.sh`) that a CI step re-ran and diffed. `crates/gg-sandbox-artifacts/ruby`
-now runs `build.sh` as part of building `test-cabinet-gg` and `ruby.compile.rs` embeds the
-result out of that build's `OUT_DIR`, so there is no committed copy to be stale and no
-third script.
+script (`compiler.sh`) that a CI step re-ran and diffed.
+`crates/gg-sandbox-artifacts/ruby` now runs `build.sh` as part of building
+`test-cabinet-gg` and `ruby.compile.rs` embeds the result out of that build's `OUT_DIR`,
+so there is no committed copy to be stale and no third script.
 
-`build.sh` reads its pins from `opal-version.sh`, and there is exactly one Opal pin because
-every artifact has to be the same Opal: the compiler emits JavaScript against a runtime's
-private conventions, and a program compiled by one release and evaluated against another's
-runtime does not fail cleanly.
+`build.sh` reads its pins from `opal-version.sh`, and there is exactly one Opal pin
+because every artifact has to be the same Opal: the compiler emits JavaScript against a
+runtime's private conventions, and a program compiled by one release and evaluated against
+another's runtime does not fail cleanly.
 
 ## The strategy
 
@@ -57,8 +58,8 @@ toolchain.
 Its documentation is **the** documentation. Every YARD comment on a catalogued method,
 parameter, type and type member is what gg answers a documentation search and every
 documentation view from; the system prompt renders no signature at all, and takes only the
-module paths and the one-line brief each module introduces itself by. There is nowhere else
-for a description of this surface to live, which is what stops one from drifting.
+module paths and the one-line brief each module introduces itself by. There is nowhere
+else for a description of this surface to live, which is what stops one from drifting.
 
 ## Why there is a second component at all
 
@@ -74,8 +75,8 @@ costs. Measured through gg's own store and linker, on this repository's dev cont
 `componentize-js` runs the entry module's top level at build time under `wizer` and
 snapshots the resulting heap, so Opal's corelib is built once, into the artifact, instead
 of once per turn. Loading this SDK is a turn's own cost, because `require "gg"` is the
-model's line rather than the build's: **2.7 ms for a program without it, 20.4 ms with it**,
-against 2.1 ms for a plain JavaScript program on the same component.
+model's line rather than the build's: **2.7 ms for a program without it, 20.4 ms with
+it**, against 2.1 ms for a plain JavaScript program on the same component.
 
 Baking the runtime into the _shared_ component was worse than either. It would put
 `globalThis.Opal` in front of the TypeScript and JavaScript arms too, and those two must
@@ -125,15 +126,15 @@ GG_SIGNATURES_OUT_DIR=/tmp/sigs \
 scripts/gg-signatures.sh                 # all eleven, into target/gg-signatures/
 ```
 
-`build.sh` is wired into `cargo build`: `crates/gg-sandbox-artifacts/ruby` runs it, into that
-build's own `OUT_DIR`, whenever anything in its rerun set moves — this package's `src/`, its
-`tools/`, `opal-version.sh`, or `crates/gg/wit`. Running it by hand is for _reading_ what it
-emitted, which is why the destination is required and has no default. It cuts all three of
-this arm's artifacts on every run, and that is deliberate rather than incidental: the
-component and the host-side compiler are lowered to JavaScript from the same `src/` by the
-same script under the same rerun set, which is what makes it impossible for them to be two
-vintages. `ruby.rs` embeds the component and `ruby.compile.rs` embeds the compiler and its
-manifest, all three out of that one `OUT_DIR`.
+`build.sh` is wired into `cargo build`: `crates/gg-sandbox-artifacts/ruby` runs it, into
+that build's own `OUT_DIR`, whenever anything in its rerun set moves — this package's
+`src/`, its `tools/`, `opal-version.sh`, or `crates/gg/wit`. Running it by hand is for
+_reading_ what it emitted, which is why the destination is required and has no default. It
+cuts all three of this arm's artifacts on every run, and that is deliberate rather than
+incidental: the component and the host-side compiler are lowered to JavaScript from the
+same `src/` by the same script under the same rerun set, which is what makes it impossible
+for them to be two vintages. `ruby.rs` embeds the component and `ruby.compile.rs` embeds
+the compiler and its manifest, all three out of that one `OUT_DIR`.
 
 `signatures.sh` is the opposite: `crates/gg/build.rs` runs it on **every** build of
 `test-cabinet-gg`, so an edit under `src/gg/` or to `src/library.rb` reaches the model's

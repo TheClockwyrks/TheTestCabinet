@@ -56,8 +56,8 @@ Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
 
-CI enforces the identity half of this rule: `scripts/ci/spec-vocabulary-check.sh`
-(also a pre-commit hook) reads every non-frozen version's `prompt.hbs` and
+CI enforces the identity half of this rule: the `spec-vocabulary` gate (also a
+pre-commit hook) reads every non-frozen version's `prompt.hbs` and
 `specs/**`, plus the shared preambles `crates/core/src/prompt.rs` prepends, and
 fails on the project's name, `tcab`, "benchmark", "test case", "evaluation", "run
 record", any review surface of ours, the case manifest, or a link to this

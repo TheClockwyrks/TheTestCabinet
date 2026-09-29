@@ -48,4 +48,3 @@ FROM ${BASE_IMAGE}
 # the unprivileged run user only executes it. The base image already sets `USER
 # node`, `WORKDIR /work`, and the keep-alive CMD.
 COPY --from=tools /out/music /usr/local/bin/music
-

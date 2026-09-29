@@ -20,23 +20,25 @@ For cutting the downloadable binaries and the static sites, see
 
 ## Image pinning in production
 
-The pipeline's `images` stage builds every service image and every run-container
-image natively for `linux/amd64` and `linux/arm64` and pushes each to
-`testcabinet.azurecr.io` as the multi-arch `<image>:<sha>`. The `deploy_prod`
-job then runs `scripts/ci/deploy.sh prod <sha>`, which layers a throwaway
-kustomization over
-[`deployments/k8s/overlays/azure-prod`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/azure-prod)
-and sets every image to that sha:
+The pipeline's image jobs build every service image and every run-container
+image natively for `linux/amd64` and `linux/arm64` and push each to
+`testcabinet.azurecr.io` as the multi-arch `<image>:<sha>`. The `prod` stage's
+`publish_backend` job retags the backend image as
+`the-test-cabinet-backend:<sha>`, and its `deploy_prod` job then runs
+`scripts/ci/deploy-environment.sh prod <sha>`, which pins a temporary copy of
+[`deployments/k8s/overlays/prod`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/overlays/prod)
+with `scripts/ci/pin-images.sh`, setting every image to that sha:
 
-| Reference                                       | Set to                                        |
-| ----------------------------------------------- | --------------------------------------------- |
-| Each service's `image:`                         | `testcabinet.azurecr.io/<image>:<sha>`        |
-| The dispatcher's `TCAB_DRIVER_IMAGE`            | `testcabinet.azurecr.io/tcab-driver:<sha>`    |
-| The dispatcher's `TCAB_PUBLISHER_IMAGE`         | `testcabinet.azurecr.io/tcab-publisher:<sha>` |
-| `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG` | `testcabinet.azurecr.io`, `<sha>`             |
+| Reference                                       | Set to                                                                              |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Each service's `image:`                         | `testcabinet.azurecr.io/<image>:<sha>`; the backend's is `the-test-cabinet-backend` |
+| The dispatcher's `TCAB_DRIVER_IMAGE`            | `testcabinet.azurecr.io/tcab-driver:<sha>`                                          |
+| The dispatcher's `TCAB_PUBLISHER_IMAGE`         | `testcabinet.azurecr.io/tcab-publisher:<sha>`                                       |
+| `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG` | `testcabinet.azurecr.io`, `<sha>`                                                   |
 
-The overlay carries no image tags of its own, so every service, the driver's run
-images, and the audio store baked into the driver always come from one build.
+The overlay names every image at the tag `unpinned`, which nothing pushes, so
+applied unpinned it fails to pull, and every service, the driver's run images,
+and the audio store baked into the driver always come from one build.
 The dispatcher forwards `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG` into
 every driver `Job`, so every run started after the roll executes in that
 commit's run images.
@@ -44,8 +46,9 @@ commit's run images.
 ## Prerequisites
 
 - The commit has been rehearsed on staging. A merge to `staging` rolls
-  `overlays/azure-staging` onto `testcabinet-staging-westus2-aks` (namespace
-  `tcab-staging`) by the same route.
+  `overlays/staging` onto `testcabinet-staging-westus2-aks` (namespace
+  `tcab-staging`), through the workspace template's publish and deploy stages;
+  see [Deploying](/deployment/kubernetes/overview/#deploying).
 - The cluster bootstrap has been applied to the production cluster; see
   [Cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites).
 - For verifying or rolling back by hand: the
@@ -60,20 +63,22 @@ commit's run images.
 
 Merge the change into `master`; for a release this is the `vX.Y.Z` pull request
 from `staging`. The pull request runs the gates through the branch's build
-validation policy, and the merge commit runs the whole pipeline: the gates, the
-GitHub mirror, the `images` stage, and the `deploy` stage.
+validation policy, and the merge commit runs the whole pipeline: the gates and
+the image jobs, the GitHub mirror, and the `prod` stage.
 
 ## 2. Watch the deploy
 
-The `deploy_prod` job applies the rendered set and waits up to 600 seconds on
-each `Deployment` and `StatefulSet` rollout. A rollout that does not become ready
-is described, its logs are printed to the job log, and it is undone, and the job
+The `deploy_prod` job first deletes the legacy `tcab-backend` Deployment if it
+still exists (the backend's Deployment is now `the-test-cabinet-backend`), then
+applies the rendered set and waits up to 600 seconds, concurrently, on every
+`Deployment` and `StatefulSet` rollout. A rollout that does not become ready is
+described, its logs are printed to the job log, and it is undone, and the job
 fails. Every other workload stays on the new sha.
 
 To preview what a deploy applies without touching the cluster:
 
 ```sh
-scripts/ci/deploy.sh --render prod <sha>
+scripts/ci/deploy-environment.sh --render prod <sha>
 ```
 
 ## 3. Verify
@@ -100,10 +105,13 @@ deploys.
 ## Rolling back
 
 Run the deploy by hand with the earlier sha. The registry keeps every sha the
-pipeline pushed:
+pipeline pushed. The backend is pulled as `the-test-cabinet-backend:<sha>`, an
+image the pipeline has pushed only since the move onto the project template; a
+sha from before that has none, so its backend fails to pull and the deploy
+undoes the rollout. Revert on `master` to put such a commit back.
 
 ```sh
-scripts/ci/deploy.sh prod <earlier-sha>
+scripts/ci/deploy-environment.sh prod <earlier-sha>
 ```
 
 It applies, waits, and undoes a failed rollout exactly as the pipeline does. The

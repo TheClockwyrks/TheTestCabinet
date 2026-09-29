@@ -18,8 +18,8 @@ One **package per capability module**, and in each of them one class that _is_ t
 `gg.files.Files`, `gg.views.Views`, `gg.board.Board`. Java has no free functions, so an
 operation every other arm spells as one is a `static` method here — `Files.readFile(path)`
 — and the types a module hands back are nested in it, so `Files.FileRead` and
-`Memories.MemoryHit` are names a program can write without either module having to give up a
-short one. `gg` itself is the thirteenth module: the exception and the types every other
+`Memories.MemoryHit` are names a program can write without either module having to give up
+a short one. `gg` itself is the thirteenth module: the exception and the types every other
 module's signatures name.
 
 Nothing is reached through a value that has to be in scope already, and gg writes nothing
@@ -73,14 +73,15 @@ Each of them can only go one way, and where each goes is the argument:
   vintage from the gg whose catalogue describes it — and a model shown one surface in its
   prompt and compiled against another is the failure this whole seam is built to prevent.
   `build.sh` cuts it into the build's own artifact directory out of the same `src/gg/` the
-  catalogue is reflected from, so being two vintages is not a state this arm can be in.
-  It fixes every jar entry's timestamp and sorts the entry list, so two builds of identical
+  catalogue is reflected from, so being two vintages is not a state this arm can be in. It
+  fixes every jar entry's timestamp and sorts the entry list, so two builds of identical
   sources are identical bytes.
 
-  The jar also carries [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/): the crossing both JVM arms
-  compile, and one TeaVM runtime class kept under its own licence and changed in one place so
-  an uncaught exception prints what was thrown as well as where. It goes first on TeaVM's
-  program classpath, which is what makes that copy the one the compiler translates.
+  The jar also carries [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/): the crossing both JVM
+  arms compile, and one TeaVM runtime class kept under its own licence and changed in one
+  place so an uncaught exception prints what was thrown as well as where. It goes first on
+  TeaVM's program classpath, which is what makes that copy the one the compiler
+  translates.
 
 ## What the pins mean
 
@@ -112,12 +113,12 @@ cargo nextest run -p test-cabinet-gg sandbox::language::java
 ```
 
 Both scripts are gates as much as they are builds. `build.sh` compiles the model-facing
-packages a second time under `-Xdoclint:all/protected -Werror`, so an undocumented parameter
-or a broken `{@link}` is an error; `signatures.sh` reads the same comments through the
-doclet API and refuses to emit a catalogue with a blank in it — a method that names no gg
-operation, a module class the table does not name, and an opening paragraph of more than one
-line included. Between them, prose a model would have been shown as an empty line fails on
-the author instead.
+packages a second time under `-Xdoclint:all/protected -Werror`, so an undocumented
+parameter or a broken `{@link}` is an error; `signatures.sh` reads the same comments
+through the doclet API and refuses to emit a catalogue with a blank in it — a method that
+names no gg operation, a module class the table does not name, and an opening paragraph of
+more than one line included. Between them, prose a model would have been shown as an empty
+line fails on the author instead.
 
 Two block tags carry what a doc comment cannot say in prose: `@ggop files.read_file` on
 every model-facing method, and `@ggmodule files` on the class that is the module.
@@ -130,12 +131,12 @@ opposite ways, and each is the way its own documentation tool accepts.
 
 - `crates/gg/src/sandbox/language/java.compile.rs` — the warm-JVM pool, the diagnostic
   bands, the component encode and the generated entry class.
-- `crates/gg/src/sandbox/language/java.source.rs` — the one convention a program keeps, the
-  code-module wrapper, the import hoist and the export scan.
+- `crates/gg/src/sandbox/language/java.source.rs` — the one convention a program keeps,
+  the code-module wrapper, the import hoist and the export scan.
 - `crates/gg/src/sandbox/language/java.substrate.test.rs` — real Java through gg's real
   linker, membrane and store.
-- `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through that
-  membrane from its Java spelling, the agreement gate over the generated catalogue, and
-  every declared library driven into the real compiler.
+- `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through
+  that membrane from its Java spelling, the agreement gate over the generated catalogue,
+  and every declared library driven into the real compiler.
 - [`gg/languages/java.md`](../../apps/docs/src/content/docs/gg/languages/java.md) —
   the prose, including what TeaVM is not.

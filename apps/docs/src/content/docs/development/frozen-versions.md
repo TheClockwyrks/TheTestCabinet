@@ -40,17 +40,27 @@ covers it. A baseline is evidence beside a verdict and backs no point, so
 recapturing a frozen version's baselines changes no recorded score and needs no
 new version.
 
-Two gates recompute and compare it:
+The marker opens with a comment block saying the directory must not change and
+naming the gate that holds it to that, `frozen-paths`
+(`ci/gates/frozen-paths.py`). That gate recomputes every marker's digest and
+compares it:
 
-| Gate                            | Where             | Catches                                                    |
-| ------------------------------- | ----------------- | ---------------------------------------------------------- |
-| `scripts/hooks/frozen-paths.sh` | pre-commit hook   | the mistake, at the moment you make it                     |
-| `scripts/ci/frozen-check.sh`    | Azure + GitHub CI | commits made with `--no-verify` or without hooks installed |
+| Where | Catches |
+| --- | --- |
+| the commit hook, on any commit touching a test-case or game-jam path | the mistake, at the moment you make it |
+| the `web` job of the Azure pipeline, on every run | commits made with `--no-verify` or without hooks installed |
 
-Both read the git index rather than a diff against a base branch, so the CI job
-needs no merge base, no fetch depth, and no toolchain. It checks that the tree it
-has in hand is internally consistent, which holds on every branch and every
-history shape.
+Both read the git index rather than a diff against a base branch: at commit, the
+index being committed, so a partial commit is digested as it will land. So the
+CI step needs no merge base, no fetch depth, and no toolchain. It checks that the
+tree it has in hand is internally consistent, which holds on every branch and
+every history shape. `uv run --quiet --project ci gate run frozen-paths` runs it
+by hand.
+
+Frozen versions are also left out of every check that would otherwise change
+them: `format` and the `file-endings` gate skip them, and the pipeline skips the
+upstream `end-of-file-fixer` hook, which cannot exclude them (see
+[The gate jobs](/development/building/#the-gate-jobs)).
 
 ## Freezing a version
 

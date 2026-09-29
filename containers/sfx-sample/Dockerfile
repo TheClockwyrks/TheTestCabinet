@@ -48,4 +48,3 @@ FROM ${BASE_IMAGE}
 # node`); the unprivileged run user only executes it. The base image already
 # sets `USER node`, `WORKDIR /work`, and the keep-alive CMD.
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
-

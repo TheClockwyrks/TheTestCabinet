@@ -1,0 +1,8 @@
+# The tag of each CI image, which azure-pipelines.yml includes as a variables
+# template and names every job's image by. Written by `scripts/ci/ci-image.sh
+# tag` and by nothing else: the template renders this file once and never
+# over it, and the ci-tests gate fails while a tag here is not the one the
+# checkout builds. v1-000000000000 names no image; it is what a render writes.
+variables:
+  rustImageTag: v1-e9e53ee1c4db
+  webImageTag: v1-ffe3b49d464e

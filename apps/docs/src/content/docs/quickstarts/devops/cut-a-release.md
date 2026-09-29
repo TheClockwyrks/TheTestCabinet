@@ -7,7 +7,8 @@ Ship `vX.Y.Z`: prepare the release branch, rehearse on staging, promote to
 are in [Cutting a Release](/guides/devops/cutting-a-release/).
 
 Four things ship on four paths, and the tag governs only the first: the
-**binaries** (`tcab` and `gg`, from the tag's pipeline run), the **catalog** (a
+**binaries** (`tcab` and `gg`, from the tag's release-pipeline run), the
+**catalog** (a
 branch tip the backend re-ingests on every deploy), the **services** (the
 pipeline's deploy of the merge commit), and the **sites** (a Pages build).
 
@@ -78,11 +79,11 @@ cargo check -p test-cabinet-gg -p test-cabinet-core   # refreshes Cargo.lock
 ## 2. Rehearse on staging
 
 Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR. The merge commit's
-pipeline run builds every image at its sha and `deploy_staging` rolls the
-staging cluster to them, the way [Roll Production Service
-Images](/quickstarts/devops/roll-prod-service-images/) describes for prod. The
-roll restarts the backend, which re-ingests the `staging` tip, so the merged
-catalog is visible once `deploy_staging` succeeds.
+pipeline run builds every image at its sha, and the workspace template's publish
+and deploy stages roll the staging cluster to them (see
+[Deploying](/deployment/kubernetes/overview/#deploying)). The roll restarts the
+backend, which re-ingests the `staging` tip, so the merged catalog is visible
+once the deploy stage succeeds.
 
 Enqueue real runs of the cases that changed and review one end to end. Fixes go
 back onto `nightly` and return as the next rc, never straight onto `staging`.
@@ -90,12 +91,12 @@ back onto `nightly` and return as the next rc, never straight onto `staging`.
 ## 3. Land it in production
 
 Promote `staging` into `master` as a `vX.Y.Z` PR. The merge commit's pipeline
-run rolls `tcab-prod` to the release sha in `deploy_prod`, and the restarted
+run rolls `tcab-prod` to the release sha in the `prod` stage, and the restarted
 backend re-ingests the `master` tip, publishing the release's cases, errata, and
 reference-build URLs. Confirm the roll as the
 [roll-prod quickstart](/quickstarts/devops/roll-prod-service-images/) does.
 
-The same run's `docs` job deploys the docs. The gallery rebuilds because a
+The same run's `docs` stage deploys the docs. The gallery rebuilds because a
 re-ingest that changed something queues a snapshot refresh, which fires the
 Pages deploy hook. A no-op re-ingest queues nothing, which is the usual reason
 the gallery does not move.
@@ -110,10 +111,11 @@ git tag -a vX.Y.Z -m "vX.Y.Z"
 git push origin vX.Y.Z      # origin is the Azure Repos remote
 ```
 
-The tag's pipeline run gates the commit again, fails if `gg --version` is not
-`X.Y.Z`, publishes the smoke-tested `tcab` as the `tcab-linux` and
-`tcab-windows` artifacts, uploads gg to the `gg-releases` blob container, and
-pushes the tag to the GitHub mirror.
+The tag runs the release pipeline. It requires the green `master` run's check
+jobs at that commit (or queues a gates-only run on the tag when there is none),
+fails if `gg --version` is not `X.Y.Z`, publishes the smoke-tested `tcab` as the
+`tcab-linux` and `tcab-windows` artifacts, uploads gg to the `gg-releases` blob
+container, and pushes the tag to the GitHub mirror.
 
 ## Verify
 
@@ -124,7 +126,8 @@ curl -fsI https://testcabinetartifacts.blob.core.windows.net/gg-releases/vX.Y.Z/
 ```
 
 - The tag names the same commit on Azure and on the GitHub mirror.
-- The tag's pipeline run carries the `tcab-linux` and `tcab-windows` artifacts.
+- The tag's release-pipeline run carries the `tcab-linux` and `tcab-windows`
+  artifacts.
 - `gg-releases/vX.Y.Z/` holds both gg binaries and `gg-reference.tar.gz`.
 - `docs.testcabinet.ai` serves the changelog and links it in the sidebar.
 - `testcabinet.ai` shows the graduated cases, each with a working **Reference**

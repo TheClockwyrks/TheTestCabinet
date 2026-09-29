@@ -6,11 +6,13 @@
   "license": "MIT",
   "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the gallery UI with the static site via @clockwyrks/ui; talks to a backend (catalog, published data, and run execution) over HTTP.",
   "scripts": {
-    "predev": "tsc -b ../../packages/run-record",
+    "predev": "tsc -b",
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "tsc -b && vitest run --project jsdom",
+    "test:browser": "tsc -b && vitest run --project browser"
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
@@ -29,11 +31,20 @@
     "react-router": "^7.6.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
+    "@vitest/browser-playwright": "5.0.0",
+    "@vitest/coverage-v8": "5.0.0",
+    "jsdom": "^26",
+    "playwright": "1.63.0",
     "sass": "^1",
     "typescript": "^6",
-    "vite": "^6"
+    "vite": "^6",
+    "vitest": "5.0.0"
   }
 }

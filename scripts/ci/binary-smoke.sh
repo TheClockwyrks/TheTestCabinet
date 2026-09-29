@@ -11,7 +11,7 @@
 # Critical validation: a failure here means the shipping binary is broken.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # Resolve the produced binary. Cargo writes it under the *configured* target
 # directory, which is `target/` on the CI agents but is redirected by

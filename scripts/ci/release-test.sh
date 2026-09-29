@@ -9,7 +9,7 @@
 # Doctests are scripts/ci/release-doctest.sh, because nextest does not run them.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo nextest run --release (core + CLI)"
 cargo nextest run --release --locked -p test-cabinet-core -p test-cabinet-cli

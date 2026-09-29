@@ -17,7 +17,7 @@
 # full clone with tags, because GitHub refuses a push from a shallow one.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly MIRROR="git@github.com:TheClockwyrks/TheTestCabinet.git"
 # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints

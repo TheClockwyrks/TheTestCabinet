@@ -235,4 +235,3 @@ public enum class EntryKind {
  *   `(N more chars...)` where longer.
  */
 public data class SearchMatch(val path: String, val line: Int, val text: String)
-

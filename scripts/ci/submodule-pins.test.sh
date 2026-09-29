@@ -102,7 +102,7 @@ super() {
 	rm -rf "$repo"
 	git init --quiet "$repo"
 	mkdir -p "${repo}/scripts/ci"
-	cp "$GATE" "${HERE}/lib.sh" "${repo}/scripts/ci/"
+	cp "$GATE" "${HERE}/tcab-lib.sh" "${repo}/scripts/ci/"
 	git -C "$repo" remote add origin "$repo"
 	while [[ $# -gt 0 && "$1" != -- ]]; do
 		entry="$1"

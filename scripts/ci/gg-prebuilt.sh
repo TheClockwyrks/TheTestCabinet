@@ -36,7 +36,7 @@
 # mistyped one would delete part of the checkout.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 2 ]]; then
 	echo "usage: scripts/ci/gg-prebuilt.sh <artifact-dir> <out-dir>" >&2

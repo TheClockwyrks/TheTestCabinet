@@ -46,7 +46,12 @@ interface CueSpec {
 override initialize(api: InitApi): null {
   api.audio.define("thrust", { wave: "sawtooth", freq: 120, durationMs: 90 });
   api.audio.define("bounce", { wave: "square", freq: 440, durationMs: 60 });
-  api.audio.define("victory", { wave: "triangle", freq: 520, freqTo: 880, durationMs: 220 });
+  api.audio.define("victory", {
+    wave: "triangle",
+    freq: 520,
+    freqTo: 880,
+    durationMs: 220,
+  });
   return null;
 }
 ```

@@ -13,8 +13,8 @@
 # longer exist. The fix for a case that needs changing is a new version
 # directory, never an edit in place.
 #
-# Sourced (not executed) by scripts/hooks/frozen-paths.sh (the commit gate),
-# scripts/ci/frozen-check.sh (the CI backstop), and scripts/freeze.sh (which
+# Sourced (not executed) by the frozen-paths gate (ci/gates/frozen-paths.py),
+# which runs as a commit hook and as a CI step, and by scripts/freeze.sh (which
 # writes the markers).
 #
 # The digest is deliberately computed from the git index rather than the
@@ -70,8 +70,8 @@ frozen_write_marker() {
 # add a new version directory instead of editing this one.
 #
 # \`digest\` is the SHA-256 of this directory's \`git ls-files -s\` listing with
-# this marker excluded. The commit hook (scripts/hooks/frozen-paths.sh) and CI
-# (scripts/ci/frozen-check.sh) both recompute it and fail on any difference.
+# this marker excluded. The frozen-paths gate (ci/gates/frozen-paths.py) recomputes
+# it at every commit that touches this directory and in CI, and fails on any difference.
 #
 # Deliberately unfreezing means deleting this file in its own reviewable commit.
 digest = "$digest"
@@ -81,8 +81,9 @@ EOF
 }
 
 # Verify every frozen directory. Prints a report for each violation and returns
-# non-zero if there were any. `context` is either "commit" (the pre-commit gate,
-# which can name the offending staged files) or "ci" (the backstop).
+# non-zero if there were any. `context` is either "commit" (the gate run as a
+# commit hook, which can name the offending staged files) or "ci" (the gate run
+# anywhere else).
 frozen_verify() {
 	local context="${1:-ci}"
 	local dir recorded actual violations=0 malformed=0

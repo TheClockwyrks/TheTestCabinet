@@ -129,12 +129,23 @@ overlays under `deployments/k8s/overlays/` are exactly that difference.
 ## Delivery
 
 The Azure pipeline (`azure-pipelines.yml`) is the route a commit takes into both
-remote environments. A push to `staging` or `master` runs the gates, mirrors the
-commit to GitHub, builds every service and run-container image into the
-`testcabinet.azurecr.io` registry tagged by the commit sha, and rolls the
-matching cluster to those images: `staging` rolls staging and `master` rolls
-prod. The same run deploys the docs site. Rolling an environment is therefore
-merging to its branch.
+remote environments. A push to `staging` or `master` runs the gates, builds
+every service and run-container image into the `testcabinet.azurecr.io` registry
+tagged by the commit sha, mirrors the commit to GitHub, and rolls the matching
+cluster to those images, then deploys the docs site. The two environments take
+different routes through it:
+
+- **Staging** goes through the workspace template's own publish and deploy
+  stages, on `staging`. The publish retags the backend image as
+  `the-test-cabinet-backend:<sha>`; the deploy pins the other images, applies
+  the `staging` overlay, waits on the backend and then on every other workload,
+  and undoes what failed.
+- **Prod** goes through the project's `prod` stage, on `master`: the same
+  backend publish, then `scripts/ci/deploy-environment.sh prod <sha>`, which
+  applies the `prod` overlay and waits on every workload together.
+
+Rolling an environment is therefore merging to its branch. See
+[Deploying](/deployment/kubernetes/overview/#deploying).
 
 The pipeline's deploy identity may write only the application namespace, so the
 few cluster-scoped objects an environment needs are a one-time bootstrap applied

@@ -12,7 +12,7 @@
 # `bash` runs Git Bash on the Windows agent, so this one script drives both.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo build --release --all-targets (core + CLI)"
 cargo build --release --locked -p test-cabinet-core -p test-cabinet-cli --all-targets

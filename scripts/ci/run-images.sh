@@ -18,7 +18,7 @@
 # run images are done. The caller is already logged in to the registry.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 2 ]]; then
 	echo "usage: scripts/ci/run-images.sh <gg-binary> <sha>" >&2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs apt-managed packages needed to build and work on The Test Cabinet.
+# Installs apt-managed packages needed to build and work on this project.
 set -euo pipefail
 
 apt-get update -y
@@ -13,77 +13,20 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	tzdata
 
 # Developer tools and build dependencies.
-#   - build-essential / cmake: native build deps for some Rust crates.
-#   - musl-tools: provides musl-gcc for the portable static `tcab` build
-#     (the `ring` TLS backend compiles a little C). See
-#     https://docs.testcabinet.ai/development/building/#portable-static-tcab-build.
-#   - git / ssh: source control, including the fresh per-run repositories.
+#   - build-essential: the C toolchain and linker Rust links its binaries with.
+#   - git / ssh: source control.
+#   - make / python3 / shellcheck: what `make gate` runs.
+#   - socat: the bridges tools/host-runtime.sh and tools/ssh-agent.sh build.
 #   - xz-utils: extracting the Node.js .tar.xz tarball.
-#   - iproute2 / lsof / procps: process and listening-socket inspection, which the
-#     local-cluster tooling depends on — `ss` for the port guard in
-#     `deployments/local/Makefile`'s local-ingest, and `lsof` + `ps`/`pgrep` for
-#     `scripts/free-local-forward.sh`. lsof and procps happened to be present in the
-#     base image and iproute2 did NOT, which is exactly why all three are declared
-#     here: an undeclared tool disappears silently on a base-image change, and a
-#     `command -v`-guarded use of it degrades to doing nothing rather than failing.
-#   - ruby: gg's Ruby program-language arm reflects its signature catalogue with
-#     YARD, and `crates/gg/build.rs` reflects all eleven catalogues as a step of
-#     building the crate — so without a Ruby this image cannot `cargo build
-#     --workspace` at all. It is the ONE gg toolchain that comes from a
-#     distribution package rather than from a pinned download, which is why it is
-#     here and the other ten are in `scripts/ci/install-gg-toolchains.sh` — which
-#     this image also runs, several layers below (`languages/gg/install.sh`), so
-#     this line is a PREREQUISITE of that layer rather than an exception to it: the
-#     installer refuses to proceed without a `ruby` on PATH, and says so naming this
-#     file. That script installs the pinned YARD on top of this Ruby; the
-#     interpreter itself is deliberately unpinned, because what has to agree between
-#     a devcontainer, a CI agent and an image build is the reflector rather than the
-#     thing it runs on. Declared here for the reason iproute2 is: it was present by
-#     accident for a while, and an undeclared tool disappears silently on a
-#     base-image change.
-#   - ffmpeg: the normalizer `scripts/build-sample-pack.mjs` shells out to when it
-#     bakes an audio palette — `sfx-sample`'s sample library and `music`'s
-#     instrument bank — from its committed manifest. It resamples, downmixes,
-#     loudness-normalizes and trims each fetched CC0 source into the PCM-16 `.wav`
-#     `crates/audio-core/src/sample.rs` decodes. Declared here because the script
-#     DEGRADES rather than fails without it: it falls back to a documented raw-copy
-#     skeleton that still writes a correct layout and a stable digest, so a pack
-#     built on a machine with no ffmpeg is structurally valid and silent. That is
-#     the worst possible failure mode for an audio palette — every `add-sample`
-#     records fine and renders nothing — and it is invisible until someone listens.
-#     A full-stack or audio case authored against a silently-stubbed pack produces
-#     assets that are wrong in a way no gate catches.
-#   - libicu-dev: ICU, which gg's C# program-language arm needs to run one compiler.
-#     The .NET runtime does not link it: `libSystem.Globalization.Native.so` `dlopen`s
-#     `libicuuc` and `libicui18n` by name while the CLR is still starting, and calls
-#     `FailFast` when neither resolves — so `csc` on a machine without ICU dies of
-#     SIGABRT having written nothing, and that arm's suite (nine files, several of
-#     which spawn a real Roslyn) cannot run at all. Declared here for the reason
-#     iproute2 is: nothing else in this image installs it.
-#     A RUN IMAGE OWES THE SAME LIBRARIES AND DOES NOT GET THEM FROM HERE: it has no
-#     package manager at run time, so `scripts/ci/install-dotnet.sh` vendors the same
-#     three under `/opt/gg` and gg names that directory on `LD_LIBRARY_PATH`. The two
-#     halves are not interchangeable, and assuming they were is what shipped a broken
-#     arm: this file's ICU is why the whole C# suite passes here, and it says nothing
-#     whatever about the image the toolchain actually runs in.
-#     `libicu-dev` rather than the runtime package, because the runtime package's name
-#     carries the ABI version — `libicu72` on Debian bookworm, `libicu78` on this
-#     image's Ubuntu 26.04 — so it would have to be edited on every base bump, while
-#     the `-dev` name is stable and depends on whichever runtime the release ships.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	build-essential \
-	cmake \
+	ccache \
 	curl \
-	ffmpeg \
 	git \
-	iproute2 \
 	jq \
-	libicu-dev \
-	lsof \
-	musl-tools \
-	procps \
+	make \
+	python3 \
 	ripgrep \
-	ruby \
 	shellcheck \
 	ssh \
 	sudo \
@@ -95,3 +38,25 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	wget \
 	xz-utils \
 	zip
+
+# The SSH client's configuration, written in the layer that installs it. The
+# client warns on every connection to a server that offers no post-quantum key
+# exchange, and the forges this project fetches from and pushes to offer none,
+# so every fetch, push and submodule update would print a warning nothing in
+# here can act on. `WarnWeakCrypto no` stops it, for every account in the
+# container, and a key exchange is still negotiated exactly as before.
+cat > /etc/ssh/ssh_config.d/50-warn-weak-crypto.conf <<'EOF'
+# Written by the devcontainer's system/apt.sh. The forges this project reaches
+# offer no post-quantum key exchange, so the warning OpenSSH prints for that on
+# every connection is noise here.
+WarnWeakCrypto no
+EOF
+
+# The C side of a static Rust build against this architecture's musl target,
+# which languages/rust/targets.sh adds.
+#   - musl-tools: musl-gcc, the linker such a build links with and the C
+#     compiler a crate that compiles C of its own calls. It targets this
+#     machine's architecture alone, so each architecture's static binary is
+#     built on a machine of that architecture.
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+	musl-tools

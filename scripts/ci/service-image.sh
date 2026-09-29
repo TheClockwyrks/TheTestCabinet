@@ -35,7 +35,7 @@
 # lines are identical whether it is set or not.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 if [[ $# -ne 2 ]]; then
 	echo "usage: scripts/ci/service-image.sh <service> <sha>" >&2

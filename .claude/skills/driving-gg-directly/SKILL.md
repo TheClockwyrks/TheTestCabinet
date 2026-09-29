@@ -1,6 +1,10 @@
 ---
-name: driving-gg-directly
-description: Read this skill before running gg outside The Test Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg against a tasks/ file". gg is normally launched by core inside a run container; this is the recipe for launching the bare binary from a dev box with a hand-written invocation, in responses-as-code or tool-calling mode, and reading its telemetry. Verified in the devcontainer on 2026-09-22.
+name: driving-gg-directly description: Read this skill before running gg outside The Test
+Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg
+against a tasks/ file". gg is normally launched by core inside a run container; this is
+the recipe for launching the bare binary from a dev box with a hand-written invocation, in
+responses-as-code or tool-calling mode, and reading its telemetry. Verified in the
+devcontainer on 2026-09-22.
 ---
 
 # Driving gg directly
@@ -20,9 +24,13 @@ through them, not a replacement.
 
 1. **Build.** `cargo build -p test-cabinet-gg` (about a minute when the arm
    artifacts are cached; the first build on a fresh machine reflects eleven
-   toolchains and takes much longer). The binary lands at
-   `$CARGO_TARGET_DIR/debug/gg`, which in the devcontainer is
-   `/cargo-target/the-test-cabinet/debug/gg`, **not** `target/`.
+   toolchains and takes much longer, and waits for the container's background
+   provisioning: with no `~/.cache/tcab-devcontainer-setup.done` marker and no
+   provisioner running, run `bash scripts/devcontainer-setup.sh` first). The
+   binary lands in the target directory cargo builds into: `target/debug/gg` on
+   a Linux host, `~/.cache/cargo-target/the-test-cabinet/debug/gg` on a
+   virtiofs host such as macOS Podman. `/cargo-target/the-test-cabinet` links to
+   it in the dev container, so the path below works on either.
 2. **Check the sandbox arms.** `PATH="$HOME/.local/bin:$PATH" gg selfcheck`
    drives every language's bootstrap turn with no model. On 2026-09-22 ten arms
    passed here; `rust` failed for want of the `wasm32-wasip1` target. Use
@@ -151,9 +159,10 @@ Every line is one event with a `type` tag (snake_case) and the run's
 jq -r 'select(.type=="assistant_message") | .content' run.ndjson   # the model's prose
 jq -r 'select(.type=="shell") | .command' run.ndjson               # every command it ran
 jq -r 'select(.type=="tool_call") | .name' run.ndjson | sort | uniq -c
-jq -c 'select(.type=="usage") | .tokens' run.ndjson                # per-turn token deltas
-jq -c 'select(.type=="session_summary") | .summary' run.ndjson     # totals, once, at the end
-jq -r 'select(.type=="response_rejected")' run.ndjson              # a reply gg refused to run
+# per-turn token deltas, then the totals (once, at the end)
+jq -c 'select(.type=="usage") | .tokens' run.ndjson
+jq -c 'select(.type=="session_summary") | .summary' run.ndjson
+jq -r 'select(.type=="response_rejected")' run.ndjson   # a reply gg refused to run
 ```
 
 For a live watch: `tail -f run.ndjson | jq -r 'select(.type=="shell") | .command'`.

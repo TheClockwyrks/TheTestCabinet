@@ -76,7 +76,7 @@
 # `target/gg-reference/`.
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "regenerate the contract (cargo run -p contract-codegen + prettier)"
 npm run gen:contract

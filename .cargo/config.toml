@@ -53,3 +53,17 @@ build-portable-dispatcher = "build -p test-cabinet-dispatcher --release --target
 build-portable-driver = "build -p test-cabinet-driver --release --target x86_64-unknown-linux-musl"
 build-portable-artifacts = "build -p test-cabinet-artifacts --release --target x86_64-unknown-linux-musl"
 build-portable-gg = "build -p test-cabinet-gg --release --target x86_64-unknown-linux-musl"
+
+# rustdoc documents private items too, so the `rust-doc` gate resolves the
+# intra-doc links in private doc comments as well as public ones; without it a
+# broken link in a private item goes unchecked. The template's gate runs a plain
+# `cargo doc --workspace --no-deps`, so the flag lives here rather than in the gate.
+#
+# Its scope is every cargo run under this repository, not the gate alone: the
+# `rust-doc` gate, the doctests, `packages/gg-sandbox-rust/signatures.sh`'s
+# `cargo rustdoc` (whose catalogue is byte-identical with and without it), the
+# services image's gg build, and `cargo doc` in a test-case workspace checked out
+# beneath the repository. A `RUSTDOCFLAGS` in the environment, even an empty one,
+# takes precedence over it.
+[build]
+rustdocflags = ["--document-private-items"]

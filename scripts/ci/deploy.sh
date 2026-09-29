@@ -1,168 +1,177 @@
 #!/usr/bin/env bash
-# Rolls one environment's cluster to the images of one commit and waits for every
-# workload to become ready.
+# Rolls the staging overlay onto one published commit and waits for it to run.
 #
-#   scripts/ci/deploy.sh <staging|prod> <sha>
-#   scripts/ci/deploy.sh --render <staging|prod> <sha>
+#   scripts/ci/deploy.sh <commit>
 #
-# It renders deployments/k8s/overlays/azure-<env> through a throwaway kustomization
-# layered over it into one manifest file. The layer sets every service image to
-# `testcabinet.azurecr.io/<image>:<sha>`, and points the dispatcher's driver and
-# publisher images and the run-container registry and tag (TCAB_CONTAINER_REGISTRY,
-# TCAB_CONTAINER_TAG) at the same registry and sha. The overlays carry no image tags
-# of their own, so this is the one place a deployment's images are chosen. The
-# checkout is left as it was. `--render` prints that file and touches no cluster;
-# scripts/ci/k8s-manifests.sh gates on the same bytes.
-#
-# The clusters' API servers are private, so every kubectl command runs inside the
-# cluster through `az aks command invoke`, which uploads the rendered file with it.
-# The command runs under the caller's Microsoft Entra identity, which needs:
-#
-#   - "Azure Kubernetes Service RBAC Admin" on the environment's namespace
-#     (`<cluster id>/namespaces/tcab-<env>`), the Kubernetes permission that decides
-#     what may be applied. Everything the overlay renders is namespaced, and the script
-#     refuses a render that is not.
-#   - "Test Cabinet AKS Command Invoke" on the cluster
-#     (deployments/azure/aks-command-invoke.role.json): run a command and read its
-#     result, and nothing else on the cluster resource.
-#
-# Each Deployment and StatefulSet in the file is then waited on. A rollout that does
-# not become ready is described, its logs are printed, and it is undone before the
-# script fails.
-#
-# The pipeline runs this after the images stage pushed <sha>. Run by hand, signed in
-# to Azure with the same access, it rolls to any sha the registry holds, which is
+# It renders deployments/k8s/overlays/staging with the server's image set to <commit>
+# and applies the render on the cluster the pipeline deploys to. The pipeline's
+# deploy stage runs it once the publish stage pushed that commit's images. Run
+# by hand, it rolls the overlay onto any commit the registry holds, which is
 # also how an earlier commit is put back.
+#
+# The tag is set in a throwaway kustomization layered over the overlay, so the
+# checkout is left as it was and the overlay pins no commit of its own.
+#
+# The cluster is private, so nothing here holds a kubeconfig. The render is
+# handed to `az aks command invoke`, which runs kubectl inside the cluster
+# under the caller's identity, and the exit code the command's result reports
+# is the verdict. The caller is signed in to Azure: the pipeline through its
+# service connection, an operator through `az login`.
+#
+# Five variables decide the rest:
+#
+#   THE_TEST_CABINET_REGISTRY         The registry the overlay pins
+#   THE_TEST_CABINET_RESOURCE_GROUP   The resource group the cluster sits in
+#   THE_TEST_CABINET_CLUSTER          The cluster's name
+#   THE_TEST_CABINET_NAMESPACE        The namespace the overlay places the base in
+#   THE_TEST_CABINET_ROLLOUT_TIMEOUT  How long a rollout is given, as kubectl spells it
+#
+# Each defaults to what the project answered, so a roll by hand needs the
+# commit alone. The pipeline sets the first three from its variables, which
+# are rendered from the same answers.
+#
+# Once the rollout is ready, the script runs the project's own post-deploy
+# hook, scripts/ci/post-deploy.sh, where the project has one: the work that
+# needs the rolled-out server, such as registering what it serves. The hook is
+# given the commit and the five variables above, as this run resolved them, and
+# may source lib.sh for aks_invoke. A hook that fails fails the run and leaves
+# the rollout in place, because the server it rolled out is ready; running the
+# hook again, or the next deployment, finishes the work. A project without one
+# deploys exactly as before.
+#
+# Called by the pipeline's deploy stage rather than by the commit hook;
+# runnable by hand from any working directory.
 set -euo pipefail
-# shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-readonly TIMEOUT="600s"
+# shellcheck source=scripts/ci/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-render=""
-if [[ "${1:-}" == --render ]]; then
-	render=1
-	shift
-fi
-if [[ $# -ne 2 ]]; then
-	echo "usage: scripts/ci/deploy.sh [--render] <staging|prod> <sha>" >&2
+USAGE="Usage: scripts/ci/deploy.sh <commit>"
+
+REGISTRY="${THE_TEST_CABINET_REGISTRY:-testcabinet.azurecr.io}"
+RESOURCE_GROUP="${THE_TEST_CABINET_RESOURCE_GROUP:-testcabinet-staging-westus2-rg}"
+CLUSTER="${THE_TEST_CABINET_CLUSTER:-testcabinet-staging-westus2-aks}"
+NAMESPACE="${THE_TEST_CABINET_NAMESPACE:-tcab-staging}"
+TIMEOUT="${THE_TEST_CABINET_ROLLOUT_TIMEOUT:-300s}"
+OVERLAY="deployments/k8s/overlays/staging"
+POST_DEPLOY="scripts/ci/post-deploy.sh"
+
+commit="${1:-}"
+
+# The tags are the commit, so a value that is not one names no image the
+# registry holds.
+if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+	echo >&2 "$USAGE"
+	echo >&2 "'${commit}' is not a commit."
+	remediation \
+		"It is the forty lowercase hex characters of a commit whose images the" \
+		"pipeline's publish stage pushed. The registry lists them:" \
+		"    az acr repository show-tags --name ${REGISTRY%%.*} --repository the-test-cabinet-backend --orderby time_desc --top 10 -o table"
 	exit 1
 fi
-readonly ENVIRONMENT="$1"
-readonly SHA="$2"
 
-case "$ENVIRONMENT" in
-	staging | prod) ;;
-	*)
-		echo "deploy.sh: unknown environment '${ENVIRONMENT}' (expected staging or prod)" >&2
+for tool in kubectl az jq; do
+	if ! command -v "$tool" >/dev/null 2>&1; then
+		echo >&2 "No $tool on PATH."
+		remediation \
+			"kubectl renders the overlay, az hands the render to the cluster and" \
+			"jq reads the verdict. The devcontainer and the hosted agent carry all" \
+			"three."
 		exit 1
-		;;
-esac
-readonly CLUSTER="testcabinet-${ENVIRONMENT}-westus2-aks"
-readonly RESOURCE_GROUP="testcabinet-${ENVIRONMENT}-westus2-rg"
-readonly NAMESPACE="tcab-${ENVIRONMENT}"
-readonly OVERLAY="azure-${ENVIRONMENT}"
-
-# Beside the overlay, because kustomize reaches a base by relative path only.
-layer="$(mktemp -d "deployments/k8s/overlays/.deploy-XXXXXX")"
-work="$(mktemp -d)"
-trap 'rm -rf "$layer" "$work"' EXIT
-readonly manifest="${work}/tcab-${ENVIRONMENT}.yaml"
-
-images=""
-for image in tcab-backend tcab-auth-service tcab-dispatcher tcab-driver tcab-artifacts \
-	tcab-arena tcab-publisher tcab-web; do
-	images+="  - name: REPLACE_REGISTRY/${image}
-    newName: ${CI_REGISTRY}/${image}
-    newTag: \"${SHA}\"
-"
+	fi
 done
 
-cat >"${layer}/kustomization.yaml" <<YAML
+# Beside the overlay, because kustomize reaches a base by relative path only.
+layer="$(mktemp -d "$(dirname "$OVERLAY")/.deploy-XXXXXX")"
+render="$(mktemp)"
+trap 'rm -rf "$layer" "$render"' EXIT
+
+cat >"$layer/kustomization.yaml" <<KUSTOMIZATION
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../${OVERLAY}
+  - ../$(basename "$OVERLAY")
 images:
-${images}patches:
-  - target:
-      kind: Deployment
-      name: tcab-dispatcher
-    patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: tcab-dispatcher
-      spec:
-        template:
-          spec:
-            containers:
-              - name: dispatcher
-                env:
-                  - name: TCAB_DRIVER_IMAGE
-                    value: "${CI_REGISTRY}/tcab-driver:${SHA}"
-                  - name: TCAB_PUBLISHER_IMAGE
-                    value: "${CI_REGISTRY}/tcab-publisher:${SHA}"
-                  - name: TCAB_CONTAINER_REGISTRY
-                    value: "${CI_REGISTRY}"
-                  - name: TCAB_CONTAINER_TAG
-                    value: "${SHA}"
-YAML
+  - name: ${REGISTRY}/the-test-cabinet-backend
+    newTag: "${commit}"
+KUSTOMIZATION
 
-kubectl kustomize "$layer" >"$manifest"
-if [[ -n "$render" ]]; then
-	cat "$manifest"
-	exit 0
-fi
-
-# The deploy identity may write this namespace and nothing else, so an object outside
-# it would fail half-way through the apply. Refuse before touching the cluster.
-if ! ci_assert_namespaced "$NAMESPACE" <"$manifest"; then
-	echo "deploy.sh: ${OVERLAY} renders objects outside ${NAMESPACE}; move them under deployments/k8s/cluster/." >&2
+if ! kubectl kustomize "$layer" >"$render"; then
+	remediation "The overlay did not render. Reproduce it with:" \
+		"    kubectl kustomize $OVERLAY"
 	exit 1
 fi
 
-# Runs a shell command inside the cluster, with any files named after it uploaded to
-# its working directory. Prints the command's output and returns its exit code.
-invoke() {
-	local command="$1" result code
-	shift
-	local files=()
-	for file in "$@"; do
-		files+=(--file "$file")
-	done
-	result="$(az aks command invoke --resource-group "$RESOURCE_GROUP" --name "$CLUSTER" \
-		--command "$command" "${files[@]}" --output json --only-show-errors)"
-	jq -r '.logs // ""' <<<"$result"
-	code="$(jq -r '.exitCode // 1' <<<"$result")"
-	return "$code"
+rendered="$(grep -cE "image: ${REGISTRY}/the-test-cabinet-backend:${commit}$" "$render" || true)"
+if [ "$rendered" -ne 1 ]; then
+	echo >&2 "The render carries $rendered of the one image at ${commit}."
+	remediation \
+		"The layer sets the tag of ${REGISTRY}/the-test-cabinet-backend, which is" \
+		"how the staging overlay names it. THE_TEST_CABINET_REGISTRY names the" \
+		"registry the overlay spells."
+	exit 1
+fi
+
+# Runs one shell command inside the cluster, with the render beside it, and
+# prints what it wrote; lib.sh's aks_invoke holds the reading of the verdict.
+invoke() { # command
+	aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$render" "$1"
 }
 
-log "applying ${OVERLAY} at ${SHA} to ${CLUSTER}"
-invoke "kubectl apply -f $(basename "$manifest")" "$manifest"
+render_name="$(basename "$render")"
 
-workloads=()
-while read -r kind _ name; do
-	case "$kind" in
-		Deployment) workloads+=("deployment/${name}") ;;
-		StatefulSet) workloads+=("statefulset/${name}") ;;
-	esac
-done < <(ci_manifest_index <"$manifest")
-
-failed=()
-for workload in "${workloads[@]}"; do
-	log "waiting for ${workload}"
-	if invoke "kubectl -n ${NAMESPACE} rollout status ${workload} --timeout=${TIMEOUT}"; then
-		continue
+echo "Rolling ${NAMESPACE} on ${CLUSTER} onto ${commit}."
+verdict=0
+invoke "kubectl apply -f ${render_name} \
+	&& kubectl -n ${NAMESPACE} rollout status deployment/the-test-cabinet-backend --timeout=${TIMEOUT}" || verdict=$?
+case "$verdict" in
+0)
+	echo "Deployed ${commit}."
+	if [ ! -e "$POST_DEPLOY" ]; then
+		exit 0
 	fi
-	echo "deploy.sh: ${workload} did not become ready at ${SHA}. Rolling it back." >&2
-	invoke "kubectl -n ${NAMESPACE} describe ${workload}; kubectl -n ${NAMESPACE} logs ${workload} --all-containers --tail=100" >&2 || true
-	invoke "kubectl -n ${NAMESPACE} rollout undo ${workload} && kubectl -n ${NAMESPACE} rollout status ${workload} --timeout=${TIMEOUT}" >&2 || true
-	failed+=("$workload")
-done
-
-if ((${#failed[@]})); then
-	echo "deploy.sh: rolled back ${failed[*]}; ${ENVIRONMENT} is not at ${SHA}." >&2
+	if [ ! -x "$POST_DEPLOY" ]; then
+		echo >&2 "deploy.sh: ${commit} is deployed and stays, but $POST_DEPLOY is not executable."
+		remediation "Make it executable, commit it, and run the hook on this commit:" \
+			"    chmod +x $POST_DEPLOY" \
+			"    $POST_DEPLOY ${commit}"
+		exit 1
+	fi
+	echo "Running $POST_DEPLOY on ${commit}."
+	if ! env \
+		THE_TEST_CABINET_REGISTRY="$REGISTRY" \
+		THE_TEST_CABINET_RESOURCE_GROUP="$RESOURCE_GROUP" \
+		THE_TEST_CABINET_CLUSTER="$CLUSTER" \
+		THE_TEST_CABINET_NAMESPACE="$NAMESPACE" \
+		THE_TEST_CABINET_ROLLOUT_TIMEOUT="$TIMEOUT" \
+		"./$POST_DEPLOY" "$commit"; then
+		echo >&2 "deploy.sh: ${commit} is deployed and stays, but $POST_DEPLOY failed, above."
+		remediation "Nothing was rolled back: the rollout is ready. Run the hook again with:" \
+			"    $POST_DEPLOY ${commit}"
+		exit 1
+	fi
+	exit 0
+	;;
+2)
+	remediation "Nothing was applied. The caller is signed in to Azure with an" \
+		"identity that may run commands on ${CLUSTER}, and the cluster is up:" \
+		"    az aks show --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --query provisioningState"
 	exit 1
-fi
-log "${ENVIRONMENT} is at ${SHA}"
+	;;
+3)
+	remediation "Nothing was rolled back: the apply and the rollouts may still be" \
+		"running. The command above reads their verdict, and the cluster reports" \
+		"what it runs:" \
+		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"kubectl -n ${NAMESPACE} get deployment -o wide\""
+	exit 1
+	;;
+esac
+
+# A rollout that never becomes ready leaves the cluster holding a new revision
+# that does not serve. Say why it did not, and put the previous revision back.
+echo >&2 "deploy.sh: ${commit} did not become ready. Rolling back."
+invoke "kubectl -n ${NAMESPACE} describe pods -l app.kubernetes.io/part-of=the-test-cabinet; \
+	kubectl -n ${NAMESPACE} logs deployment/the-test-cabinet-backend --tail=100; \
+	kubectl -n ${NAMESPACE} rollout undo deployment/the-test-cabinet-backend; \
+	kubectl -n ${NAMESPACE} rollout status deployment/the-test-cabinet-backend --timeout=${TIMEOUT}" >&2 || true
+exit 1

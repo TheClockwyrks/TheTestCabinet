@@ -173,4 +173,3 @@ public final class GgCompiler {
                 Json.millis("javac", afterJavac - started)
                         + Json.millis("teavm", afterTeaVm - afterJavac));
     }
-

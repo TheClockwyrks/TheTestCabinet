@@ -18,7 +18,7 @@
 # Data Contributor on the account (the pipeline's `tcab-gg-publish` connection).
 set -euo pipefail
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly ACCOUNT="testcabinetartifacts"
 readonly CONTAINER="gg-releases"

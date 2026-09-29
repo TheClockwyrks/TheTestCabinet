@@ -141,4 +141,3 @@ public enum class MessageRole {
     /** A tool result, on a session that made tool calls rather than writing programs. */
     TOOL,
 }
-

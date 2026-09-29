@@ -19,10 +19,10 @@ Restore both.
 
 ## The stage has no CI coverage
 
-Before `scripts/ci/gg-prebuilt.sh`, the `service_backend_{amd64,arm64}` and
-`service_driver_{amd64,arm64}` jobs all built this stage on every `master` and `staging`
-run, which is how this segfault was found. They now replace it with
-`--build-context gg-build=<dir>`, and nothing else in `azure-pipelines.yml` builds it.
+Before `scripts/ci/gg-prebuilt.sh`, the service-image jobs (today `services_{amd64,arm64}`,
+one per architecture, building every service image) built this stage on every `master`
+and `staging` run, which is how this segfault was found. They now replace it with
+`--build-context gg-build=<dir>`, and no other pipeline job builds it.
 
 So a commit that breaks the stage merges fully green. Editing
 `scripts/ci/install-gg-build-toolchains.sh`, `scripts/ci/install-gg-toolchains.sh` or
@@ -58,7 +58,7 @@ points at the link rather than at the code.
 ## Reproducing it
 
 An x86_64 machine is required; the devcontainer is aarch64 and has no amd64 emulation. The
-Images stage runs only on `master` and `staging`, so a branch build exercises nothing here
+image jobs run only on `master` and `staging`, so a branch build exercises nothing here
 either.
 
 ```sh

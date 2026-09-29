@@ -12,14 +12,14 @@ volume, and the schema migrates itself on first start.
 
 The `components/postgres` kustomize component performs that conversion. It
 deletes the base's `tcab-backend` and `tcab-auth` `StatefulSet`s and adds
-stateless `Deployment`s in their place, with the connection strings supplied by
-`Secret`. The `ClusterIP` `Service`s are untouched, and the replacement
+stateless `Deployment`s in their place, `the-test-cabinet-backend` (the name the
+workspace template's deploy waits on) and `tcab-auth`, with the connection
+strings supplied by `Secret`. The `ClusterIP` `Service`s are untouched, and the replacement
 `Deployment`s reuse the same selector labels, so the `Service`s keep routing.
 
-The `azure-staging` and `azure-prod` overlays include the component and back it
-with Azure Database for PostgreSQL Flexible Server. Apply one of those instead of
-`overlays/staging` or `overlays/prod`. Provider backups and point-in-time restore
-then replace the SQLite backup work; see
+The `staging` and `prod` overlays include the component and back it with Azure
+Database for PostgreSQL Flexible Server. Provider backups and point-in-time
+restore therefore replace the SQLite backup work; see
 [Backups](/deployment/backups/#managed-postgresql).
 
 Because the component swaps the workload kind, an overlay patch targeting the
@@ -146,7 +146,7 @@ Per environment:
    re-materialize.
 4. Add `../../components/postgres-azure-ad` to the overlay's `components:` list
    and re-apply it. The component bakes in the prod identity client ids;
-   `azure-staging` patches them to the staging identities.
+   the `staging` overlay patches them to the staging identities.
 
 To roll back, remove the component, restore the password-form vault secrets, and
 re-apply. Password auth stays enabled on the server throughout.

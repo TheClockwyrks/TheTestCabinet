@@ -1,34 +1,80 @@
-# What `npm run lint:format` leaves alone. Prettier reads only this file and the
-# root `.gitignore`; a nested package's own `.gitignore` is not consulted, so the
-# build trees those packages keep are named here as well.
-**/node_modules/
-**/dist/
-**/target/
-**/.build/
-**/.spago/
-**/.vendor/
-**/vendor/
+# What Prettier must not touch.
+#
+# This file is the whole of the format gate's scope: `npm run format:check`
+# runs Prettier over the repository root, so a path is formatted unless it is
+# excluded here or Prettier has no parser for it (Rust, shell and TOML fall in
+# the second group and need no entry).
+#
+# Three kinds of thing are excluded, and nothing else should be:
+#
+#   1. Generated or vendored output, which no human edits.
+#   2. Files another gate already owns, so two tools never disagree about the
+#      same file.
+#   3. Prose, which markdownlint and cspell own.
+
+# --- Generated or vendored -------------------------------------------------
+
+node_modules/
+dist/
+target/
+# Astro's build cache. It appears only once the documentation site has been
+# built, so a checkout that has never run it sees nothing here.
 apps/docs/.astro/
-packages/gg-sandbox-purescript/output/
+# npm writes this file and its formatting is npm's own; reformatting it makes
+# the next `npm install` rewrite it back.
+package-lock.json
+# The environments uv builds for the Python projects, each kept out of git by an
+# ignore file of its own inside the folder, which Prettier does not read.
+.venv/
+# Build output a tool writes under a directory of that name.
+build/
+# Scratch work, which nobody formats.
+/tmp/
+# Copier writes the answers file on every render and update, in its own
+# formatting.
+.copier-answers.yml
 
-# Never lint Markdown using Prettier
-**/*.md
+# --- Owned by another gate -------------------------------------------------
 
-# The lattice case's graded scenarios are written by the lattice designer, whose
-# writer is their canonical format: it re-writes a committed scenario byte for
-# byte, and that round trip is what its tests assert.
-test-cases/performance/hard/lattice/*/cases/*.json
+# The design documentation. markdownlint (`.markdownlint-cli2.yaml`) and cspell
+# (`cspell.json`) are its gates, and it is the source of truth for the project;
+# no formatter rewrites it.
+apps/docs/src/content/docs/
 
-# The JSON Schemas foray-core and lattice-core commit are written by their
-# `gen-artifacts` binaries, and each crate's `committed_schemas_match_the_types`
-# test asserts the committed text equals what the generator writes, byte for
-# byte. Formatting them fails that test.
-crates/foray-core/schemas/*.json
-crates/lattice-core/schemas/*.json
+# The Kubernetes manifests. `ci/gates/k8s-manifests.py` renders every
+# overlay and asserts on the result, and kustomize's own conventions (field
+# order, document splits) govern how they are written.
+deployments/k8s/
 
-# Handlebars templates: the prompt, spec and message templates are not a language
-# prettier parses, and formatting one destroys it.
-**/*.hbs
+# --- Prose -----------------------------------------------------------------
 
-# Frozen test-case versions cannot be modified, so they cannot be formatted.
-# `scripts/format-check.mjs` appends them from their `.frozen` markers at run time.
+# Markdown style is markdownlint's; a second formatter with its own opinion
+# about line wrapping and list markers would fight it on every file.
+*.md
+*.mdx
+
+# --- The project's own -----------------------------------------------------
+
+# The paths the `extra_ignored_paths` answer names, which markdownlint and
+# cspell leave out too, so the gates never disagree about a path.
+/cold-storage/**
+/tasks/**/done/**
+/.claude/workflows/**
+/.claude/worktrees/**
+/crates/gg/src/probe_fixtures/**
+/crates/gg/src/sandbox/guests/**
+/crates/foray-core/schemas/*.json
+/crates/lattice-core/schemas/*.json
+/test-cases/performance/hard/lattice/*/cases/*.json
+/**/*.hbs
+/**/.build/**
+/**/.spago/**
+/**/.vendor/**
+/**/vendor/**
+/**/.gg/**
+/packages/gg-sandbox-purescript/output/**
+/runs/**
+/tcab-store/**
+/tcab-artifacts/**
+/.tcab-driver/**
+/reference-previews/**

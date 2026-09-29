@@ -47,8 +47,8 @@
 # Usage:
 #   scripts/ci/install-gg-build-tools.sh
 set -euo pipefail
-# shellcheck source=scripts/ci/lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 export PATH="$HOME/.local/bin:$PATH"
 # shellcheck source=scripts/gg-npm-tools.sh
@@ -63,7 +63,8 @@ source "$REPO_ROOT/scripts/ci/fetch.sh"
 # script that installed a JavaScript runtime would be installing a toolchain, which is what the
 # eleven installers beside this one are for. Named here rather than left to `npm: command not
 # found` four lines later, because that message says nothing about which of the eleven surfaces is
-# missing it. (The devcontainer, the pipeline's agents and the driver image each have one.)
+# missing it. (The devcontainer and the driver image each have one, and a pipeline job gets one from
+# scripts/ci/gg-ci-toolchains.sh.)
 if ! command -v npm >/dev/null 2>&1; then
 	echo "error: no \`npm\` on PATH." >&2
 	echo "       Three of gg's build tools — componentize-js, opal-compiler and spago — are" >&2
@@ -134,9 +135,8 @@ echo "spago $SPAGO_VERSION"
 # `output/` appear in the working tree because a toolchain installer ran.
 #
 # `spago.yaml` and `spago.lock` are the whole input — the package set and the versions it resolved
-# to. Both are in the image contexts for this reason (see the notes in `.dockerignore` and
-# `.devcontainer/ubuntu.dockerfile.dockerignore`); warming without the lockfile would cache a
-# resolution the arm's build then discards.
+# to. Both are in the image contexts for this reason (see the notes in `.dockerignore`); warming
+# without the lockfile would cache a resolution the arm's build then discards.
 SPAGO_CACHE="$(gg_spago_cache "$REGISTRY_VERSION")"
 log "the purescript package set (registry $REGISTRY_VERSION) -> $SPAGO_CACHE"
 mkdir -p "$SPAGO_CACHE"

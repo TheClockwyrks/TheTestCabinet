@@ -41,8 +41,10 @@ the container runtime, `k3d`, and `kubectl` are already provided; on a bare host
 install them yourself. Either way you need:
 
 - A container runtime. k3d runs the cluster nodes as containers, and the bring-up
-  builds images through this runtime. It prefers `podman` when present and falls
-  back to `docker`; override with `CONTAINER_TOOL=… make …`.
+  builds images through this runtime. It prefers `podman` when `podman version`
+  answers and falls back to `docker` (the devcontainer's `podman` is a remote
+  client, which cannot drive a Docker daemon); override with
+  `CONTAINER_TOOL=… make …`.
 - [`k3d`](https://k3d.io) and `kubectl` on `PATH`.
 - `make`.
 - A harness API key, exported in your shell or set in the gitignored repo-root

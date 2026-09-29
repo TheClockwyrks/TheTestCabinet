@@ -5,7 +5,7 @@ title: Internal ingress
 The `components/internal-ingress` kustomize component serves the web console
 in-cluster and exposes it plus the four services over an internal-only
 ingress-nginx, so operators reach an environment by browsing a private URL over
-the VPN. Both the `azure-staging` and `azure-prod` overlays include it, with
+the VPN. Both the `staging` and `prod` overlays include it, with
 `*.staging.tcab.testcabinet.ai` and `*.tcab.testcabinet.ai` hostnames.
 
 The boundary is private. ingress-nginx is installed with the Azure internal-LB

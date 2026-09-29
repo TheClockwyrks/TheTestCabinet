@@ -41,6 +41,8 @@ interface TcabRuntimeConfig {
   readonly authUrl?: string;
 }
 
-interface Window {
-  readonly __TCAB_CONFIG__?: TcabRuntimeConfig;
-}
+/** Assigned by `/config.js`, which the page loads before its first module. */
+// Only `var` declares a property of `globalThis`, which is what a classic script
+// assigning `window.__TCAB_CONFIG__` creates; `let` and `const` would not.
+// eslint-disable-next-line no-var -- see above
+declare var __TCAB_CONFIG__: TcabRuntimeConfig | undefined;

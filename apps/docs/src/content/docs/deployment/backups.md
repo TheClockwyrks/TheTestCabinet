@@ -77,9 +77,13 @@ the two backend-hosting shapes.
 | SQLite (the default) | A single-replica `StatefulSet` with a `PersistentVolumeClaim` | [Litestream](#sqlite-litestream) streaming to object storage, or [scheduled dumps](#sqlite-scheduled-dumps) |
 | Managed PostgreSQL   | A stateless `Deployment`                                      | [Provider backups and point-in-time restore](#managed-postgresql)                                           |
 
-The backend defaults to a single embedded SQLite file, so the SQLite paths below
-apply as-is. PostgreSQL is selected by pointing `TCAB_BACKEND_DATABASE_URL` at a
-`postgres://` instance.
+The backend defaults to a single embedded SQLite file, and the kustomize base runs
+it that way, as does the `local` overlay; the SQLite paths below apply to such a
+deployment as-is. PostgreSQL is selected by pointing `TCAB_BACKEND_DATABASE_URL`
+at a `postgres://` instance. The two remote overlays, `staging` and `prod`, both
+run the managed-PostgreSQL shape (see [PostgreSQL](/deployment/kubernetes/postgres/)),
+so no remote environment has a SQLite database to back up; the SQLite
+strategies are for a deployment made from the base with an overlay of its own.
 
 ## SQLite: Litestream
 

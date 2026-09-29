@@ -202,4 +202,3 @@ public enum class AgentEnding {
     /** An execution ceiling stopped it: consecutive errors, error rate, or cost. */
     LIMIT_EXCEEDED,
 }
-

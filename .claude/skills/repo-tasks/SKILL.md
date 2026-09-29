@@ -43,12 +43,6 @@ Once an issue has been completed, it should be moved into a `done/` folder in
 the same subfolder it's already in. This makes it easy to check what issues have
 and have not been completed without needing to inspect file contents.
 
-Move it with `git mv`. Once it is there the file is immutable: never edit a
-completed issue, including to keep its cross-links or details current. There are
-too many of them for that upkeep to be worth anything, and nothing may depend on
-what they say. A `PreToolUse` hook denies the write. To reopen an issue, move it
-back out of `done/` first, then edit it where it lands.
-
 ### Critical Cross-Linking Only
 
 Insert a cross-link if and only if the reader would frequently want to
@@ -61,6 +55,9 @@ Bold, italics, and fully-capitalized words should be reserved for only the most
 critical of words or phrases. Overuse of bold/italics/capitalization reduces
 readability while simultaneously making it less obvious what's actually
 important, defeating the entire point of using emphasis on critical text.
+
+The RFC2119 keywords in a quoted requirement are the exception. A citation
+quotes the requirement verbatim, keywords and all, and they are not emphasis.
 
 ### Do Not Record Counts
 
@@ -113,6 +110,14 @@ design should *not* do. Specifying what a design should do has an exact target.
 Specifying what a design should not do is attempting to enumerate elements of an
 infinite set.
 
+### No Design Issues
+
+All design changes are strictly required to be handled as part of filing issues.
+**NEVER** file an issue that expects the implementer to change documentation.
+The expectation is that the documentation **always** reflects what the code
+should be written as, and issues record the work needed to align the code with
+the documentation.
+
 ### No Historical Information
 
 If a developer needs to know historical information about an issue, they should
@@ -121,6 +126,7 @@ look through the git history. **NEVER** write sentences like the following:
 ```
 This issue used to specify that ...
 ```
+
 ```
 Section 3 is superseded by ...
 ```
@@ -189,3 +195,23 @@ more likely to be outright skipped or skimmed over by readers, defeating the
 point of issues.
 
 Aim to keep paragraphs as 3-5 sentences on average and no more than 8.
+
+### Requirement Citations
+
+An issue's `## Requirements` section is a list of bullets, one for each
+requirement, every one of them in the form `- ID (Domain): requirement text`.
+The domain is the title of the design page stating the requirement, and the
+text is quoted verbatim from that page's table with its first letter lowercased.
+A citation that needs a gloss carries it as a following sentence after the
+quoted text, which keeps the quote and the commentary separable.
+
+Each bullet stands alone, carrying the domain and the text itself rather than
+leaning on a shared lead-in line or on a list of bare IDs. Quoting the text is
+what lets a reader check the issue against the design page, so a citation and
+the requirement it cites stay in step.
+
+```
+BAD:  - FLEET-2, FLEET-3, from [Fleet configuration](...).
+GOOD: - FLEET-2 (Fleet configuration): every machine's current generation and
+        checkout commit is reported.
+```

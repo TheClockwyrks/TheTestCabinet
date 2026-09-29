@@ -22,9 +22,10 @@ they live in.
 
 ## Prerequisites
 
-- A container runtime (Docker), needed by k3d, which runs the cluster as
-  containers. In the devcontainer this is the host's daemon, reached over a bound
-  socket; on a bare host it is the local daemon.
+- A container runtime (Docker or Podman), needed by k3d, which runs the cluster
+  as containers. In the dev container this is the host's runtime, reached the
+  way the host's `.devcontainer/.env` says (see
+  [The dev container](#the-dev-container)); on a bare host it is the local one.
 - [`k3d`](https://k3d.io) and `kubectl`. Both ship in the devcontainer; install
   them yourself on a bare host.
 - The run-container images (`containers/README.md`) built or pullable for the
@@ -40,11 +41,72 @@ cluster. You run its dev server from source against the forwarded backend, so a
 UI edit hot-reloads instead of forcing an image rebuild. Only staging and
 production serve it in-cluster as the `tcab-web` image.
 
+## The dev container
+
+Everything on this page runs inside the dev container, which is the workspace
+template's (see `.devcontainer/README.md`). It drives the host's container
+runtime rather than running its own, and what differs per host is in
+`.devcontainer/.env`, which compose reads beside `docker-compose.yml`. **Copy
+the host's file there before the first start.** A `.env` from before the
+repository moved onto the workspace template holds variables the compose file no
+longer reads and lacks the ones it does; replace it rather than keeping it.
+
+| Host | `.devcontainer/.env` |
+| --- | --- |
+| macOS, Podman | `cp .devcontainer/.env.macos .devcontainer/.env`. Start `.devcontainer/tools/macos-host-runtime.sh` and the launchd `socat` agent on port 17385 on the Mac first: the runtime and the SSH agent arrive over the Mac's loopback. `.env.macos` describes both |
+| Linux, Podman | `cp .devcontainer/.env.podman .devcontainer/.env`, and set `DEVCONTAINER_SSH_AUTH_SOCK=/run/user/1000/ssh-agent` (or the agent's path) |
+| NixOS, Podman | As Linux Podman, plus `DEVCONTAINER_GID=100` and the `gid=100` in `DEVCONTAINER_USERNS` |
+| Ubuntu, Docker | No `.env` at all, or one setting only `DEVCONTAINER_SSH_AUTH_SOCK=…` and `DEVCONTAINER_RUNTIME_SOCKET=…`; the defaults bind `/var/run/docker.sock` |
+
+The container user is `dev`. The image carries both the `docker` and the
+`podman` client, and its `podman` is a remote client, which cannot drive a
+Docker daemon. So `tcab` and `deployments/local/Makefile` pick `podman` only
+when `podman version` answers, and `docker` otherwise; `TCAB_CONTAINER_RUNTIME`
+and `CONTAINER_TOOL=…` override the choice.
+
+### Background provisioning
+
+The template's image carries none of gg's toolchains and a few of the packages
+the project's tools need. After the container is created, `npm ci` runs the
+root `postinstall`, which starts `scripts/devcontainer-setup.sh` in the
+background and returns within seconds. It installs `ruby`, `libicu-dev`,
+`ffmpeg`, `cmake`, `iproute2`, `lsof` and `procps`, then gg's toolchains (see
+[gg and its eleven toolchains](/development/building/#gg-and-its-eleven-toolchains)),
+then `wrangler`: about 3.4 GB and up to an hour on a first create, repeated
+after every rebuild, because it lives in the container's own layer.
+
+It logs to `~/.cache/tcab-devcontainer-setup.log` and writes
+`~/.cache/tcab-devcontainer-setup.done` when everything installed. Until then a
+build of `crates/gg`, and the `rust-clippy` and `rust-doc` commit hooks, fail
+for the missing toolchains; commit a Rust change meanwhile with
+`SKIP=rust-clippy,rust-doc`. Nothing resumes an interrupted provisioning on the
+next start, so with no marker and no provisioner running, run it again:
+
+```sh
+bash scripts/devcontainer-setup.sh
+```
+
+### Where cargo builds
+
+On a host whose checkout reaches the container over virtiofs or FUSE (macOS
+Podman, Docker Desktop), parallel `rustc` processes writing crate metadata into
+the checkout fail intermittently with E0463. There, the provisioning points cargo
+at `~/.cache/cargo-target/the-test-cabinet`, inside the container, through
+`~/.cargo/config.toml` and an exported `CARGO_TARGET_DIR`. It is rebuilt from
+scratch after every container rebuild, and `make clean` does not reach it. On a
+Linux host, cargo builds into `target/` in the checkout.
+
+Either way `/cargo-target/the-test-cabinet` links to the target directory in
+use, so a path such as `/cargo-target/the-test-cabinet/debug/gg` works on every
+host.
+
 ## The whole stack on k3d
 
 `deployments/local/Makefile` drives the whole stack. It is meant to run inside
-the devcontainer, which ships `docker`, `k3d`, and `kubectl` and binds the host
-daemon socket in; it also works on a bare host with those three installed. For a
+the dev container, which ships the `docker` and `podman` clients, `k3d` and
+`kubectl` and reaches the host's runtime; it also works on a bare host with a
+runtime, `k3d` and `kubectl` installed. The cluster is named `tcab`, so one
+machine runs one local stack. For a
 task-oriented walkthrough see
 [Running the Local Service Stack](/guides/development/running-the-local-service-stack/)
 or its [quickstart](/quickstarts/development/run-the-local-service-stack/).
