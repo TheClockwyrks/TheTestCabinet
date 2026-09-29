@@ -904,14 +904,44 @@ and seed them. A jobs template cannot read the pipeline's image tag variable, so
 
 | Job | Runs on | What it does |
 | --- | --- | --- |
-| `gg_tests_<k>_of_4` | every run | gg's unit tests, one hash partition per job: `gg-test-build.sh`, then `gg-test.sh k/4` |
-| `rust_build` | every run | `rust-build.sh`, the link of every target. When no seed exists for this `Cargo.lock`, it also runs the template gates' clippy, doc and test builds and saves `target/` under a key the template `rust` job restores |
-| `binary_linux` | every run | The release build and tests of `tcab`, its doctests, and the binary smoke |
-| `binary_windows` | every run | The same on `windows-2022` |
-| `submodule_pins` | every run | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
+| `paths` | every run | `changed-paths.sh`: which of the check jobs below a pull request reaches; see [Which check jobs a pull request runs](#which-check-jobs-a-pull-request-runs) |
+| `gg_tests_<k>_of_4` | every push; a pull request that reaches gg | gg's unit tests, one hash partition per job: `gg-test-build.sh`, then `gg-test.sh k/4` |
+| `rust_build` | every push; a pull request that reaches the Rust workspace | `rust-build.sh`, the link of every target. When no seed exists for this `Cargo.lock`, it also runs the template gates' clippy, doc and test builds and saves `target/` under a key the template `rust` job restores |
+| `binary_linux` | every push; a pull request that reaches the Rust workspace | The release build and tests of `tcab`, its doctests, and the binary smoke |
+| `binary_windows` | every push; a pull request that reaches the Rust workspace | The same on `windows-2022` |
+| `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
 | `gg_amd64`, `gg_arm64` | `master`, `staging` | The static gg binary per architecture (`gg-dist.sh`) |
 | `audiostore_<arch>`, `runimages_<arch>`, `services_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh`; the eight service images of an architecture on one builder, so their Rust compile happens once |
 | `mirror` | `master`, `staging`, `nightly` | Force-pushes the branch to GitHub, after every check job |
+
+### Which check jobs a pull request runs
+
+A push to `master`, `staging` or `nightly` runs every check job, so the mirror,
+the images, a deployment and a release always follow a full run. A pull request
+runs the template's `rust` and `web` jobs and, of the project's check jobs, the
+ones its change reaches. The `paths` job decides which: it checks the merge
+commit out two deep and runs `scripts/ci/changed-paths.sh`, which diffs the
+merge commit against its first parent, the target branch, and sets one output
+variable per group of jobs. Each conditional job depends on `paths` and runs
+when its variable is `true`.
+
+The script classifies by exclusion. A changed path reaches a group unless it is
+one the group's jobs are known never to read, so a path the script has no rule
+for runs everything. The `rust` group (`rust_build`, `binary_linux`,
+`binary_windows`) leaves out the documentation site, the web app and gallery,
+the issue board, the deployment manifests, the run-container definitions, the
+gates' own sources under `ci/`, Markdown outside `crates/`, every shell test,
+and the scripts only the image, deploy and release jobs run. The `gg` group
+(the gg test partitions) leaves out those and the test cases and game jams,
+which gg's suite never reads. The `submodules` group (`submodule_pins`) is the
+one allowlist: `.gitmodules`, a submodule's pin, and the script itself. A change
+under `.azure/`, to `ci/images/`, to `rust-toolchain.toml` or to
+`changed-paths.sh` reaches every group.
+
+A run other than a pull request, and a pull request whose checkout is not a
+merge commit, sets every variable to `true`. The `checks` job accepts a skipped
+check job only when `paths` itself succeeded, so a failed `paths` job fails the
+run rather than waving it through.
 
 `rust_build` exists because the template's `rust` job is one job capped at 60
 minutes, and a pipeline cache is saved only after every step of a job
