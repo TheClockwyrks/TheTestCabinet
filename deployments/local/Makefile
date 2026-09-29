@@ -425,10 +425,10 @@ kubeconfig:
 #
 # HOW MUCH THE `-gg` SET COSTS DEPENDS ON THE BUILDER, and the figure above was taken on a
 # dev box rather than on a CI agent. Sharing needs the images to share layer DIGESTS for
-# `/opt/gg`, which `--link` in containers/gg/Dockerfile asks for and which the Azure agents'
-# builder does not deliver (one distinct ~898.6 MB blob per variant; the comment on that COPY
-# carries the measurement). A `make run-images` here that produces twenty-seven distinct
-# copies writes an archive several times the size above, so re-take the measurement rather
+# `/opt/gg`, which `--link` in containers/gg/Dockerfile delivers now that the copy takes
+# `/opt` and creates no parent directory of its own (the comment on that COPY carries the
+# measurement). A build that prints twenty-seven different `/opt/gg layer:` lines has lost
+# it and writes an archive several times the size above, so re-take the measurement rather
 # than trusting it if a local import starts running the disk out.
 #
 # Images are imported as a saved archive rather than by name: `k3d image import` does its

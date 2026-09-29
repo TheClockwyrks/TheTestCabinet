@@ -899,7 +899,7 @@ and seed them. A jobs template cannot read the pipeline's image tag variable, so
 | `binary_windows` | every run | The same on `windows-2022` |
 | `submodule_pins` | every run | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
 | `gg_amd64`, `gg_arm64` | `master`, `staging` | The static gg binary per architecture (`gg-dist.sh`) |
-| `audiostore_<arch>`, `runimages_<arch>`, `service_<svc>_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh` |
+| `audiostore_<arch>`, `runimages_<arch>`, `services_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh`; the eight service images of an architecture on one builder, so their Rust compile happens once |
 | `mirror` | `master`, `staging`, `nightly` | Force-pushes the branch to GitHub, after every check job |
 
 `rust_build` exists because the template's `rust` job is one job capped at 60
@@ -917,7 +917,11 @@ and `arm64` on the organisation's arm64 pool
 two into the multi-arch `<image>:<sha>` a deployment pins. The audio store is
 built first, because the driver image bakes `test-cabinet-audio-store:<sha>`,
 and the run images are pushed only after `gg selfcheck` passes inside each
-`-gg` environment.
+`-gg` environment. The eight service images of an architecture are built by
+one job on one builder (`service-images.sh`), because seven of them share one
+`cargo build` of the service binaries; a separate job per image compiled it
+seven times over. The 27 `-gg` run images share one `/opt/gg` layer, so the
+registry stores it once and each push after the first mounts it.
 
 The `mirror` job force-pushes the branch with its tags to
 `github.com/TheClockwyrks/TheTestCabinet`, with the deploy key held in the

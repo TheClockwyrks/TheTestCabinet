@@ -39,7 +39,7 @@ FROM ${BASE_IMAGE}
 # The whole toolchain tree. `COPY` writes as root regardless of the inherited `USER node`;
 # the unprivileged run user only executes what is here.
 #
-# TWO CLAIMS LIVE ON THIS LINE, and only the first of them holds today.
+# TWO CLAIMS LIVE ON THIS LINE.
 #
 # THE TREE IS BYTE-IDENTICAL on every variant: 7826 files, 2 162 625 760 bytes, at the same
 # absolute path, copied out of one builder image. That is what lets one gg binary drive a
@@ -48,44 +48,40 @@ FROM ${BASE_IMAGE}
 # (what differs between two variants is the environment, never the tree). Nothing here
 # affects it.
 #
-# THE LAYER IS NOT SHARED, however, and `--link` is the flag meant to make it so: it asks
-# BuildKit to build the layer rooted at `scratch` and merge it in, rather than diffing it
-# against this variant's parent snapshot, so every variant would carry ONE digest for those
-# bytes and a registry, a node pull and a `docker save` would each hold them once. Measured
-# against the pipeline's own output that is not what happens: the registry holds one
-# distinct ~898.6 MB blob PER VARIANT, 12.6 GB of the 13.3 GB a run-image build pushes,
-# while the entire rest of the run-image set is 0.8 GB. Under `RECLAIM=1`, which
-# `scripts/ci/run-images.sh` sets, `containers/build.sh` removes each pushed image and prunes
-# the builder cache as it goes, so the agent's store survives the set regardless; and
-# `build_gg_variant` prints this layer's digest per variant, so the next build answers the
-# sharing question in its own log.
+# THE LAYER IS SHARED: every variant carries ONE digest for those bytes, so a registry, a
+# node pull and a `docker save` each hold them once, and a push of the twenty-seventh variant
+# mounts the blob the first one uploaded instead of uploading ~900 MB again. `--link` is what
+# asks for that: BuildKit builds the layer rooted at `scratch` and merges it in, rather than
+# diffing it against this variant's parent snapshot. IT IS THE SOURCE PATH THAT DELIVERS IT.
+# This line copies `/opt`, the root of the builder image's whole filesystem
+# (`containers/gg-toolchains/Dockerfile` ends `FROM scratch` and copies `/opt/gg` into it, so
+# `/opt` holds `gg` and nothing else), and not `/opt/gg`. Copying `/opt/gg` made the copy
+# create `opt/` itself as the parent of what it wrote, and a directory the copy creates gets
+# the moment of the build as its mtime, so the layer's tar carried one `opt/` entry per
+# variant with a different timestamp in each: twenty-seven distinct blobs of the same bytes,
+# 12.6 GB of the 13.3 GB a run-image build pushed. Copying `/opt` makes that entry the
+# builder image's own, stamped once when the builder was built, and the layer is then
+# bit-identical from variant to variant. Measured on the daemon's builtin builder, with the
+# stock image store: two variants of different parents got one digest, and the second push
+# was mounted. Neither the containerd image store nor a `# syntax=` directive changes the
+# outcome (each was measured too, and each leaves the parent-directory timestamp in place),
+# which is why this file names no frontend and the agents run a stock daemon.
 #
-# WHY THIS FILE STILL HAS NO `# syntax=` DIRECTIVE, having been tried. `containers/base`,
-# `containers/tools` and `containers/gg-toolchains` all name the pinned external Dockerfile
-# frontend and this one does not, so a variant is built with the daemon's VENDORED frontend —
-# which is the likeliest place `--link` is being dropped, and therefore a tempting one-line
-# experiment. It does not belong in this file by default, for two reasons that are about cost
-# rather than about the hypothesis:
+# `build_gg_variant` in `containers/build.sh` prints this layer's diff ID per variant, so
+# every run-image build answers the sharing question in its own log: the twenty-seven lines
+# must agree. A change that reintroduces a created parent directory, or copies anything the
+# builder image did not stamp itself, shows up there as twenty-seven different digests.
 #
-#   - This file is built TWENTY-SEVEN TIMES per run-image job, and `containers/build.sh`
-#     prunes the builder cache between variants, which discards the cached frontend
-#     resolution too. The last run-image build made exactly three Docker Hub frontend
-#     requests for all fifty-five images; the directive here would make it thirty per leg,
-#     sixty per staging run. Any one of them answering `toomanyrequests` fails a variant
-#     roughly two hours into the one job in the pipeline that cannot be exercised before it
-#     merges and must be re-run whole.
-#   - The offline argument is not void. `containers/README.md` documents pointing
-#     `GG_TOOLCHAINS_IMAGE` at the published toolchain tag so that `./build.sh <name>-gg`
-#     rebuilds nothing else; on that path this Dockerfile is the only one built, so a
-#     directive here would be the only thing reaching a registry for a frontend.
-#
-# `--link` is ACCEPTED by the vendored frontend — these twenty-seven variants have been built
-# with it — so nothing here fails without the directive, and `build_gg_variant` prints each
-# variant's layer digest so the sharing question is answered from an ordinary build log. Test
-# the directive deliberately under the backlog issue that owns the duplication
-# (`tasks/backlog/share-one-opt-gg-layer-across-the-gg-run-image-variants.md`), not as a side
-# effect of a disk fix.
-COPY --link --from=ggtools /opt/gg /opt/gg
+# WHY THIS FILE HAS NO `# syntax=` DIRECTIVE. `containers/base`, `containers/tools` and
+# `containers/gg-toolchains` all name the pinned external Dockerfile frontend and this one
+# does not, so a variant is built with the daemon's vendored frontend, which accepts `--link`
+# and shares the layer as measured above. The directive would cost what it cannot buy: this
+# file is built TWENTY-SEVEN TIMES per run-image job, and `containers/build.sh` prunes the
+# builder cache between variants, which discards the cached frontend resolution too, so the
+# directive would turn three Docker Hub frontend requests per run-image build into thirty per
+# leg. Any one of them answering `toomanyrequests` fails a variant roughly an hour into the
+# one job in the pipeline that cannot be exercised before it merges and must be re-run whole.
+COPY --link --from=ggtools /opt /opt
 
 # Put the toolchains on `PATH` ahead of nothing: a language's compiler is found here, and
 # anything the base image already provides keeps working unchanged.

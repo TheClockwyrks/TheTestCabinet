@@ -19,9 +19,9 @@ Restore both.
 
 ## The stage has no CI coverage
 
-Before `scripts/ci/gg-prebuilt.sh`, the `service_backend_{amd64,arm64}` and
-`service_driver_{amd64,arm64}` jobs all built this stage on every `master` and `staging`
-run, which is how this segfault was found. They now replace it with
+Before `scripts/ci/gg-prebuilt.sh`, the service-image jobs (today `services_{amd64,arm64}`,
+one per architecture, building every service image) built this stage on every `master`
+and `staging` run, which is how this segfault was found. They now replace it with
 `--build-context gg-build=<dir>`, and no other pipeline job builds it.
 
 So a commit that breaks the stage merges fully green. Editing

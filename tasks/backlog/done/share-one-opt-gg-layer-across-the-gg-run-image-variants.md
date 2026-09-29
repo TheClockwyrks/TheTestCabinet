@@ -70,3 +70,23 @@ and contradicts a documented decision: `containers/gg/Dockerfile` argues the com
 must be on the turn path at image build time and that a variant is the same run image with
 the same binaries, and `harness::gg_variant` in `crates/core` resolves a run to a baked
 variant.
+
+## Resolution
+
+The layer was built from `scratch` as `--link` asks, on every builder tried; what differed
+was the parent directory. `COPY --link --from=ggtools /opt/gg /opt/gg` made the copy create
+`opt/` itself, and a directory the copy creates carries the moment of the build as its
+mtime, so each variant's layer tar held an `opt/` entry with a different timestamp. Measured
+on a stock Docker 28 daemon with the builtin builder, two variants of different parents got
+distinct diff IDs with and without a `# syntax=` directive, with and without the containerd
+image store, and with `SOURCE_DATE_EPOCH` set; so neither hypothesis above was the fix.
+
+`containers/gg/Dockerfile` now copies `/opt`, the whole filesystem of the toolchain builder
+image (`FROM scratch` plus `/opt/gg`), so the `opt/` entry is the builder image's own and
+the layer is bit-identical from variant to variant: one diff ID on the stock image store and
+on the containerd store alike, and the second push of it was mounted from the first
+variant's repository. The `/opt/gg layer:` line `build_gg_variant` prints was empty because
+`--format` appends a newline after the template's last `println`; it now prints the diff ID,
+so a run-image build's log answers the sharing question with twenty-seven identical lines.
+The reclaim stays, because the local store still chains each variant's copy under its own
+parent.

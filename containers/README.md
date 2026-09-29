@@ -842,12 +842,14 @@ instead of paying for the fetch again. Because it is not in `image-names.sh`, th
 run-image manifest job, which is driven by that list, appends it to the images it hands
 `scripts/ci/manifest.sh`.
 
-Publishing it is one more copy of the tree rather than a free one. `gg/Dockerfile`
-copies `/opt/gg` with `--link` so that every variant's layer would carry one digest and
-the registry would store those bytes once; the pipeline's builder does not deliver that,
-and the registry holds one distinct ~898.6 MB blob per variant instead. The comment on
-that `COPY` carries the measurement and `build.sh` prints each variant's layer digest as
-it builds, so the next build reports it.
+Publishing it is one more copy of the tree in the registry; the variants themselves add
+none. `gg/Dockerfile` copies `/opt` (the builder image's whole filesystem, which is
+`/opt/gg` and nothing else) with `--link`, so every variant carries one digest for those
+bytes and the registry stores them once, mounting the blob into each variant's repository
+after the first push. Copying `/opt/gg` rather than `/opt` used to make the copy create
+the parent directory at build time, stamped with that build's moment, which is what made
+twenty-seven distinct blobs. The comment on that `COPY` carries the measurement and
+`build.sh` prints each variant's layer digest as it builds, so the next build reports it.
 
 Three constraints bind every toolchain added to it, and all three are written down in the
 Dockerfile's header. It must be **relocatable and distribution-portable** — the same tree
