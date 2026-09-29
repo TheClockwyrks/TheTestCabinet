@@ -172,8 +172,10 @@ then deletes the other commit tags (`<sha>`, `<sha>-<arch>`), every
 `inputs-<hex>-<arch>` manifest but the newest per architecture (the last build of
 unchanged inputs stays reusable), and the untagged manifests older than an hour
 that no remaining index names. `buildcache-*`, `latest` and any other tag are
-always kept, and a cluster that cannot be read stops it with nothing deleted.
-After the CI-images pipeline pushes, `ci-image-purge.sh` (from
+always kept, and a cluster that cannot be read stops it with nothing deleted, as
+does a token the registry issued without `delete` (the identity lacks AcrDelete,
+or the role was assigned to its application id rather than its object id). After
+the CI-images pipeline pushes, `ci-image-purge.sh` (from
 `.azure/project/ci-image-steps.yml`, with the `the-test-cabinet-acr`
 credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
 repository every tag that `master`, `staging`, `nightly` and the checkout do not
@@ -300,15 +302,15 @@ script calls on `PATH`, no network, no registry and no cluster.
 
 No job holds a stored credential of its own:
 
-| Name                                                                                                                                                | Kind                                                      | Used by                                                                 |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `the-test-cabinet-acr`                                                                                                                              | Docker Registry connection (workload identity), `AcrPush` | every container job's image pull, the image jobs' pushes, the CI images |
-| `tcab-deploy`                                                                                                                                       | Azure Resource Manager connection (workload identity)     | the publish stage and `publish_backend` (`AcrPush`), both deploys       |
-| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager connection (workload identity)     | `gg_publish` (Storage Blob Data Contributor on `testcabinetartifacts`)  |
-| `github-mirror-key`                                                                                                                                 | secure file, a deploy key with write access to the mirror | `mirror`                                                                |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | secret pipeline variables                                 | `docs`                                                                  |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | secret pipeline variables                                 | `audiostore_<arch>`                                                     |
-| the job token (`System.AccessToken`)                                                                                                                | per run                                                   | `submodule_pins`; the release gate, which may view and queue main runs  |
+| Name                                                                                                                                                | Kind                                                                             | Used by                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `the-test-cabinet-acr`                                                                                                                              | Docker Registry connection (workload identity), `AcrPush` and `AcrDelete`        | every container job's image pull, the image jobs' pushes, the CI images and their purge |
+| `tcab-deploy`                                                                                                                                       | Azure Resource Manager connection (workload identity), `AcrPush` and `AcrDelete` | the publish stage and `publish_backend`, both deploys and the registry purge after each |
+| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager connection (workload identity)                            | `gg_publish` (Storage Blob Data Contributor on `testcabinetartifacts`)                  |
+| `github-mirror-key`                                                                                                                                 | secure file, a deploy key with write access to the mirror                        | `mirror`                                                                                |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | secret pipeline variables                                                        | `docs`                                                                                  |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | secret pipeline variables                                                        | `audiostore_<arch>`                                                                     |
+| the job token (`System.AccessToken`)                                                                                                                | per run                                                                          | `submodule_pins`; the release gate, which may view and queue main runs                  |
 
 `tcab-deploy` holds "Azure Kubernetes Service RBAC Admin" on each cluster's
 application namespace and the custom "Test Cabinet AKS Command Invoke" role

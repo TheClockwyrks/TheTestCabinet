@@ -7,9 +7,11 @@
 # The az stub answers `acr login --expose-token` with a refresh token and
 # `aks command invoke` with the result shape lib.sh's aks_invoke reads, its
 # logs taken from cluster-<resource-group>.txt. The curl stub is the registry:
-# its token endpoint mints a token naming the scope asked for, and every
-# other request must carry the token of the one repository (or the catalogue)
-# it is about. It answers the catalogue from repositories.json, a
+# its token endpoint mints a token shaped as the registry's are (a JWT whose
+# payload's `access` claim carries the scope asked for, less `delete` under
+# STUB_NO_DELETE, as the registry does for an identity without AcrDelete), and
+# every other request must carry the token of the one repository (or the
+# catalogue) it is about. It answers the catalogue from repositories.json, a
 # repository's manifests from <repository>.json (404 without one), a manifest
 # read from <repository>@<digest>.json, and records every DELETE in a log,
 # answering the status a variable names.
@@ -18,7 +20,8 @@
 # the newest), which tagged manifests each keeps, the inputs-tag rule, the
 # untagged pass with its grace period and child protection, that a cluster
 # that cannot be read deletes nothing, and the credential path: one sign-in,
-# one token per repository, each used for that repository alone.
+# one token per repository, each used for that repository alone, and a token
+# without the right to delete stopping the run before it lists anything.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +75,26 @@ mkdir -p "$repo/scripts/ci" "$repo/bin" "$stub"
 cp "$CI_DIR/registry-purge.sh" "$CI_DIR/lib.sh" "$repo/scripts/ci/"
 
 readonly HOST="testcabinet.azurecr.io"
+
+# mint-token <scope>: the token the stub registry issues for one scope, as
+# the real one shapes it: base64url of a payload whose `access` claim names
+# the scope's type, name and actions, between a header and a signature that
+# nothing reads. STUB_NO_DELETE leaves `delete` out of the actions, as the
+# registry does for an identity that holds no AcrDelete. The curl stub mints
+# with it and checks each request's token against it; the test's expectations
+# are computed with it too.
+cat >"$repo/bin/mint-token" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=: read -r type name actions <<<"$1"
+if [ -n "${STUB_NO_DELETE:-}" ]; then
+	actions="$(tr ',' '\n' <<<"$actions" | grep -vx delete | paste -sd,)"
+fi
+payload="$(jq -nc --arg type "$type" --arg name "$name" --arg actions "$actions" \
+	'{access: [{type: $type, name: $name, actions: ($actions | split(","))}]}' |
+	base64 -w0 | tr '+/' '-_' | tr -d '=')"
+printf 'stub-header.%s.stub-signature' "$payload"
+STUB
 
 # az: the registry sign-in, which STUB_ACR_LOGIN_FAIL refuses and whose token
 # STUB_REFRESH_TOKEN can misname, and the clusters.
@@ -170,14 +193,14 @@ answer() { # status body
 	exit 0
 }
 authorized() { # scope
-	[ "$authorization" = "Bearer token-for-$1" ] ||
+	[ "$authorization" = "Bearer $(mint-token "$1")" ] ||
 		answer 401 '{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}'
 }
 case "$url" in
 	*/oauth2/token)
 		[ "$refresh" = "refresh-token" ] ||
 			answer 401 '{"errors":[{"code":"UNAUTHORIZED","message":"the refresh token is invalid"}]}'
-		answer 200 "{\"access_token\":\"token-for-$scope\"}"
+		answer 200 "{\"access_token\":\"$(mint-token "$scope")\"}"
 		;;
 	*/acr/v1/_catalog*)
 		authorized 'registry:catalog:*'
@@ -227,7 +250,7 @@ case "$url" in
 		;;
 esac
 STUB
-chmod +x "$repo/bin/az" "$repo/bin/curl"
+chmod +x "$repo/bin/az" "$repo/bin/curl" "$repo/bin/mint-token"
 
 readonly LIVE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 readonly NEWEST="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -241,8 +264,10 @@ readonly IMAGE="application/vnd.oci.image.manifest.v1+json"
 
 at() { date --utc --date="$1" +%Y-%m-%dT%H:%M:%S.0000000Z; }
 
-# The token the stub mints for one repository, as the curl log shows it.
-token_for() { echo "Bearer token-for-repository:$1:pull,delete,metadata_read"; }
+# The tokens the stub mints for one repository and for the catalogue, as the
+# curl log shows them.
+token_for() { echo "Bearer $(PATH="$repo/bin:$PATH" mint-token "repository:$1:pull,delete,metadata_read")"; }
+catalog_token() { echo "Bearer $(PATH="$repo/bin:$PATH" mint-token 'registry:catalog:*')"; }
 
 # One manifest, as the registry's listing prints it.
 manifest() { # digest when size media-type [tag...]
@@ -371,7 +396,7 @@ check_contains "signs in to the registry through az, exposing the token" \
 	"acr login --name testcabinet --expose-token" "$(az_log)"
 check_equal "once, and makes no other az acr call" "1" "$(az_log | grep -c '^acr ')"
 check_contains "lists the catalogue with a token of its own" \
-	"GET https://$HOST/acr/v1/_catalog?n=500 Bearer token-for-registry:catalog:*" "$(curl_log)"
+	"GET https://$HOST/acr/v1/_catalog?n=500 $(catalog_token)" "$(curl_log)"
 check_contains "lists at most 500 manifests, with the repository's token" \
 	"GET https://$HOST/acr/v1/tcab-backend/_manifests?n=500 $(token_for tcab-backend)" "$(curl_log)"
 check_contains "reads a kept index's children as a manifest" \
@@ -517,6 +542,22 @@ check_contains "naming the scope refused" "the registry refused a token for regi
 check_contains "and that nothing was deleted" "could not list the registry's repositories. Nothing was deleted." "$out"
 check_equal "which is so" "" "$(deleted)"
 check_lacks "nothing having been listed" "_manifests" "$(curl_log)"
+
+echo "--- a token without the right to delete ---"
+write_fixtures
+out="$(STUB_NO_DELETE=1 run)"
+check_equal "exits 1" "1" "$?"
+check_contains "names the repository and the missing role" \
+	"the registry granted no delete on tcab-backend: the signed-in identity does not hold AcrDelete on testcabinet." "$out"
+check_contains "and where the role goes" "object id, not its application id" "$out"
+check_contains "and that nothing was deleted" "registry-purge.sh: nothing was deleted." "$out"
+check_equal "which is so" "" "$(deleted)"
+check_lacks "before any repository was listed" "_manifests" "$(curl_log)"
+check_contains "the catalogue having been read" "GET https://$HOST/acr/v1/_catalog?n=500" "$(curl_log)"
+write_fixtures
+out="$(STUB_NO_DELETE=1 run --dry-run)"
+check_equal "a dry run stops there too" "1" "$?"
+check_contains "for the same reason" "the registry granted no delete on tcab-backend" "$out"
 
 echo "--- usage ---"
 write_fixtures

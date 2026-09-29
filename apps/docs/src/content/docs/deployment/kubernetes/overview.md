@@ -168,6 +168,19 @@ environment:
      --role "Azure Kubernetes Service RBAC Admin" --scope "$AKS_ID/namespaces/tcab-prod"
    ```
 
+5. Grant the same identity its two roles on the registry. `<deploy-principal-id>`
+   is again the service principal's object id or application id, which
+   `--assignee` resolves; see [The deploy identity](#the-deploy-identity) for
+   why `--assignee-object-id` must never be given the application id:
+
+   ```sh
+   ACR_ID=$(az acr show --name testcabinet --query id -o tsv)
+   az role assignment create --assignee <deploy-principal-id> \
+     --role AcrPush --scope "$ACR_ID"
+   az role assignment create --assignee <deploy-principal-id> \
+     --role AcrDelete --scope "$ACR_ID"
+   ```
+
 Re-apply step 3 whenever anything under `deployments/k8s/cluster/` changes. The
 pipeline refuses to deploy an overlay that renders a cluster-scoped object, so a
 change that needs one lands in `deployments/k8s/cluster/` and is applied here.
@@ -267,12 +280,14 @@ inputs changed (see
 
 The deploy runs under the `tcab-deploy` Azure Resource Manager service
 connection, a workload-identity-federated identity with no stored secret. It
-holds two roles on each cluster and nothing else:
+holds two roles on each cluster and two on the registry, and nothing else:
 
-| Plane   | Role                                     | Scope                                         |
-| ------- | ---------------------------------------- | --------------------------------------------- |
-| Control | Test Cabinet AKS Command Invoke (custom) | the cluster resource                          |
-| Data    | Azure Kubernetes Service RBAC Admin      | `<cluster resource id>/namespaces/tcab-<env>` |
+| Plane    | Role                                     | Scope                                         |
+| -------- | ---------------------------------------- | --------------------------------------------- |
+| Control  | Test Cabinet AKS Command Invoke (custom) | the cluster resource                          |
+| Data     | Azure Kubernetes Service RBAC Admin      | `<cluster resource id>/namespaces/tcab-<env>` |
+| Registry | AcrPush                                  | `testcabinet.azurecr.io`                      |
+| Registry | AcrDelete                                | `testcabinet.azurecr.io`                      |
 
 The custom role is defined in `deployments/azure/aks-command-invoke.role.json`
 with three actions, `Microsoft.ContainerService/managedClusters/read`,
@@ -289,7 +304,23 @@ nothing outside it. The pipeline therefore applies namespaced objects only:
 the overlays render nothing cluster-scoped, `deploy-environment.sh` checks each
 render before applying it, and the `k8s-manifests` and `k8s-deploy-sets` gates
 hold every commit to the same check. A compromised pipeline can at worst rewrite
-its own environment's namespace.
+its own environment's namespace and delete images from the registry, which a
+rebuild puts back.
+
+On the registry, AcrPush is the publish stage's sign-in and AcrDelete is what
+lets `scripts/ci/registry-purge.sh` delete. The registry never refuses a token
+request for an action the identity has no right to: it issues the token without
+that action, and each request made with it answers 401. The purge therefore
+reads the actions its token was granted and stops before deleting anything when
+`delete` is not among them, naming this role.
+
+Every role is assigned to the service principal's **object id**, never its
+application (client) id, which is what the service connection displays.
+`az role assignment create --assignee <id>` accepts either and looks the
+principal up; `--assignee-object-id` takes the object id only, and given the
+application id it creates an assignment that names no principal and grants
+nothing, without a word of complaint. An assignment whose principal the portal
+or `az role assignment list` cannot name is one of these.
 
 ## Applying an overlay by hand
 

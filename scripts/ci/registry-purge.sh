@@ -85,10 +85,17 @@
 # five calls per repository across 65-odd repositories, which came to about
 # 30 minutes a run, where the same REST calls take 0.6 s each. A token per
 # repository is also what makes a delete aimed at the wrong repository
-# impossible: the registry refuses it. A delete that fails is reported and the
-# rest still run; the exit status is 1 if any failed, and the next run tries
-# them again. The output is the commits kept, one block per repository, and
-# the approximate size of what went.
+# impossible: the registry refuses it. The registry never refuses a token
+# request for an action the identity has no right to, though: it issues the
+# token without that action, and every delete made with it answers 401. So
+# each repository token's granted actions are read out of the token before
+# anything is listed, and one without `delete` stops the run with nothing
+# deleted, naming the role the identity lacks (AcrDelete, on the service
+# principal's object id and not its application id), in a dry run too, since
+# a dry run is a preview of the real one. A delete that fails is reported and
+# the rest still run; the exit status is 1 if any failed, and the next run
+# tries them again. The output is the commits kept, one block per repository,
+# and the approximate size of what went.
 set -euo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -150,6 +157,31 @@ access_token() {
 # manifests, delete, and metadata_read to list them.
 repository_token() {
 	access_token "repository:${1}:pull,delete,metadata_read"
+}
+
+# The actions an access token was granted, one per line, read from the
+# `access` claim of its payload. The scope a token was asked for says nothing
+# about what it carries: the registry drops the actions the identity has no
+# right to and issues the token anyway. Prints nothing for a token that does
+# not decode.
+granted_actions() {
+	local payload
+	payload="$(cut -d. -f2 <<<"$1" | tr -- '-_' '+/')"
+	# base64url drops the padding; base64 -d wants it back.
+	payload+="$(printf '%*s' $(((4 - ${#payload} % 4) % 4)) '' | tr ' ' '=')"
+	base64 -d <<<"$payload" 2>/dev/null | jq -r '.access[]?.actions[]?' 2>/dev/null || true
+}
+
+# Fails, saying why, when the token for one repository carries no `delete`.
+# One repository without it means them all, because the role is on the
+# registry, so the caller stops the run on the first.
+check_can_delete() {
+	local repository="$1" token="$2"
+	if grep -qx delete <<<"$(granted_actions "$token")"; then
+		return 0
+	fi
+	echo "registry-purge.sh: the registry granted no delete on ${repository}: the signed-in identity does not hold AcrDelete on ${REGISTRY}. The role goes on the service principal's object id, not its application id; assigned to the application id it names no principal and grants nothing." >&2
+	return 1
 }
 
 # The repositories this purge owns: every one the registry's catalogue lists
@@ -483,13 +515,19 @@ main() {
 	# decided across all of them. A repository that cannot be listed, or that
 	# no token could be had for, is reported and left alone; the rest still
 	# run. The token a repository was listed with is the one everything else
-	# done to it uses.
+	# done to it uses, so it is the one checked for the right to delete: a
+	# token without it stops the run here, before a listing, let alone a
+	# delete.
 	local repository token
 	local -a listed=() listings=()
 	local -A tokens=()
 	while read -r repository; do
 		[[ -n "$repository" ]] || continue
-		if token="$(repository_token "$repository")" &&
+		if token="$(repository_token "$repository")" && ! check_can_delete "$repository" "$token"; then
+			echo "registry-purge.sh: nothing was deleted." >&2
+			exit 1
+		fi
+		if [[ -n "$token" ]] &&
 			list_manifests "$repository" "$token" >"${WORK}/${repository}.json"; then
 			listed+=("$repository")
 			listings+=("${WORK}/${repository}.json")
