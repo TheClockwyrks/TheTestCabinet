@@ -73,10 +73,22 @@
 #
 # The caller is signed in to Azure as an identity holding AcrDelete on the
 # registry and the command-invoke role on both clusters (the `tcab-deploy`
-# connection). A delete that fails is reported and the rest still run; the
-# exit status is 1 if any failed, and the next run tries them again. The
-# output is the commits kept, one block per repository, and the approximate
-# size of what went.
+# connection). The clusters are asked through `az aks command invoke`. The
+# registry is spoken to directly, over its REST API with curl: one
+# `az acr login --expose-token` turns the Azure sign-in into a registry
+# refresh token (no docker involved; it works for the pipeline's service
+# principal and for a developer's `az login` alike), and the registry's own
+# token endpoint exchanges that for an access token per repository, scoped to
+# that repository's pull, delete and metadata_read, and one for the
+# catalogue. That is the run's only `az acr` call, because each one costs
+# about 5.5 s of Python start-up and authentication: the purge makes four or
+# five calls per repository across 65-odd repositories, which came to about
+# 30 minutes a run, where the same REST calls take 0.6 s each. A token per
+# repository is also what makes a delete aimed at the wrong repository
+# impossible: the registry refuses it. A delete that fails is reported and the
+# rest still run; the exit status is 1 if any failed, and the next run tries
+# them again. The output is the commits kept, one block per repository, and
+# the approximate size of what went.
 set -euo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -90,6 +102,9 @@ readonly UNTAGGED_MIN_AGE="1 hour"
 # The two tag classes with a policy. A tag matching neither is always kept.
 readonly COMMIT_TAG='^[0-9a-f]{40}(-(amd64|arm64))?$'
 readonly INPUTS_TAG='^inputs-[0-9a-f]+-(amd64|arm64)$'
+# What a manifest read accepts: an index or a manifest list, whose children
+# are wanted, and a plain image, which has none.
+readonly MANIFEST_MEDIA_TYPES="application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
 # The environments whose running commits are kept: name, resource group,
 # cluster, namespace.
 readonly ENVIRONMENTS=(
@@ -102,51 +117,104 @@ usage() {
 	exit 1
 }
 
-# The repositories this purge owns: every one the registry lists whose name
-# starts with `tcab-` or `test-cabinet-`, sorted. Fails when the registry
-# cannot be listed.
-list_repositories() {
-	az acr repository list --name "$REGISTRY" --only-show-errors --output json </dev/null |
-		jq -r '.[] | select(test("^(tcab-|test-cabinet-)"))' | sort
+# The registry refresh token of the signed-in Azure identity, as `az acr
+# login` would hand docker. The run's one `az acr` call.
+registry_refresh_token() {
+	az acr login --name "$REGISTRY" --expose-token \
+		--only-show-errors --output tsv --query accessToken </dev/null
 }
 
-# The manifests of one repository, as `az acr manifest list-metadata` gives
-# them: digest, tags, lastUpdateTime, imageSize and mediaType. A repository
-# that does not exist (any more) is an empty list.
+# Exchanges the refresh token for an access token carrying one scope, at the
+# registry's token endpoint. A refresh token lasts about three hours and an
+# access token over one, both far longer than a run, so a token is asked for
+# once per scope. Fails when the registry refuses or answers with no token.
+access_token() {
+	local scope="$1" token
+	if ! token="$(curl --silent --show-error --fail \
+		--data-urlencode "grant_type=refresh_token" \
+		--data-urlencode "service=${REGISTRY_HOST}" \
+		--data-urlencode "scope=${scope}" \
+		--data-urlencode "refresh_token=${REFRESH_TOKEN}" \
+		"https://${REGISTRY_HOST}/oauth2/token" </dev/null | jq -r '.access_token // empty')"; then
+		echo "registry-purge.sh: the registry refused a token for ${scope}." >&2
+		return 1
+	fi
+	if [[ -z "$token" ]]; then
+		echo "registry-purge.sh: the registry returned no access token for ${scope}." >&2
+		return 1
+	fi
+	printf '%s' "$token"
+}
+
+# The access token for one repository and nothing else: pull to read its
+# manifests, delete, and metadata_read to list them.
+repository_token() {
+	access_token "repository:${1}:pull,delete,metadata_read"
+}
+
+# The repositories this purge owns: every one the registry's catalogue lists
+# whose name starts with `tcab-` or `test-cabinet-`, sorted. Fails when the
+# catalogue cannot be read.
+list_repositories() {
+	local token
+	token="$(access_token "registry:catalog:*")" || return 1
+	curl --silent --show-error --fail \
+		--header "Authorization: Bearer ${token}" \
+		"https://${REGISTRY_HOST}/acr/v1/_catalog?n=500" </dev/null |
+		jq -r '.repositories[] | select(test("^(tcab-|test-cabinet-)"))' | sort
+}
+
+# The manifests of one repository, as the registry's own listing gives them:
+# digest, tags, lastUpdateTime, imageSize and mediaType, unwrapped from the
+# listing into the array the rest of this reads. A repository that does not
+# exist (any more) is an empty list; any other answer than the listing is a
+# failure, with its status on stderr.
 list_manifests() {
-	local repository="$1" errors
-	errors="$(mktemp)"
-	if az acr manifest list-metadata \
-		--registry "$REGISTRY" --name "$repository" --top 500 \
-		--only-show-errors --output json </dev/null 2>"$errors"; then
-		rm -f "$errors"
-		return 0
-	fi
-	if grep -qi "not found" "$errors"; then
-		rm -f "$errors"
-		echo "[]"
-		return 0
-	fi
-	cat "$errors" >&2
-	rm -f "$errors"
-	return 1
+	local repository="$1" token="$2" body status result=0
+	body="$(mktemp)"
+	status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+		--header "Authorization: Bearer ${token}" \
+		"https://${REGISTRY_HOST}/acr/v1/${repository}/_manifests?n=500" </dev/null)" || status="000"
+	case "$status" in
+		200) jq '.manifests // []' "$body" || result=1 ;;
+		404) echo "[]" ;;
+		*)
+			echo "registry-purge.sh: listing ${repository} answered HTTP ${status}." >&2
+			result=1
+			;;
+	esac
+	rm -f "$body"
+	return "$result"
 }
 
 # The digests an index names, one per line. Nothing for a plain image
-# manifest.
+# manifest. Fails when the manifest cannot be read.
 children_of() {
-	local repository="$1" digest="$2"
-	az acr manifest show \
-		--registry "$REGISTRY" --name "${repository}@${digest}" \
-		--only-show-errors --output json </dev/null |
+	local repository="$1" digest="$2" token="$3"
+	curl --silent --show-error --fail \
+		--header "Authorization: Bearer ${token}" \
+		--header "Accept: ${MANIFEST_MEDIA_TYPES}" \
+		"https://${REGISTRY_HOST}/v2/${repository}/manifests/${digest}" </dev/null |
 		jq -r '.manifests[]?.digest'
 }
 
+# Deletes one manifest. Judged by the status rather than curl's own success,
+# because one failure is none: deleting a manifest list deletes the manifests
+# it names, so a child deleted in the same pass as its list is already gone
+# when its turn comes, and the registry answers 404.
 delete_manifest() {
-	local repository="$1" digest="$2"
-	az acr repository delete \
-		--name "$REGISTRY" --image "${repository}@${digest}" \
-		--yes --only-show-errors --output none </dev/null
+	local repository="$1" digest="$2" token="$3" status
+	status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+		--request DELETE \
+		--header "Authorization: Bearer ${token}" \
+		"https://${REGISTRY_HOST}/v2/${repository}/manifests/${digest}" </dev/null)" || status="000"
+	case "$status" in
+		2* | 404) return 0 ;;
+		*)
+			echo "registry-purge.sh: deleting ${repository}@${digest} answered HTTP ${status}." >&2
+			return 1
+			;;
+	esac
 }
 
 # Prints the commits one environment's namespace runs, one per line: the tag
@@ -232,9 +300,10 @@ classify_tagged() {
 
 # Deletes from one repository every tagged manifest its tags do not keep and
 # no kept list names, then every untagged manifest older than an hour that no
-# remaining list names.
+# remaining list names. Everything it asks the registry, it asks with the
+# repository's own token.
 purge_repository() {
-	local repository="$1" manifests="$2" kept_commits="$3"
+	local repository="$1" manifests="$2" kept_commits="$3" token="$4"
 	local verdict digest tags size classes
 	local protected="" gone="" children=""
 	# Children read once per digest: a list's content is what its digest
@@ -253,7 +322,7 @@ purge_repository() {
 		if ! is_index "$digest" <<<"$manifests"; then
 			continue
 		fi
-		if ! children="$(children_of "$repository" "$digest")"; then
+		if ! children="$(children_of "$repository" "$digest" "$token")"; then
 			echo "  FAILED to read ${tags} (${digest}), so nothing in ${repository} is deleted" >&2
 			FAILURES=$((FAILURES + 1))
 			return 0
@@ -276,7 +345,7 @@ purge_repository() {
 			echo "  would delete ${tags} (${digest})"
 			gone+="$digest"$'\n'
 			DELETED_BYTES=$((DELETED_BYTES + size))
-		elif delete_manifest "$repository" "$digest"; then
+		elif delete_manifest "$repository" "$digest" "$token"; then
 			echo "  deleted ${tags} (${digest})"
 			DELETED_BYTES=$((DELETED_BYTES + size))
 		else
@@ -287,7 +356,7 @@ purge_repository() {
 
 	# The repository is listed again, so what stays is what is really there:
 	# the kept manifests, one whose delete failed, and one pushed meanwhile.
-	if ! manifests="$(list_manifests "$repository")"; then
+	if ! manifests="$(list_manifests "$repository" "$token")"; then
 		echo "  FAILED to list ${repository} again, so no untagged manifest is deleted" >&2
 		FAILURES=$((FAILURES + 1))
 		return 0
@@ -300,7 +369,7 @@ purge_repository() {
 			continue
 		fi
 		if [[ -z "${children_of_digest[$digest]+set}" ]]; then
-			if ! children="$(children_of "$repository" "$digest")"; then
+			if ! children="$(children_of "$repository" "$digest" "$token")"; then
 				echo "  FAILED to read ${digest}, so no untagged manifest is deleted" >&2
 				FAILURES=$((FAILURES + 1))
 				return 0
@@ -322,7 +391,7 @@ purge_repository() {
 		if [[ "$DRY_RUN" == true ]]; then
 			echo "  would delete untagged ${digest}"
 			DELETED_BYTES=$((DELETED_BYTES + size))
-		elif delete_manifest "$repository" "$digest"; then
+		elif delete_manifest "$repository" "$digest" "$token"; then
 			echo "  deleted untagged ${digest}"
 			DELETED_BYTES=$((DELETED_BYTES + size))
 		else
@@ -371,15 +440,23 @@ main() {
 	done
 
 	local tool
-	for tool in az jq; do
+	for tool in az curl jq; do
 		if ! command -v "$tool" >/dev/null 2>&1; then
-			echo "registry-purge.sh: no ${tool} on PATH. az lists and deletes from the registry and asks each cluster; jq reads their answers." >&2
+			echo "registry-purge.sh: no ${tool} on PATH. az signs in to the registry and asks each cluster, curl lists and deletes from the registry, and jq reads their answers." >&2
 			exit 1
 		fi
 	done
 
 	WORK="$(mktemp -d)"
 	trap 'rm -rf "$WORK"' EXIT
+
+	# The one sign-in to the registry, which every token below comes from.
+	# First, because it is the cheap thing that fails when the caller is not
+	# signed in at all.
+	if ! REFRESH_TOKEN="$(registry_refresh_token)"; then
+		echo "registry-purge.sh: could not sign in to the registry. Nothing was deleted." >&2
+		exit 1
+	fi
 
 	# Nothing is deleted unless both clusters said what they run.
 	if [[ "$use_cluster" == true ]]; then
@@ -403,15 +480,20 @@ main() {
 	fi
 
 	# Every repository's manifests first, because the newest commits are
-	# decided across all of them. A repository that cannot be listed is
-	# reported and left alone; the rest still run.
-	local repository
+	# decided across all of them. A repository that cannot be listed, or that
+	# no token could be had for, is reported and left alone; the rest still
+	# run. The token a repository was listed with is the one everything else
+	# done to it uses.
+	local repository token
 	local -a listed=() listings=()
+	local -A tokens=()
 	while read -r repository; do
 		[[ -n "$repository" ]] || continue
-		if list_manifests "$repository" >"${WORK}/${repository}.json"; then
+		if token="$(repository_token "$repository")" &&
+			list_manifests "$repository" "$token" >"${WORK}/${repository}.json"; then
 			listed+=("$repository")
 			listings+=("${WORK}/${repository}.json")
+			tokens["$repository"]="$token"
 		else
 			echo "${repository}:"
 			echo "  FAILED to list ${repository}, so nothing in it is deleted" >&2
@@ -431,7 +513,7 @@ main() {
 	[[ "$DRY_RUN" == true ]] && echo "Dry run: nothing is deleted."
 
 	for repository in "${listed[@]}"; do
-		purge_repository "$repository" "$(cat "${WORK}/${repository}.json")" "$kept_json"
+		purge_repository "$repository" "$(cat "${WORK}/${repository}.json")" "$kept_json" "${tokens[$repository]}"
 	done
 
 	local gigabytes

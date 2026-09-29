@@ -3,17 +3,22 @@
 # scripts/ci/registry-purge.test.sh
 #
 # No case reaches the registry or a cluster. A copy of the script and lib.sh
-# runs in a throwaway repository with `az` stubbed first on PATH. The stub
-# answers `acr repository list` from repositories.json, `acr manifest
-# list-metadata` from <repository>.json, `acr manifest show` from
-# <repository>@<digest>.json, records every `acr repository delete` in a log,
-# and answers `aks command invoke` with the result shape lib.sh's aks_invoke
-# reads, its logs taken from cluster-<resource-group>.txt.
+# runs in a throwaway repository with `az` and `curl` stubbed first on PATH.
+# The az stub answers `acr login --expose-token` with a refresh token and
+# `aks command invoke` with the result shape lib.sh's aks_invoke reads, its
+# logs taken from cluster-<resource-group>.txt. The curl stub is the registry:
+# its token endpoint mints a token naming the scope asked for, and every
+# other request must carry the token of the one repository (or the catalogue)
+# it is about. It answers the catalogue from repositories.json, a
+# repository's manifests from <repository>.json (404 without one), a manifest
+# read from <repository>@<digest>.json, and records every DELETE in a log,
+# answering the status a variable names.
 #
 # The subject is the policy: which commits are kept (the clusters', --keep,
 # the newest), which tagged manifests each keeps, the inputs-tag rule, the
-# untagged pass with its grace period and child protection, and that a cluster
-# that cannot be read deletes nothing.
+# untagged pass with its grace period and child protection, that a cluster
+# that cannot be read deletes nothing, and the credential path: one sign-in,
+# one token per repository, each used for that repository alone.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,49 +71,37 @@ stub="$tmp/stub"
 mkdir -p "$repo/scripts/ci" "$repo/bin" "$stub"
 cp "$CI_DIR/registry-purge.sh" "$CI_DIR/lib.sh" "$repo/scripts/ci/"
 
+readonly HOST="testcabinet.azurecr.io"
+
+# az: the registry sign-in, which STUB_ACR_LOGIN_FAIL refuses and whose token
+# STUB_REFRESH_TOKEN can misname, and the clusters.
 cat >"$repo/bin/az" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$STUB_DIR/az.log"
-verb="$1 $2 $3"
-shift 3
-name=""
-image=""
+verb="$1 $2"
+shift 2
+[ "$verb" != "aks command" ] || { verb="$verb $1"; shift; }
 group=""
+expose=false
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--name) name="$2" ;;
-		--image) image="$2" ;;
 		--resource-group) group="$2" ;;
+		--expose-token) expose=true ;;
 	esac
 	shift
 done
 case "$verb" in
-	"acr repository list")
-		cat "$STUB_DIR/repositories.json"
-		;;
-	"acr manifest list-metadata")
-		if [ -f "$STUB_DIR/$name.json" ]; then
-			cat "$STUB_DIR/$name.json"
-		else
-			echo "ERROR: The repository '$name' is not found in the registry 'testcabinet'." >&2
+	"acr login")
+		if [ -n "${STUB_ACR_LOGIN_FAIL:-}" ]; then
+			echo "ERROR: Please run 'az login' to setup account." >&2
 			exit 1
 		fi
-		;;
-	"acr manifest show")
-		if [ -f "$STUB_DIR/$name.json" ]; then
-			cat "$STUB_DIR/$name.json"
-		else
-			echo "ERROR: manifest $name is unreadable" >&2
+		if [ "$expose" != true ]; then
+			echo "az stub: acr login without --expose-token would need docker" >&2
 			exit 1
 		fi
-		;;
-	"acr repository delete")
-		echo "$image" >>"$STUB_DIR/deleted.log"
-		if [ -n "${STUB_DELETE_FAIL:-}" ] && [[ "$image" == *"$STUB_DELETE_FAIL"* ]]; then
-			echo "ERROR: could not delete $image" >&2
-			exit 1
-		fi
+		echo "${STUB_REFRESH_TOKEN:-refresh-token}"
 		;;
 	"aks command invoke")
 		if [ -f "$STUB_DIR/cluster-$group.txt" ]; then
@@ -124,7 +117,117 @@ case "$verb" in
 		;;
 esac
 STUB
-chmod +x "$repo/bin/az"
+
+# curl: the URL is the one argument that names the registry. Every request
+# is logged as `<method> <url> <authorization>`. The body goes to --output or
+# stdout and the status to stdout under --write-out, as curl does; a status of
+# 400 or more under --fail is exit 22 with no body, as curl does. A DELETE is
+# logged and answered with STUB_DELETE_STATUS, or 403 when its digest names
+# STUB_DELETE_FAIL; a listing of the repository STUB_LIST_FAIL names is a 500.
+cat >"$repo/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+url=""
+method=GET
+authorization=""
+scope=""
+refresh=""
+output=""
+write_out=false
+fail=false
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--request) method="$2"; shift ;;
+		--header) [[ "$2" == Authorization:* ]] && authorization="${2#Authorization: }"; shift ;;
+		--data-urlencode)
+			method=POST
+			[[ "$2" == scope=* ]] && scope="${2#scope=}"
+			[[ "$2" == refresh_token=* ]] && refresh="${2#refresh_token=}"
+			shift
+			;;
+		--output) output="$2"; shift ;;
+		--write-out) write_out=true; shift ;;
+		--fail) fail=true ;;
+		http*) url="$1" ;;
+	esac
+	shift
+done
+printf '%s %s %s\n' "$method" "$url" "$authorization" >>"$STUB_DIR/curl.log"
+
+answer() { # status body
+	if [ "$1" -ge 400 ] && $fail; then
+		echo "curl: (22) The requested URL returned error: $1" >&2
+		exit 22
+	fi
+	if [ -n "$output" ]; then
+		printf '%s\n' "$2" >"$output"
+	else
+		printf '%s\n' "$2"
+	fi
+	if $write_out; then
+		printf '%s' "$1"
+	fi
+	exit 0
+}
+authorized() { # scope
+	[ "$authorization" = "Bearer token-for-$1" ] ||
+		answer 401 '{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}'
+}
+case "$url" in
+	*/oauth2/token)
+		[ "$refresh" = "refresh-token" ] ||
+			answer 401 '{"errors":[{"code":"UNAUTHORIZED","message":"the refresh token is invalid"}]}'
+		answer 200 "{\"access_token\":\"token-for-$scope\"}"
+		;;
+	*/acr/v1/_catalog*)
+		authorized 'registry:catalog:*'
+		answer 200 "$(jq -c '{repositories: .}' "$STUB_DIR/repositories.json")"
+		;;
+	*/acr/v1/*/_manifests*)
+		repository="${url#*/acr/v1/}"
+		repository="${repository%%/*}"
+		authorized "repository:$repository:pull,delete,metadata_read"
+		if [ "$repository" = "${STUB_LIST_FAIL:-}" ]; then
+			answer 500 '{"errors":[{"code":"INTERNAL","message":"the stub was told to"}]}'
+		fi
+		if [ -f "$STUB_DIR/$repository.json" ]; then
+			answer 200 "$(jq -c --arg name "$repository" \
+				'{registry: "testcabinet.azurecr.io", imageName: $name, manifests: .}' "$STUB_DIR/$repository.json")"
+		fi
+		answer 404 "{\"errors\":[{\"code\":\"NAME_UNKNOWN\",\"message\":\"repository \\\"$repository\\\" is not found\"}]}"
+		;;
+	*/v2/*/manifests/*)
+		path="${url#*/v2/}"
+		repository="${path%%/manifests/*}"
+		digest="${path##*/manifests/}"
+		authorized "repository:$repository:pull,delete,metadata_read"
+		case "$method" in
+			GET)
+				if [ -f "$STUB_DIR/$repository@$digest.json" ]; then
+					answer 200 "$(cat "$STUB_DIR/$repository@$digest.json")"
+				fi
+				answer 404 '{"errors":[{"code":"MANIFEST_UNKNOWN","message":"manifest unknown"}]}'
+				;;
+			DELETE)
+				echo "$repository@$digest" >>"$STUB_DIR/deleted.log"
+				if [ -n "${STUB_DELETE_FAIL:-}" ] && [[ "$digest" == *"$STUB_DELETE_FAIL"* ]]; then
+					answer 403 '{"errors":[{"code":"DENIED","message":"the stub was told to"}]}'
+				fi
+				answer "${STUB_DELETE_STATUS:-202}" ""
+				;;
+			*)
+				echo "curl stub: unexpected $method $url" >&2
+				exit 1
+				;;
+		esac
+		;;
+	*)
+		echo "curl stub: unexpected $url" >&2
+		exit 1
+		;;
+esac
+STUB
+chmod +x "$repo/bin/az" "$repo/bin/curl"
 
 readonly LIVE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 readonly NEWEST="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -138,7 +241,10 @@ readonly IMAGE="application/vnd.oci.image.manifest.v1+json"
 
 at() { date --utc --date="$1" +%Y-%m-%dT%H:%M:%S.0000000Z; }
 
-# One manifest, as list-metadata prints it.
+# The token the stub mints for one repository, as the curl log shows it.
+token_for() { echo "Bearer token-for-repository:$1:pull,delete,metadata_read"; }
+
+# One manifest, as the registry's listing prints it.
 manifest() { # digest when size media-type [tag...]
 	local digest="$1" when="$2" size="$3" media="$4"
 	shift 4
@@ -215,6 +321,8 @@ run() {
 	(cd / && env PATH="$repo/bin:$PATH" STUB_DIR="$stub" "$repo/scripts/ci/registry-purge.sh" "$@" 2>&1)
 }
 deleted() { cat "$stub/deleted.log" 2>/dev/null; }
+az_log() { cat "$stub/az.log" 2>/dev/null; }
+curl_log() { cat "$stub/curl.log" 2>/dev/null; }
 
 echo "--- the default policy ---"
 write_fixtures
@@ -256,13 +364,27 @@ tcab-backend@sha256:orphan-old
 test-cabinet-gg-toolchains@sha256:in-old-amd64
 test-cabinet-gg-toolchains@sha256:in-only-arm64" "$(deleted)"
 check_contains "reads staging through az aks command invoke" \
-	"aks command invoke --resource-group $STAGING_RG --name testcabinet-staging-westus2-aks" "$(cat "$stub/az.log")"
+	"aks command invoke --resource-group $STAGING_RG --name testcabinet-staging-westus2-aks" "$(az_log)"
 check_contains "and prod" \
-	"aks command invoke --resource-group $PROD_RG --name testcabinet-prod-westus2-aks" "$(cat "$stub/az.log")"
-check_contains "deletes by digest" \
-	"acr repository delete --name testcabinet --image tcab-backend@sha256:old --yes" "$(cat "$stub/az.log")"
-check_contains "lists at most 500 manifests" \
-	"acr manifest list-metadata --registry testcabinet --name tcab-backend --top 500" "$(cat "$stub/az.log")"
+	"aks command invoke --resource-group $PROD_RG --name testcabinet-prod-westus2-aks" "$(az_log)"
+check_contains "signs in to the registry through az, exposing the token" \
+	"acr login --name testcabinet --expose-token" "$(az_log)"
+check_equal "once, and makes no other az acr call" "1" "$(az_log | grep -c '^acr ')"
+check_contains "lists the catalogue with a token of its own" \
+	"GET https://$HOST/acr/v1/_catalog?n=500 Bearer token-for-registry:catalog:*" "$(curl_log)"
+check_contains "lists at most 500 manifests, with the repository's token" \
+	"GET https://$HOST/acr/v1/tcab-backend/_manifests?n=500 $(token_for tcab-backend)" "$(curl_log)"
+check_contains "reads a kept index's children as a manifest" \
+	"GET https://$HOST/v2/tcab-backend/manifests/sha256:live $(token_for tcab-backend)" "$(curl_log)"
+check_contains "deletes by digest, with the repository's token" \
+	"DELETE https://$HOST/v2/tcab-backend/manifests/sha256:old $(token_for tcab-backend)" "$(curl_log)"
+check_contains "and in the next repository with that one's" \
+	"DELETE https://$HOST/v2/test-cabinet-gg-toolchains/manifests/sha256:in-old-amd64 $(token_for test-cabinet-gg-toolchains)" \
+	"$(curl_log)"
+check_equal "one token for the catalogue and one per repository, got once each" \
+	"4" "$(curl_log | grep -c "^POST https://$HOST/oauth2/token")"
+check_equal "so a repository is listed twice on the one token" \
+	"2" "$(curl_log | grep -c "^GET https://$HOST/acr/v1/tcab-backend/_manifests?n=500 $(token_for tcab-backend)$")"
 
 echo "--- a kept list's child is kept whatever its tags ---"
 write_fixtures
@@ -294,6 +416,7 @@ check_contains "prints what it would delete" "would delete $OLD (sha256:old)" "$
 check_contains "untagged too" "would delete untagged sha256:orphan-old" "$out"
 check_contains "and the size" "Purge finished. Would delete about 1.5 GB." "$out"
 check_equal "and deletes nothing" "" "$(deleted)"
+check_lacks "sending no DELETE" "DELETE" "$(curl_log)"
 
 echo "--- --keep ---"
 write_fixtures
@@ -325,7 +448,7 @@ check_contains "says which" "could not read what tcab-prod runs on testcabinet-p
 check_contains "with the cluster's answer" "Unable to connect to the server" "$out"
 check_contains "and that nothing was deleted" "nothing was deleted. Pass --no-cluster if the cluster is gone." "$out"
 check_equal "which is so" "" "$(deleted)"
-check_lacks "the registry was not even listed" "acr manifest list-metadata" "$(cat "$stub/az.log")"
+check_equal "the registry was not even listed" "" "$(curl_log)"
 
 write_fixtures
 : >"$stub/cluster-$STAGING_RG.txt"
@@ -339,7 +462,7 @@ write_fixtures
 rm "$stub/cluster-$PROD_RG.txt" "$stub/cluster-$STAGING_RG.txt"
 out="$(run --no-cluster --keep "$LIVE")"
 check_equal "exits 0" "0" "$?"
-check_lacks "asks no cluster" "aks command invoke" "$(cat "$stub/az.log")"
+check_lacks "asks no cluster" "aks command invoke" "$(az_log)"
 check_contains "keeps what it was told and the newest" "Keeping commits: $LIVE $NEWEST" "$out"
 check_contains "and proceeds" "deleted $OLD (sha256:old)" "$out"
 
@@ -348,10 +471,16 @@ write_fixtures
 out="$(STUB_DELETE_FAIL=sha256:old-amd64 run)"
 check_equal "exits 1" "1" "$?"
 check_contains "reports it" "FAILED to delete $OLD-amd64 (sha256:old-amd64)" "$out"
+check_contains "with the registry's status" "deleting tcab-backend@sha256:old-amd64 answered HTTP 403." "$out"
 check_contains "and continues" "deleted $OLD-arm64 (sha256:old-arm64)" "$out"
 check_contains "to the untagged pass" "deleted untagged sha256:orphan-old" "$out"
 check_contains "and the next repository" "deleted inputs-0b0b-amd64 (sha256:in-old-amd64)" "$out"
 check_contains "counting it" "registry-purge.sh: 1 step(s) failed. The next run tries them again." "$out"
+write_fixtures
+out="$(STUB_DELETE_STATUS=404 run)"
+check_equal "a manifest already gone is not a failure" "0" "$?"
+check_lacks "and is not reported as one" "FAILED" "$out"
+check_contains "the deletes went on" "deleted $OLD-arm64 (sha256:old-arm64)" "$out"
 
 echo "--- a child that cannot be read ---"
 write_fixtures
@@ -362,6 +491,33 @@ check_contains "leaves the repository alone" "FAILED to read $LIVE (sha256:live)
 check_lacks "so the old commit stays there" "tcab-backend@sha256:old" "$(deleted)"
 check_contains "while the next repository still runs" "deleted inputs-0b0b-amd64 (sha256:in-old-amd64)" "$out"
 
+echo "--- a repository that cannot be listed ---"
+write_fixtures
+out="$(STUB_LIST_FAIL=tcab-backend run)"
+check_equal "exits 1" "1" "$?"
+check_contains "reports the status" "listing tcab-backend answered HTTP 500." "$out"
+check_contains "and leaves the repository alone" "FAILED to list tcab-backend, so nothing in it is deleted" "$out"
+check_lacks "so nothing of it goes" "tcab-backend@" "$(deleted)"
+check_contains "while the newest commit is still found in the rest" "Keeping commits: $LIVE $NEWEST $ENVSHA" "$out"
+check_contains "and the next repository still runs" "deleted inputs-0b0b-amd64 (sha256:in-old-amd64)" "$out"
+
+echo "--- the registry sign-in ---"
+write_fixtures
+out="$(STUB_ACR_LOGIN_FAIL=1 run)"
+check_equal "a sign-in that fails exits 1" "1" "$?"
+check_contains "with az's own reason" "Please run 'az login' to setup account." "$out"
+check_contains "and says nothing was deleted" "could not sign in to the registry. Nothing was deleted." "$out"
+check_equal "which is so" "" "$(deleted)"
+check_equal "before any cluster was asked" "" "$(az_log | grep 'aks command' || true)"
+check_equal "or the registry touched" "" "$(curl_log)"
+write_fixtures
+out="$(STUB_REFRESH_TOKEN=stale-token run)"
+check_equal "a refresh token the registry refuses exits 1" "1" "$?"
+check_contains "naming the scope refused" "the registry refused a token for registry:catalog:*." "$out"
+check_contains "and that nothing was deleted" "could not list the registry's repositories. Nothing was deleted." "$out"
+check_equal "which is so" "" "$(deleted)"
+check_lacks "nothing having been listed" "_manifests" "$(curl_log)"
+
 echo "--- usage ---"
 write_fixtures
 out="$(run --keep-count 0)"
@@ -371,7 +527,8 @@ out="$(run --keep notasha)"
 check_equal "a --keep that is not a commit is a usage error" "1" "$?"
 out="$(run --prune)"
 check_equal "an unknown option is a usage error" "1" "$?"
-check_equal "and none of them touched the registry" "" "$(cat "$stub/az.log" 2>/dev/null)"
+check_equal "and none of them touched az" "" "$(az_log)"
+check_equal "or the registry" "" "$(curl_log)"
 
 echo
 echo "registry-purge.test.sh: ${pass} passed, ${fail} failed"
