@@ -992,8 +992,8 @@ variables:
 
 | Name | Kind | Used for |
 | --- | --- | --- |
-| `the-test-cabinet-acr` | Docker Registry connection | `AcrPush` on `testcabinet.azurecr.io`: pulls the CI images, pushes them from the image pipeline, and pushes every image |
-| `tcab-deploy` | Azure Resource Manager | The publish stage's registry sign-in (`AcrPush`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
+| `the-test-cabinet-acr` | Docker Registry connection | `AcrPush` and `AcrDelete` on `testcabinet.azurecr.io`: pulls the CI images, pushes them from the image pipeline and purges the stale ones, and pushes every image |
+| `tcab-deploy` | Azure Resource Manager | The publish stage's registry sign-in (`AcrPush`), the registry purge after each deployment (`AcrDelete`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish` | Azure Resource Manager | Storage Blob Data Contributor on `testcabinetartifacts` |
 | `github-mirror-key` | Secure file | The GitHub mirror's write deploy key |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Secret pipeline variables | The docs deploy |
