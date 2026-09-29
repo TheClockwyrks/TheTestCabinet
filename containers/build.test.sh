@@ -52,6 +52,7 @@ image)
 		case "$*" in
 		*Created*) echo "2026-01-01T00:00:00Z" ;;
 		*RootFS*) printf 'sha256:layer-of-%s\n\n' "$ref" ;;
+		*.Id*) echo "sha256:id-of-${ref}" ;;
 		esac
 		;;
 	rm) shift 2; for ref in "$@"; do del "$STUB_LOCAL" "$ref"; done ;;
@@ -118,6 +119,15 @@ done
 check_lacks "tools gets no commit tag" "${reg}/${prefix}tools:sha1-amd64" "$(cat "$tmp/registry")"
 check_contains "sprite-gg gets the commit tag" "${reg}/${prefix}sprite-gg:sha1-amd64" "$(cat "$tmp/registry")"
 check_contains "and its reference line" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:pushed-sha1-amd64" "$out"
+# The reclaim has to take the inputs tag with the others: a tag left on an image keeps
+# every one of its layers, and `docker image rm` of another tag exits 0 regardless.
+for name in sprite sprite-gg; do
+	check_equal "the reclaimed $name has no tag left in the local store" "" "$(grep -F "${prefix}${name}:" "$tmp/local" | tr '\n' ' ')"
+done
+for name in tools gg-toolchains base; do
+	check_contains "$name, which the reclaim keeps, is still local" "${prefix}${name}:sha1-amd64" "$(cat "$tmp/local")"
+done
+check_lacks "and no reclaim is reported as failed" "NOT reclaimed" "$out"
 
 echo "a registry holding every inputs tag builds nothing"
 : >"$tmp/local"
@@ -165,14 +175,16 @@ check_equal "the variant and its parent chain are retagged (base too: the rule t
 
 echo "a table that names a parent it does not list is refused"
 grep -v '^sprite ' "$inputs" >"$tmp/inputs2"
-out="$(REUSE_INPUTS="$tmp/inputs2" run sprite-gg)"
-check_equal "with exit 1" "1" "$?"
+# `$?` of a failed substitution is what the check wants, and `set -e` would end the script
+# on it first, so the status is taken on the same line.
+out="$(REUSE_INPUTS="$tmp/inputs2" run sprite-gg)" && status=0 || status=$?
+check_equal "with exit 1" "1" "$status"
 check_contains "and says which" "sprite-gg is built from sprite, which the table does not list" "$out"
 check_equal "before anything is built" "" "$(builds)"
 
 echo "REUSE_INPUTS without PUSH is refused"
-out="$(cd "$HERE/.." && PATH="$tmp/bin:$PATH" DOCKER="$tmp/docker" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" REUSE_INPUTS="$inputs" containers/build.sh base 2>&1)"
-check_equal "with exit 1" "1" "$?"
+out="$(cd "$HERE/.." && PATH="$tmp/bin:$PATH" DOCKER="$tmp/docker" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" REUSE_INPUTS="$inputs" containers/build.sh base 2>&1)" && status=0 || status=$?
+check_equal "with exit 1" "1" "$status"
 check_contains "and says why" "REUSE_INPUTS needs PUSH=1" "$out"
 
 echo

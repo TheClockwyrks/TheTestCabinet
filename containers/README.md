@@ -1013,7 +1013,11 @@ distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
 pushed and nothing later in the build order is `FROM` it, `build.sh` removes it from the
 local store and prunes the builder cache, and prints the remaining disk. The whole set
 does not fit on a build agent otherwise, because each `-gg` variant holds its own copy of
-the 2.2 GB toolchain tree.
+the 2.2 GB toolchain tree. The removal takes every tag the image carries, the inputs tag
+of the next section included, and then checks the image itself is gone: a `docker image
+rm` of one tag on an image that still has another removes that tag alone, exits 0, and
+frees nothing, which is what filled both agents the first time the inputs tag was added.
+An image still in the store after its tags went is reported with the tags holding it.
 
 **`RECLAIM` is for CI, and a publish from your own machine should not set it.** The
 builder prune is `docker builder prune --all`, which takes every `--mount=type=cache`
@@ -1054,7 +1058,8 @@ With the table, `build.sh` pushes every image it builds under two tags: the comm
 (`<sha>-<arch>`) and `inputs-<digest>-<arch>`. Before it builds an image it looks the
 inputs tag up in the registry, and when the tag is there the image is **reused**: the
 commit's tag is created on top of the pushed manifest with `docker buildx imagetools
-create` (a manifest write, no blob moves) and nothing is built, pushed or reclaimed. An
+create` (a manifest write, no blob moves) and nothing is built, pushed or reclaimed. A
+built image's inputs tag is dropped with its other tags when the image is reclaimed. An
 image whose digest is new is built as ever, `FROM` parents that are local because this
 run built them or, when this run reused them, pulled from their own inputs tags the first
 time a child needs one. `tools`, which never gets a commit's tag, is pushed under its
