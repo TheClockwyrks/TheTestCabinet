@@ -71,6 +71,13 @@ readonly ALL="sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg"
 repo="$tmp/repo"
 mkdir -p "$repo/scripts/ci" "$repo/containers" "$repo/bin"
 cp "$CI_DIR/run-images.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+# The inputs table build.sh is handed: a stub prints a fixed one, and the build stub
+# records the table it was given, so the test sees the two wired together.
+cat >"$repo/scripts/ci/run-image-inputs.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "base 0123 -" "sprite-gg 4567 sprite,gg-toolchains"
+exit "${STUB_INPUTS_EXIT:-0}"
+STUB
 cat >"$repo/containers/image-names.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' base sprite-gg
@@ -78,6 +85,7 @@ STUB
 cat >"$repo/containers/build.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "args=$* PUSH=${PUSH:-} RECLAIM=${RECLAIM:-} IMAGE_REGISTRY=${IMAGE_REGISTRY:-} IMAGE_TAG=${IMAGE_TAG:-}" >"$STUB_LOG"
+echo "inputs=$(tr '\n' ';' <"${REUSE_INPUTS:-/dev/null}")" >>"$STUB_LOG"
 for image in $STUB_SELFCHECKED; do
 	echo "gg selfcheck ok: $image"
 done
@@ -87,7 +95,8 @@ cat >"$repo/bin/uname" <<'STUB'
 #!/usr/bin/env bash
 echo "${STUB_UNAME_M:-x86_64}"
 STUB
-chmod +x "$repo/containers/image-names.sh" "$repo/containers/build.sh" "$repo/bin/uname"
+chmod +x "$repo/containers/image-names.sh" "$repo/containers/build.sh" "$repo/bin/uname" \
+	"$repo/scripts/ci/run-image-inputs.sh"
 run() {
 	rm -f "$tmp/build.log"
 	(cd "$tmp" && STUB_LOG="$tmp/build.log" PATH="$repo/bin:$PATH" "$repo/scripts/ci/run-images.sh" "$@" 2>&1)
@@ -95,9 +104,11 @@ run() {
 
 out="$(STUB_SELFCHECKED="$ALL" run /opt/gg "$SHA")"
 check_equal "a build that self-checked every representative passes" "0" "$?"
-check_equal "builds every listed image with the self-check, pushed, as <sha>-amd64" \
-	"args=--gg-selfcheck /opt/gg base sprite-gg PUSH=1 RECLAIM=1 IMAGE_REGISTRY=testcabinet.azurecr.io IMAGE_TAG=${SHA}-amd64" \
+check_equal "builds every listed image with the self-check, pushed, as <sha>-amd64, reusing by the inputs table" \
+	"args=--gg-selfcheck /opt/gg base sprite-gg PUSH=1 RECLAIM=1 IMAGE_REGISTRY=testcabinet.azurecr.io IMAGE_TAG=${SHA}-amd64
+inputs=base 0123 -;sprite-gg 4567 sprite,gg-toolchains;" \
 	"$(cat "$tmp/build.log")"
+check_contains "and says so" "reusing those whose inputs are unchanged" "$out"
 for image in $ALL; do
 	check_contains "confirms the self-check ran in $image" "gg selfcheck ran in ${image}" "$out"
 done
@@ -115,6 +126,10 @@ done
 out="$(STUB_SELFCHECKED="$ALL" STUB_BUILD_EXIT=1 run /opt/gg "$SHA")"
 check_equal "a failed build fails the step" "1" "$?"
 check_lacks "before any self-check is confirmed" "gg selfcheck ran in" "$out"
+
+out="$(STUB_INPUTS_EXIT=1 STUB_SELFCHECKED="$ALL" run /opt/gg "$SHA")"
+check_equal "an inputs table that cannot be computed fails the step" "1" "$?"
+check_equal "before anything is built" "" "$(cat "$tmp/build.log" 2>/dev/null)"
 
 out="$(STUB_UNAME_M=riscv64 run /opt/gg "$SHA")"
 check_equal "an unknown machine fails" "1" "$?"

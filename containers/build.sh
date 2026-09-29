@@ -127,6 +127,14 @@
 #                 record on the daemon, including ones belonging to other Dockerfiles and
 #                 other projects. `scripts/ci/run-images.sh` sets it; nothing else should.
 #                 Ignored without PUSH, because an unpushed image must not be removed.
+#   REUSE_INPUTS  the path of the table scripts/ci/run-image-inputs.sh prints, one
+#                 `<name> <digest> <parents>` line per image, which turns on REUSE: an
+#                 image whose inputs digest already names a pushed image in the registry
+#                 (`<image>:inputs-<digest>-<arch>`) is retagged for IMAGE_TAG with one
+#                 registry round trip instead of being built and pushed again, and a
+#                 built image is pushed under its inputs tag as well as IMAGE_TAG so the
+#                 next build can reuse it. Needs PUSH=1. See "Reusing what the registry
+#                 already holds" below. `scripts/ci/run-images.sh` sets it.
 #   IMAGE_REGISTRY  registry/namespace the pushed images live under, e.g.
 #                 testcabinet.azurecr.io (required when PUSH=1; pushing there needs
 #                 `az acr login --name testcabinet` and AcrPush). Matches the
@@ -183,6 +191,7 @@ readonly IMAGE_REGISTRY="${IMAGE_REGISTRY:-}"
 readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
+readonly REUSE_INPUTS="${REUSE_INPUTS:-}"
 
 # ---------------------------------------------------------------------------
 # Options
@@ -409,6 +418,165 @@ if [[ -n "${PUSH}" && -z "${IMAGE_REGISTRY}" ]]; then
 	exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Reusing what the registry already holds
+# ---------------------------------------------------------------------------
+# Under REUSE_INPUTS, every image has a digest of its inputs (the table's line, computed
+# by scripts/ci/run-image-inputs.sh from the Dockerfile, the context paths it copies and
+# its parents' digests; that script's header says exactly what goes in). An image is
+# pushed under two tags: IMAGE_TAG, which is the commit's, and `inputs-<digest>-<arch>`,
+# which names what it was built from. Before an image is built, its inputs tag is looked
+# up in the registry: found, the image is REUSED — the commit's tag is created on top of
+# the pushed manifest with `buildx imagetools create`, a manifest write and no blob
+# transfer — and nothing is built, pushed or reclaimed for it. An image whose inputs
+# changed is built as ever, from parents that are local because this run built them or
+# because they are pulled here, from their own inputs tags, the first time a child needs
+# one. A reused image in GG_SELFCHECK_IMAGES is still pulled and driven through `gg
+# selfcheck` with this run's gg: the check gates the image against the gg of the day,
+# and the reuse only says the image is the one checked last time, not that the gg is.
+#
+# `tools`, which is never given a commit's tag, is pushed under its inputs tag alone, so
+# a later run whose asset images changed pulls the builder instead of compiling it.
+#
+# The parent map is the table's, which mirrors this script's dispatch; the two must
+# agree, and scripts/ci/run-image-inputs.sh says so at its own parent map.
+declare -A INPUTS_DIGEST=()
+declare -A INPUTS_PARENTS=()
+declare -A REUSED=()
+REUSE_ARCH=""
+if [[ -n "${REUSE_INPUTS}" ]]; then
+	if [[ -z "${PUSH}" ]]; then
+		echo "REUSE_INPUTS needs PUSH=1: a reused image is a pushed one, and a built one is pushed under its inputs tag" >&2
+		exit 1
+	fi
+	if [[ ! -r "${REUSE_INPUTS}" ]]; then
+		echo "REUSE_INPUTS names no readable file: '${REUSE_INPUTS}'" >&2
+		exit 1
+	fi
+	while read -r reuse_name reuse_digest reuse_parents; do
+		[[ -n "${reuse_name}" && -n "${reuse_digest}" ]] || continue
+		INPUTS_DIGEST["${reuse_name}"]="${reuse_digest}"
+		INPUTS_PARENTS["${reuse_name}"]="${reuse_parents:--}"
+	done <"${REUSE_INPUTS}"
+	# A parent the table lacks has no inputs tag to pull, and a child reused on the
+	# strength of a digest that does not cover its parent would be the wrong image.
+	for reuse_name in "${!INPUTS_PARENTS[@]}"; do
+		for reuse_parents in ${INPUTS_PARENTS[$reuse_name]//,/ }; do
+			[[ "${reuse_parents}" == "-" || -n "${INPUTS_DIGEST[$reuse_parents]:-}" ]] && continue
+			echo "REUSE_INPUTS: ${reuse_name} is built from ${reuse_parents}, which the table does not list" >&2
+			exit 1
+		done
+	done
+	unset reuse_name reuse_digest reuse_parents
+	case "$(uname -m)" in
+		x86_64 | amd64) REUSE_ARCH=amd64 ;;
+		aarch64 | arm64) REUSE_ARCH=arm64 ;;
+		*)
+			echo "REUSE_INPUTS: unsupported architecture '$(uname -m)'" >&2
+			exit 1
+			;;
+	esac
+fi
+readonly REUSE_ARCH
+
+# The registry tag an image's inputs digest names, for this architecture.
+inputs_ref() {
+	local name="$1"
+	echo "${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}:inputs-${INPUTS_DIGEST[$name]}-${REUSE_ARCH}"
+}
+
+registry_has() {
+	"$DOCKER" buildx imagetools inspect "$1" >/dev/null 2>&1
+}
+
+# True when the image is in the table and its inputs tag is in the registry. A name the
+# table does not carry is built; an unreachable registry reads as absent, which builds
+# too.
+reuse_available() {
+	local name="$1"
+	[[ -n "${REUSE_INPUTS}" && -n "${INPUTS_DIGEST[$name]:-}" ]] || return 1
+	registry_has "$(inputs_ref "$name")"
+}
+
+# Pushes a built image under its inputs tag, after push_and_pin pushed it under
+# IMAGE_TAG: the layers are all there, so this is a manifest write.
+push_inputs_tag() {
+	local local_image="$1" name="$2" ref
+	[[ -n "${REUSE_INPUTS}" && -n "${INPUTS_DIGEST[$name]:-}" ]] || return 0
+	ref="$(inputs_ref "$name")"
+	"$DOCKER" tag "${local_image}" "${ref}"
+	"$DOCKER" push --quiet "${ref}" >&2
+	echo "==> ${name} inputs tag: ${ref}" >&2
+}
+
+# Retags the pushed image the inputs tag names for this commit, and drives gg selfcheck
+# in it if it is one of the representatives. Prints the same reference line a build
+# does, so a log reads the same either way. A second call for the same image (a layer
+# rule and the final loop can both reach one) is a no-op.
+reuse_image() {
+	local name="$1" ref local_image repo digest
+	[[ -z "${REUSED[$name]:-}" ]] || return 0
+	ref="$(inputs_ref "$name")"
+	local_image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	echo "==> reusing ${local_image}: its inputs are unchanged and ${ref} is in the registry"
+	REUSED["${name}"]=1
+	if [[ "${name}" != tools ]]; then
+		repo="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}"
+		"$DOCKER" buildx imagetools create --tag "${repo}:${IMAGE_TAG}" "${ref}" >&2
+		digest="$("$DOCKER" buildx imagetools inspect "${repo}:${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
+		if [[ -z "${digest}" ]]; then
+			echo "could not resolve the digest of ${repo}:${IMAGE_TAG} after retagging ${ref}" >&2
+			exit 1
+		fi
+		echo "==> ${name} reference: ${repo}@${digest}"
+	fi
+	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
+		echo "==> pulling ${ref} to drive gg selfcheck in it: a reused representative is checked like a built one" >&2
+		"$DOCKER" pull --quiet "${ref}" >&2
+		"$DOCKER" tag "${ref}" "${local_image}"
+		gg_selfcheck "${name}" "${local_image}"
+		if [[ -n "${RECLAIM}" ]]; then
+			"$DOCKER" image rm "${ref}" "${local_image}" >/dev/null 2>&1 || true
+		fi
+	fi
+}
+
+# Pulls, from their inputs tags, the parents of an image about to be built that this
+# run has not built: the ones it reused.
+ensure_parents_local() {
+	local name="$1" parents parent local_image ref
+	[[ -n "${REUSE_INPUTS}" ]] || return 0
+	parents="${INPUTS_PARENTS[$name]:--}"
+	for parent in ${parents//,/ }; do
+		[[ "${parent}" != "-" ]] || continue
+		local_image="${IMAGE_NAME_PREFIX}${parent}:${IMAGE_TAG}"
+		image_present "${local_image}" && continue
+		ref="$(inputs_ref "${parent}")"
+		echo "==> pulling ${ref} as ${local_image} (${name} is built from it, and this run reused it)"
+		if ! "$DOCKER" pull --quiet "${ref}" >&2; then
+			echo "ERROR: ${name} is built from ${parent}, which this run neither built nor found as ${ref}." >&2
+			exit 1
+		fi
+		"$DOCKER" tag "${ref}" "${local_image}"
+	done
+}
+
+# Builds an image, or reuses the pushed one its inputs name. Every build the layer rules
+# and the final loop below make goes through here.
+produce() {
+	local name="$1"
+	if reuse_available "${name}"; then
+		reuse_image "${name}"
+		return 0
+	fi
+	ensure_parents_local "${name}"
+	case "${name}" in
+		tools) build_tools ;;
+		gg-toolchains) build_gg_toolchains ;;
+		*) build_one "${name}" ;;
+	esac
+}
+
 # Push a locally-built image to the registry under a tag, then resolve and print
 # its pushed digest reference (repo@sha256:...). The digest is read back from the
 # pushed manifest so the reference pins exactly what landed in the registry.
@@ -424,6 +592,7 @@ push_and_pin() {
 	"$DOCKER" tag "${local_image}" "${pushed}"
 	echo "==> pushing ${pushed}" >&2
 	"$DOCKER" push "${pushed}" >&2
+	push_inputs_tag "${local_image}" "${name}"
 
 	# Resolve the pushed image's digest into a pullable repo@digest reference.
 	local digest
@@ -520,6 +689,8 @@ reclaim_image() {
 	local name="$1" out
 	local local_image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 	local pushed="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	# A reused image was never in the local store; there is nothing to reclaim.
+	image_present "${local_image}" || return 0
 	echo "==> reclaiming ${local_image} (pushed; nothing later is FROM it)" >&2
 	"$DOCKER" image rm "${pushed}" >/dev/null 2>&1 || true
 	if ! out="$("$DOCKER" image rm "${local_image}" 2>&1)"; then
@@ -569,6 +740,9 @@ reclaim_builder_cache() {
 reclaim_after_push() {
 	local name="$1" parent
 	[[ -n "${PUSH}" && -n "${RECLAIM}" ]] || return 0
+	# A reused variant put nothing in the local store, and its parent was not built this
+	# run either (a rebuilt parent changes the variant's inputs).
+	[[ -z "${REUSED[$name]:-}" ]] || return 0
 	# Only a `-gg` variant is finished the moment it is pushed: nothing anywhere is built FROM
 	# one. A plain run image still has its variant to come, so it is reclaimed on its
 	# variant's way out below, which also keeps it present while the variant pushes and mounts
@@ -595,10 +769,14 @@ reclaim_after_push() {
 # exists to close. A no-change rebuild is cheap: the Dockerfile's cargo cache mounts
 # mean cargo re-links at most the crates that actually changed.
 build_tools() {
-	echo "==> building ${TOOLS_IMAGE} (shared asset tooling; not pushed)"
+	echo "==> building ${TOOLS_IMAGE} (shared asset tooling; not pushed under the commit's tag)"
 	"$DOCKER" build \
 		-t "${TOOLS_IMAGE}" \
 		-f "${SCRIPT_DIR}/tools/Dockerfile" "${SCRIPT_DIR}/.."
+	# Under REUSE_INPUTS only, and under its inputs tag only: the builder never gets a
+	# commit's tag, but a later run whose asset images changed pulls it from there
+	# instead of compiling it.
+	push_inputs_tag "${TOOLS_IMAGE}" tools
 }
 
 # Build the gg language-toolchain builder: every compiler a `gg` run's
@@ -1512,7 +1690,7 @@ fi
 # cache mounts make a no-change rebuild near-instant. It is independent of the base,
 # so it is built first.
 if select_needs_tools; then
-	build_tools
+	produce tools
 fi
 
 # Layer 0b — the gg language toolchains, built before any `-gg` variant copies them out.
@@ -1520,7 +1698,7 @@ fi
 # run's programs are judged by, so a stale one would bake yesterday's toolchain into an
 # otherwise-fresh variant. It is independent of the base, so it is built here.
 if select_needs_gg_toolchains; then
-	build_gg_toolchains
+	produce gg-toolchains
 fi
 
 # Layer 0c — the audio store, which depends on nothing and which nothing depends on.
@@ -1551,30 +1729,30 @@ fi
 base_rebuilt=""
 base_wasm_rebuilt=""
 if select_has base; then
-	build_base
+	produce base
 	base_rebuilt=1
 elif select_needs_base && ! image_present "${BASE_IMAGE}"; then
 	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it, directly or via base-wasm)"
-	build_base
+	produce base
 	base_rebuilt=1
 elif select_needs_base && parent_is_stale "${BASE_IMAGE}" "${SCRIPT_DIR}/base/Dockerfile"; then
 	echo "==> base image ${BASE_IMAGE} is older than containers/base/Dockerfile; rebuilding it (every image FROM it would inherit the stale layer)"
-	build_base
+	produce base
 	base_rebuilt=1
 fi
 
 # Layer 2 — base-wasm (now that base is present if it was needed).
 if select_has base-wasm; then
-	build_base_wasm
+	produce base-wasm
 	base_wasm_rebuilt=1
 elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
 	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/full-stack-3d/adversarial/performance are FROM it)"
-	build_base_wasm
+	produce base-wasm
 	base_wasm_rebuilt=1
 elif select_needs_base_wasm \
 	&& { [[ -n "${base_rebuilt}" ]] || parent_is_stale "${BASE_WASM_IMAGE}" "${SCRIPT_DIR}/base-wasm/Dockerfile"; }; then
 	echo "==> base-wasm image ${BASE_WASM_IMAGE} is out of date with the layer below it; rebuilding it"
-	build_base_wasm
+	produce base-wasm
 	base_wasm_rebuilt=1
 fi
 
@@ -1592,8 +1770,8 @@ if ! select_has full-stack-2d \
 	# full-stack-2d bakes six binaries out of the tooling builder. A game-jam-only
 	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
 	# needs no tooling of its own), so build the tooling here before its parent.
-	build_tools
-	build_full_stack 2d
+	produce tools
+	produce full-stack-2d
 fi
 
 # Layer 4 — the parent of every selected `-gg` variant that is missing or out of date.
@@ -1613,7 +1791,7 @@ for name in "${gg_parents[@]}"; do
 	else
 		continue
 	fi
-	build_one "${name}"
+	produce "${name}"
 done
 unset parent_ref
 
@@ -1625,7 +1803,7 @@ unset parent_ref
 # its variant is built.
 for name in "${selected[@]}"; do
 	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
-	build_one "$name"
+	produce "$name"
 	reclaim_after_push "$name"
 done
 echo "==> done"

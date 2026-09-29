@@ -1030,6 +1030,47 @@ command above therefore leaves your local store and builder untouched;
 ignored, so an image that exists nowhere else is never removed. A local build sets neither
 and removes nothing, because there the images are the product.
 
+### Reusing what the registry already holds
+
+Most commits change no run image at all, and a run-image build that built and pushed
+fifty-five images regardless spent an hour of the arm64 pool on a copy the registry
+already had. So the CI build is **content-addressed**: `REUSE_INPUTS=<table>` hands
+`build.sh` a digest of every image's inputs, and an image whose digest already names a
+pushed image is not built.
+
+The table is what [`scripts/ci/run-image-inputs.sh`](../scripts/ci/run-image-inputs.sh)
+prints: one `<name> <digest> <parents>` line for every image `image-names.sh` lists plus
+the `tools` and `gg-toolchains` builders. An image's digest covers its Dockerfile, every
+context path the Dockerfile copies (as `git ls-files -s` records them, so the index and
+not the working tree is what is described; a Dockerfile that copies `.` reads the whole
+context, which is the root `.dockerignore`'s listing), the digests of the images it is
+built from, and a schema constant. Anything that changes below an image therefore changes
+the image's own digest, and a change to the schema constant changes every digest at once,
+which is how a build is forced when an unpinned upstream (a base image named by tag, an
+apt package set, a toolchain fetched by version) has to be refreshed without a file in the
+repository changing: bump `INPUTS_SCHEMA` in that script.
+
+With the table, `build.sh` pushes every image it builds under two tags: the commit's
+(`<sha>-<arch>`) and `inputs-<digest>-<arch>`. Before it builds an image it looks the
+inputs tag up in the registry, and when the tag is there the image is **reused**: the
+commit's tag is created on top of the pushed manifest with `docker buildx imagetools
+create` (a manifest write, no blob moves) and nothing is built, pushed or reclaimed. An
+image whose digest is new is built as ever, `FROM` parents that are local because this
+run built them or, when this run reused them, pulled from their own inputs tags the first
+time a child needs one. `tools`, which never gets a commit's tag, is pushed under its
+inputs tag alone so a run whose asset images changed pulls the builder instead of
+compiling it. A reused image that is one of the five `gg selfcheck` representatives is
+still pulled and driven through the check with the day's gg: the reuse says the image is
+the one checked last time, not that the gg is.
+
+The table's parent map mirrors `build_one`'s dispatch in `build.sh`; a new image or a
+changed `FROM` is entered in both, and each file says so beside its map. The mode needs
+`PUSH=1`, because a reused image is a pushed one, and it is
+[`scripts/ci/run-images.sh`](../scripts/ci/run-images.sh) that turns it on: a local build
+neither has a table nor wants one. [`build.test.sh`](build.test.sh) drives the mode
+through a docker stub (run it directly; it is not among the `shell-tests` gate's
+scripts).
+
 ### The audio store image
 
 [`audio-store/Dockerfile`](audio-store/Dockerfile) is a data-only `scratch` image

@@ -816,6 +816,17 @@ Dockerfiles, so a publish from a development machine does not set it. A local
 build sets neither and keeps everything, because there the images are what is
 being produced.
 
+### Reusing unchanged run images
+
+The CI build is also content-addressed, so a commit that changes no run image
+builds none. `scripts/ci/run-image-inputs.sh` prints a digest of every image's
+inputs (its Dockerfile, the context paths it copies, its parents' digests), and
+`containers/build.sh`, handed that table as `REUSE_INPUTS`, pushes each image it
+builds under an `inputs-<digest>-<arch>` tag as well as the commit's, and gives
+an image whose inputs tag is already in the registry the commit's tag with a
+manifest write instead of a build. `containers/README.md` says what the digest
+covers and how a build is forced when an unpinned upstream has to be refreshed.
+
 `cargo run -p test-cabinet-gg -- selfcheck` asks the same question of this
 machine's own toolchains, which is the form to run while working on an arm. See
 [the self-check](/gg/languages/selfcheck/).
