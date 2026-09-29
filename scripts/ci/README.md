@@ -160,6 +160,26 @@ pipeline's definition in Azure DevOps (`the-test-cabinet`). Every `Docker@2` reg
 login and every `manifest.sh` fuse carries `retryCountOnTaskFailure: 2`; the builds
 themselves never retry, so a failed build keeps its reason in the log.
 
+**Registry retention.** The registry is on the Basic tier, which has no retention
+policy, so two scripts delete what nothing will pull again. At the end of the
+staging and prod deployments, on `succeededOrFailed()` and never failing the
+deployment, `registry-purge.sh` (an AzureCLI@2 step under `tcab-deploy`, which
+holds AcrDelete and the command-invoke role on both clusters) reads what the
+`tcab-staging` and `tcab-prod` namespaces run through `az aks command invoke`
+and keeps those commits, the commit just deployed (`--keep`) and the newest
+commit in the registry; in every `tcab-*` and `test-cabinet-*` repository it
+then deletes the other commit tags (`<sha>`, `<sha>-<arch>`), every
+`inputs-<hex>-<arch>` manifest but the newest per architecture (the last build of
+unchanged inputs stays reusable), and the untagged manifests older than an hour
+that no remaining index names. `buildcache-*`, `latest` and any other tag are
+always kept, and a cluster that cannot be read stops it with nothing deleted.
+After the CI-images pipeline pushes, `ci-image-purge.sh` (from
+`.azure/project/ci-image-steps.yml`, with the `the-test-cabinet-acr`
+credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
+repository every tag that `master`, `staging`, `nightly` and the checkout do not
+pin in `ci/images/tags.yml`, and from it and its `-cache` repository the untagged
+manifests older than an hour; a branch it cannot fetch stops it.
+
 ### The Rust jobs and their caches
 
 gg's unit tests are not in the template's `rust-test` gate. That gate runs the whole
@@ -257,6 +277,8 @@ a gg whose version is not the tag's; `gg_publish`; and `mirror`, which pushes th
 | `gg-prebuilt.sh <artifact-dir> <out-dir>`                                                             | stage a `gg-<arch>` artifact as the `gg-build` build context the backend and driver bake, checking it first                                                           | `gg-prebuilt.test.sh`                 |
 | `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture; `TCAB_PREBUILT_GG` replaces the `gg-build` stage for `backend` and `driver`                                               | `service-image.test.sh`               |
 | `service-images.sh <commit>`                                                                          | every service image of one architecture, on one builder: `service-image.sh` per service in a fixed order                                                              | `service-images.test.sh`              |
+| `registry-purge.sh [--dry-run] [--keep <sha>]... [--keep-count <n>] [--no-cluster]`                   | delete the `tcab-*` and `test-cabinet-*` images no environment runs, after each deployment; the policy is under _Registry retention_                                  | `registry-purge.test.sh`              |
+| `ci-image-purge.sh [--dry-run] <rust\|web>`                                                           | delete the track's CI images no live branch pins in `ci/images/tags.yml`, after the CI-images pipeline pushes                                                         | `ci-image-purge.test.sh`              |
 | `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                            | `manifest.test.sh`                    |
 | `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                            | `deploy-environment.test.sh`          |
 | `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                   | each has its `.test.sh`               |
