@@ -147,6 +147,16 @@ different routes through it:
 Rolling an environment is therefore merging to its branch. See
 [Deploying](/deployment/kubernetes/overview/#deploying).
 
+The registry holds only what an environment can use. Its tier has no retention
+policy, so each deployment ends by purging it: the images of the commits both
+clusters run, of the commit just deployed and of the newest commit in the
+registry stay, and every other commit's go. A run image whose inputs are
+unchanged is not rebuilt for a new commit but retagged from the last build,
+which stays under its inputs tag, so a commit that changes no run image costs
+the registry nothing and the build minutes. The CI images the gates run inside
+are kept while a live branch pins them and purged by the CI-images pipeline
+after each of its builds. `scripts/ci/README.md` describes both purges.
+
 The pipeline's deploy identity may write only the application namespace, so the
 few cluster-scoped objects an environment needs are a one-time bootstrap applied
 by a cluster administrator. See
