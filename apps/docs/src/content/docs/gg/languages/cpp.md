@@ -38,8 +38,12 @@ which is packaging rather than scope.
 ## Toolchain and build outputs
 
 The compiler is a wasi-sdk tree, located at `TCAB_GG_WASI_SDK_HOME`, then
-`/opt/gg/toolchains/wasi-sdk`, then `~/.local/share/tcab/gg-wasi-sdk`. A compile
-is bounded at 120 seconds. `crates/gg-sandbox-artifacts/cpp` builds three
+`/opt/gg/toolchains/wasi-sdk`, then `~/.local/share/tcab/gg-wasi-sdk`, and used
+by its real path, every symlink on the way resolved: `clang` derives its sysroot
+from where its binary actually is, so that is the path the compiler records and
+the one the arm rewrites to `/wasi-sdk` in everything it records, above all the
+libc++ header a hardening failure names. A compile is bounded at 120
+seconds. `crates/gg-sandbox-artifacts/cpp` builds three
 artifacts from `packages/gg-sandbox-cpp` into that crate's `OUT_DIR`, and the
 arm embeds them through `GG_ARTIFACTS_CPP`. None of them are committed. This arm's
 warm-up is unpacking the guest archive.

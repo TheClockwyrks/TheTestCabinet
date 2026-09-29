@@ -1159,24 +1159,33 @@ const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 // ---------------------------------------------------------------------------------------------
 
 /// Where this arm's toolchain tree is: what an operator said, then what a gg run image guarantees,
-/// then where `scripts/ci/install-wasi-sdk.sh` puts it.
+/// then where `scripts/ci/install-wasi-sdk.sh` puts it — **by its real path**.
 ///
 /// Kept in step with `gg_wasi_sdk_home` in `packages/gg-sandbox-cpp/cpp-version.sh`, which is what
 /// the installer and the image build resolve.
+///
+/// The real path, every symlink resolved, because that is the path the compiler records. `clang`
+/// derives its sysroot from where its own binary *is* (`bin/clang.cfg` names
+/// `<CFGDIR>/../share/wasi-sysroot`, and `<CFGDIR>` comes from `/proc/self/exe`), so the file a
+/// libc++ hardening failure names begins with the tree's real path whatever path spawned it — and
+/// [`shared_flags`]' rewrite of that tree to [`TOOLCHAIN_PREFIX`] matches only if it names the same
+/// spelling. A tree reached through a symlink — CI links `$HOME/.local` into its toolchain cache —
+/// was otherwise shortened by a prefix that matched nothing, and a model read the cache's path on
+/// every frame. A tree that does not exist keeps the spelling it was given, so that the
+/// [spawn failure](spawn_prefix) names the place an operator pointed at.
 pub(super) fn wasi_sdk_home() -> Result<PathBuf, String> {
-    if let Ok(configured) = std::env::var(WASI_SDK_HOME_ENV)
+    let home = if let Ok(configured) = std::env::var(WASI_SDK_HOME_ENV)
         && !configured.is_empty()
     {
-        return Ok(PathBuf::from(configured));
-    }
-    let image = PathBuf::from(IMAGE_HOME);
-    if clang(&image).is_file() {
-        return Ok(image);
-    }
-    let Some(user) = std::env::var_os("HOME") else {
-        return Ok(image);
+        PathBuf::from(configured)
+    } else {
+        let image = PathBuf::from(IMAGE_HOME);
+        match std::env::var_os("HOME") {
+            Some(user) if !clang(&image).is_file() => PathBuf::from(user).join(USER_HOME_SUFFIX),
+            _ => image,
+        }
     };
-    Ok(PathBuf::from(user).join(USER_HOME_SUFFIX))
+    Ok(std::fs::canonicalize(&home).unwrap_or(home))
 }
 
 /// Where the embedded archive is unpacked, for this process.
