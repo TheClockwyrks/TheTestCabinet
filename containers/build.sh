@@ -133,8 +133,9 @@
 #                 (`<image>:inputs-<digest>-<arch>`) is retagged for IMAGE_TAG with one
 #                 registry round trip instead of being built and pushed again, and a
 #                 built image is pushed under its inputs tag as well as IMAGE_TAG so the
-#                 next build can reuse it. Needs PUSH=1. See "Reusing what the registry
-#                 already holds" below. `scripts/ci/run-images.sh` sets it.
+#                 next build can reuse it (and the reclaim, under RECLAIM, drops that tag
+#                 with the others). Needs PUSH=1. See "Reusing what the registry already
+#                 holds" below. `scripts/ci/run-images.sh` sets it.
 #   IMAGE_REGISTRY  registry/namespace the pushed images live under, e.g.
 #                 testcabinet.azurecr.io (required when PUSH=1; pushing there needs
 #                 `az acr login --name testcabinet` and AcrPush). Matches the
@@ -675,27 +676,44 @@ reclaim_report_disk() {
 	"$DOCKER" system df 2>/dev/null | sed 's/^/    /' >&2 || true
 }
 
-# Drop one image's local and registry-qualified tags. Separate calls so a tag that is not
-# there cannot affect the one that is.
+# Drop EVERY tag one image carries: the local one, the registry-qualified one, and under
+# REUSE_INPUTS the inputs tag `push_inputs_tag` added. Separate calls so a tag that is not
+# there cannot affect the one that is. All of them have to go, because `docker image rm
+# <tag>` on an image that still has another tag only UNTAGS it — exit 0, "Untagged: ...",
+# and every layer still in the store. That is how the first content-addressed run filled
+# both agents: each variant kept its inputs tag, the reclaim reported every removal as
+# done, and the available figure fell 2.2 GB per variant exactly as if there were no
+# reclaim at all.
 #
 # THE FAILURE IS REPORTED, unlike the diagnostics below, and the distinction is deliberate:
 # this removal is the fix rather than an observation, so a silent failure here is what a
 # "no space left on device" fourteen variants later would look like — preceded by a run of
-# affirmative-looking lines. It still does not FAIL the build (the registry already has the
-# bytes, and the build may well have room to finish), but it says so. The registry tag is
-# the one that may legitimately be absent, since only a pushed image ever has it, so its
-# status is not reported.
+# affirmative-looking lines. So it is the IMAGE, by id, that is checked afterwards, not the
+# exit status of the untag: an image still in the store after its tags went is named with
+# the tags that hold it. It still does not FAIL the build (the registry already has the
+# bytes, and the build may well have room to finish), but it says so. The registry and
+# inputs tags are the ones that may legitimately be absent, since only a pushed image
+# ever has them, so their status is not reported.
 reclaim_image() {
-	local name="$1" out
+	local name="$1" out id tags
 	local local_image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 	local pushed="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 	# A reused image was never in the local store; there is nothing to reclaim.
 	image_present "${local_image}" || return 0
 	echo "==> reclaiming ${local_image} (pushed; nothing later is FROM it)" >&2
+	id="$("$DOCKER" image inspect --format '{{.Id}}' "${local_image}" 2>/dev/null)" || id=""
 	"$DOCKER" image rm "${pushed}" >/dev/null 2>&1 || true
+	if [[ -n "${REUSE_INPUTS}" && -n "${INPUTS_DIGEST[$name]:-}" ]]; then
+		"$DOCKER" image rm "$(inputs_ref "${name}")" >/dev/null 2>&1 || true
+	fi
 	if ! out="$("$DOCKER" image rm "${local_image}" 2>&1)"; then
 		echo "==> WARNING: ${local_image} was NOT reclaimed; its layers still hold disk:" >&2
 		echo "    ${out//$'\n'/$'\n'    }" >&2
+		return 0
+	fi
+	if [[ -n "${id}" ]] && image_present "${id}"; then
+		tags="$("$DOCKER" image inspect --format '{{join .RepoTags " "}}' "${id}" 2>/dev/null)" || tags="?"
+		echo "==> WARNING: ${local_image} was untagged but NOT reclaimed; ${id} still holds its layers under: ${tags:-no tag}" >&2
 	fi
 }
 
