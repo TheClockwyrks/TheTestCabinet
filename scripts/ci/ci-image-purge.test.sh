@@ -65,6 +65,13 @@ cp "$CI_DIR/ci-image-purge.sh" "$repo/scripts/ci/"
 
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly REPOSITORY="ubuntu-the-test-cabinet-rust-cicd"
+# The commit each revision of ci/images/tags.yml pins, shaped as the image
+# pipeline tags an image, and one no revision pins.
+readonly CHECKOUT="c0ffee0000000000000000000000000000000001"
+readonly MASTER="c0ffee0000000000000000000000000000000002"
+readonly STAGING="c0ffee0000000000000000000000000000000003"
+readonly NIGHTLY="c0ffee0000000000000000000000000000000004"
+readonly STALE="c0ffee0000000000000000000000000000000005"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
 # answered with the status STUB_DELETE_STATUS names and logged; the catalogue
@@ -152,8 +159,8 @@ chmod +x "$repo/bin/curl" "$repo/bin/git"
 
 at() { date --utc --date="$1" +%Y-%m-%dT%H:%M:%S.0000000Z; }
 
-pins() { # rust-tag web-tag
-	printf 'variables:\n  rustImageTag: %s\n  webImageTag: %s\n' "$1" "$2"
+pins() { # commit
+	printf 'variables:\n  ciImageTag: %s\n' "$1"
 }
 
 manifest() { # digest when [tag...]
@@ -172,23 +179,21 @@ basic_config() { # user password
 write_fixtures() {
 	rm -rf "$stub"
 	mkdir -p "$stub"
-	pins v1-checkout0000 v1-webcheckout0 >"$repo/ci/images/tags.yml"
-	pins v1-master000000 v1-webmaster000 >"$stub/branch-master.yml"
-	pins v1-staging00000 v1-webstaging00 >"$stub/branch-staging.yml"
-	pins v1-nightly00000 v1-webnightly00 >"$stub/branch-nightly.yml"
+	pins "$CHECKOUT" >"$repo/ci/images/tags.yml"
+	pins "$MASTER" >"$stub/branch-master.yml"
+	pins "$STAGING" >"$stub/branch-staging.yml"
+	pins "$NIGHTLY" >"$stub/branch-nightly.yml"
 	{
 		echo '{"manifests":['
-		manifest sha256:checkout "$(at '1 hour ago')" v1-checkout0000
+		manifest sha256:checkout "$(at '1 hour ago')" "$CHECKOUT"
 		echo ,
-		manifest sha256:master "$(at '3 days ago')" v1-master000000
+		manifest sha256:master "$(at '3 days ago')" "$MASTER"
 		echo ,
-		manifest sha256:staging "$(at '2 days ago')" v1-staging00000
+		manifest sha256:staging "$(at '2 days ago')" "$STAGING"
 		echo ,
-		manifest sha256:nightly "$(at '1 day ago')" v1-nightly00000
+		manifest sha256:nightly "$(at '1 day ago')" "$NIGHTLY"
 		echo ,
-		manifest sha256:stale "$(at '10 days ago')" v1-stale0000000
-		echo ,
-		manifest sha256:stale-web "$(at '10 days ago')" v1-webmaster000
+		manifest sha256:stale "$(at '10 days ago')" "$STALE"
 		echo ,
 		manifest sha256:untagged-old "$(at '2 hours ago')"
 		echo ,
@@ -218,9 +223,8 @@ write_fixtures
 out="$(run rust)"
 check_equal "exits 0" "0" "$?"
 check_equal "keeps the checkout's pin and the three live branches'" \
-	"${REPOSITORY}: keeping v1-checkout0000 v1-master000000 v1-nightly00000 v1-staging00000 " "$(head -1 <<<"$out")"
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY " "$(head -1 <<<"$out")"
 check_contains "deletes an unkept tag" "deleted ${REPOSITORY}@sha256:stale" "$out"
-check_contains "a web pin keeps nothing in the rust repository" "deleted ${REPOSITORY}@sha256:stale-web" "$out"
 check_contains "deletes an untagged manifest older than an hour" "deleted ${REPOSITORY}@sha256:untagged-old" "$out"
 check_lacks "keeps a young untagged one" "sha256:untagged-young" "$out"
 check_lacks "keeps the cache repository's tag" "sha256:cache-tag" "$out"
@@ -228,7 +232,6 @@ check_contains "deletes the cache repository's old untagged manifests" "deleted 
 check_lacks "not its young one" "sha256:cache-young" "$out"
 check_equal "the deletes, in order" \
 	"${REPOSITORY}@sha256:stale
-${REPOSITORY}@sha256:stale-web
 ${REPOSITORY}@sha256:untagged-old
 ${REPOSITORY}-cache@sha256:cache-old" "$(deleted)"
 check_contains "fetches master" "fetch --quiet origin master" "$(cat "$stub/git.log")"
@@ -247,10 +250,10 @@ cp "$stub/$REPOSITORY.manifests.json" "$stub/ubuntu-the-test-cabinet-web-cicd.ma
 cp "$stub/$REPOSITORY-cache.manifests.json" "$stub/ubuntu-the-test-cabinet-web-cicd-cache.manifests.json"
 out="$(run web)"
 check_equal "exits 0" "0" "$?"
-check_contains "keeps the web pins" \
-	"ubuntu-the-test-cabinet-web-cicd: keeping v1-webcheckout0 v1-webmaster000 v1-webnightly00 v1-webstaging00" "$out"
-check_lacks "so the web master pin stays" "sha256:stale-web" "$(deleted)"
-check_contains "and the rust ones go" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
+check_contains "keeps the same pins, which name both tracks' images" \
+	"ubuntu-the-test-cabinet-web-cicd: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes the web repository's unkept tag" "ubuntu-the-test-cabinet-web-cicd@sha256:stale" "$(deleted)"
+check_lacks "keeping master's" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
 
 echo "--- --dry-run ---"
 write_fixtures
@@ -286,9 +289,9 @@ check_equal "and deletes nothing" "" "$(deleted)"
 echo "--- nothing resolves ---"
 write_fixtures
 for branch in master staging nightly; do
-	printf 'variables:\n  webImageTag: v1-web\n' >"$stub/branch-$branch.yml"
+	printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$stub/branch-$branch.yml"
 done
-printf 'variables:\n  webImageTag: v1-web\n' >"$repo/ci/images/tags.yml"
+printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$repo/ci/images/tags.yml"
 out="$(run rust)"
 check_equal "exits 1" "1" "$?"
 check_contains "refuses" "no tag resolved as kept; refusing to purge" "$out"

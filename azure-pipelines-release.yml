@@ -48,8 +48,8 @@ resources:
 pool:
   vmImage: ubuntu-24.04
 
-# The tag of each CI image, which the Rust jobs below run in, read at compile
-# time as the main pipeline reads it.
+# `ciImageTag`, the commit the CI image the Rust jobs below run in was built
+# from, read at compile time as the main pipeline reads it.
 variables:
   - template: ci/images/tags.yml
 
@@ -70,14 +70,14 @@ jobs:
 
   - template: .azure/tcab/binary-jobs.yml
     parameters:
-      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.rustImageTag }}
+      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
       dependsOn:
         - gated
       publish: true
 
   - template: .azure/tcab/gg-jobs.yml
     parameters:
-      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.rustImageTag }}
+      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
       arm64Pool: pool-dev-linux-arm64-wus3-4c-eph-01
       dependsOn:
         - gated

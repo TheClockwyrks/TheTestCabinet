@@ -3,36 +3,30 @@
 #
 # The gates run inside purpose-built CI images, one per track, pulled from
 # testcabinet.azurecr.io through the `the-test-cabinet-acr` service connection.
-# This pipeline builds none of them: it names a tag and the agent pulls it
-# before the job starts. The tag is content-addressed — it is a digest of the
-# files the image is built from — so the reference written below is a
-# reviewable statement that this commit ran in the image this commit describes,
-# which a floating tag could never be. azure-pipelines-ci-images.yml is what
-# builds and pushes them, and ci/images/README.md says what is in each and why.
+# This pipeline builds none of them: it names an image and the agent pulls it
+# before the job starts. Each image is tagged with the commit whose run of
+# azure-pipelines-ci-images.yml built it, so the reference written below is a
+# reviewable statement of which images this commit ran in, which a floating tag
+# could never be. That pipeline is what builds and pushes them, and
+# ci/images/README.md says what is in each and why.
 #
-# The tags are not written in this file. They live in ci/images/tags.yml, a
-# variables template this pipeline includes, which belongs to the workspace
-# rather than to the template: the template writes it once, carrying a
-# placeholder rather than a tag any registry holds, and never again, so this
-# file stays exactly what the template renders. Before this pipeline's first
-# run, and again whenever an image input changes, run
+# The commit is not written in this file. It lives in ci/images/tags.yml, a
+# variables template this pipeline includes, as its one variable,
+# `ciImageTag`. The template renders it carrying forty zeros rather than a
+# commit any image was built from, and the commit a workspace writes over them
+# is the workspace's own edit of it, which a template update carries through
+# its merge, so this file stays exactly what the template renders. Each job
+# names its image with a compile-time expression reading `ciImageTag` out of
+# that file, so the tag is written into the job before Azure pulls anything.
 #
-#   scripts/ci/ci-image.sh tag
-#
-# which writes every track's tag into that file, and commit it. The `ci-tests`
-# gate fails while a tag there is not the one this checkout builds. Each job
-# names its image with a compile-time expression reading its track's
-# `<track>ImageTag` variable out of that file, so the tag is written into the
-# job before Azure pulls anything.
-#
-# The ordering rule is worth knowing before it surprises someone: a commit that
-# changes an image's inputs pins a tag the registry does not hold yet, and its
-# gate jobs fail at job initialization until azure-pipelines-ci-images.yml has
-# pushed it. That pipeline triggers on the same paths on every branch, so the
-# sequence is push the branch, let the image pipeline finish, then re-queue
-# this run. Because
-# the tag is a digest of the inputs, the image is built once, on the branch
-# that introduced the change, and the merge finds it already pushed.
+# The loop, when a commit changes a file an image is built from: push it, and
+# the image pipeline's run on it pushes each track's image under that commit;
+# once that run has finished, write the commit into ci/images/tags.yml as
+# `ciImageTag` and push that, and the second commit's gates run in the new
+# images. Until the pin follows, the gates run in the images it names, so a
+# change to an image's files is complete when the pin follows it. Before this
+# pipeline's first run the same holds: queue the image pipeline, then pin the
+# commit it ran on.
 #
 # The tool versions are the ones .devcontainer/docker-compose.yml pins: the CI
 # images read that same file for them, which is what keeps a gate passing here
@@ -65,9 +59,10 @@
 # rolls the staging overlay onto it; a commit on any other
 # branch runs the gates and nothing more.
 #
-# The variables below are the deployment's own, rendered from the project's
-# answers, so nothing in them is filled in by hand; re-answering the question
-# on `copier update` is how one changes. The deployment documentation under
+# The variables below are the deployment's own, named from the project's slug
+# by the fleet's convention, so nothing in them is filled in by hand. A project
+# whose Azure names differ edits them here, and a template update carries the
+# edit. The deployment documentation under
 # apps/docs/src/content/docs/deployment/ says what each one names.
 #
 # What the project runs beyond the template's work is not written here but in
@@ -93,7 +88,7 @@ trigger:
 
 # The images the gate tracks run inside are named on each job, below, rather
 # than as container resources, because a job's `container:` accepts the
-# compile-time expression that reads a tag out of ci/images/tags.yml.
+# compile-time expression that reads the pinned commit out of ci/images/tags.yml.
 # `the-test-cabinet-acr` is a Docker Registry service connection to
 # testcabinet.azurecr.io holding push rights on it; push implies pull, so the one
 # connection serves this pipeline's pull and the image pipeline's push and
@@ -102,12 +97,10 @@ trigger:
 # the connection's credentials before a job's first step runs, which is why
 # these jobs need no docker CLI and the images carry none.
 #
-# Each tag is `v1-<12 hex>`: the schema segment, which scripts/ci/ci-image.sh
-# writes once as IMAGE_SCHEMA and which retires every image at a stroke when
-# something the files do not pin has moved, and then the digest of that image's
-# inputs. `latest` is never used and a tag is never pushed twice, so a
-# reference names one immutable image for as long as the registry keeps it.
-# The twelve zeroes are the placeholder a render carries; see the header.
+# Each tag is the full forty-character id of the commit whose image pipeline
+# run pushed the image. A run pushes under its own commit alone and `latest` is
+# never used, so a reference names one image for as long as the registry keeps
+# it. The forty zeros are the placeholder a render carries; see the header.
 
 pool:
   vmImage: ubuntu-24.04
@@ -115,8 +108,9 @@ pool:
 # A list rather than a mapping, because a variables template is included only
 # from a list.
 variables:
-  # The tag of each CI image, `<track>ImageTag`, which scripts/ci/ci-image.sh
-  # writes and the template does not render over. See the header.
+  # `ciImageTag`, the commit every CI image this pipeline pulls was built
+  # from, which the workspace writes over the placeholder the template renders.
+  # See the header.
   - template: ci/images/tags.yml
   # The directory on the agent's disk the Rust track keeps cargo's registry
   # and git checkouts in, which is what its cache saves. The target directory
@@ -156,7 +150,7 @@ stages:
       # else. The image carries no Node, so nothing here may reach for one.
       - job: rust
         displayName: Rust
-        # Every step of this job runs inside the Rust CI image, at the tag
+        # Every step of this job runs inside the Rust CI image, at the commit
         # ci/images/tags.yml pins, which is what `container:` means: Azure
         # pulls it with the `the-test-cabinet-acr` credentials before the
         # first step, mounts the work directory into it, and runs each step
@@ -165,7 +159,7 @@ stages:
         # says so with `target: host`, and the disk cleanup below is the one
         # that does.
         container:
-          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.rustImageTag }}
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         # The most a Microsoft-hosted agent gives a private project.
         timeoutInMinutes: 60
@@ -220,6 +214,13 @@ stages:
               restoreKeys: |
                 cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml
               path: target
+
+          # The build output cache restores `target/` whole, the reports the
+          # last run's gates left under it among it. A gate that failed before
+          # writing its report would otherwise leave that run's report where
+          # this run's is read, so both report directories start empty.
+          - script: rm -rf target/gate-artifacts target/test-results
+            displayName: Clear the reports the cache restored
 
           # The project's own setup for this job, before its first check.
           - template: .azure/project/setup-steps.yml
@@ -278,16 +279,36 @@ stages:
             displayName: cargo doctests
             condition: eq(variables['checksReady'], 'true')
 
-          # The project's own gates on this track, which the `extra_gates`
-          # answer names, one step each like every gate above.
+          # This project's own gates on this track, one step each like every
+          # gate above.
           - script: uv run --quiet --project ci gate run contract-drift
             displayName: "generated contract drift"
             condition: eq(variables['checksReady'], 'true')
 
-          # The project's own steps for this job, after its last check.
+          # The project's own steps for this job, after its last check and
+          # before the job's test results, which every job running a test gate
+          # ends with.
           - template: .azure/project/steps.yml
             parameters:
               job: rust
+
+          # The job's test results, as the artifact a run's results are read
+          # from: every JUnit report a gate above left, in a folder named by
+          # the gate, and nothing else, so the screenshots and the coverage
+          # stay in the artifacts that already carry them. Both steps run
+          # whether the tests passed or failed, since a failing run is the one
+          # whose results matter most. The script sets `testResultsCollected`
+          # once it copied a report, and a job that wrote none publishes
+          # nothing. The name carries the job attempt, so a rerun publishes
+          # beside its first attempt rather than colliding with it.
+          - script: scripts/ci/collect-test-results.sh
+            displayName: Collect the test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+
+          - publish: $(Build.SourcesDirectory)/target/test-results
+            displayName: Publish the test results
+            artifact: test-results-rust-$(System.JobAttempt)
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), eq(variables['testResultsCollected'], 'true'))
 
       # The web track: the interface's checks, the documentation site's, and
       # every check neither toolchain owns. The last group is the whole of the
@@ -298,7 +319,7 @@ stages:
         displayName: Web
         # As on the Rust track above, with the web image instead.
         container:
-          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.webImageTag }}
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         timeoutInMinutes: 60
         steps:
@@ -401,9 +422,23 @@ stages:
             displayName: web typecheck (tsc -b)
             condition: eq(variables['checksReady'], 'true')
 
+          # As the Rust job's test step does, the web tests name an artifact
+          # directory, which has the gate leave vitest's JUnit report there.
           - script: uv run --quiet --project ci gate run web-test
             displayName: web tests (vitest)
             condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
+
+          - task: PublishTestResults@2
+            displayName: Publish the web test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+            inputs:
+              testResultsFormat: JUnit
+              # Where the web tests step told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-test/junit.xml
+              testRunTitle: Web tests
+              failTaskOnMissingResultsFile: false
 
           # As the Rust job's test step does, the browser tests name an
           # artifact directory, which has the gate leave its JUnit report there
@@ -471,12 +506,26 @@ stages:
             displayName: ruff (check, format)
             condition: eq(variables['checksReady'], 'true')
 
+          # The runner's own tests, which pytest reports as JUnit in the
+          # artifact directory the step names, as every test gate's does.
           - script: uv run --quiet --project ci gate run ci-tests
             displayName: ci tests (pytest)
             condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/ci-tests
 
-          # The project's own gates on this track, which the `extra_gates`
-          # answer names, one step each like every gate above.
+          - task: PublishTestResults@2
+            displayName: Publish the CI test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+            inputs:
+              testResultsFormat: JUnit
+              # Where the ci tests step told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/ci-tests/junit.xml
+              testRunTitle: CI tests
+              failTaskOnMissingResultsFile: false
+
+          # This project's own gates on this track, one step each like every
+          # gate above.
           - script: uv run --quiet --project ci gate run frozen-paths
             displayName: "frozen test-case versions"
             condition: eq(variables['checksReady'], 'true')
@@ -509,17 +558,20 @@ stages:
             displayName: "project jobs pin the Rust CI image"
             condition: eq(variables['checksReady'], 'true')
 
+          # As the web tests do, the two test gates below name an artifact
+          # directory, which has each leave its JUnit report there for the
+          # collection at the end of the job.
           - script: uv run --quiet --project ci gate run scripts-test
             displayName: "script library tests (node --test)"
             condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run file-endings
-            displayName: "file endings outside frozen versions"
-            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/scripts-test
 
           - script: uv run --quiet --project ci gate run workspace-test
             displayName: "npm workspace tests (vitest)"
             condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
 
           - script: uv run --quiet --project ci gate run validators-typecheck
             displayName: "validator projects typecheck (tsc)"
@@ -529,10 +581,22 @@ stages:
             displayName: "gallery build (vite build)"
             condition: eq(variables['checksReady'], 'true')
 
-          # The project's own steps for this job, after its last check.
+          # The project's own steps for this job, after its last check and
+          # before the job's test results.
           - template: .azure/project/steps.yml
             parameters:
               job: web
+
+          # As at the end of the Rust job, the job's test results as the
+          # artifact a run's results are read from, pass or fail.
+          - script: scripts/ci/collect-test-results.sh
+            displayName: Collect the test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+
+          - publish: $(Build.SourcesDirectory)/target/test-results
+            displayName: Publish the test results
+            artifact: test-results-web-$(System.JobAttempt)
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), eq(variables['testResultsCollected'], 'true'))
 
       # The project's own jobs in the gates stage.
       - template: .azure/project/jobs.yml

@@ -30,8 +30,8 @@ testpaths = ["tests"]
 addopts = "-ra"
 
 # The settings a Python gate holds this project to, and every other uv project
-# the `python_projects` answer names: each extends this file rather than
-# repeating it, so the rules stay settled in one place.
+# the workspace keeps beside it: each extends this file rather than repeating
+# it, so the rules stay settled in one place.
 #
 # The width is the one this library is written to: a subprocess call with its
 # keyword arguments, or a dictionary comprehension with its condition, reads as

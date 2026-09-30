@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Prints the version pins one CI image consumes, as `NAME=VALUE` lines, for
-# scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg` and to
-# fold into that image's content-addressed tag.
+# scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg`.
 #
 # Usage: ci/images/build-args.sh <rust|web>
 #
@@ -14,15 +13,15 @@
 #
 # Which pins is decided by the image itself: this reads the `ARG` lines of
 # ci/images/<track>.Dockerfile and returns the ones the anchor has a literal
-# value for. That is what keeps a bump of a pin no CI image consumes —
-# CLAUDE_CODE_VERSION, CODEX_VERSION, LAZYGIT_VERSION — from retiring a
-# perfectly good image tag, while a bump of one an image does consume rebuilds
-# it.
+# value for. That is what keeps a pin no CI image consumes — CLAUDE_CODE_VERSION,
+# CODEX_VERSION, LAZYGIT_VERSION — out of every image's build, so a bump of one
+# leaves the layers the image is built from as they were, while a bump of one
+# an image does consume rebuilds the layers that read it.
 #
 # Not every version an image installs is in the anchor. The devcontainer's
-# install scripts pin some of their own — uv, pre-commit, kubectl, rustup,
-# cargo-binstall — and those scripts are inputs of the images that run them, so
-# a bump in one moves that image's tag through the other half of the digest.
+# install scripts pin some of their own — uv, pre-commit, kubectl, rustup —
+# and the image pipeline triggers on those scripts as it does on the compose
+# file, so a bump in one builds the images under the commit that bumped it.
 # See "Version pins" in README.md.
 #
 # The anchor is read with awk rather than with `docker compose config`, for

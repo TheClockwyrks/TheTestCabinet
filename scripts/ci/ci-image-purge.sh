@@ -11,7 +11,8 @@
 # image becomes stale.
 #
 # What is kept is what `master`, `staging` and `nightly` pin in
-# ci/images/tags.yml, plus what this checkout's copy of the file pins. Usually
+# ci/images/tags.yml as `ciImageTag`, the commit whose image pipeline run built
+# both tracks' images, plus what this checkout's copy of the file pins. Usually
 # that is one tag; it is two or three while a change sits on `nightly` or
 # `staging` and has not reached `master`. Nothing older is kept. This project
 # runs no CI on an old commit, so an image that no live branch names is an
@@ -132,12 +133,12 @@ authorization_for() {
 	printf 'Basic %s' "$basic"
 }
 
-# The tag ci/images/tags.yml pins for this track in one revision of the file:
-# the value of its `<track>ImageTag:` line. Read with grep rather than a YAML
-# parser because this runs on the agent, which carries neither PyYAML nor a
-# reason to.
+# The commit ci/images/tags.yml pins in one revision of the file: the value of
+# its `ciImageTag:` line, which names the image of every track. Read with grep
+# rather than a YAML parser because this runs on the agent, which carries
+# neither PyYAML nor a reason to.
 pins_in() {
-	grep -oE "^[[:space:]]*${track}ImageTag:[[:space:]]*[A-Za-z0-9_.-]+" <<<"$1" |
+	grep -oE "^[[:space:]]*ciImageTag:[[:space:]]*[A-Za-z0-9_.-]+" <<<"$1" |
 		sed -E 's/^.*:[[:space:]]*//' || true
 }
 

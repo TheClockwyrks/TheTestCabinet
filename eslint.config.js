@@ -61,8 +61,9 @@ export default defineConfig([
     // prose and format gates leave alone. It may hold another repository, whose
     // files and whose own configuration are none of this gate's business.
     "tmp/**",
-    // The paths the `extra_ignored_paths` answer names, which the prose and
-    // format gates leave out too, so no gate reads what the others leave alone.
+    // The project's own ignored paths, which the prose and format gates
+    // (.markdownlint-cli2.yaml, cspell.json, .prettierignore) leave out too, so no
+    // gate reads what the others leave alone.
     "cold-storage/**",
     "tasks/**/done/**",
     ".claude/workflows/**",

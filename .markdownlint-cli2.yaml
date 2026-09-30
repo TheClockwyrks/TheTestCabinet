@@ -29,8 +29,10 @@ globs:
 # out. It does not cover `.git` itself, because git does not ignore its own
 # directory, and a repository is not prose. The environments and the build and
 # scratch directories a workspace makes are left out whether or not a
-# `.gitignore` names them, and so is every path the `extra_ignored_paths`
-# answer names, which `cspell.json` and `.prettierignore` leave out too.
+# `.gitignore` names them. A path a project leaves out beyond these, such as a
+# submodule with gates of its own, is added here, to `cspell.json`'s
+# `ignorePaths` and to `.prettierignore` together, so the gates never disagree
+# about a path.
 ignores:
   - ".git/**"
   - "**/.venv/**"

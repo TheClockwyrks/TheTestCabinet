@@ -4,19 +4,12 @@
 #
 # `_commit` is the template version the workspace was last generated or updated
 # against, and `_src_path` is the template repository it came from.
-_commit: v0.21.0
+_commit: v0.27.0
 _src_path: git@ssh.dev.azure.com:v3/genyume/nyxsis-template-k8s-standard/nyxsis-template-k8s-standard
-azure_cluster: testcabinet-staging-westus2-aks
-azure_resource_group: testcabinet-staging-westus2-rg
-azure_service_connection: tcab-deploy
-ci_registry: testcabinet.azurecr.io
-deploy_environment: tcab-staging
-deploy_namespace: tcab-staging
 deployment: azure-k8s
-image_registry: testcabinet.azurecr.io
-project_description: A benchmark for AI models and harnesses built from test cases inspired by old school arcade and flash games.
+project_description: A benchmark for AI models and harnesses built from test cases
+    inspired by old school arcade and flash games.
 project_name: The Test Cabinet
 server_name: backend
 server_serves_web: true
 tauri_desktop: false
-web_dev_port: 1430

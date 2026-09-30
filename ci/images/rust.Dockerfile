@@ -27,6 +27,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 ARG RUST_VERSION
 ARG NEXTEST_VERSION
+ARG NEXTEST_SHA256_AMD64
+ARG NEXTEST_SHA256_ARM64
 
 # Built as root, with no USER line, and the steps do not run as root. Azure runs
 # `useradd -m -u 1001 vsts_azpcontainer` against a container job and execs every
@@ -74,8 +76,8 @@ ENV UV_INSTALL_DIR=/usr/local/bin \
 # ssh, sudo — and splitting it would risk the devcontainer to save nothing. This
 # list is short enough to state with its reasons in place.
 #
-#   - ca-certificates, curl, wget: rustup-init, the cargo-binstall bootstrap and
-#     the uv installer are all downloads.
+#   - ca-certificates, curl, wget: rustup-init, the cargo-nextest release
+#     archive and the uv installer are all downloads.
 #   - git: the gate runner shells out to `git rev-parse` before any gate does
 #     anything else, and cargo fetches git dependencies.
 #   - jq: the shell scripts under scripts/ read JSON with it.
@@ -89,11 +91,10 @@ ENV UV_INSTALL_DIR=/usr/local/bin \
 #     compiles C of its own calls for that target. The target itself is added
 #     by languages/rust/targets.sh below.
 #
-# The project's own packages, answered as `rust_ci_packages` and installed in
-# the same step as the toolchain's, after them: what the project's tests and
-# builds reach for on this track and the toolchain does not. The devcontainer
-# installs a list of its own, .devcontainer/system/apt.sh, which this answer
-# leaves as it is.
+# The project's own packages, installed in the same step as the toolchain's,
+# after them: what the project's tests and builds reach for on this track and
+# the toolchain does not. The devcontainer installs a list of its own,
+# .devcontainer/system/apt.sh, which this list leaves as it is.
 #
 #   - cmake
 #   - ffmpeg
@@ -148,7 +149,9 @@ COPY .devcontainer/languages/rust/ /tmp/scripts/rust/
 #
 # Both are safe to reuse here now that cargo-nextest.sh reads CARGO_HOME instead
 # of assuming a home directory: rustup-init honours CARGO_HOME and RUSTUP_HOME
-# itself, and cargo-binstall places the nextest binary in CARGO_HOME/bin. Each
+# itself, and cargo-nextest.sh takes the nextest binary out of its release
+# archive into CARGO_HOME/bin once the archive matches the checksum the anchor
+# pins, which this image receives as a build argument like the version. Each
 # one resolves its own architecture out of the image and each one runs what it
 # installed once before it finishes, which is what catches a download for the
 # wrong architecture here rather than in a gate.
@@ -159,10 +162,11 @@ COPY .devcontainer/languages/rust/ /tmp/scripts/rust/
 # afterwards. A pipeline job starts from the image every time, so leaving it out
 # would mean downloading clippy on every single run of the lint gate.
 #
-# The registry cache cargo-binstall leaves behind goes out in the same layer,
-# and the two directories are made world-writable the way the official Rust
-# images make them, so a step that runs as another user can still materialize a
-# component.
+# Nothing above compiles a crate, so cargo should leave no registry cache in
+# CARGO_HOME; whatever one a later script comes to leave goes out in the same
+# layer rather than into the image. The two directories are made world-writable
+# the way the official Rust images make them, so a step that runs as another
+# user can still materialize a component.
 RUN bash /tmp/scripts/rust/install.sh && \
 	rustup component add clippy && \
 	rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" /tmp/scripts/rust && \

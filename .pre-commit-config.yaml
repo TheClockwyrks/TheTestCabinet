@@ -43,6 +43,10 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        # A test case's reference implementation ships its own media, and a
+        # music track or a gameplay recording is several megabytes; it is the
+        # size a playable game needs, not a mistake this hook should stop.
+        exclude: '^(test-cases|game-jams)/.*\.(wav|mp3|ogg|webm|mp4|gz|glb)$'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -54,8 +58,11 @@ repos:
       - id: end-of-file-fixer
         # Every text file ends with a newline, which nothing else here checks.
         # A reviewer that has to notice a missing one is being spent on what a
-        # hook settles. Binary assets are left alone.
-        exclude: '\.(svg|png|ico|woff2?)$'
+        # hook settles. Binary assets are left alone, and so is every test-case
+        # and game-jam version: a frozen version is immutable (the
+        # `frozen-paths` gate refuses a change to it), and some of them hold
+        # files that end without a newline, which this hook would rewrite.
+        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
@@ -156,9 +163,9 @@ repos:
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^ci/gates/rust-doc\.py$'
         pass_filenames: false
 
-      # rust-test and rust-doctest have no hook: the project answered that its
-      # suite is too slow for a commit. They run in the pipeline's Rust track
-      # and in `make gate`.
+      # rust-test and rust-doctest have no hook: the suite is too slow for a
+      # commit. They run in the pipeline's Rust track and in `make gate`, and
+      # ci/tests/test_wiring.py names them among the gates held to having none.
 
       # The web app's gates. Each runs an npm script, which reads its own
       # configuration for its file set, so none of them takes the staged paths.
@@ -313,15 +320,17 @@ repos:
         description: Run the tests of the gate runner and the metrics.
         entry: uv run --quiet --project ci gate run ci-tests
         language: system
-        # The pipelines and this file are inputs too: ci/tests/test_wiring.py
-        # reads all three and holds the gates, the hooks and the pipeline
-        # steps to one another.
-        files: '^ci/|^azure-pipelines(-ci-images)?\.yml$|^\.pre-commit-config\.yaml$|^scripts/ci/ci-image\.sh$'
+        # The pipeline and this file are inputs too: ci/tests/test_wiring.py
+        # reads both, with ci/images/tags.yml, and holds the gates, the hooks,
+        # the pipeline steps and the images the jobs pull to one another.
+        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$'
         pass_filenames: false
 
-      # The project's own gates, which the `extra_gates` answer names; each is
-      # a script under ci/gates/ the project writes. A gate the answer gives no
-      # hook runs in the pipeline and in `make gate` only.
+      # This project's own gates, each a script under ci/gates/. The ones too
+      # slow for a commit (contract-drift, workspace-test, validators-typecheck
+      # and site-build, which build the workspace or its packages first) have
+      # no hook and run in the pipeline and in `make gate` only;
+      # ci/tests/test_wiring.py names them.
       - id: frozen-paths
         name: "frozen test-case versions"
         entry: uv run --quiet --project ci gate run frozen-paths
@@ -375,7 +384,9 @@ repos:
         name: "project jobs pin the Rust CI image"
         entry: uv run --quiet --project ci gate run ci-image-pins
         language: system
-        files: '^ci/images/tags\.yml$|^\.azure/project/jobs\.yml$|^scripts/ci/tcab-image-pin\.sh$|^ci/gates/ci-image-pins\.py$'
+        # The project's pipeline files that name a CI image, and the gate
+        # that holds each reference to the commit ci/images/tags.yml pins.
+        files: '^\.azure/|^azure-pipelines-release\.yml$|^ci/gates/ci-image-pins\.py$'
         pass_filenames: false
 
       - id: scripts-test

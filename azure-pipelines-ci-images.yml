@@ -5,27 +5,27 @@
 # must never build an image: building one was most of what a gates run spent
 # its time on before this, and an image a run builds for itself is an image
 # nobody can name afterwards. azure-pipelines.yml instead names each job's
-# image by the pinned tag ci/images/tags.yml holds and lets the agent pull it,
-# so what a gate ran inside is a fact written in the diff. This file is what makes
+# image at the commit ci/images/tags.yml pins and lets the agent pull it, so
+# what a gate ran inside is a fact written in the diff. This file is what makes
 # that reference resolve.
 #
-# It runs on a change to an image's inputs and on nothing else. Most commits
-# touch none of them, so most commits queue no run here at all; and a run that
-# does start usually finds the tag already in the registry and ends in under a
-# minute, because the tag is a digest of those same inputs. See
-# scripts/ci/ci-image.sh, which is the whole of the logic, and
-# ci/images/README.md for what each image holds.
+# It runs on a change to a file an image is built from and on nothing else, so
+# most commits queue no run here at all. A run tags every image it builds with
+# the commit it runs on, `$(Build.SourceVersion)`, and pushes it: nothing is
+# computed, and a run on a commit that changed nothing an image installs is a
+# layer cache hit of a few minutes. See scripts/ci/ci-image.sh, which is the
+# whole of the logic, and ci/images/README.md for what each image holds.
 #
-# The order to do things in, when an input does change. The tag moves the
-# moment the file is staged, so the commit that changes an input pins a tag the
-# registry does not hold yet and its gate jobs fail at job initialization — the
-# agent cannot pull what has not been pushed. The sequence is: push the branch,
-# which queues this pipeline; let it finish; re-queue the gates run. Because
-# the tag is content-addressed the image is built exactly once, on the branch
-# that introduced the change, and the merge finds it pushed and builds nothing.
-# This is the cost of a hand-written immutable pin and it is accepted rather
-# than worked around: a reference resolved at run time would be a reference
-# nobody reviewed.
+# What to do after a run. The gates pipeline pulls the images of the commit
+# ci/images/tags.yml pins as `ciImageTag`, and nothing moves that pin but a
+# commit. So once a run on a commit has pushed every image, write that commit
+# into ci/images/tags.yml and push it; the gates of that second commit run in
+# the new images, and until it lands they run in the images the pin names. A
+# change to an image's files is complete when the pin follows it. This is the
+# cost of a pin a developer writes, and it is accepted rather than worked
+# around: a pipeline committing the pin itself needs write rights on every
+# branch and lands an unreviewed commit on one, and a reference resolved at run
+# time would be a reference nobody reviewed.
 #
 # A fresh render has pushed no image at all, so this is the pipeline to create
 # and queue first. It is a second `az pipelines create`, naming this file; the
@@ -57,11 +57,10 @@
 #    in the registry under a tag the gates pipeline will pull.
 #
 # There is one more property worth naming, because it is what makes the above
-# matter less than it might: the tag is a digest of the inputs, so a commit
-# cannot push an image *under a tag some other commit pins*. The worst an
-# unreviewed commit could do is push an image under the tag that commit's own
-# files describe, which nothing pulls until someone writes that tag into
-# azure-pipelines.yml.
+# matter less than it might: an image is tagged with the commit its run is on,
+# so a commit can push an image only under its own id. The worst an unreviewed
+# commit could do is push an image nothing pulls until someone writes that
+# commit into ci/images/tags.yml, which is a reviewed change of its own.
 
 trigger:
   branches:
@@ -69,22 +68,14 @@ trigger:
       - "*"
   paths:
     include:
-      # The sorted union of `scripts/ci/ci-image.sh inputs <track>` over every
-      # track, together with the file the pins are read out of.
-      # ci/tests/test_wiring.py holds the two to each other, because they fail
-      # in opposite directions and neither failure is loud: a path digested but
-      # not listed here is a pin that moves with no image built for it, and a
-      # path listed here but not digested is a build queued for nothing.
-      #
-      # .devcontainer/docker-compose.yml is the one path here that no tag
-      # digests directly. A tag digests the pins ci/images/build-args.sh reads
-      # out of that file rather than the file itself, so that bumping a pin no
-      # CI image installs retires no image. Bumping one an image does install
-      # moves its tag, and a trigger that left the file out would queue no
-      # build for it, which is the failure that cannot be recovered from.
-      # Listing it takes the milder half instead: a run queued for a pin these
-      # images ignore finds every tag already pushed and ends in under a
-      # minute.
+      # The one list of the files an image is built from: every `COPY` source
+      # of a Dockerfile under ci/images/, the Dockerfiles and their
+      # `.dockerignore` files, ci/images/build-args.sh and this pipeline's
+      # script, which decide the build's arguments and command line, and
+      # .devcontainer/docker-compose.yml, whose anchor holds the pins an
+      # image's `ARG` lines read. A file added to an image's `COPY` or `ARG`
+      # lines is added here, or a change to it builds no image and the pin
+      # has no commit to follow. Sorted, one path a line.
       - .devcontainer/docker-compose.yml
       - .devcontainer/languages/node
       - .devcontainer/languages/rust
@@ -122,8 +113,8 @@ jobs:
     # base image moves, when nothing is taken from the layer cache.
     timeoutInMinutes: 60
     steps:
-      # One commit is enough. The tag digests the index, not the history, and
-      # nothing here pushes anywhere git can see.
+      # One commit is enough. The tag is the commit Azure names in
+      # BUILD_SOURCEVERSION, and nothing here reads the history.
       - checkout: self
         fetchDepth: 1
 
@@ -136,16 +127,15 @@ jobs:
       # `the-test-cabinet-acr` is a Docker Registry service connection to
       # testcabinet.azurecr.io with push rights on it. This task writes the
       # credential into the agent's docker configuration for the rest of the
-      # job, which is what the existence check and the `--push` inside
-      # ci-image.sh both read it back from.
+      # job, which is what the `--push` inside ci-image.sh reads it back from.
       - task: Docker@2
         displayName: Sign in to the registry
         inputs:
           command: login
           containerRegistry: the-test-cabinet-acr
 
-      # Skips the build outright when the registry already holds the tag this
-      # checkout names, which is the common case.
+      # Builds the image and pushes it under this run's commit, which is the
+      # commit ci/images/tags.yml is then written to.
       - script: scripts/ci/ci-image.sh build rust
         displayName: Build and push the Rust CI image
 

@@ -26,9 +26,9 @@
 #   THE_TEST_CABINET_NAMESPACE        The namespace the overlay places the base in
 #   THE_TEST_CABINET_ROLLOUT_TIMEOUT  How long a rollout is given, as kubectl spells it
 #
-# Each defaults to what the project answered, so a roll by hand needs the
-# commit alone. The pipeline sets the first three from its variables, which
-# are rendered from the same answers.
+# Each defaults to the name the fleet's convention gives it from the project's
+# slug, so a roll by hand needs the commit alone. The pipeline sets the first
+# three from its variables, which are named by the same convention.
 #
 # Once the rollout is ready, the script runs the project's own post-deploy
 # hook, scripts/ci/post-deploy.sh, where the project has one: the work that

@@ -40,13 +40,13 @@
 # against its sibling one where it has it. The failure message names the file that
 # rejected the source, which is the file to widen.
 #
-# WHICH DOCKERFILES. This project's own: `deployments/images/*` and `containers/**`,
-# built from the repository root. The devcontainer image and the CI images
-# (`.devcontainer/ubuntu.dockerfile`, `ci/images/*.Dockerfile`) and their ignore files
-# are rendered from the workspace template and must stay byte-identical to it: they
-# build from contexts of their own (`.devcontainer/` for the devcontainer), the
-# template tests their builds, and any fix this gate could ask for would be an edit to a
-# template-owned file. They are left out by name (TEMPLATE_DOCKERFILES below).
+# WHICH DOCKERFILES. Every one built from the repository root: `deployments/images/*`,
+# `containers/**`, and `.devcontainer/ubuntu.dockerfile`, whose compose service sets
+# the context to the repository root so that its last layer can run gg's toolchain
+# installers against the pins under packages/. The two CI images
+# (`ci/images/*.Dockerfile`) build from `ci/images/` against their own sibling ignore
+# files and copy nothing from this repository's tree, so this gate has nothing to say
+# about them; they are left out by name (TEMPLATE_DOCKERFILES below).
 #
 # THE RUST PIN. The template decides the compiler, in `rust-toolchain.toml`. The
 # case images under `containers/` pin their own Rust (`FROM … rust:<v>-bookworm`,
@@ -300,9 +300,9 @@ checked=0
 # `*.dockerfile` is the devcontainer's spelling, and it was outside this glob until
 # that image started building from the repository root — so the one Dockerfile whose
 # COPY paths this gate is most useful for was the one it silently skipped.
-# The template's Dockerfiles, left out by name (see the header): each must still be
-# tracked, so a template that renames one fails here rather than letting the list rot.
-TEMPLATE_DOCKERFILES=(.devcontainer/ubuntu.dockerfile ci/images/rust.Dockerfile ci/images/web.Dockerfile)
+# The CI images, left out by name (see the header): each must still be tracked, so a
+# template update that renames one fails here rather than letting the list rot.
+TEMPLATE_DOCKERFILES=(ci/images/rust.Dockerfile ci/images/web.Dockerfile)
 for template_dockerfile in "${TEMPLATE_DOCKERFILES[@]}"; do
 	git ls-files --error-unmatch -- "$template_dockerfile" >/dev/null 2>&1 || {
 		echo "error: $template_dockerfile is named in TEMPLATE_DOCKERFILES and is not tracked; update the list." >&2

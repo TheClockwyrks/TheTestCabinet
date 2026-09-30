@@ -12,13 +12,14 @@
 # through .azure/tcab/gg-toolchains-steps.yml, which restores <cache-dir> with a
 # Cache@2 task first and saves it after a job that succeeded.
 #
-# WHY IT EXISTS. The template's Rust CI image carries the compiler, nextest and
-# the apt packages the `rust_ci_packages` answer names, and deliberately no Node
+# WHY IT EXISTS. The Rust CI image carries the compiler, nextest and the apt
+# packages ci/images/rust.Dockerfile names, and deliberately no Node
 # and nothing project-specific. Building crates/gg needs both: its build script
 # reflects gg's signature catalogues with the npm workspace's pinned
 # `typescript`, and every arm's SDK and documentation tool (about 3.4 GB, see
-# scripts/ci/install-gg-toolchains.sh). The developer's devcontainer installs
-# the same set through scripts/devcontainer-setup.sh, from the same installers.
+# scripts/ci/install-gg-toolchains.sh). The developer's devcontainer image
+# bakes the same set through .devcontainer/languages/gg/install.sh, from the
+# same installers.
 #
 # WHAT IT DOES, in order:
 #
