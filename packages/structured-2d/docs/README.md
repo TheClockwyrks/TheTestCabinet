@@ -22,6 +22,7 @@ The engine owns:
 - Collision detection: finding pairs, reporting them with a manifold, and the
   queries. It moves nothing.
 - Keyboard listening, action binding, edge detection, and pointer tracking.
+- The on-screen touch controls the selected layout draws, and when they show.
 - The Web Audio graph, cue synthesis, looping, mute, and the first-gesture
   unlock.
 - Asset URL resolution under the fixed `assets/` root.
@@ -143,7 +144,7 @@ interface EngineOptions<D = unknown> {
 | `game`           | —                    | The game definition, bound for the engine's lifetime. `D` is inferred from it.                                                              |
 | `background`     | —                    | A CSS color cleared to before every frame. Absent, the frame clears to transparency.                                                        |
 | `imageSmoothing` | `true`               | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See `rendering.md`. |
-| `layout`         | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`.                                              |
+| `layout`         | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game registers and whose on-screen controls the engine draws. See `input.md`.     |
 | `clock`          | `new WallClock()`    | The clock supplying each frame's delta. See `frame.md`.                                                                                     |
 | `surface`        | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its listeners.                                                     |
 | `assetRoot`      | `"assets/"`          | The root every asset path resolves under. See `assets.md`.                                                                                  |
@@ -175,6 +176,7 @@ interface Engine<D = unknown> {
   frame(): FrameInfo;
   viewport(): Viewport;
   diagnostics(): readonly DiagnosticReading[];
+  touchControls(): TouchControlsState | null;
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -196,10 +198,11 @@ interface Engine<D = unknown> {
 | `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                         |
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                     |
 | `diagnostics`    | Every registered diagnostic source and what it reports now, the instance registry's first and then the world's. See `diagnostics.md`. |
+| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none. See `input.md`.                    |
 | `recording`      | Whether draw-command recording is currently capturing. See `recording.md`.                                                            |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                   |
 | `stopRecording`  | Disarm and return everything captured since `startRecording`.                                                                         |
-| `destroy`        | Close the world, halt the loop, and drop every listener.                                                                              |
+| `destroy`        | Close the world, halt the loop, remove the on-screen controls, and drop every listener.                                               |
 
 `initialize` resolving means the instance exists and has run its `initialize`,
 the start level's `load` has resolved, its actors are spawned and have begun
@@ -334,9 +337,9 @@ await engine.run({ signal: controller.signal });
 ```
 
 `engine.destroy()` closes the world — ending play for its controllers, actors,
-and game mode — then runs the instance's `shutdown`, halts the loop, and
-detaches every listener. It is idempotent, and it resolves any promise `run`
-returned.
+and game mode — then runs the instance's `shutdown`, halts the loop, removes
+the on-screen touch controls, and detaches every listener. It is idempotent,
+and it resolves any promise `run` returned.
 
 ## Errors
 
@@ -359,20 +362,20 @@ happens.
 
 ## The rest of these pages
 
-| Page             | Covers                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `frame.md`       | The loop, the fixed frame order, the clocks, `run` and `advance`, and `FrameInfo`.                |
-| `worlds.md`      | Levels, opening a world, spawning, finding actors, timers, pausing, and the transition sequence.  |
-| `game-modes.md`  | Writing a mode's rules, phases, players and bots, and the game and player states.                 |
-| `actors.md`      | Actors, transforms, tags, the lifecycle, the deferred destroy, and pawns.                         |
-| `components.md`  | Components and the built-in render, sprite, shape, text, draw, and camera components.             |
-| `controllers.md` | Controllers, possession, and driving the same pawn from a player or a bot.                        |
-| `rendering.md`   | The pipeline, the layer sort, the render modes, and direct drawing.                               |
-| `camera.md`      | The three coordinate spaces, the camera, following, bounds, and the viewport fit.                 |
-| `collision.md`   | Colliders, channels and responses, the collision events, the manifold, and the queries.           |
-| `input.md`       | Actions, key bindings, edges, the pointer, and the touch layout catalogue.                        |
-| `audio.md`       | Cue definition, file-backed cues, playback, looping, mute, and the unlock.                        |
-| `assets.md`      | The asset root, the loaders, the path rules, and the load events.                                 |
-| `diagnostics.md` | The two registries, reading them back, the overlay, and frame metrics.                            |
-| `debug.md`       | Declaring a debug surface, returning it from `initialize`, and driving it through `engine.debug`. |
-| `recording.md`   | Arming the recorder, the recording format, and replaying a frame.                                 |
+| Page             | Covers                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `frame.md`       | The loop, the fixed frame order, the clocks, `run` and `advance`, and `FrameInfo`.                 |
+| `worlds.md`      | Levels, opening a world, spawning, finding actors, timers, pausing, and the transition sequence.   |
+| `game-modes.md`  | Writing a mode's rules, phases, players and bots, and the game and player states.                  |
+| `actors.md`      | Actors, transforms, tags, the lifecycle, the deferred destroy, and pawns.                          |
+| `components.md`  | Components and the built-in render, sprite, shape, text, draw, and camera components.              |
+| `controllers.md` | Controllers, possession, and driving the same pawn from a player or a bot.                         |
+| `rendering.md`   | The pipeline, the layer sort, the render modes, and direct drawing.                                |
+| `camera.md`      | The three coordinate spaces, the camera, following, bounds, and the viewport fit.                  |
+| `collision.md`   | Colliders, channels and responses, the collision events, the manifold, and the queries.            |
+| `input.md`       | Actions, key bindings, edges, the pointer, the touch layout catalogue, and the on-screen controls. |
+| `audio.md`       | Cue definition, file-backed cues, playback, looping, mute, and the unlock.                         |
+| `assets.md`      | The asset root, the loaders, the path rules, and the load events.                                  |
+| `diagnostics.md` | The two registries, reading them back, the overlay, and frame metrics.                             |
+| `debug.md`       | Declaring a debug surface, returning it from `initialize`, and driving it through `engine.debug`.  |
+| `recording.md`   | Arming the recorder, the recording format, and replaying a frame.                                  |

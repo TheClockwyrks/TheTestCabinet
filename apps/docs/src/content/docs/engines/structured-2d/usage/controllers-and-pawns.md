@@ -12,7 +12,11 @@ surface](/engines/structured-2d/apis/controllers/) specifies both halves.
 
 Select the touch layout the case asks for when the engine is created. The
 selection holds for the engine's lifetime, so every registration is attributed
-against the same vocabulary.
+against the same vocabulary. Selecting it is also all a game does to be
+playable on a touchscreen: the engine draws the layout's on-screen controls,
+shows them on the first touch, and drives the registered actions from them, so
+a game that has selected the layout and registered its vocabulary needs nothing
+further.
 
 ```ts
 import { createEngine } from "@clockwyrks/structured-2d";

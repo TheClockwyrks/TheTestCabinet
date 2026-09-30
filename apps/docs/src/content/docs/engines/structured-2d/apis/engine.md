@@ -51,7 +51,7 @@ interface EngineOptions<D = unknown> {
 | `game`           | —                    | The [game definition](/engines/structured-2d/apis/game-instance/): the level registry, the start level, and the game instance class.                                             |
 | `background`     | —                    | A CSS color cleared to before every frame. Absent, the frame clears to transparency.                                                                                             |
 | `imageSmoothing` | `true`               | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See [rendering](/engines/structured-2d/apis/rendering/). |
-| `layout`         | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers.                                                                                                   |
+| `layout`         | —                    | A touch layout from the [catalogue](/engines/structured-2d/apis/input/), whose vocabulary the game then registers and whose on-screen controls the engine draws.                 |
 | `clock`          | `new WallClock()`    | The [clock](/engines/structured-2d/apis/clocks/) supplying each frame's delta.                                                                                                   |
 | `surface`        | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its key listeners.                                                                                      |
 | `assetRoot`      | `"assets/"`          | The root every [asset path](/engines/structured-2d/apis/assets/) resolves under.                                                                                                 |
@@ -75,7 +75,9 @@ The engine reads the canvas's laid-out size and device pixel ratio through this
 seam every frame, and attaches its key and pointer listeners to the event target
 it returns. Supplied, it replaces every measurement the engine would otherwise
 take from the DOM, which is what lets the engine run over a canvas with no
-document behind it.
+document behind it. The on-screen touch controls are a DOM overlay, so over a
+surface whose event target has no document there are none, and
+`touchControls()` reports `null`.
 
 `origin()` is the canvas's top-left corner in the client coordinate space
 pointer events report their positions in, and it is what the engine subtracts
@@ -119,6 +121,7 @@ interface Engine<D = unknown> {
   frame(): FrameInfo;
   viewport(): Viewport;
   diagnostics(): readonly DiagnosticReading[];
+  touchControls(): TouchControlsState | null;
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -144,10 +147,11 @@ interface RunOptions {
 | `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                                               |
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                                           |
 | `diagnostics`    | Every registered [diagnostic](/engines/structured-2d/apis/diagnostics/) source and what it reports now, the instance registry's first and then the world's. |
+| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/structured-2d/apis/input/) are showing, or `null` when there are none.                    |
 | `recording`      | Whether draw-command [recording](/engines/structured-2d/apis/recording/) is currently capturing.                                                            |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                                         |
 | `stopRecording`  | Disarm the recorder and return everything captured since `startRecording`.                                                                                  |
-| `destroy`        | Close the world, halt the loop, and drop every listener.                                                                                                    |
+| `destroy`        | Close the world, halt the loop, remove the on-screen controls, and drop every listener.                                                                     |
 
 `instance` and `world` are live references rather than copies, so a reader
 observes the current frame's values. `world` follows each transition, so a
@@ -250,8 +254,9 @@ frames.
 ### `destroy`
 
 Closes the world, which ends play for its controllers, actors, and game mode,
-then runs the instance's `shutdown`. It halts the loop and detaches every
-listener. Idempotent, because teardown races.
+then runs the instance's `shutdown`. It halts the loop, removes the on-screen
+touch controls, and detaches every listener. Idempotent, because teardown
+races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
 the loop and leaves the engine usable, so the two are separate acts.
@@ -277,6 +282,8 @@ interface EngineEventMap {
   "cue:looped": { cue: string; t: number; gain: number };
   "cue:stopped": { cue: string; t: number };
   "audio:unlocked": Record<string, never>;
+  "touch-controls:shown": { layout: string };
+  "touch-controls:hidden": { layout: string; reason: "keyboard" | "mouse" | "pen" };
   "world:opening": { from: string | null; to: string };
   "world:closed": { level: string };
   "world:opened": { level: string };
@@ -307,24 +314,26 @@ interface EngineEventMap {
 }
 ```
 
-| Event                | Emitted                                                                                         |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `asset:loaded`       | A loader's value arrives.                                                                       |
-| `asset:failed`       | A loader refuses the path, or the fetch, the status, or the decode fails.                       |
-| `cue:played`         | `world.audio.play` runs, on a muted bus as well as an audible one.                              |
-| `cue:looped`         | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one.              |
-| `cue:stopped`        | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue.              |
-| `audio:unlocked`     | The engine opens the audio context, on the first pointerdown or keydown event it sees.          |
-| `world:opening`      | A transition begins, carrying the outgoing level name and the incoming one.                     |
-| `world:closed`       | The outgoing world's game mode has ended play.                                                  |
-| `world:opened`       | The incoming world is built and its game mode has begun play.                                   |
-| `actor:spawned`      | An actor is spawned into the world.                                                             |
-| `actor:destroyed`    | An actor is destroyed.                                                                          |
-| `possession:changed` | A controller takes a pawn or releases the one it held.                                          |
-| `match:phase`        | `setPhase` sets a phase the game mode does not already hold.                                    |
-| `overlap:begin`      | On the first frame the collision pass finds an overlapping pair.                                |
-| `overlap:end`        | On the first frame it stops finding it, and when either actor is destroyed or the world closes. |
-| `hit`                | On every frame the pass finds a blocking pair.                                                  |
+| Event                   | Emitted                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `asset:loaded`          | A loader's value arrives.                                                                       |
+| `asset:failed`          | A loader refuses the path, or the fetch, the status, or the decode fails.                       |
+| `cue:played`            | `world.audio.play` runs, on a muted bus as well as an audible one.                              |
+| `cue:looped`            | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one.              |
+| `cue:stopped`           | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue.              |
+| `audio:unlocked`        | The engine opens the audio context, on the first pointerdown or keydown event it sees.          |
+| `touch-controls:shown`  | The selected layout's on-screen controls appear, on a touch `pointerdown`.                      |
+| `touch-controls:hidden` | The controls disappear, on a keyboard, mouse, or pen input; `reason` names which of the three.  |
+| `world:opening`         | A transition begins, carrying the outgoing level name and the incoming one.                     |
+| `world:closed`          | The outgoing world's game mode has ended play.                                                  |
+| `world:opened`          | The incoming world is built and its game mode has begun play.                                   |
+| `actor:spawned`         | An actor is spawned into the world.                                                             |
+| `actor:destroyed`       | An actor is destroyed.                                                                          |
+| `possession:changed`    | A controller takes a pawn or releases the one it held.                                          |
+| `match:phase`           | `setPhase` sets a phase the game mode does not already hold.                                    |
+| `overlap:begin`         | On the first frame the collision pass finds an overlapping pair.                                |
+| `overlap:end`           | On the first frame it stops finding it, and when either actor is destroyed or the world closes. |
+| `hit`                   | On every frame the pass finds a blocking pair.                                                  |
 
 `on` returns the function that removes the handler. Handlers run synchronously
 at the moment the event happens, so a subscriber sees the frame the event
@@ -333,6 +342,11 @@ and the remaining handlers still run.
 
 Subscriptions live on the engine, so one made before `engine.initialize`
 observes the start level being built and every transition after it.
+
+`touch-controls:shown` and `touch-controls:hidden` report the selected layout's
+[on-screen controls](/engines/structured-2d/apis/input/) appearing on a touch
+and disappearing on a keyboard, mouse, or pen input, with `reason` naming which
+of the three hid them.
 
 ## Errors
 
