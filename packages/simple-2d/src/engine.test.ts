@@ -1437,6 +1437,117 @@ function frameOps(recording: Recording, at: number): readonly DrawOp[] {
   });
 }
 
+describe("touch controls", () => {
+  /** A touch-shaped plain event, dispatched at the document as a player's would be. */
+  const touch = (): void => {
+    document.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+  };
+
+  it("reports null and draws nothing when no layout was selected", () => {
+    const { engine } = build();
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("draws the selected layout's controls in the document, hidden", () => {
+    const { engine } = build({ layout: "dpad-4-two-buttons" });
+
+    expect(engine.touchControls()).toEqual({
+      layout: "dpad-4-two-buttons",
+      visible: false,
+    });
+    const container = document.querySelector<HTMLElement>(
+      "[data-touch-controls]",
+    );
+    expect(container?.getAttribute("data-touch-controls")).toBe(
+      "dpad-4-two-buttons",
+    );
+    expect(container?.hidden).toBe(true);
+  });
+
+  it("shows them on a touch and reports it through the engine's events", () => {
+    const { engine } = build({ layout: "single-vertical" });
+    const seen: unknown[] = [];
+    engine.events.on("touch-controls:shown", (payload) => seen.push(payload));
+    engine.events.on("touch-controls:hidden", (payload) => seen.push(payload));
+
+    touch();
+    expect(engine.touchControls()?.visible).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(engine.touchControls()?.visible).toBe(false);
+
+    expect(seen).toEqual([
+      { layout: "single-vertical" },
+      { layout: "single-vertical", reason: "keyboard" },
+    ]);
+  });
+
+  it("reports null over a surface whose target has no document", () => {
+    const { engine } = build({
+      layout: "dpad-4",
+      surface: fixedSurface(new EventTarget()),
+    });
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("drives a registered action the game reads on its next update", async () => {
+    let confirm = -1;
+    let pressed = false;
+    const game = testGame({
+      initialize: (api) => {
+        api.input.register("confirm", { keys: ["Enter"] });
+      },
+      update: (_, api) => {
+        confirm = api.input.value("confirm");
+        pressed = api.input.pressed("confirm");
+      },
+    });
+    const { engine } = build({ game, layout: "single-vertical" });
+    await engine.initialize();
+    touch();
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="confirm"]',
+    );
+    if (button === null) throw new Error("no confirm button was drawn");
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(confirm).toBe(1);
+    expect(pressed).toBe(true);
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerup", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(confirm).toBe(0);
+    expect(pressed).toBe(false);
+  });
+
+  it("is removed by destroy", () => {
+    const { engine } = build({ layout: "dual-vertical" });
+
+    engine.destroy();
+
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+});
+
 describe("draw-command recording", () => {
   it("records nothing until it is armed", async () => {
     const { engine } = build({ clock: new ConstantClock(20) });
