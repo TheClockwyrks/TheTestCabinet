@@ -498,6 +498,17 @@ a.row:hover .selectCell .spinner,
     display: contents;
   }
 
+  // `display: contents` removes the cell's box but not its `::before`: that
+  // transparent hit layer is still generated, and with the cell no longer a
+  // positioning context its absolute insets resolve against the log's `.wrap`
+  // instead, so it stretches over the whole log. Every tap on any card then lands
+  // on the checkbox's click handler, which swallows the event to keep a toggle
+  // from navigating — and nothing ever opens a run. There is no checkbox to hit on
+  // a phone, so the hit layer goes with it.
+  .selectCell::before {
+    display: none;
+  }
+
   .selectBox {
     display: none;
   }
