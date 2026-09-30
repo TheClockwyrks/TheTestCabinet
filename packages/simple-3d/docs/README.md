@@ -22,6 +22,7 @@ The engine owns:
   ray and projection through it.
 - Keyboard listening, action binding, and edge detection.
 - Pointer tracking, mapped into the game's own logical coordinates.
+- The on-screen touch controls the selected layout draws, and when they show.
 - The Web Audio graph, cue synthesis, positional playback, looping, mute, and
   the first-gesture unlock.
 - Asset URL resolution under the fixed `assets/` root, and the image, texture,
@@ -220,20 +221,20 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field        | Default                                   | Meaning                                                                                                                    |
-| ------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `canvas`     | —                                         | The canvas the engine sizes, clears, and renders the scene through.                                                        |
-| `width`      | —                                         | The logical design width the game draws in. Finite and positive.                                                           |
-| `height`     | —                                         | The logical design height the game draws in. Finite and positive.                                                          |
-| `game`       | —                                         | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it.                       |
-| `background` | —                                         | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, it clears to transparency. |
-| `layout`     | —                                         | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`.                             |
-| `clock`      | `new WallClock()`                         | The clock supplying each frame's delta. See `frame.md`.                                                                    |
-| `surface`    | Read from the canvas                      | Where the engine reads element size and device pixel ratio, and what it listens on.                                        |
-| `assetRoot`  | `"assets/"`                               | The root every asset path resolves under. See `assets.md`.                                                                 |
-| `screen`     | Created from the canvas's owning document | The canvas the screen layer draws on. See `rendering.md`.                                                                  |
-| `projection` | `"perspective"`                           | Which camera class the engine creates and renders through. See `camera.md`.                                                |
-| `shadows`    | `false`                                   | `true` enables PCF soft shadow maps on the renderer.                                                                       |
+| Field        | Default                                   | Meaning                                                                                                                                 |
+| ------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `canvas`     | —                                         | The canvas the engine sizes, clears, and renders the scene through.                                                                     |
+| `width`      | —                                         | The logical design width the game draws in. Finite and positive.                                                                        |
+| `height`     | —                                         | The logical design height the game draws in. Finite and positive.                                                                       |
+| `game`       | —                                         | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it.                                    |
+| `background` | —                                         | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, it clears to transparency.              |
+| `layout`     | —                                         | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game registers and whose on-screen controls the engine draws. See `input.md`. |
+| `clock`      | `new WallClock()`                         | The clock supplying each frame's delta. See `frame.md`.                                                                                 |
+| `surface`    | Read from the canvas                      | Where the engine reads element size and device pixel ratio, and what it listens on.                                                     |
+| `assetRoot`  | `"assets/"`                               | The root every asset path resolves under. See `assets.md`.                                                                              |
+| `screen`     | Created from the canvas's owning document | The canvas the screen layer draws on. See `rendering.md`.                                                                               |
+| `projection` | `"perspective"`                           | Which camera class the engine creates and renders through. See `camera.md`.                                                             |
+| `shadows`    | `false`                                   | `true` enables PCF soft shadow maps on the renderer.                                                                                    |
 
 `width` and `height` are the coordinate system the **screen layer** is drawn in,
 and they stay fixed for the life of the build. They also fix the picture's
@@ -265,6 +266,7 @@ interface Engine<S, D = unknown> {
   viewport(): Viewport;
   view(): View;
   diagnostics(): readonly DiagnosticReading[];
+  touchControls(): TouchControlsState | null;
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Promise<Recording>;
@@ -288,10 +290,11 @@ interface Engine<S, D = unknown> {
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                  |
 | `view`           | The camera as it stood at the most recent render, with picking and projection through it. See `camera.md`.                         |
 | `diagnostics`    | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`.                           |
+| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none. See `input.md`.                 |
 | `recording`      | Whether the recorder is capturing frames. See `recording.md`.                                                                      |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                |
 | `stopRecording`  | Disarm, flush the encoder, and resolve with everything captured since `startRecording`.                                            |
-| `destroy`        | Halt the loop, drop every listener, and dispose the renderer.                                                                      |
+| `destroy`        | Halt the loop, remove the on-screen controls, drop every listener, and dispose the renderer.                                       |
 
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.
@@ -435,14 +438,14 @@ and draw nothing is refused where the mistake is.
 
 ## The rest of these pages
 
-| Page             | Covers                                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------------------- |
-| `frame.md`       | The loop, its eleven steps, the clocks, `run` and `advance`, and `FrameInfo`.                             |
-| `rendering.md`   | The scene, the render cache, lights, shadows, the background, the screen layer, and compositing.          |
-| `camera.md`      | The three spaces, posing the camera, `View`, picking with a ray, projection, and the letterbox rule.      |
-| `input.md`       | Actions, key bindings, edges, the pointer, the wheel, and the touch layout catalogue.                     |
-| `audio.md`       | Cue definition, file-backed cues, positional playback, looping, mute, and the unlock.                     |
-| `assets.md`      | The asset root, the loaders, textures, glTF models and `cloneModel`, the path rules, and the load events. |
-| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics.                                   |
-| `debug.md`       | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`.     |
-| `recording.md`   | Arming the recorder and the video it hands back.                                                          |
+| Page             | Covers                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- |
+| `frame.md`       | The loop, its eleven steps, the clocks, `run` and `advance`, and `FrameInfo`.                                 |
+| `rendering.md`   | The scene, the render cache, lights, shadows, the background, the screen layer, and compositing.              |
+| `camera.md`      | The three spaces, posing the camera, `View`, picking with a ray, projection, and the letterbox rule.          |
+| `input.md`       | Actions, key bindings, edges, the pointer, the wheel, the touch layout catalogue, and the on-screen controls. |
+| `audio.md`       | Cue definition, file-backed cues, positional playback, looping, mute, and the unlock.                         |
+| `assets.md`      | The asset root, the loaders, textures, glTF models and `cloneModel`, the path rules, and the load events.     |
+| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics.                                       |
+| `debug.md`       | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`.         |
+| `recording.md`   | Arming the recorder and the video it hands back.                                                              |

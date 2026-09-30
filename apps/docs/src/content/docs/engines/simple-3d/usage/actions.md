@@ -10,6 +10,10 @@ the game by action name and the build holds one description of its own controls.
 
 Pass the touch layout the case asks for to `createEngine`. It is selected before
 any registration happens, so every action the layout names is tagged with it.
+Selecting it is also all a game does to be playable on a touchscreen: the
+engine draws the layout's on-screen controls, shows them on the first touch,
+and drives the registered actions from them, so a game that has selected the
+layout and registered its vocabulary needs nothing further.
 
 ```ts
 import { createEngine } from "@clockwyrks/simple-3d";
