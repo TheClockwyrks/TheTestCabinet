@@ -23,7 +23,6 @@
     "lint:docs": "npm run lint:md && npm run spell",
     "lint:md": "markdownlint-cli2",
     "lint:specs": "uv run --quiet --project ci gate run spec-prose",
-    "postinstall": "test ! -f scripts/devcontainer-setup.sh || bash scripts/devcontainer-setup.sh",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
     "test:scripts": "node --test scripts/lib/*.test.mjs",

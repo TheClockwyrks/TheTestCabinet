@@ -107,9 +107,9 @@ forget?" is not a question a generated artifact has.
 What that costs is the one thing worth knowing about this arm: the toolchains below are
 needed to BUILD gg at all now, not merely to work on C#. They are ~1.4 GB no gg _run_
 needs, which is why they live in their own prefix and their own installer — see
-`scripts/ci/install-gg-build-toolchains.sh`. The dev container's background provisioning
-(`scripts/devcontainer-setup.sh`) and the pipeline's `scripts/ci/gg-ci-toolchains.sh` both
-install them.
+`scripts/ci/install-gg-build-toolchains.sh`. The dev container's image build
+(`.devcontainer/languages/gg/install.sh`) and the pipeline's `scripts/ci/gg-ci-toolchains.sh`
+both install them.
 
 ```sh
 scripts/ci/install-dotnet.sh                 # once: the toolchain a program compiles with

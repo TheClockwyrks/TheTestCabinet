@@ -57,18 +57,36 @@ passes in the pipeline exactly when it passes here.
   cluster's prerequisites from their charts. No CI image carries it, because
   no gate installs a chart.
 - `git`, `ssh`, `tmux`, `lazygit` (aliased to `gg`), `jq` and `ripgrep`.
+- gg's eleven program-language toolchains and the build toolchains of its C#
+  guest, about 3.4 GB under `~/.local/share`, installed by the repository's own
+  installers from the pins beside each arm. Building `crates/gg` reflects a
+  signature catalogue out of every arm's SDK, so without them
+  `cargo build --workspace` fails. See [gg's toolchains](#ggs-toolchains).
+- `ruby`, the one gg toolchain that is a distribution package; `libicu-dev`,
+  which the C# arm's Roslyn needs to start; `ffmpeg`, which
+  `scripts/build-sample-pack.mjs` normalizes audio with; `cmake`; and
+  `iproute2`, `lsof` and `procps` for the local cluster tooling. `system/apt.sh`
+  says why each is declared rather than assumed.
+- `wrangler`, the Cloudflare CLI `tcab publish` deploys a run's playable build
+  with, at the `WRANGLER_VERSION` `tools/wrangler.sh` installs, in `~/.local/bin`
+  for the same reason the coding-agent CLIs are.
 
 Every version is pinned. The toolchain versions are the build arguments in the
 `x-devcontainer-build-args` anchor of `docker-compose.yml`, which the `dev`
 service merges; the tools without one are pinned in the script that installs
-them. A gate whose toolchain is absent fails and names the command that
-installs it, so a toolchain missing here is a check that says so rather than
-one that quietly passes.
+them. gg's toolchains are pinned in each arm's
+`packages/gg-sandbox-*/<lang>-version.sh`, the one pin the pipeline, the run
+images and this image all install from, with the Rust arm's deferring to
+`rust-toolchain.toml`. A gate whose toolchain is absent fails and names the
+command that installs it, so a toolchain missing here is a check that says so
+rather than one that quietly passes.
 
-`post-create.sh` installs the git hook through `scripts/setup-hooks.sh` and the
-npm workspace's locked dependencies when the container is created. A folder
-that `git init` has not been run in yet takes the dependencies alone and says
-the hook was skipped.
+`post-create.sh` installs the git hook through `scripts/setup-hooks.sh`, places
+cargo's target directory (see [Where cargo builds](#where-cargo-builds)) and
+installs the npm workspace's locked dependencies when the container is created.
+A folder that `git init` has not been run in yet takes the rest and says the
+hook was skipped. Nothing runs in the background afterwards: when it returns,
+the container builds the whole workspace.
 
 ## Architecture
 
@@ -87,6 +105,11 @@ the failed exec to glibc:
 ```text
 /home/<user>/.local/bin/node: 1: Syntax error: ")" unexpected
 ```
+
+The release archive `languages/rust/cargo-nextest.sh` downloads is checked
+against the checksum `docker-compose.yml` pins beside `NEXTEST_VERSION` for
+this architecture, `NEXTEST_SHA256_AMD64` or `NEXTEST_SHA256_ARM64`, before the
+binary is taken out of it, and nextest is never built from source.
 
 ## Browsers
 
@@ -129,6 +152,73 @@ sudo bash .devcontainer/system/browser-deps.sh
 bash .devcontainer/tools/browsers.sh
 ```
 
+## gg's toolchains
+
+gg drives a model in one of eleven program languages, and what a model is told
+about each one is a signature catalogue that `crates/gg/build.rs` reflects out
+of that arm's own SDK, with that arm's own documentation tool, on every build of
+the crate. The toolchains are therefore a prerequisite of building the
+workspace, and a prerequisite of working in the repository is a prerequisite of
+the image rather than an hour of downloads after the container is created.
+`languages/gg/install.sh` installs them in the image's last layer, and its
+header says why it delegates rather than installs:
+
+- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms, about 1.9 GB:
+  the pinned YARD on the image's `ruby`, the `wasm32` standard library, `purs`
+  and `esbuild`, a JDK with TeaVM and the Kotlin compiler, wasi-sdk, .NET with
+  Roslyn, the Swift toolchain, and the package-manager-delivered build tools
+  the arms' artifact builds resolve offline.
+- `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
+  guest needs and no run does, about 1.4 GB under `~/.local/share/tcab/gg-build`:
+  a whole .NET SDK and an unpruned wasi-sdk.
+
+They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
+and the driver image's gg stage run, so the one pinned list serves every surface
+that builds gg. Everything lands under the container user's home, which is
+where the reflectors look first and all that three of the arms can use, so the
+layer runs as that user and `"updateRemoteUserUID": false` in
+`devcontainer.json` is load-bearing: a uid rewrite at start would orphan it.
+
+The layer is last, and its own, so a pin moving under `packages/`, an installer
+changing or a new arm arriving rebuilds it and nothing above it, and a failed
+download from one of its half-dozen upstreams is retried with everything else
+cached. Each installer checks what is there against its pin and touches no
+network when they match, so in a container built before a pin moved, running
+both by hand reconciles it without waiting for a rebuild:
+
+```sh
+scripts/ci/install-gg-toolchains.sh
+scripts/ci/install-gg-build-toolchains.sh
+```
+
+The one prerequisite of a gg build that is not in the image is the npm
+workspace, because two of the eleven catalogues are reflected with the pinned
+`typescript` in it, and it lives in the checkout. `post-create.sh` installs it.
+
+## The build context
+
+The image is built from the repository root rather than from this directory,
+because the toolchain installers read their pins out of the repository and the
+repository is not mounted while an image builds. Every `COPY` in
+`ubuntu.dockerfile` is therefore written from the root, and the last layer
+stages a partial repository at `/tmp/scripts/gg-repo` for the installers: the
+installers and the shell they source, gg's own build shell, every arm's pins
+and the files those pins read, and `rust-toolchain.toml`. `scripts/ci/tcab-lib.sh`
+resolves the repository root from its own path, which is what lets the slice
+stand in for a checkout. The `RUN` that installs deletes it, so the image ships
+no stale half repository to read a pin out of.
+
+The root `.dockerignore` is an allowlist, and it decides what the build sees:
+it admits the directories under `.devcontainer/` the Dockerfile copies, the
+installers, gg's shell, the guest packages and `rust-toolchain.toml`. A source
+it keeps out fails the build at that `COPY` with the path not found, under
+Docker and Podman alike. The files under `packages/` are copied one by one
+rather than as a directory, because a directory copy takes everything the
+allowlist admits, and would put the arms' whole sources into the toolchain
+layer's cache key; the price is that a new arm names its version file in the
+Dockerfile, and the build fails on the installer's own `source` line until it
+does.
+
 ## Static builds
 
 A binary linked statically against musl carries no dynamic loader, so it runs
@@ -159,8 +249,28 @@ name, which starts a container whose working directory does not exist. The two
 files cannot see each other's half, so `scripts/check-devcontainer.py` holds
 them together and the gate runs it on every commit.
 
-Cargo's build output stays in the checkout's `target/`, where `make clean`
-reaches it.
+## Where cargo builds
+
+On most hosts cargo builds into the checkout's `target/`, where `make clean`
+reaches it. On a checkout mounted over virtiofs or FUSE (Podman on macOS,
+Docker Desktop), parallel `rustc` processes writing crate metadata into the
+checkout fail intermittently with E0463 ("can't find crate"), so there
+`tools/cargo-target.sh`, run once by `post-create.sh`, points cargo at
+`~/.cache/cargo-target/the-test-cabinet` in the container's own layer, through
+a marked block in `~/.cargo/config.toml` and an exported `CARGO_TARGET_DIR` in
+`~/.bashrc`. What it relocates is lost with the container's layer, so a rebuilt
+container builds from scratch. Run by hand,
+`TCAB_CARGO_TARGET_RELOCATE=1 bash .devcontainer/tools/cargo-target.sh` forces
+the move and `=0` forbids it; a `CARGO_TARGET_DIR` already set is a choice
+already made, and nothing is touched.
+
+Either way `/cargo-target/the-test-cabinet` links to the directory cargo builds
+into. The test cases' reference implementations default to that path and
+`crates/core` looks there for a locally built gg, so
+`/cargo-target/the-test-cabinet/debug/gg` works on every host. The image
+creates `/cargo-target` owned by the container user, so the link takes no
+privilege, and the script never fails the container's creation: it says what it
+could not do and how to do it by hand. Running it again is safe.
 
 ## What the compose file declares
 
@@ -204,7 +314,10 @@ own, and socat is restarted whenever it exits, so it outlives the
 If something cannot reach the runtime, confirm the host socket is up and that
 `docker ps` works from a fresh terminal inside the container, because group
 membership is picked up per login shell. `/tmp/host-runtime-bridge.log` says
-what the runtime publisher did.
+what the runtime publisher did. Where the bridge reaches nothing that answers
+as a runtime, what it says depends on whether the container was stated
+`DEVCONTAINER_RUNTIME_CREDENTIAL`, as [Podman on macOS](#podman-on-macos)
+describes.
 
 `podman` in here is the remote client, which `CONTAINER_HOST` points at the
 published socket. `docker buildx` only works against a real Docker daemon; on
@@ -317,6 +430,31 @@ of them reaches that port too. A Mac whose workspaces are managed for it guards
 the port instead: what listens there admits only a connection presenting the
 credential it stated the workspace's own container as
 `DEVCONTAINER_RUNTIME_CREDENTIAL`, and `tools/host-runtime.sh` presents it.
+
+On such a Mac the fleet's agent serves the runtime on a socket of its own,
+`runtime.sock` in the agent's data directory under `~/.local/state`, and the
+fleet configuration's bridge holds `127.0.0.1:17386`, forwarding it to that
+socket.
+`tools/macos-host-runtime.sh` is for a Mac with no such agent: a tunnel of its
+own on the port would answer in the bridge's place and refuse the credential.
+So while that socket exists it refuses to start or to run in the foreground,
+exiting nonzero and naming the socket's full path and the bridge;
+`DEVCONTAINER_AGENT_RUNTIME_SOCKET` names the socket where the agent keeps its
+data elsewhere. `--status` and `--stop` still work, so a tunnel started earlier
+can be stopped.
+
+Inside the container, when the bridge reaches no runtime or nothing on it
+answers as one, `tools/host-runtime.sh` says what to do on the Mac by whether a
+credential was stated:
+
+- A container stated `DEVCONTAINER_RUNTIME_CREDENTIAL` is told that the port is
+  expected to be held by the fleet configuration's bridge to the agent's
+  runtime socket, that a manual tunnel on the port refuses the credential, and
+  how to find and stop whatever holds the port:
+  `lsof -nP -iTCP:17386 -sTCP:LISTEN`, then `kill` the process it names if it
+  is not that bridge.
+- A container stated none is told to start the manual tunnel, or to stop and
+  start it again where it is no longer attached to a running machine.
 
 The SSH agent needs something on the Mac listening on `127.0.0.1:17385` and
 forwarding to the agent socket, such as a launchd agent running:
