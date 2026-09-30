@@ -49,7 +49,9 @@ readonly UNTAGGED_MIN_AGE_SECONDS=3600
 # purge, because a fetch that failed must not read as "no branch names this
 # tag": every tag that branch pins would look unkept and be deleted. So does a
 # branch whose file has no `ciImageTag` line: a file in another shape is not a
-# branch that pins nothing.
+# branch that pins nothing. The one branch that does pin nothing is one with
+# no ci/images/ at all, which predates the CI images (`master` still does)
+# and whose pipeline pulls none.
 readonly LIVE_BRANCHES=("master" "staging" "nightly")
 
 usage() {
@@ -186,6 +188,10 @@ kept_tags() {
 			return 1
 		fi
 		if ! text="$(git show "FETCH_HEAD:${PINS_FILE}" 2>/dev/null)"; then
+			if [ -z "$(git ls-tree FETCH_HEAD "$(dirname "$PINS_FILE")/" 2>/dev/null)" ]; then
+				echo "ci-image-purge.sh: origin/$branch predates ci/images/ and pins nothing" >&2
+				continue
+			fi
 			echo "ci-image-purge.sh: origin/$branch carries no ${PINS_FILE}; refusing to purge" >&2
 			return 1
 		fi

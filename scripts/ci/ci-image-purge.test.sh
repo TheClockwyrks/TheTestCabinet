@@ -153,6 +153,12 @@ case "$1" in
 			exit 128
 		fi
 		;;
+	ls-tree)
+		branch="$(cat "$STUB_DIR/fetched")"
+		[ "$2" = "FETCH_HEAD" ] && [ "$3" = "ci/images/" ] || exit 128
+		[ -z "${STUB_NO_IMAGES_ON:-}" ] || [ "$branch" != "$STUB_NO_IMAGES_ON" ] || exit 0
+		echo "040000 tree 0000000000000000000000000000000000000000	ci/images"
+		;;
 	show)
 		branch="$(cat "$STUB_DIR/fetched")"
 		[ "$2" = "FETCH_HEAD:ci/images/tags.yml" ] || exit 128
@@ -313,6 +319,13 @@ out="$(STUB_NO_PINS_ON=nightly run rust)"
 check_equal "a branch without the pins file refuses too" "1" "$?"
 check_contains "naming it" "origin/nightly carries no ci/images/tags.yml; refusing to purge" "$out"
 check_equal "and deletes nothing" "" "$(deleted)"
+
+write_fixtures
+out="$(STUB_NO_PINS_ON=master STUB_NO_IMAGES_ON=master run rust)"
+check_equal "a branch with no ci/images/ at all pins nothing, and exits 0" "0" "$?"
+check_contains "saying so" "origin/master predates ci/images/ and pins nothing" "$out"
+check_contains "keeping the others" "${REPOSITORY}: keeping $CHECKOUT $STAGING $NIGHTLY" "$out"
+check_contains "and deleting what only it named" "${REPOSITORY}@sha256:master" "$(deleted)"
 
 write_fixtures
 printf 'variables:\n  rustImageTag: v1-e9e53ee1c4db\n  webImageTag: v1-ffe3b49d464e\n' >"$stub/branch-staging.yml"
