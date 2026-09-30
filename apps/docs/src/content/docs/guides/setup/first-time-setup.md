@@ -36,12 +36,9 @@ Wherever a guide shows `tcab <args>`, the source-checkout equivalent is
 Work inside the dev container, which carries the pinned toolchains. Before its
 first start, copy your host's file to `.devcontainer/.env` (`.env.macos` on a
 Mac, `.env.podman` on a Linux Podman host, none on an Ubuntu Docker host; see
-[The dev container](/development/running/#the-dev-container)). Once it is
-created, it provisions gg's program-language toolchains in the background, which
-takes up to an hour the first time and is logged to
-`~/.cache/tcab-devcontainer-setup.log`. `cargo build --workspace` builds gg, so
-it waits for `~/.cache/tcab-devcontainer-setup.done`; if that marker never
-appears and no provisioner is running, run `bash scripts/devcontainer-setup.sh`.
+[The dev container](/development/running/#the-dev-container)). The image
+bakes in gg's program-language toolchains, so its first build takes a while and
+the container builds the whole workspace as soon as it is created.
 
 The repository is both a Cargo (Rust) and an npm (TypeScript) workspace. Build
 both once:

@@ -69,9 +69,9 @@ fetches commits without trees or blobs, so it finishes in seconds, and
 
 ### Submodules in CI
 
-No gate reads a submodule, so the template's gate jobs check out none: the
-`pipeline_repositories` answer is empty, which also keeps the baseline media out
-of every devcontainer start. The one job that reads `cold-storage` is
+No gate reads a submodule, so the template's gate jobs check out none, which
+also keeps the baseline media out of every devcontainer start. The one job that
+reads `cold-storage` is
 `submodule_pins`. It checks this repository out without submodules and adds an
 inline checkout of `cold-storage`, which is what puts that repository in the
 scope of the job's access token, then runs `scripts/ci/submodule-pins.sh` with
@@ -83,20 +83,19 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 (TypeScript). Around them:
 
 - `.copier-answers.yml`: the workspace template's source, the version the
-  repository was last rendered against, and every answer.
+  repository was last rendered against, and the answers it asks.
 - `.azure/`: the pipeline templates. `.azure/publish-image.yml` is the
   template's; `.azure/project/*.yml` is the project's own pipeline work, which
-  the template rendered once and never renders over; `.azure/tcab/` holds the
-  project's job and step templates, shared by `azure-pipelines.yml` and
+  `azure-pipelines.yml` includes; `.azure/tcab/` holds the project's job and
+  step templates, shared by `azure-pipelines.yml` and
   `azure-pipelines-release.yml`.
 - `ci/`: the gates, one file per gate under `ci/gates/`, the `ci` uv project
   that runs them, and under `ci/images/` the CI images the gate jobs run in.
-- `.devcontainer/`: the dev container, entirely the template's.
-- `.claude/`: the harness settings, the template's hooks and skills, and the
-  project skills.
-- `scripts/`: the template's hook installer and devcontainer check, the
-  project's scripts, and under `scripts/ci/` the pipeline's scripts, the
-  template's and the project's side by side.
+- `.devcontainer/`: the dev container, whose image bakes in every toolchain a
+  build needs (see [Running](/development/running/#the-dev-container)).
+- `.claude/`: the harness settings, its hooks and its skills.
+- `scripts/`: the hook installer and devcontainer check, the project's
+  scripts, and under `scripts/ci/` the scripts the pipelines run.
 - `tasks/`: the issue board.
 
 ### Rust (Cargo workspace)
@@ -200,8 +199,8 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `apps/web`: `@clockwyrks/web`. The browser
   [web console](/components/web/overview/) that enqueues runs at the backend.
 - `apps/docs`: `@the-test-cabinet/docs`. This Astro Starlight documentation
-  site. Its `package.json` is the template's, which pins the site's
-  dependencies; its `astro.config.mjs` and pages are the project's.
+  site. The workspace template renders its `package.json`, which pins the
+  site's dependencies; the pages are the project's.
 
 ### Cold storage
 
@@ -241,23 +240,34 @@ The template renders most of what surrounds the code: `.devcontainer/`, `ci/`,
 `azure-pipelines.yml`, `azure-pipelines-ci-images.yml`, `.pre-commit-config.yaml`,
 the lint and format configurations, `Makefile`, `rust-toolchain.toml`,
 `.config/nextest.toml`, `.claude/settings.json` with its hooks and four skills,
-and a few scripts. Those files are taken exactly as rendered and are never
-edited here: a change one of them needs is made in the template under a new
-version and brought in with `copier update`. The answer `seed_files: project`
-makes the files whose content is this project's own (this site's pages and
-configuration, `README.md`, `CLAUDE.md`, the manifests and lockfiles, the web
-app's sources, `crates/backend` and the deployment seeds) seeds: written once,
-never rendered over.
+`tasks/README.md`, and a few scripts. `.copier-answers.yml` records the
+template's source, the version the repository was last rendered against, and
+the six answers the template asks; every other value it derives from those by
+the fleet's conventions.
 
-What the project needs beyond the template has these homes:
+A rendered file is this project's to edit. An update is a three-way merge: the
+recorded version is rendered again, what this repository changed in a rendered
+file since is carried onto the new version's render, and a line both sides
+changed is left inline between conflict markers for a person to resolve.
 
-- an answer in `.copier-answers.yml`: the extra gates, git and lint ignores, the
-  packages the Rust CI image carries, the notes the drain skill carries;
-- a project gate, `ci/gates/<id>.py`, registered through `extra_gates`;
-- the project's pipeline work in `.azure/project/*.yml`;
-- `scripts/ci/post-deploy.sh`, which the template's deploy runs after the
-  backend's rollout;
-- any path the template does not render.
+```sh
+copier update --defaults --trust --conflict inline
+```
+
+The values this project holds otherwise than the fleet's conventions, and so
+the lines an update's conflicts are usually about, are the container registry
+(`testcabinet.azurecr.io`, with the CI images
+`ubuntu-the-test-cabinet-{rust,web}-cicd`), the resource group and cluster
+(`testcabinet-staging-westus2-rg`, `testcabinet-staging-westus2-aks`), the
+service connection (`tcab-deploy`), the deploy environment and namespace
+(both `tcab-staging`), the web dev server's port (`1430`) and the platform the
+service images are built for (`linux/arm64`). The other edits an update
+carries are of the same kind: the project's gates and their wiring in
+`.pre-commit-config.yaml` and `azure-pipelines.yml`, the CI image pin in
+`ci/images/tags.yml`, the excludes on the upstream hooks, the devcontainer
+image's gg layer and apt packages, the project's skills and hooks under
+`.claude/`, and the project's pipeline work in `.azure/project/*.yml`, which
+the template's pipeline includes.
 
 ## The gates
 
@@ -276,6 +286,10 @@ uv run --quiet --project ci gate list         # every gate and what it checks
 uv run --quiet --project ci gate run <id>...  # run some of them
 uv run --quiet --project ci gate run --all    # what make gate runs
 ```
+
+Given `--report-dir`, the runner keeps every gate's output in a file under that
+directory and writes `SUMMARY.md` beside it, which is how a workflow hands an
+agent a failure without the output itself; `ci/README.md` describes the report.
 
 The template's gates:
 
@@ -303,7 +317,7 @@ The template's gates:
 | `python-lint` | ruff over `ci/` |
 | `ci-tests` | pytest over `ci/` |
 
-The project's gates, answered in `extra_gates`:
+The project's own gates, wired the same way:
 
 | Id | What it checks |
 | --- | --- |
@@ -314,32 +328,30 @@ The project's gates, answered in `extra_gates`:
 | `audio-packs` | Every version's `[audio] packs` resolves against the pack registry |
 | `build-context` | Every project Dockerfile's `COPY` sources, and the `containers/` Rust pins |
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
-| `ci-image-pins` | `.azure/project/jobs.yml` pins the Rust CI image `ci/images/tags.yml` names |
+| `ci-image-pins` | Every CI image reference in `.azure/**/*.yml` and `azure-pipelines-release.yml` reads `${{ variables.ciImageTag }}`, and the release pipeline includes `ci/images/tags.yml` |
 | `scripts-test` | `node --test` over `scripts/lib` |
-| `file-endings` | Every tracked file outside a frozen version ends in one newline; no hook |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
 | `site-build` | The gallery's build; no hook |
 | `contract-drift` | The generated data contract is current; no hook |
 
 `.pre-commit-config.yaml` runs each gate on every commit as one hook, triggered
-by the files it judges, except the ones marked "no hook", which run in
-`make gate` and the pipeline only. `scripts/setup-hooks.sh` installs the hook,
-and the dev container runs it when the container is created. The same file
-carries the checks the hook framework brings from its pinned upstream
-repositories, the file checks of `pre-commit-hooks` and `shellcheck`; they are
-hooks, not gates, so `make gate` does not run them and
-`pre-commit run --all-files` does.
+by the files it judges, except the ones marked "no hook", which build the
+workspace packages or the Rust workspace before they check anything and so run
+in `make gate` and the pipeline only; `HOOKLESS` in `ci/tests/test_wiring.py`
+names them, and a gate added without a hook fails there until it is either
+given one or named too slow for a commit. `scripts/setup-hooks.sh` installs the
+hook, and the dev container runs it when the container is created.
 
-Two commit-time stopgaps stand until the template takes project excludes and
-hookless gates:
-
-- The upstream `check-added-large-files` hook cannot exclude test-case media,
-  so a commit adding a reference screenshot, showcase video or clip over 500 kB
-  sets `SKIP=check-added-large-files`.
-- `rust-clippy`, `rust-doc`, `web-typecheck`, `web-test`, `web-browser-test`,
-  `web-build`, `docs-typecheck`, `docs-build` and `ci-tests` run as commit
-  hooks. A commit whose change has already been gated may name them in `SKIP=`.
+The same file carries the checks the hook framework brings from its pinned
+upstream repositories, the file checks of `pre-commit-hooks` and `shellcheck`;
+they are hooks, not gates, so `make gate` does not run them and
+`pre-commit run --all-files` does, and the pipeline gives each a step of its
+own. Two of them carry excludes for what a test case ships:
+`check-added-large-files` leaves out test-case and game-jam media, which is the
+size a playable game needs, and `end-of-file-fixer` leaves out every test-case
+and game-jam version directory, because a
+[frozen version](/development/frozen-versions/) may never change.
 
 A reference implementation's scripts are model output, so each slug directory
 that holds one carries a `.shellcheckrc` turning `shellcheck` off beneath it.
@@ -474,8 +486,8 @@ npm ci                                     # the pinned tsc two arms reflect wit
 ```
 
 The two lists stay separate. The first is every toolchain that a gg run and gg's
-reflectors execute; it is installed in the dev container by
-`scripts/devcontainer-setup.sh`, in the pipeline by
+reflectors execute; it is installed into the dev container's image by
+`.devcontainer/languages/gg/install.sh`, in the pipeline by
 `scripts/ci/gg-ci-toolchains.sh`, and in the run images. The second is a .NET SDK and an
 unpruned wasi-sdk that exactly one arm's artifact build needs, since C#'s guest
 is Mono's IL interpreter, relinked. It installs under its own prefix
@@ -484,24 +496,18 @@ run images keep their size. With the second prefix populated,
 `packages/gg-sandbox-csharp/build.sh` resolves both from it instead of fetching
 its own copies.
 
-The dev container's image is the template's, and carries none of them. After the
-container is created, the root `postinstall` (run by the template's `npm ci`)
-starts `scripts/devcontainer-setup.sh`, which provisions in the background: the
-apt packages gg's installers and the asset tools need (`ruby`, `libicu-dev`,
-`ffmpeg`, `cmake`, `iproute2`, `lsof`, `procps`), both installers above, and
-`wrangler`. That is about 3.4 GB and up to an hour on a first create. It logs to
-`~/.cache/tcab-devcontainer-setup.log` and writes
-`~/.cache/tcab-devcontainer-setup.done` once everything installed; the marker
-holds a digest of the provisioning inputs, so a moved pin provisions again.
-Building `crates/gg`, and the `rust-clippy` and `rust-doc` hooks, need it done.
-
-A container stop, a rebuild or a failed install leaves no marker, and nothing
-restarts the provisioning on the next start. With no marker and no provisioner
-running, run it again:
-
-```sh
-bash scripts/devcontainer-setup.sh
-```
+The dev container's image carries both lists, about 3.4 GB under
+`~/.local/share`, together with the apt packages gg's installers and the asset
+tools need (`ruby`, `libicu-dev`, `ffmpeg`, `cmake`, `iproute2`, `lsof`,
+`procps`) and `wrangler`. `.devcontainer/languages/gg/install.sh` runs the two
+installers above in the image's last layer, against a slice of the repository
+the Dockerfile stages for them, so a pin moving under `packages/` or an
+installer changing rebuilds that layer and nothing above it. A container built
+before a pin moved reconciles by running the two installers by hand; each
+checks what is there against its pin and touches no network when they match.
+The one prerequisite the image leaves to the checkout is the npm workspace,
+which `post-create.sh` installs, because two catalogues are reflected with the
+pinned `typescript` in it.
 
 In CI, `scripts/ci/gg-ci-toolchains.sh` is the one provisioner for every job
 that builds or tests Rust. It installs the pinned Node and both lists into a
@@ -883,13 +889,21 @@ The project adds steps to both through `.azure/project/setup-steps.yml` and
   `scripts/ci/cargo-target-prune.sh`, which removes the executables cargo linked
   before the template saves its `target/` cache, so the cache holds the compiled
   libraries and fits beside the tree on the agent's disk.
-- In `web`: `npm run build:packages`, and a step that sets
-  `SKIP=end-of-file-fixer` and logs a warning saying so on every run. The
-  upstream `end-of-file-fixer` hook takes no project excludes, and 109 files
-  inside frozen versions, which may never change, fail it. The hookless
-  `file-endings` gate runs the same pinned hook over every tracked file outside
-  the frozen versions instead, and fails if the project's pipeline files set any
-  other `SKIP`. This is the only step the project skips.
+- In `web`: `npm run build:packages`, since the front ends, the gallery and
+  the validators import the workspace's packages from their built `dist/`, and
+  a variable that disables Astro's telemetry, whose write outside the checkout
+  fails the docs build.
+
+Every gate that runs tests names `CI_GATE_ARTIFACTS: target/gate-artifacts/<id>`
+on its step, which has it write its JUnit report there, and each job ends, after
+the project's steps and whether the tests passed or failed, with
+`scripts/ci/collect-test-results.sh` and a publish of what it collected as the
+pipeline artifact `test-results-<job>-<attempt>`. `test-results-rust-1` holds
+`rust-test`'s report; `test-results-web-1` holds `web-test`'s,
+`web-browser-test`'s, `ci-tests`'s, `scripts-test`'s and `workspace-test`'s. The
+browser tests' screenshots ride their own `web-browser-test-<attempt>`
+artifact. `ci/README.md` describes the report directory and the metrics read
+off it.
 
 ### The project's jobs
 
@@ -897,10 +911,11 @@ The project adds steps to both through `.azure/project/setup-steps.yml` and
 in `.azure/tcab/`, shared with the release pipeline. The amd64 jobs that
 compile Rust run as container jobs in the template's Rust CI image, with the
 template `rust` job's paths, variables and cargo cache, so they share its caches
-and seed them. A jobs template cannot read the pipeline's image tag variable, so
-`jobs.yml` names that image as a literal parameter default:
-`scripts/ci/tcab-image-pin.sh` writes it from `ci/images/tags.yml`, and the
-`ci-image-pins` gate fails when the two differ.
+and seed them. Each names that image the way the template's `rust` job does,
+`testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
+reading the pin out of `ci/images/tags.yml`, which the main pipeline includes
+before `jobs.yml` and the release pipeline includes itself; the
+`ci-image-pins` gate fails on a CI image named any other way.
 
 | Job | Runs on | What it does |
 | --- | --- | --- |
@@ -963,14 +978,34 @@ template's CI images:
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | `web` |
 
 `ci/images/README.md` describes each. The Rust image carries the pinned
-toolchain, nextest, the musl target, and the apt packages the
-`rust_ci_packages` answer names (`cmake`, `ffmpeg`, `libicu-dev`, `python3`,
-`ruby`, `zip`); gg's toolchains and Node come from the `gg-toolchains` cache.
-An image's tag is a digest of the files it is built from, and
-`ci/images/tags.yml` holds it. After changing an image input (a template update
-does), run `scripts/ci/ci-image.sh tag`, commit the file, and let the image
-pipeline, `azure-pipelines-ci-images.yml`, push the image before the gates run.
-`scripts/ci/tcab-image-pin.sh` then writes the new tag into `jobs.yml`.
+toolchain, nextest, the musl target, and the apt packages the project's tools
+need beyond a compile's, which `ci/images/rust.Dockerfile` installs (`cmake`,
+`ffmpeg`, `libicu-dev`, `python3`, `ruby`, `zip`); gg's toolchains and Node
+come from the `gg-toolchains` cache.
+
+`azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
+image is built from and on nothing else, and every run builds both tracks and
+pushes each as `<repository>:<commit>`, the commit its run is on, from the
+layer cache. `ci/images/tags.yml` holds one variable, `ciImageTag`, as a
+variables template both pipelines include: the full commit whose image
+pipeline run built the images every gates job pulls, so a commit's diff says
+which images it ran in. The template renders the file with forty zeros, which
+name no image, and the commit written over them is the project's own edit,
+which a template update carries. A change to an image's files is therefore two
+commits:
+
+1. Push the change. The image pipeline's run on that commit pushes each track's
+   image under the commit.
+2. Once that run has finished, write the commit into `ciImageTag`, and push.
+   That second commit's gates run in the new images.
+
+Until the pin follows, the gates run in the images it names. The same loop is
+the first one a branch runs after a template update that moves a pin, and the
+one for taking an image whose base moved under a floating tag: queue the image
+pipeline by hand on the branch's head and pin the commit it ran on. After each
+of its runs the image pipeline purges the registry of every CI image tag that
+`master`, `staging`, `nightly` and the checkout do not pin
+(`scripts/ci/ci-image-purge.sh`).
 
 A job pulls its CI image from the registry before its first step runs, so a
 registry answer that times out would fail the job before it has checked

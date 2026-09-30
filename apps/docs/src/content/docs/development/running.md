@@ -43,13 +43,11 @@ production serve it in-cluster as the `tcab-web` image.
 
 ## The dev container
 
-Everything on this page runs inside the dev container, which is the workspace
-template's (see `.devcontainer/README.md`). It drives the host's container
+Everything on this page runs inside the dev container, declared under
+`.devcontainer/` (see its `README.md`). It drives the host's container
 runtime rather than running its own, and what differs per host is in
 `.devcontainer/.env`, which compose reads beside `docker-compose.yml`. **Copy
-the host's file there before the first start.** A `.env` from before the
-repository moved onto the workspace template holds variables the compose file no
-longer reads and lacks the ones it does; replace it rather than keeping it.
+the host's file there before the first start.**
 
 | Host | `.devcontainer/.env` |
 | --- | --- |
@@ -64,37 +62,43 @@ Docker daemon. So `tcab` and `deployments/local/Makefile` pick `podman` only
 when `podman version` answers, and `docker` otherwise; `TCAB_CONTAINER_RUNTIME`
 and `CONTAINER_TOOL=…` override the choice.
 
-### Background provisioning
+### What the image carries
 
-The template's image carries none of gg's toolchains and a few of the packages
-the project's tools need. After the container is created, `npm ci` runs the
-root `postinstall`, which starts `scripts/devcontainer-setup.sh` in the
-background and returns within seconds. It installs `ruby`, `libicu-dev`,
-`ffmpeg`, `cmake`, `iproute2`, `lsof` and `procps`, then gg's toolchains (see
-[gg and its eleven toolchains](/development/building/#gg-and-its-eleven-toolchains)),
-then `wrangler`: about 3.4 GB and up to an hour on a first create, repeated
-after every rebuild, because it lives in the container's own layer.
+The image is built from the repository root and bakes in everything a build of
+the workspace needs: the pinned Rust and Node toolchains, the browser engines,
+the cluster tooling, the apt packages the project's tools need (`ruby`,
+`libicu-dev`, `ffmpeg`, `cmake`, `iproute2`, `lsof`, `procps`), `wrangler`, and
+gg's eleven program-language toolchains with the build toolchains of its C#
+guest (see
+[gg and its eleven toolchains](/development/building/#gg-and-its-eleven-toolchains)).
+The gg toolchains are the image's last layer, installed by
+`.devcontainer/languages/gg/install.sh` from the same two installers the
+pipeline and the run images use, so a first image build is long and a pin
+moving under `packages/` rebuilds that layer alone.
 
-It logs to `~/.cache/tcab-devcontainer-setup.log` and writes
-`~/.cache/tcab-devcontainer-setup.done` when everything installed. Until then a
-build of `crates/gg`, and the `rust-clippy` and `rust-doc` commit hooks, fail
-for the missing toolchains; commit a Rust change meanwhile with
-`SKIP=rust-clippy,rust-doc`. Nothing resumes an interrupted provisioning on the
-next start, so with no marker and no provisioner running, run it again:
+When the container is created, `.devcontainer/post-create.sh` installs the git
+hook, places cargo's target directory and runs `npm ci`, and nothing runs in the
+background afterwards: the whole workspace builds as soon as it returns. In a
+container built before a gg pin moved, the two installers reconcile it by hand
+without a rebuild:
 
 ```sh
-bash scripts/devcontainer-setup.sh
+scripts/ci/install-gg-toolchains.sh
+scripts/ci/install-gg-build-toolchains.sh
 ```
 
 ### Where cargo builds
 
 On a host whose checkout reaches the container over virtiofs or FUSE (macOS
 Podman, Docker Desktop), parallel `rustc` processes writing crate metadata into
-the checkout fail intermittently with E0463. There, the provisioning points cargo
-at `~/.cache/cargo-target/the-test-cabinet`, inside the container, through
+the checkout fail intermittently with E0463. There,
+`.devcontainer/tools/cargo-target.sh`, run once by `post-create.sh`, points
+cargo at `~/.cache/cargo-target/the-test-cabinet`, inside the container, through
 `~/.cargo/config.toml` and an exported `CARGO_TARGET_DIR`. It is rebuilt from
 scratch after every container rebuild, and `make clean` does not reach it. On a
 Linux host, cargo builds into `target/` in the checkout.
+`TCAB_CARGO_TARGET_RELOCATE=1` or `=0` forces or forbids the move when the
+script is run by hand.
 
 Either way `/cargo-target/the-test-cabinet` links to the target directory in
 use, so a path such as `/cargo-target/the-test-cabinet/debug/gg` works on every

@@ -58,9 +58,12 @@ every history shape. `uv run --quiet --project ci gate run frozen-paths` runs it
 by hand.
 
 Frozen versions are also left out of every check that would otherwise change
-them: `format` and the `file-endings` gate skip them, and the pipeline skips the
-upstream `end-of-file-fixer` hook, which cannot exclude them (see
-[The gate jobs](/development/building/#the-gate-jobs)).
+them. `format` derives its exclusions from the `.frozen` markers on each run,
+and the upstream `end-of-file-fixer` hook excludes every test-case and game-jam
+version directory in `.pre-commit-config.yaml`, frozen or not, since a version
+becomes frozen without its files changing. The `check-added-large-files` hook
+excludes test-case and game-jam media there for the same reason: a reference
+implementation's recording or music track is the size a playable game needs.
 
 ## Freezing a version
 
