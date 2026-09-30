@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { Panel } from "@clockwyrks/ui";
+import { Select } from "../../../primitives";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { LoadFailureState } from "../../components/LoadFailureState";
@@ -289,7 +290,7 @@ export function TestCaseDetailLayout({
             {coordinate.engines.length > 1 && (
               <label className={styles.variant}>
                 <span className={styles.variantLabel}>Engine</span>
-                <select
+                <Select
                   className={styles.variantSelect}
                   value={coordinate.engine}
                   onChange={(event) => coordinate.setEngine(event.target.value)}
@@ -299,12 +300,12 @@ export function TestCaseDetailLayout({
                       {engineName(entry)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             )}
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
-              <select
+              <Select
                 className={styles.variantSelect}
                 value={coordinate.variant.slug}
                 onChange={(event) => coordinate.setVariant(event.target.value)}
@@ -314,7 +315,7 @@ export function TestCaseDetailLayout({
                     {entry.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </div>
@@ -432,7 +433,7 @@ export function VersionControl({
   return (
     <label className={styles.variant}>
       <span className={styles.variantLabel}>Version</span>
-      <select
+      <Select
         className={`${styles.variantSelect} ${styles.versionSelect}`}
         value={coordinate.version}
         onChange={(event) => coordinate.setVersion(event.target.value)}
@@ -442,7 +443,7 @@ export function VersionControl({
             {entry}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

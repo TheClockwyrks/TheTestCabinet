@@ -316,7 +316,7 @@ export function GateEditor({
         onReset={() => setThreshold(DEFAULT_GATE.threshold)}
       >
         {(id) => (
-          <>
+          <span className={styles.settingThreshold}>
             {/* The gate holds a number, so the typing lives in the field rather
                 than in the gate: clearing it leaves the gate on its last figure and
                 the field empty for the next one, and the committed figure comes back
@@ -372,7 +372,7 @@ export function GateEditor({
                 </option>
               </select>
             </span>
-          </>
+          </span>
         )}
       </SettingRow>
 

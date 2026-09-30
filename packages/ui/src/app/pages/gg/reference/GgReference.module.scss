@@ -1,7 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
-@use "../../../styles/forms" as f;
 @use "../../../styles/breakpoints" as bp;
 
 // The gg **Reference** section: the tab bar, the API tab's own explorer shell (arm
@@ -110,26 +109,6 @@
   gap: t.$space-sm;
 }
 
-// The SDK arm dropdown. Mirrors the run listing's facet selects so the console's
-// dropdowns read as one family.
-.armSelect {
-  width: 100%;
-  font: inherit;
-  font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-sm;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    border-color: t.$color-accent;
-  }
-}
-
 // The API sidebar: the filter pinned at the top, the entries scrolling under their own
 // scrollbar below it. Drawn like the shared explorer's sidebar, but laid out as a column
 // with `overflow: hidden` so only `.entries` scrolls — the filter can never leave the
@@ -165,17 +144,6 @@
   flex: 0 0 auto;
   padding: t.$space-xs;
   border-bottom: t.$border-hairline solid t.$color-border;
-}
-
-.filterInput {
-  width: 100%;
-  padding: t.$space-2xs t.$space-xs;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: inherit;
-  font-size: t.$font-sm;
 }
 
 // The scrolling half of the sidebar: the tree, and nothing else. Carries the inner

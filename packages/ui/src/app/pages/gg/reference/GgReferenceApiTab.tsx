@@ -16,6 +16,8 @@ import { Section, Verbatim } from "./GgReferenceParts";
 import { useEntrySelection, useRevealSelection } from "./referenceSelection";
 import panels from "../../runs/gg/GgPanels.module.scss";
 import styles from "./GgReference.module.scss";
+import { Input } from "../../../../primitives/Input";
+import { Select } from "../../../../primitives/Select";
 import exec from "../../runs/RunExec.module.scss";
 
 // The **API** tab: one SDK arm's whole responses-as-code surface — every function a
@@ -256,8 +258,7 @@ export function GgReferenceApiTab({
                 the scroll container, so the box never scrolls away from its own
                 results and no row ever slides underneath it. */}
             <div className={styles.filter}>
-              <input
-                className={styles.filterInput}
+              <Input
                 type="search"
                 value={filter}
                 placeholder="Filter this arm…"
@@ -438,8 +439,7 @@ function ArmSelect({
   onSelect: (language: GgProgramLanguage) => void;
 }) {
   return (
-    <select
-      className={styles.armSelect}
+    <Select
       aria-label="SDK arm"
       value={selected ?? ""}
       onChange={(event) => {
@@ -453,7 +453,7 @@ function ArmSelect({
           {PROGRAM_LANGUAGE_NAMES[entry.id]} · {entry.functionCount} functions
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

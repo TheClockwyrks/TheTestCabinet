@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useModelConfig } from "../data/useModelConfig";
 import { ModelProviderMark } from "./ModelProviderMark";
+import { Button, ControlRow, Input } from "../../primitives";
 import styles from "./ModelLogoPicker.module.scss";
 
 interface ModelLogoPickerProps {
@@ -64,18 +65,16 @@ export function ModelLogoPicker({
 
   return (
     <div className={styles.picker}>
-      <div className={styles.row}>
-        <input
-          className={styles.input}
+      <ControlRow>
+        <Input
           type="url"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
           placeholder="https://svgl.app/library/openai.svg"
           aria-label="Provider logo svgl.app URL"
         />
-        <button
-          type="button"
-          className={styles.fetch}
+        <Button
+          size="small"
           onClick={onFetch}
           disabled={!canFetch}
           title={
@@ -85,7 +84,7 @@ export function ModelLogoPicker({
           }
         >
           {busy ? "Fetching…" : "Fetch logo"}
-        </button>
+        </Button>
         {/* The live mask preview: the fetched SVG when present, else the
             provider's bundled mark, else nothing (the mark component renders
             null). It reads in the accent color like every other cabinet glyph. */}
@@ -94,7 +93,7 @@ export function ModelLogoPicker({
           provider={provider}
           className={styles.preview}
         />
-      </div>
+      </ControlRow>
       {error && (
         <span className={styles.error} role="alert">
           {error}

@@ -12,6 +12,7 @@ import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { NumberValueField } from "../../../components/NumberField";
 import { ResetControl } from "../../../components/ResetControl";
+import { Textarea } from "../../../../primitives/Textarea";
 import { familyOf } from "../../../data/families";
 import {
   AGENT_MODES,
@@ -875,7 +876,7 @@ export function GgAgentEditor({
               >
                 Custom instructions
               </p>
-              <textarea
+              <Textarea
                 className={gg.textarea}
                 value={agent.customInstructions}
                 disabled={readOnly}
@@ -913,7 +914,7 @@ export function GgAgentEditor({
                       top. Edit here only to rewrite the whole prompt; leaving
                       it equal to the default stores no override.
                     </p>
-                    <textarea
+                    <Textarea
                       className={`${gg.textarea} ${gg.promptTextarea}`}
                       value={promptValue}
                       disabled={readOnly}

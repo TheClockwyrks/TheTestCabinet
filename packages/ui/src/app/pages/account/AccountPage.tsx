@@ -14,6 +14,7 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import { downscaleToSquare } from "./downscalePicture";
+import { Button } from "../../../primitives";
 import styles from "./AccountPages.module.scss";
 
 // A categorical palette for the test-case and model rings, whose slices have no
@@ -170,23 +171,23 @@ export function AccountPage() {
                     className={styles.hiddenInput}
                     onChange={(e) => void onPick(e.target.files?.[0])}
                   />
-                  <button
-                    type="button"
-                    className={styles.secondary}
+                  <Button
+                    size="small"
                     disabled={busy}
                     onClick={() => fileInput.current?.click()}
                   >
                     {hasPicture ? "Change picture" : "Add picture"}
-                  </button>
+                  </Button>
                   {hasPicture && (
-                    <button
-                      type="button"
-                      className={styles.linkButton}
+                    <Button
+                      variant="link"
+                      size="small"
+                      className={styles.removePicture}
                       disabled={busy}
                       onClick={() => void onRemove()}
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -201,8 +202,7 @@ export function AccountPage() {
               {error}
             </p>
           )}
-          <button
-            type="button"
+          <Button
             className={styles.signOut}
             onClick={() => {
               logout();
@@ -210,7 +210,7 @@ export function AccountPage() {
             }}
           >
             Sign out
-          </button>
+          </Button>
         </Panel>
 
         <Panel className={styles.activity}>

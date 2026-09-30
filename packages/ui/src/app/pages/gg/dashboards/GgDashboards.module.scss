@@ -207,27 +207,6 @@
   font-size: t.$font-sm;
 }
 
-.input,
-.select {
-  padding: t.$space-xs t.$space-sm;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: inherit;
-  font-size: t.$font-sm;
-}
-
-.queryInput {
-  padding: t.$space-xs t.$space-sm;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-}
-
 .formActions {
   display: flex;
   align-items: center;

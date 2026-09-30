@@ -504,7 +504,6 @@ export function ComparisonEditPage() {
             <label className={exec.field}>
               <span className={exec.fieldLabel}>N (runs per arm)</span>
               <NumberField
-                className={exec.input}
                 value={nField.raw}
                 onChange={nField.setRaw}
                 {...nField.bounds}
