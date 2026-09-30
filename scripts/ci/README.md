@@ -17,11 +17,13 @@ registry round trips are retried, and nothing else.
 This directory is shared with the k8s standard workspace template this repository is
 rendered from (`.copier-answers.yml` names its source, version and answers).
 
-- **The template's scripts** are rendered by it and are never edited here: `lib.sh`,
-  `ci-image.sh`, `npm-install.sh`, `free-disk.sh`, `build-image.sh` and `deploy.sh`,
-  each with its `.test.sh`. They source the template's `lib.sh`, which provides
-  `build_arg` (a pin read from `.devcontainer/docker-compose.yml`), `remediation`,
-  `require_npm_install` and `aks_invoke`. A change to one is a change to the template.
+- **The template's scripts** are rendered by it: `lib.sh`, `ci-image.sh`,
+  `npm-install.sh`, `free-disk.sh`, `build-image.sh`, `collect-test-results.sh` and
+  `deploy.sh`, each with its `.test.sh`. They source the template's `lib.sh`, which
+  provides `build_arg` (a pin read from `.devcontainer/docker-compose.yml`),
+  `remediation`, `require_npm_install` and `aks_invoke`. An edit to one here is
+  carried through the three-way merge of the next `copier update`; a change every
+  project wants belongs in the template.
 - **The project's scripts** are everything else. They source
   [`tcab-lib.sh`](tcab-lib.sh), which resolves the repository root, changes into it,
   and provides `log`, the registry name (`CI_REGISTRY`), the architecture an image is
@@ -41,8 +43,8 @@ verifies the length the server advertised, and keeps a partial file under
 `azure-pipelines.yml` is the template's. It triggers, batched, on pushes to `master`,
 `staging` and `nightly`; a pull request runs it through the build validation policy
 of its target branch. What the project runs beyond the template's work lives in the
-files it includes from [`.azure/project/`](../../.azure/project/), which the template
-rendered empty once and never renders over, and in the job and step templates under
+files it includes from [`.azure/project/`](../../.azure/project/), which are the
+project's own, and in the job and step templates under
 [`.azure/tcab/`](../../.azure/tcab/) those files and the release pipeline share.
 
 | Stage        | Owner    | Runs on                  | What it runs                                                                                                                                                                                                                                |
@@ -56,11 +58,11 @@ rendered empty once and never renders over, and in the job and step templates un
 
 ### The gates stage
 
-The template's two jobs run every gate the `extra_gates` answer and the template
-name, one step each, as `uv run --quiet --project ci gate run <id>`;
-[`ci/README.md`](../../ci/README.md) is the reference for the gates and the runner,
-and a gate is wired in by answering it, never by a step here. Several project gates
-are thin wrappers over a script in this directory:
+The template's two jobs run every gate, the template's and the project's, one step
+each, as `uv run --quiet --project ci gate run <id>`;
+[`ci/README.md`](../../ci/README.md) is the reference for the gates and the runner
+and says how a gate is wired in. Several project gates are thin wrappers over a
+script in this directory:
 
 | Gate              | Script it runs                                              |
 | ----------------- | ----------------------------------------------------------- |
@@ -70,18 +72,17 @@ are thin wrappers over a script in this directory:
 | `audio-packs`     | `audio-packs-check.mjs`                                     |
 | `build-context`   | `build-context.sh`                                          |
 | `k8s-deploy-sets` | `k8s-deploy-sets.sh`, over `deploy-environment.sh --render` |
-| `ci-image-pins`   | `tcab-image-pin.sh --check`                                 |
 
 `.azure/project/setup-steps.yml` adds, in the template's `rust` job, a second disk
 reclaim (`free-disk-linux.sh`, which also removes `/usr/local/lib/android`), Node and
 gg's toolchains (below) and a coloured cargo log; in its `web` job, the workspace
-packages (`npm run build:packages`), Astro's telemetry off, and `SKIP` for the
-upstream `end-of-file-fixer` step, which fails on files inside frozen test-case
-versions that may never change. The `file-endings` gate runs the same pinned hook over
-every tracked file outside them, fails when the project's pipeline files set any other
-`SKIP`, and every run logs a warning naming the override until the template takes a
-project exclude. `.azure/project/steps.yml` prunes the linked binaries
-(`cargo-target-prune.sh`) before the `rust` job's build output is cached.
+packages (`npm run build:packages`) and Astro's telemetry off.
+`.azure/project/steps.yml` prunes the linked binaries (`cargo-target-prune.sh`)
+before the `rust` job's build output is cached. Both jobs run the project's gates and
+steps before the collection and publish of their test results, which every job
+running a test gate ends with. The upstream hooks the `web` job runs over every file
+exclude the test-case and game-jam version directories, since a frozen version is
+immutable and some hold files those hooks would rewrite.
 
 The project's jobs, from `.azure/project/jobs.yml`:
 
@@ -179,8 +180,9 @@ the CI-images pipeline pushes, `ci-image-purge.sh` (from
 `.azure/project/ci-image-steps.yml`, with the `the-test-cabinet-acr`
 credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
 repository every tag that `master`, `staging`, `nightly` and the checkout do not
-pin in `ci/images/tags.yml`, and from it and its `-cache` repository the untagged
-manifests older than an hour; a branch it cannot fetch stops it.
+pin as `ciImageTag` in `ci/images/tags.yml`, and from it and its `-cache`
+repository the untagged manifests older than an hour; a branch it cannot fetch
+stops it.
 
 ### The Rust jobs and their caches
 
@@ -192,11 +194,14 @@ overrides it. `make gate` therefore does not run gg's tests; a change under
 `crates/gg/` runs `scripts/ci/gg-test.sh` too.
 
 Every project job that compiles Rust in a container runs in the template's Rust CI
-image at the tag `ci/images/tags.yml` pins. A jobs template cannot read that tag, so
-`.azure/project/jobs.yml` names the image as the literal default of its `rustImage`
-parameter: `tcab-image-pin.sh` writes it from `tags.yml`, and the `ci-image-pins`
-gate fails while the two differ. After `ci-image.sh tag` moves the tag, run
-`scripts/ci/tcab-image-pin.sh` and commit both files.
+image at the commit `ci/images/tags.yml` pins as `ciImageTag`. A template cannot
+read that variable, so the root pipelines name the image,
+`testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
+the expression the template's `rust` job uses: `azure-pipelines.yml` passes it to
+`.azure/project/jobs.yml` as its `rustImage` parameter, and the release pipeline uses
+it directly. The `ci-image-pins` gate fails on a root pipeline naming a CI image
+another way and on any file under `.azure/` naming one. Moving the pin is one edit of
+`tags.yml` once the image pipeline's run on a commit has pushed both images.
 
 Those jobs take the template `rust` job's variables (`CARGO_HOME` under
 `$(Pipeline.Workspace)/ci-cache`, `CARGO_INCREMENTAL` 0, `CARGO_PROFILE_DEV_DEBUG`
@@ -254,7 +259,6 @@ a gg whose version is not the tag's; `gg_publish`; and `mirror`, which pushes th
 | Script                                                                                                | What it does                                                                                                                                                          | Test                                  |
 | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `gg-ci-toolchains.sh <cache-dir> [--node-only]`                                                       | Node at the pin, `$HOME`'s install locations linked into the cache, gg's toolchains; `##vso` PATH lines for later steps                                               | `gg-ci-toolchains.test.sh`            |
-| `tcab-image-pin.sh [--check]`                                                                         | write, or check, `.azure/project/jobs.yml`'s `rustImage` default from `ci/images/tags.yml`                                                                            | `tcab-image-pin.test.sh`              |
 | `require-gated-commit.sh <commit> <source-ref>`                                                       | the release gate above, through the Azure DevOps REST API and the job token                                                                                           | `require-gated-commit.test.sh`        |
 | `rust-build.sh [--seed]`                                                                              | `cargo build --workspace --all-targets`, the only check that links every target; `--seed` builds what the template's `rust` job compiles                              | `rust-build.test.sh`                  |
 | `gg-test-build.sh`                                                                                    | `cargo nextest run --no-run -p test-cabinet-gg --lib`, what `gg-test.sh` runs                                                                                         | `gg-test-build.test.sh`               |

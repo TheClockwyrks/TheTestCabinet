@@ -25,17 +25,17 @@ queue writes no changelog entry. A test-case version whose directory carries a
 `.frozen` marker is never edited: an issue whose fix would change one is fixed in
 a new version of the case, or it is blocked. The unit tests of `crates/gg` are
 not part of `rust-test`: a change under `crates/gg/` also runs
-`scripts/ci/gg-test.sh`, which runs that suite.
+`scripts/ci/gg-test.sh`, as the `coding` skill's gates table says.
 
 ## Scope
 
 All issues are located under `tasks/` in the repo root. The "repo-tasks" skill
 covers policies for issue files.
 
-An issue is a Markdown file, filed under the epic it is work on and then the
-area within it. An open one sits in that area folder, a finished one in a
-`done/` folder beside it, and one awaiting user input in a `blocked/` folder, so
-the open issues are what this finds:
+An issue is a Markdown file, filed under the one area it is work on, at
+`tasks/<area>/<issue>.md`. An open one sits in that area folder, a finished one
+in a `done/` folder beside it, and one awaiting user input in a `blocked/`
+folder, so the open issues are what this finds:
 
 ```sh
 find tasks -name '*.md' -not -path '*/done/*' -not -path '*/blocked/*' \
@@ -47,10 +47,10 @@ be implemented. If any issues are to be excluded, they will be explicitly
 mentioned when using this skill. If no issues are mentioned, then all open
 issues are in scope.
 
-An issue names the work and the requirements it satisfies, and nothing about its
-state: the folder it sits in is the whole of that. Read each issue in scope
-before planning the run, because a dependency between two issues is stated in
-their text rather than recorded anywhere a command can read.
+An issue names the work and the documentation it aligns the code with, and
+nothing about its state: the folder it sits in is the whole of that. Read each
+issue in scope before planning the run, because a dependency between two issues
+is stated in their text rather than recorded anywhere a command can read.
 
 ## Gates
 
@@ -162,7 +162,7 @@ Workflows must be designed such that an agent may return without completing its
 issue and signal that the issue is blocked. This **MUST** be accompanied by the
 agent's explanation of why the issue is blocked, and the workflow **MUST** have
 a reviewer verify the rationale. If the reviewer agrees, the reviewer must move
-the issue to epic's `blocked/` folder, write the reason for why it's blocked
+the issue to its area's `blocked/` folder, write the reason for why it's blocked
 (what needs to be addressed to unblock the issue) into the issue, and commit the
 updated issue. If the reviewer rejects the implementer's rationale, it must
 provide the resolution and the workflow must run an implementer agent again. The

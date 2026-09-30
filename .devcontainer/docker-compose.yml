@@ -45,11 +45,28 @@ x-devcontainer-build-args: &devcontainer-build-args
   # ci/gates/web-browser-test.py reads this line and fails with both
   # values when they disagree.
   PLAYWRIGHT_VERSION: 1.63.0
+  # cargo-nextest (languages/rust/cargo-nextest.sh), which installs from the
+  # release's archive for this architecture's triple and checks it before
+  # taking anything out of it. The version and the two checksums move together:
+  # each checksum is the `sha256sum` of the release's archive for that triple,
+  # x86_64-unknown-linux-musl on amd64 and aarch64-unknown-linux-gnu on arm64.
   NEXTEST_VERSION: 0.9.140
+  NEXTEST_SHA256_AMD64: bc2a998567816eef7b087b920036f49fb89aa2a8a603f6a3d84098be160b62c5
+  NEXTEST_SHA256_ARM64: 8b3f4d4560b6b0f83774fecc6be07e47716dbad0eb0bb6c3890f478f4affe4b6
   # The compiler the image installs, which rust-toolchain.toml pins for every
   # checkout. The two name the same channel or the image ships a compiler
   # nothing builds with.
   RUST_VERSION: 1.97.1
+  # wrangler (tools/wrangler.sh), the Cloudflare CLI `tcab publish` shells out
+  # to. npm serves the current release by default, so this pin is what keeps a
+  # rebuild reproducible.
+  #
+  # gg's program-language toolchains, which languages/gg/install.sh bakes into
+  # the image, are pinned elsewhere on purpose: each arm's
+  # packages/gg-sandbox-*/<lang>-version.sh is the one pin the pipeline, the
+  # run images and this image all install from, and the Rust arm's defers to
+  # rust-toolchain.toml.
+  WRANGLER_VERSION: 4.144.0
 
 # The pod podman-compose would put this project's services in, which it is told
 # not to create. podman-compose from 1.1.0 on creates one for every project
@@ -67,8 +84,16 @@ services:
   # The container an editor's Reopen in Container and `devcontainer up` start.
   dev:
     build:
-      context: .
-      dockerfile: ./ubuntu.dockerfile
+      # The repository root rather than this directory. The image's last layer
+      # installs gg's program-language toolchains with the repository's own
+      # installers, scripts/ci/install-gg-toolchains.sh and
+      # scripts/ci/install-gg-build-toolchains.sh, which read their pins from
+      # beside the arms under packages/, so the build has to see them. The root
+      # .dockerignore is an allowlist and decides what it sees; every COPY in
+      # the Dockerfile is written from the root. See "The build context" in
+      # README.md.
+      context: ..
+      dockerfile: ./.devcontainer/ubuntu.dockerfile
       args:
         <<: *devcontainer-build-args
     # Keeps the container alive after the build's entrypoint exits. A compose

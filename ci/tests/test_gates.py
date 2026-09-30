@@ -64,7 +64,7 @@ def _projects_linted() -> list[str]:
 
 def test_the_python_gate_names_every_uv_project() -> None:
     """A project the gate does not name is Python nothing lints. The projects
-    are the `python_projects` answer, so one added without answering it fails
+    are the list the gate names, so one added without naming it there fails
     here rather than going unlinted."""
     assert sorted(_projects_linted()) == _uv_projects()
 

@@ -282,7 +282,7 @@ __pycache__/
 # script in, so none of it is offered to a commit.
 tmp/
 
-# What this repository alone ignores, answered as `extra_git_ignores`.
+# What this repository alone ignores.
 !/apps/docs/public/schema/coverage/
 !/crates/backend/src/coverage/
 !/packages/case-harness/test/host/root/dist/

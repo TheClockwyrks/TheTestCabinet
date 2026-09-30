@@ -80,7 +80,7 @@ candidates=(
   "${CARGO_TARGET_DIR:-}/$target/release/gg"
   "$repo_root/target/$target/release/gg"
 )
-# `scripts/devcontainer-setup.sh` links /cargo-target/the-test-cabinet to the target
+# `.devcontainer/tools/cargo-target.sh` links /cargo-target/the-test-cabinet to the target
 # directory cargo builds into in the dev container: the checkout's target/ on a Linux
 # host, ~/.cache/cargo-target/the-test-cabinet on a virtiofs or FUSE host (macOS
 # Podman, Docker Desktop). Discover it through the link if present.

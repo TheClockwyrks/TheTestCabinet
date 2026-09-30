@@ -60,3 +60,39 @@ EOF
 #     built on a machine of that architecture.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	musl-tools
+
+# What this project's own builds and tools reach for beyond the template's
+# list. Each is declared here because it was once present by accident, and a
+# tool that arrives with the base image disappears silently on a base bump.
+#   - ruby: gg's Ruby arm reflects its signature catalogue with YARD, and
+#     crates/gg/build.rs reflects all eleven catalogues as a step of building
+#     the crate, so without an interpreter `cargo build --workspace` fails.
+#     It is the one gg toolchain that is a distribution package rather than a
+#     pinned download: scripts/ci/install-gg-toolchains.sh, which
+#     languages/gg/install.sh runs several layers below, refuses to proceed
+#     without it and installs the pinned YARD on top of it. The interpreter
+#     itself is deliberately unpinned; what has to agree across the
+#     devcontainer, a CI agent and an image is the reflector, not what runs it.
+#   - libicu-dev: the ICU gg's C# arm needs to run Roslyn. The .NET runtime
+#     does not link it: it `dlopen`s `libicuuc` and `libicui18n` by name while
+#     the CLR is still starting and aborts when neither resolves, so `csc` on a
+#     machine without ICU dies of SIGABRT having written nothing. The `-dev`
+#     name rather than the runtime package's, whose name carries the ABI
+#     version and would have to move on every base bump.
+#   - ffmpeg: the normalizer scripts/build-sample-pack.mjs shells out to when
+#     it bakes an audio palette. The script degrades rather than fails without
+#     it, writing a structurally valid pack that renders silence, which is the
+#     one failure no gate catches.
+#   - cmake: native build dependencies of some Rust crates.
+#   - iproute2, lsof, procps: `ss`, `lsof` and `ps` for the local cluster
+#     tooling (deployments/local/Makefile) and scripts/free-local-forward.sh,
+#     each of which guards its use with `command -v` and does nothing when the
+#     tool is missing.
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+	cmake \
+	ffmpeg \
+	iproute2 \
+	libicu-dev \
+	lsof \
+	procps \
+	ruby

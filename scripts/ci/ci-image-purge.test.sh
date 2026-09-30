@@ -65,6 +65,14 @@ cp "$CI_DIR/ci-image-purge.sh" "$repo/scripts/ci/"
 
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly REPOSITORY="ubuntu-the-test-cabinet-rust-cicd"
+# The commit each revision of ci/images/tags.yml pins, shaped as the image
+# pipeline tags an image, and one no revision pins.
+readonly CHECKOUT="c0ffee0000000000000000000000000000000001"
+readonly MASTER="c0ffee0000000000000000000000000000000002"
+readonly STAGING="c0ffee0000000000000000000000000000000003"
+readonly NIGHTLY="c0ffee0000000000000000000000000000000004"
+readonly STALE="c0ffee0000000000000000000000000000000005"
+readonly OWN="c0ffee0000000000000000000000000000000006"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
 # answered with the status STUB_DELETE_STATUS names and logged; the catalogue
@@ -129,7 +137,13 @@ while [[ "${1:-}" == -c ]]; do
 done
 printf '%s\n' "$*" >>"$STUB_DIR/git.log"
 case "$1" in
-	rev-parse) echo "${STUB_SHALLOW:-false}" ;;
+	rev-parse)
+		case "$2" in
+			--is-shallow-repository) echo "${STUB_SHALLOW:-false}" ;;
+			--verify) [ -z "${STUB_HEAD:-}" ] && exit 1 || echo "$STUB_HEAD" ;;
+			*) echo "git stub: unexpected $*" >&2; exit 1 ;;
+		esac
+		;;
 	fetch)
 		branch="${*: -1}"
 		if [ -f "$STUB_DIR/branch-$branch.yml" ]; then
@@ -138,6 +152,12 @@ case "$1" in
 			echo "fatal: couldn't find remote ref $branch" >&2
 			exit 128
 		fi
+		;;
+	ls-tree)
+		branch="$(cat "$STUB_DIR/fetched")"
+		[ "$2" = "FETCH_HEAD" ] && [ "$3" = "ci/images/" ] || exit 128
+		[ -z "${STUB_NO_IMAGES_ON:-}" ] || [ "$branch" != "$STUB_NO_IMAGES_ON" ] || exit 0
+		echo "040000 tree 0000000000000000000000000000000000000000	ci/images"
 		;;
 	show)
 		branch="$(cat "$STUB_DIR/fetched")"
@@ -152,8 +172,8 @@ chmod +x "$repo/bin/curl" "$repo/bin/git"
 
 at() { date --utc --date="$1" +%Y-%m-%dT%H:%M:%S.0000000Z; }
 
-pins() { # rust-tag web-tag
-	printf 'variables:\n  rustImageTag: %s\n  webImageTag: %s\n' "$1" "$2"
+pins() { # commit
+	printf 'variables:\n  ciImageTag: %s\n' "$1"
 }
 
 manifest() { # digest when [tag...]
@@ -172,23 +192,23 @@ basic_config() { # user password
 write_fixtures() {
 	rm -rf "$stub"
 	mkdir -p "$stub"
-	pins v1-checkout0000 v1-webcheckout0 >"$repo/ci/images/tags.yml"
-	pins v1-master000000 v1-webmaster000 >"$stub/branch-master.yml"
-	pins v1-staging00000 v1-webstaging00 >"$stub/branch-staging.yml"
-	pins v1-nightly00000 v1-webnightly00 >"$stub/branch-nightly.yml"
+	pins "$CHECKOUT" >"$repo/ci/images/tags.yml"
+	pins "$MASTER" >"$stub/branch-master.yml"
+	pins "$STAGING" >"$stub/branch-staging.yml"
+	pins "$NIGHTLY" >"$stub/branch-nightly.yml"
 	{
 		echo '{"manifests":['
-		manifest sha256:checkout "$(at '1 hour ago')" v1-checkout0000
+		manifest sha256:checkout "$(at '1 hour ago')" "$CHECKOUT"
 		echo ,
-		manifest sha256:master "$(at '3 days ago')" v1-master000000
+		manifest sha256:master "$(at '3 days ago')" "$MASTER"
 		echo ,
-		manifest sha256:staging "$(at '2 days ago')" v1-staging00000
+		manifest sha256:staging "$(at '2 days ago')" "$STAGING"
 		echo ,
-		manifest sha256:nightly "$(at '1 day ago')" v1-nightly00000
+		manifest sha256:nightly "$(at '1 day ago')" "$NIGHTLY"
 		echo ,
-		manifest sha256:stale "$(at '10 days ago')" v1-stale0000000
+		manifest sha256:stale "$(at '10 days ago')" "$STALE"
 		echo ,
-		manifest sha256:stale-web "$(at '10 days ago')" v1-webmaster000
+		manifest sha256:own "$(at '1 minute ago')" "$OWN"
 		echo ,
 		manifest sha256:untagged-old "$(at '2 hours ago')"
 		echo ,
@@ -218,9 +238,8 @@ write_fixtures
 out="$(run rust)"
 check_equal "exits 0" "0" "$?"
 check_equal "keeps the checkout's pin and the three live branches'" \
-	"${REPOSITORY}: keeping v1-checkout0000 v1-master000000 v1-nightly00000 v1-staging00000 " "$(head -1 <<<"$out")"
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY " "$(head -1 <<<"$out")"
 check_contains "deletes an unkept tag" "deleted ${REPOSITORY}@sha256:stale" "$out"
-check_contains "a web pin keeps nothing in the rust repository" "deleted ${REPOSITORY}@sha256:stale-web" "$out"
 check_contains "deletes an untagged manifest older than an hour" "deleted ${REPOSITORY}@sha256:untagged-old" "$out"
 check_lacks "keeps a young untagged one" "sha256:untagged-young" "$out"
 check_lacks "keeps the cache repository's tag" "sha256:cache-tag" "$out"
@@ -228,7 +247,7 @@ check_contains "deletes the cache repository's old untagged manifests" "deleted 
 check_lacks "not its young one" "sha256:cache-young" "$out"
 check_equal "the deletes, in order" \
 	"${REPOSITORY}@sha256:stale
-${REPOSITORY}@sha256:stale-web
+${REPOSITORY}@sha256:own
 ${REPOSITORY}@sha256:untagged-old
 ${REPOSITORY}-cache@sha256:cache-old" "$(deleted)"
 check_contains "fetches master" "fetch --quiet origin master" "$(cat "$stub/git.log")"
@@ -241,16 +260,34 @@ check_contains "with the service principal's credential as Basic" \
 	"$(cat "$stub/curl.log")"
 check_lacks "and exchanges no token" "oauth2/token" "$(cat "$stub/curl.log")"
 
+echo "--- the commit this run is on ---"
+write_fixtures
+out="$(BUILD_SOURCEVERSION=$OWN run rust)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the image the run pushed, named by Azure" \
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY $OWN" "$out"
+check_lacks "and does not delete it" "@sha256:own" "$(deleted)"
+check_contains "while still deleting the stale one" "${REPOSITORY}@sha256:stale" "$(deleted)"
+write_fixtures
+out="$(STUB_HEAD=$OWN run rust)"
+check_equal "asked of git in a terminal, exits 0" "0" "$?"
+check_contains "and keeps it too" "keeping $CHECKOUT $MASTER $STAGING $NIGHTLY $OWN" "$out"
+write_fixtures
+out="$(BUILD_SOURCEVERSION=not-a-commit run rust)"
+check_equal "a value that is no object id exits 0" "0" "$?"
+check_lacks "and is not kept" "not-a-commit" "$out"
+check_contains "so the run's image, unnamed, is deleted with the rest" "${REPOSITORY}@sha256:own" "$(deleted)"
+
 echo "--- the web track ---"
 write_fixtures
 cp "$stub/$REPOSITORY.manifests.json" "$stub/ubuntu-the-test-cabinet-web-cicd.manifests.json"
 cp "$stub/$REPOSITORY-cache.manifests.json" "$stub/ubuntu-the-test-cabinet-web-cicd-cache.manifests.json"
 out="$(run web)"
 check_equal "exits 0" "0" "$?"
-check_contains "keeps the web pins" \
-	"ubuntu-the-test-cabinet-web-cicd: keeping v1-webcheckout0 v1-webmaster000 v1-webnightly00 v1-webstaging00" "$out"
-check_lacks "so the web master pin stays" "sha256:stale-web" "$(deleted)"
-check_contains "and the rust ones go" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
+check_contains "keeps the same pins, which name both tracks' images" \
+	"ubuntu-the-test-cabinet-web-cicd: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes the web repository's unkept tag" "ubuntu-the-test-cabinet-web-cicd@sha256:stale" "$(deleted)"
+check_lacks "keeping master's" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
 
 echo "--- --dry-run ---"
 write_fixtures
@@ -283,16 +320,36 @@ check_equal "a branch without the pins file refuses too" "1" "$?"
 check_contains "naming it" "origin/nightly carries no ci/images/tags.yml; refusing to purge" "$out"
 check_equal "and deletes nothing" "" "$(deleted)"
 
-echo "--- nothing resolves ---"
 write_fixtures
-for branch in master staging nightly; do
-	printf 'variables:\n  webImageTag: v1-web\n' >"$stub/branch-$branch.yml"
-done
-printf 'variables:\n  webImageTag: v1-web\n' >"$repo/ci/images/tags.yml"
+out="$(STUB_NO_PINS_ON=master STUB_NO_IMAGES_ON=master run rust)"
+check_equal "a branch with no ci/images/ at all pins nothing, and exits 0" "0" "$?"
+check_contains "saying so" "origin/master predates ci/images/ and pins nothing" "$out"
+check_contains "keeping the others" "${REPOSITORY}: keeping $CHECKOUT $STAGING $NIGHTLY" "$out"
+check_contains "and deleting what only it named" "${REPOSITORY}@sha256:master" "$(deleted)"
+
+write_fixtures
+printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$stub/branch-staging.yml"
 out="$(run rust)"
-check_equal "exits 1" "1" "$?"
-check_contains "refuses" "no tag resolved as kept; refusing to purge" "$out"
+check_equal "a branch whose file pins nothing this reads refuses too" "1" "$?"
+check_contains "naming it" "origin/staging pins no ciImageTag or rustImageTag in ci/images/tags.yml; refusing to purge" "$out"
 check_equal "and deletes nothing" "" "$(deleted)"
+
+echo "--- a branch still on the per-track pins ---"
+write_fixtures
+printf 'variables:\n  rustImageTag: v1-e9e53ee1c4db\n  webImageTag: v1-ffe3b49d464e\n' >"$stub/branch-staging.yml"
+out="$(run rust)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps this track's old tag in place of its ciImageTag" \
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $NIGHTLY v1-e9e53ee1c4db" "$out"
+check_lacks "and not the other track's" "v1-ffe3b49d464e" "$out"
+
+echo "--- a checkout whose file pins nothing ---"
+write_fixtures
+printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$repo/ci/images/tags.yml"
+out="$(run rust)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the live branches' pins" "${REPOSITORY}: keeping $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes the checkout's former image" "${REPOSITORY}@sha256:checkout" "$(deleted)"
 
 echo "--- a delete that fails ---"
 write_fixtures

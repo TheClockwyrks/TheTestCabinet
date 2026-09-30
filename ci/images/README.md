@@ -11,8 +11,8 @@ the pipeline of its own that runs it.
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | The `rust` job |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | The `web` job |
 
-The gates pipeline builds none of them. Each job names its image at the tag
-[`tags.yml`](tags.yml) holds for its track and lets Azure pull it, through the
+The gates pipeline builds none of them. Each job names its image at the commit
+[`tags.yml`](tags.yml) pins and lets Azure pull it, through the
 `the-test-cabinet-acr` service connection, before the job starts.
 Nothing in that pipeline logs in to a registry or starts a container of its
 own, which is why those jobs need no docker CLI and these images carry none.
@@ -50,6 +50,13 @@ first cache write is a permission error.
 - This architecture's musl target and `musl-tools`, whose `musl-gcc` links a
   static build against it, so a static build compiles here as it does in the
   devcontainer.
+- The project's own packages, which the checks on this track reach for and a
+  compile does not: `ruby`, which gg's Ruby arm reflects its signature
+  catalogue with when `crates/gg` builds; `libicu-dev`, which the .NET runtime
+  behind gg's C# arm loads; `cmake`, for the crates whose build scripts compile
+  native code; and `ffmpeg`, `python3` and `zip`, for the scripts the Rust
+  jobs run. `ci/images/rust.Dockerfile` lists them; the devcontainer's own
+  list is `.devcontainer/system/apt.sh`.
 - `uv` and `pre-commit`, because every gate is invoked as
   `uv run --quiet --project ci gate run <id>`.
 
@@ -70,8 +77,7 @@ The image carries no Node. Nothing on this track builds a bundle.
   reach through the npm workspace.
 - `kubectl`, for `k8s-manifests`, which renders the overlays under
   [`deployments/`](../../deployments/) through kubectl's built-in kustomize.
-  Nothing in CI stands a cluster up, so `k3d`, `kubelogin` and `helm` are
-  absent.
+  Nothing in CI stands a cluster up, so `k3d` and `kubelogin` are absent.
 - `python3`, because `shell-tests` runs every `*.test.sh` under `scripts/` and
   one of them drives a Python script with the interpreter on the `PATH`.
 - `uv` and `pre-commit`, as on the Rust track, plus the environments
@@ -99,16 +105,18 @@ ci/images/build-args.sh rust   # NAME=VALUE per line, sorted
 ci/images/build-args.sh web
 ```
 
-`scripts/ci/ci-image.sh` passes that output to the build as `--build-arg` and
-folds it into the image's tag. A bump of a pin an image consumes therefore
-rebuilds it, and a bump of a pin it does not consume, such as
-`CLAUDE_CODE_VERSION` or `LAZYGIT_VERSION`, leaves its tag alone.
+`scripts/ci/ci-image.sh` passes that output to the build as `--build-arg`. A
+pin bump is a change to the compose file, which the image pipeline triggers
+on, so it builds every image under the commit that bumped it; an image that
+does not consume the pin, such as for `CLAUDE_CODE_VERSION` or
+`LAZYGIT_VERSION`, is rebuilt from its layer cache and comes out unchanged. The
+gates take the new images once [`tags.yml`](tags.yml) pins that commit.
 
 The rest are pinned in the install scripts themselves, under
-[`.devcontainer/`](../../.devcontainer/README.md): uv, pre-commit, rustup,
-cargo-binstall and kubectl each name their version where they install it. Those
-scripts are inputs of the images that run them, so a bump in one moves that
-image's tag through the other half of the digest below. Each Dockerfile says why
+[`.devcontainer/`](../../.devcontainer/README.md): uv, pre-commit, rustup
+and kubectl each name their version where they install it. The image pipeline
+triggers on those scripts too, so a bump in one builds the images under the
+commit that bumped it, like any change below. Each Dockerfile says why
 the scripts it runs are safe to run as root with no container user, and what had
 to change in one that was not.
 
@@ -129,43 +137,49 @@ files are.
 
 ## When an image input changes
 
-The tag is content-addressed: `v1-<12 hex>` over `git ls-files -s` of that
-image's inputs plus its extracted pins. Identical inputs always produce the same
-tag, so nothing is ever pushed twice to one tag and `latest` is never used.
-`scripts/ci/ci-image.sh inputs rust` lists what an image hashes.
+An image is tagged with the commit its image pipeline run is on,
+`$(Build.SourceVersion)`: `scripts/ci/ci-image.sh build <track>` builds the
+image and pushes it as `<repository>:<commit>`, and computes nothing. That
+pipeline triggers on the files an image is built from, listed once in its
+path filter together with `.devcontainer/docker-compose.yml`, so a commit
+changing one of them is a commit the images are built for. A file added to an
+image's `COPY` or `ARG` lines is added to that list. `latest` is never pushed
+to an image repository.
 
-The tags are written in [`tags.yml`](tags.yml), a variables template
-`azure-pipelines.yml` includes, which names each job's image by its track's
-`<track>ImageTag` through a compile-time expression. `scripts/ci/ci-image.sh
-tag`, given no track, writes every track's tag into that file, and nothing else
-writes it: the template renders it once, with the placeholder
-`v1-000000000000`, and never over it, so the pipeline stays the file the
-template renders. [`ci/tests/test_wiring.py`](../tests/test_wiring.py) holds
-the pinned tags to what this checkout hashes to. A pin therefore cannot drift:
-touching an image input fails the `ci-tests` gate, and its message names the
-command that writes the new tag. The placeholder is reported by that test as a
-skip until the first real tags are written.
+The pin is [`tags.yml`](tags.yml), a variables template `azure-pipelines.yml`
+includes, holding one variable, `ciImageTag`: the full commit whose image
+pipeline run built the images every gates job pulls. Each job names its image
+as `<repository>:${{ variables.ciImageTag }}` through a
+compile-time expression, so a commit's diff says which images it ran in. The
+template renders the file once, with forty zeros, which name no image, and
+never over it, so the pin a project writes is the project's own edit and the
+pipeline stays the file the template renders.
+[`ci/tests/test_wiring.py`](../tests/test_wiring.py) holds the file to that one
+variable and a full commit id, and every job to naming its image by it.
 
-The consequence is an ordering. A commit that changes an image input pins a tag
-the registry does not hold yet, so its gates jobs fail at job initialization
-until the image pipeline has pushed it. That pipeline triggers on the same
-paths on every branch and runs in parallel. The loop is:
+The consequence is a loop of two commits:
 
-1. Run `scripts/ci/ci-image.sh tag`, which writes every track's tag into
-   `tags.yml`, and commit it. The check above fails if this is forgotten.
-2. Push the branch. The image pipeline triggers on the same paths and starts
-   building.
-3. Wait for it, a few minutes. A gates run queued alongside it fails at job
-   initialization until the image is in the registry.
-4. Re-queue the gates run.
+1. Commit the change to an image's files and push it. The image pipeline's run
+   on that commit pushes each track's image under the commit, a few minutes
+   for a change a layer cache mostly covers.
+2. Once that run has finished, write the commit into `tags.yml` as
+   `ciImageTag`, commit and push. That second commit's gates run in the new
+   images.
 
-Because the tag is content-addressed, the image is built once on the branch that
-introduced the change, and the merge to master finds it already pushed and skips
-the build.
+Until the second commit lands, the gates run in the images the pin names, so a
+change to an image's files is complete when the pin follows it. The same loop
+is the first one a workspace runs: queue the image pipeline on any commit,
+then pin that commit. It is also how the images take what no file pins, such as
+a new image behind the `ubuntu:26.04` tag: queue a run by hand on the branch's
+head and pin the commit it ran on.
 
-`v1` is the escape hatch for what the files do not pin, the `ubuntu:26.04` tag
-and the apt package sets. It is written once, as `IMAGE_SCHEMA` in
-`scripts/ci/ci-image.sh`, and bumping it retires every tag at once.
+The pin is a line a developer writes, reviewed with the change it follows,
+rather than something a pipeline writes or resolves. A pipeline committing it
+would need write rights on every branch and a policy bypass on the protected
+one, and would land a commit nobody reviewed on a developer's branch. A
+reference resolved at run time from the newest image run would test a branch
+that changes a Dockerfile in the old image until it merged, and the diff would
+no longer name the image a commit ran in.
 
 ## Architecture
 

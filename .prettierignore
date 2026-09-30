@@ -55,8 +55,8 @@ deployments/k8s/
 
 # --- The project's own -----------------------------------------------------
 
-# The paths the `extra_ignored_paths` answer names, which markdownlint and
-# cspell leave out too, so the gates never disagree about a path.
+# The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
+# eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
 /tasks/**/done/**
 /.claude/workflows/**

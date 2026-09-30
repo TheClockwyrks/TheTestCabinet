@@ -31,6 +31,15 @@
 # listening yet. See "Host runtime access" in .devcontainer/README.md for
 # running it from launchd so it is simply always up.
 #
+# This is for a Mac the fleet's agent does not run on. Where it runs, the agent
+# serves the runtime on a socket of its own and the fleet configuration's bridge
+# holds the port, forwarding it to that socket, which admits only a container
+# presenting the credential the agent stated it. A tunnel here on the same port
+# would answer in the bridge's place and refuse that credential, so the script
+# refuses to start or run in the foreground while the agent's runtime socket
+# exists. --status and --stop still work, so a tunnel started earlier can be
+# stopped.
+#
 # Deliberately written for the bash macOS ships (3.2) and the tools that come
 # with it — no Homebrew, no jq, nothing to install first.
 set -euo pipefail
@@ -39,6 +48,11 @@ set -euo pipefail
 # .devcontainer/README.md.
 readonly PORT="${DEVCONTAINER_RUNTIME_PORT:-17386}"
 
+# The socket the fleet's agent serves the container runtime on, under the
+# agent's data directory. A machine whose agent keeps its data elsewhere names
+# the socket with DEVCONTAINER_AGENT_RUNTIME_SOCKET.
+readonly AGENT_SOCKET="${DEVCONTAINER_AGENT_RUNTIME_SOCKET:-${HOME}/.local/state/nyxsis/runtime.sock}"
+
 usage() {
 	cat <<USAGE
 usage: macos-host-runtime.sh [--start|--status|--stop|--foreground]
@@ -46,6 +60,10 @@ usage: macos-host-runtime.sh [--start|--status|--stop|--foreground]
 Publishes the podman machine's API on 127.0.0.1:${PORT} for the devcontainer.
 Run on the Mac. Override the port with DEVCONTAINER_RUNTIME_PORT, and the
 podman connection to forward with PODMAN_CONNECTION.
+
+Refuses to start while the fleet's agent serves the runtime on this Mac, which
+it does on ${AGENT_SOCKET}
+(override the path with DEVCONTAINER_AGENT_RUNTIME_SOCKET).
 USAGE
 }
 
@@ -70,6 +88,10 @@ listening() { (exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null; }
 # and the bracket keeps this pattern from matching the pgrep command itself.
 tunnel_pids() { pgrep -f "ssh[ ].*-L 127.0.0.1:${PORT}:" 2>/dev/null || true; }
 
+# Whether the fleet's agent serves the runtime on this Mac, which it does for as
+# long as its runtime socket exists.
+agent_serves_runtime() { [ -S "$AGENT_SOCKET" ]; }
+
 if [ "$(uname -s)" != Darwin ]; then
 	die "this is the Mac half of the bridge and only makes sense there.
     Inside the container, tools/host-runtime.sh is what builds the socket;
@@ -79,11 +101,20 @@ fi
 case "$mode" in
 	status)
 		pids="$(tunnel_pids)"
+		if agent_serves_runtime; then
+			echo "the fleet's agent serves the runtime on ${AGENT_SOCKET},"
+			echo "so 127.0.0.1:${PORT} belongs to the fleet configuration's bridge to it rather than to a tunnel"
+			[ -z "$pids" ] || echo "a tunnel this script started is still running (ssh pid $(echo "$pids" | tr '\n' ' ')) — stop it with --stop"
+		fi
 		if listening; then
 			echo "listening on 127.0.0.1:${PORT}${pids:+ (ssh pid $(echo "$pids" | tr '\n' ' '))}"
 		else
 			echo "nothing listening on 127.0.0.1:${PORT}"
-			[ -z "$pids" ] || echo "but an ssh tunnel is still running (pid $(echo "$pids" | tr '\n' ' ')) — stop it and start again"
+			if agent_serves_runtime; then
+				echo "the fleet configuration's bridge is what has to listen there; see that it is running"
+			elif [ -n "$pids" ]; then
+				echo "but an ssh tunnel is still running (pid $(echo "$pids" | tr '\n' ' ')) — stop it and start again"
+			fi
 			exit 1
 		fi
 		exit 0
@@ -91,14 +122,29 @@ case "$mode" in
 	stop)
 		pids="$(tunnel_pids)"
 		if [ -z "$pids" ]; then
-			echo "no bridge running on 127.0.0.1:${PORT}"
+			echo "no tunnel of this script's running on 127.0.0.1:${PORT}"
 		else
 			echo "$pids" | xargs kill
-			echo "stopped the bridge on 127.0.0.1:${PORT}"
+			echo "stopped the tunnel on 127.0.0.1:${PORT}"
 		fi
 		exit 0
 		;;
 esac
+
+# Checked before anything is started or found already listening: on a Mac the
+# agent serves, whatever answers on the port is meant to be the fleet
+# configuration's bridge, and a tunnel of this script's there is what keeps a
+# workspace's container from its runtime.
+if agent_serves_runtime; then
+	die "the fleet's agent serves the container runtime on this Mac, on
+    ${AGENT_SOCKET}
+    and 127.0.0.1:${PORT} is held by the fleet configuration's bridge to that
+    socket, which admits a workspace's container by the credential the agent
+    stated it. A tunnel here would take the bridge's place and refuse that
+    credential, so none is started. See what holds the port with
+    'lsof -nP -iTCP:${PORT} -sTCP:LISTEN', and stop a tunnel this script
+    started earlier with --stop."
+fi
 
 if [ "$mode" = start ] && listening; then
 	echo "already listening on 127.0.0.1:${PORT} — nothing to do"

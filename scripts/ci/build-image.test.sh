@@ -222,7 +222,7 @@ echo "--- QEMU is registered for a foreign platform on docker alone ---"
 
 # The docker stub is an amd64 daemon unless a case says otherwise, which is
 # the hosted agent's. Every case names the platform, so what it registers does
-# not hang on the one the project answered.
+# not hang on the one the script defaults to.
 repo="$(fresh_repo)"
 out="$(run "$repo" STUB_INFO_STATUS=1 THE_TEST_CABINET_PLATFORM=linux/amd64)"
 status=$?

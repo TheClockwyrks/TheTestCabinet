@@ -13,9 +13,10 @@
 # devcontainer's install scripts instead, so under that allowlist every COPY
 # below would fail with the source not found.
 #
-# The paths are the COPY sources of web.Dockerfile. `scripts/ci/ci-image.sh
-# inputs web` lists more than these — it names what the tag digests, which
-# includes the files that decide the build command and never reach the image.
+# The paths are the COPY sources of web.Dockerfile. The image pipeline's path
+# filter lists more than these: it names every file the image is built from,
+# which includes the files that decide the build command and never reach the
+# image.
 
 *
 !/.devcontainer/languages/node

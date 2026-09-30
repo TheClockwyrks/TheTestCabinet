@@ -12,36 +12,42 @@ all policies documented here when filing new issues or working with existing
 issues. Several of these rules are the same as those that apply to the repo's
 documentation.
 
-All issues must be in one of three folders:
+The board is one level of area folders, so an issue lives at
+`tasks/<area>/<issue>.md`, and every issue is in one of three places:
 
-- An epic's folder
-  - Issues directly under an epic's folder are referred to as "open" issues and
+- An area's folder
+  - Issues directly under an area's folder are referred to as "open" issues and
     are ones that are ready to be implemented. Open issues may depend on other
     open issues but may not require user input prior to beginning implementation
     work.
-- The `done/` folder within an epic
-  - File in this folder are for historical context while working through a set
+- The `done/` folder within an area
+  - Files in this folder are for historical context while working through a set
     of issues and are periodically pruned. Do **NOT** use completed issues for
     recording important information.
-- The `blocked/` folder within an epic
+- The `blocked/` folder within an area
   - This is used exclusively for issues that need user input to resolve some
     blocking issue. All open questions requiring clarification must be grouped
     together within the issue in one location rather than being spread across
-    the file.
+    the file. The folder is created beside `done/` when an area's first issue
+    is blocked.
 
 ## Policies
 
 ### All Issues Must Be Sorted
 
-All issues must be placed into subfolders within `tasks/`. Do not place any in
-the folder itself. Use a `backlog/` folder for any miscellaneous items that
-don't make sense to place in other categories.
+All issues must be placed into an area folder directly under `tasks/`. Do not
+place any in the folder itself, and do not nest areas. Use the `backlog/` area
+for any miscellaneous items that don't make sense to place in other areas.
 
 ### Completed Issues
 
 Once an issue has been completed, it should be moved into a `done/` folder in
-the same subfolder it's already in. This makes it easy to check what issues have
-and have not been completed without needing to inspect file contents.
+the same area folder it's already in. This makes it easy to check what issues
+have and have not been completed without needing to inspect file contents.
+
+A finished issue is immutable, and a `PreToolUse` hook refuses every write to
+one. Work a finished issue describes that needs reopening is filed as a new
+issue, and the finished one stays where it is.
 
 ### Critical Cross-Linking Only
 
@@ -55,9 +61,6 @@ Bold, italics, and fully-capitalized words should be reserved for only the most
 critical of words or phrases. Overuse of bold/italics/capitalization reduces
 readability while simultaneously making it less obvious what's actually
 important, defeating the entire point of using emphasis on critical text.
-
-The RFC2119 keywords in a quoted requirement are the exception. A citation
-quotes the requirement verbatim, keywords and all, and they are not emphasis.
 
 ### Do Not Record Counts
 
@@ -196,22 +199,13 @@ point of issues.
 
 Aim to keep paragraphs as 3-5 sentences on average and no more than 8.
 
-### Requirement Citations
+### Reference the Documentation
 
-An issue's `## Requirements` section is a list of bullets, one for each
-requirement, every one of them in the form `- ID (Domain): requirement text`.
-The domain is the title of the design page stating the requirement, and the
-text is quoted verbatim from that page's table with its first letter lowercased.
-A citation that needs a gloss carries it as a following sentence after the
-quoted text, which keeps the quote and the commentary separable.
+An issue states what is wrong or missing, links the documentation page under
+`apps/docs/src/content/docs/` that describes the intended behaviour, and says
+how to verify the fix. The documentation page is what the implementer aligns
+the code with, so the link is what lets a reader check the issue against the
+design.
 
-Each bullet stands alone, carrying the domain and the text itself rather than
-leaning on a shared lead-in line or on a list of bare IDs. Quoting the text is
-what lets a reader check the issue against the design page, so a citation and
-the requirement it cites stay in step.
-
-```
-BAD:  - FLEET-2, FLEET-3, from [Fleet configuration](...).
-GOOD: - FLEET-2 (Fleet configuration): every machine's current generation and
-        checkout commit is reported.
-```
+The documentation has no numbered requirement tables, so an issue carries no
+`## Requirements` section and cites no requirement identifiers.

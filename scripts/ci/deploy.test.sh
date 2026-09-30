@@ -169,17 +169,17 @@ check_failed "fails" "$status"
 check_contains "names the value" "'abc123' is not a commit" "$out"
 check_contains "names the registry's tag list" "az acr repository show-tags --name ${REGISTRY%%.*}" "$out"
 
-echo "--- the answers are the defaults ---"
+echo "--- the rendered names are the defaults ---"
 
 repo="$(fresh_repo)"
 out="$(cd / && env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_LAYER_COPY="$repo/layer.yaml" "$repo/scripts/ci/deploy.sh" "$COMMIT" 2>&1)"
 status=$?
 check_equal "a run naming nothing passes" 0 "$status"
 invocation="$(sed -n 1p "$repo/az.log")"
-check_contains "it names the answered resource group" "--resource-group testcabinet-staging-westus2-rg " "$invocation"
-check_contains "it names the answered cluster" "--name testcabinet-staging-westus2-aks " "$invocation"
-check_contains "the layer names the answered registry" "name: $REGISTRY/the-test-cabinet-backend" "$(cat "$repo/layer.yaml")"
-check_contains "it waits in the answered namespace" "kubectl -n tcab-staging rollout status" "$(command_of "$repo" 1)"
+check_contains "it names the rendered resource group" "--resource-group testcabinet-staging-westus2-rg " "$invocation"
+check_contains "it names the rendered cluster" "--name testcabinet-staging-westus2-aks " "$invocation"
+check_contains "the layer names the rendered registry" "name: $REGISTRY/the-test-cabinet-backend" "$(cat "$repo/layer.yaml")"
+check_contains "it waits in the rendered namespace" "kubectl -n tcab-staging rollout status" "$(command_of "$repo" 1)"
 check_lacks "it names no placeholder" "REPLACE_" "$out$(cat "$repo/az.log")"
 
 echo "--- kubectl is not installed ---"

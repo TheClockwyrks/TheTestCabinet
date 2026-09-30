@@ -106,9 +106,9 @@ SDK sources in the same checkout.
 
 What that costs is that building gg requires every arm's documentation
 toolchain. `scripts/ci/install-gg-toolchains.sh` installs the lot, idempotently,
-and every surface that builds gg runs it: `scripts/devcontainer-setup.sh` in the
-dev container, `scripts/ci/gg-ci-toolchains.sh` in the pipeline, and the
-service image's gg build stage.
+and every surface that builds gg runs it: `.devcontainer/languages/gg/install.sh`
+when the dev container's image is built, `scripts/ci/gg-ci-toolchains.sh` in
+the pipeline, and the service image's gg build stage.
 
 ### WASI
 

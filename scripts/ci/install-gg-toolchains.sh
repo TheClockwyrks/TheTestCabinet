@@ -15,9 +15,9 @@
 # devcontainer so that every developer has ONE environment rather than eleven personal ones, and a
 # toolchain that is required is therefore a toolchain that is *installed*. There is no machine that
 # builds gg without them and no artifact committed to spare one the install. **This is the single
-# script that makes a machine such a machine** — `scripts/devcontainer-setup.sh` runs it in the
-# devcontainer after the container is created (and again, to resume a provisioning that was
-# interrupted, whenever it is run by hand), `scripts/ci/gg-ci-toolchains.sh` runs it in every
+# script that makes a machine such a machine** — `.devcontainer/languages/gg/install.sh` runs it
+# in the devcontainer image's last layer (and a developer runs it by hand when a pin moves under
+# a container built before), `scripts/ci/gg-ci-toolchains.sh` runs it in every
 # pipeline job that compiles gg, into a cached directory, and the driver image's gg build stage
 # runs it. One pinned list, run everywhere, rather than a per-surface sequence that drifts arm by
 # arm.
@@ -111,8 +111,8 @@ if ! command -v ruby >/dev/null 2>&1; then
 	echo "       A distribution Ruby is all it needs and any recent one will do; installing one" >&2
 	echo "       takes root, which is why this script will not do it for you:" >&2
 	echo "           sudo apt-get install -y ruby        # Debian, Ubuntu" >&2
-	echo "       In the devcontainer, \`bash scripts/devcontainer-setup.sh\` installs it with the other" >&2
-	echo "       apt prerequisites; the Rust CI image carries it through the rust_ci_packages answer." >&2
+	echo "       The devcontainer image installs it in .devcontainer/system/apt.sh with the other" >&2
+	echo "       apt prerequisites; the Rust CI image carries it through ci/images/rust.Dockerfile." >&2
 	exit 1
 fi
 if ruby -e 'gem "yard", ARGV[0]' "$YARD_VERSION" >/dev/null 2>&1; then
