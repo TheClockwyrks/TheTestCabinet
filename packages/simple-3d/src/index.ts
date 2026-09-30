@@ -22,8 +22,10 @@
  *   canvas — the *screen layer* — composited over that picture, so a HUD is text
  *   and rectangles on the design field rather than camera-facing geometry.
  * - **Input** — named actions over `KeyboardEvent.code` bindings and a closed
- *   catalogue of touch layouts, with edge detection done once and correctly, and
- *   a pointer mapped into the game's own logical coordinates.
+ *   catalogue of touch layouts, with edge detection done once and correctly, a
+ *   pointer mapped into the game's own logical coordinates, and the on-screen
+ *   controls a layout draws for a touchscreen, shown while the screen is the
+ *   input in use.
  * - **Audio** — cues played by name, synthesized or file-backed, placed in the
  *   world and heard from the camera, and the first-gesture unlock a browser
  *   insists on.
@@ -101,6 +103,7 @@ import type {
   RenderApi,
   RunOptions,
   SurfaceMetrics,
+  TouchControlsState,
   Transition,
   UpdateApi,
   View,
@@ -114,6 +117,7 @@ import { InputRegistry } from "./input";
 import { PointerInput } from "./pointer";
 import { FrameRecorder } from "./recording";
 import { createRenderStage } from "./rendering";
+import { TouchControls } from "./touch-controls";
 import { createView } from "./view";
 import { applyViewport, domSurface, syncCanvas } from "./viewport";
 
@@ -366,6 +370,17 @@ export function createEngine<S, D = unknown>(
   // rethrows, and constructing the pointer past that point means there is never a
   // moment where its listeners exist with no engine to detach them.
   const pointer = new PointerInput(surface, () => viewport);
+
+  // After the pointer, so the touch that reveals the controls reaches the game's
+  // pointer before the overlay appears, and only under a layout: without one
+  // there is no vocabulary to draw. The controls find their document through the
+  // surface's event target and are inert over a target with none, so the
+  // headless case costs nothing and reports `null`.
+  const layout = input.layout();
+  const touchControls =
+    layout === null
+      ? null
+      : new TouchControls({ surface, actions: input, layout, emit });
 
   /**
    * The camera as it stood at the most recent render, and the one call that
@@ -769,6 +784,14 @@ export function createEngine<S, D = unknown>(
      */
     diagnostics: (): readonly DiagnosticReading[] => diagnostics.read(),
 
+    /**
+     * The selected layout's on-screen controls and whether they are showing,
+     * or `null` when there are none to report on: no layout was selected, or
+     * the surface's event target has no document to draw them in.
+     */
+    touchControls: (): TouchControlsState | null =>
+      touchControls?.state() ?? null,
+
     recording: (): boolean => recorder.active,
 
     /**
@@ -804,7 +827,8 @@ export function createEngine<S, D = unknown>(
     },
 
     /**
-     * Halt the loop, drop every listener, and dispose the renderer.
+     * Halt the loop, remove the on-screen controls, drop every listener, and
+     * dispose the renderer.
      *
      * Idempotent, because teardown races: a page unload, an explicit call, and a
      * test's `afterEach` all reach here, and only the first one has anything to do.
@@ -814,7 +838,9 @@ export function createEngine<S, D = unknown>(
      * caller's own scene, and leaving the bus subscribed after teardown keeps that
      * scope alive and lets a stale handler observe a successor engine's events.
      *
-     * In between, the audio bus is silenced — a looping cue would otherwise outlive
+     * The touch controls go before the registry they drive, so a control a thumb
+     * was holding returns its action to rest through a registry that is still
+     * attached. Then the audio bus is silenced — a looping cue would otherwise outlive
      * the engine that started it, sounding on a page whose game is gone — an armed
      * capture is discarded rather than finished, since its frames were evidence for
      * a check that is no longer running, and the renderer is disposed. The scene and
@@ -826,6 +852,7 @@ export function createEngine<S, D = unknown>(
       if (destroyed) return;
       destroyed = true;
       loop.halt();
+      touchControls?.detach();
       input.detach();
       pointer.detach();
       target.removeEventListener("keydown", onOverlayKey);

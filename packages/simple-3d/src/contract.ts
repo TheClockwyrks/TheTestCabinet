@@ -275,18 +275,34 @@ export interface RegisteredAction {
 }
 
 /**
- * A touch layout: the name of a control scheme and the action vocabulary it
- * brings with it.
+ * A touch layout: the name of a control scheme, the action vocabulary it brings
+ * with it, and the on-screen controls the engine draws for it.
  *
- * Selection is declarative. It tags the actions the game registers rather than
- * drawing controls or registering anything, so a reader can establish which
- * vocabulary is live as a static fact.
+ * Selection tags the actions the game registers, so a reader can establish
+ * which vocabulary is live as a static fact, and puts the layout's controls on
+ * screen for a touchscreen player. The game still registers each action with
+ * its own key binding.
  */
 export interface TouchLayout {
   /** The layout's name. */
   name: string;
   /** The action names the layout provides, its own vocabulary followed by the four menu actions. */
   actions: string[];
+}
+
+/**
+ * The selected layout's on-screen controls, as {@link Engine.touchControls}
+ * reports them.
+ *
+ * The controls are hidden until the surface receives its first touch, and a
+ * keyboard, mouse, or pen input hides them again until the next touch, so
+ * `visible` says whether the screen is the input in use.
+ */
+export interface TouchControlsState {
+  /** The selected layout, whose controls the engine draws. */
+  layout: string;
+  /** Whether the controls are showing. */
+  visible: boolean;
 }
 
 /**
@@ -515,6 +531,13 @@ export interface EngineEventMap {
   "cue:stopped": { cue: string; t: number };
   /** A user gesture unlocked the audio context. */
   "audio:unlocked": Record<string, never>;
+  /** The selected layout's on-screen controls appeared, on a touch. */
+  "touch-controls:shown": { layout: string };
+  /** The controls disappeared, on the keyboard, mouse, or pen input `reason` names. */
+  "touch-controls:hidden": {
+    layout: string;
+    reason: "keyboard" | "mouse" | "pen";
+  };
 }
 
 /**
@@ -1010,7 +1033,10 @@ export interface EngineOptions<S, D = unknown> {
    * `scene.background`, which paints inside the viewport alone.
    */
   background?: string;
-  /** A touch layout from the catalogue, whose vocabulary the game then registers. */
+  /**
+   * A touch layout from the catalogue, whose vocabulary the game then registers
+   * and whose on-screen controls the engine draws.
+   */
   layout?: string;
   /** The clock supplying each frame's delta; defaults to a wall clock. */
   clock?: Clock;
@@ -1102,6 +1128,12 @@ export interface Engine<S, D = unknown> {
    * reading is the same whether the panel is drawn or hidden.
    */
   diagnostics(): readonly DiagnosticReading[];
+  /**
+   * The selected layout and whether its on-screen controls are showing, as a
+   * fresh copy, or `null` when the engine was built without a layout or over a
+   * surface whose event target has no document to place the overlay in.
+   */
+  touchControls(): TouchControlsState | null;
   /** Whether the recorder is currently capturing frames. */
   recording(): boolean;
   /**
@@ -1115,6 +1147,6 @@ export interface Engine<S, D = unknown> {
    * once the last frame's bytes are in it.
    */
   stopRecording(): Promise<Recording>;
-  /** Halt the loop, drop every listener, and dispose the renderer. */
+  /** Halt the loop, remove the on-screen controls, drop every listener, and dispose the renderer. */
   destroy(): void;
 }
