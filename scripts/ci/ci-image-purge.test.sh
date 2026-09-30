@@ -12,6 +12,10 @@
 # what goes, the cache repository, the credential forms, and the refusals.
 set -uo pipefail
 
+# The agent names the commit a run is on in this variable, and the script
+# keeps that commit's image; a case that wants it sets it for that call alone.
+unset BUILD_SOURCEVERSION
+
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CI_DIR
 pass=0
