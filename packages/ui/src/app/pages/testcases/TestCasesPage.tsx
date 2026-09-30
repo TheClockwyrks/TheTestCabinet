@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { Link, NavLink } from "react-router";
+import { Input } from "../../../primitives";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -160,8 +161,7 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
                 </NavLink>
               ))}
             </nav>
-            <input
-              className={styles.search}
+            <Input
               type="search"
               placeholder="Search by title, tag, or difficulty…"
               value={query}

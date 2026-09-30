@@ -74,27 +74,6 @@
   border-bottom-color: t.$color-accent;
 }
 
-.search {
-  width: 100%;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
-}
-
 // Full-width cards stacked one per row, rather than a multi-column grid, so each
 // case gets the whole content width for its title, summary, and tags.
 .list {

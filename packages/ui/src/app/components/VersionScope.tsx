@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
+import { Select } from "../../primitives";
 import { parseVersion } from "../data/versions";
 import styles from "./VersionScope.module.scss";
 
@@ -125,7 +126,7 @@ function VersionSelect({
   ariaLabel?: string;
 }) {
   return (
-    <select
+    <Select
       id={id}
       className={styles.versionSelect}
       value={value}
@@ -137,7 +138,7 @@ function VersionSelect({
           {version}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

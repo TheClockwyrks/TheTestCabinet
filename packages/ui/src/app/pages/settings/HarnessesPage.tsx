@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Panel } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { useRevealNotice } from "../../components/SubmitNotice";
@@ -8,6 +8,7 @@ import {
   type HarnessConfigApi,
 } from "../../data/useHarnessConfig";
 import type { HarnessConfigEntry } from "../../../client/types";
+import { Button, ControlRow, Input } from "../../../primitives";
 import styles from "./HarnessesPage.module.scss";
 
 // The Harnesses settings tab (`/settings/harnesses`): per-harness **parallelism** —
@@ -138,6 +139,8 @@ function ParallelismRow({
   onSave: (value: number | null) => void;
 }) {
   const current = entry.maxParallelism;
+  // Ties the row's name to its field, so the field is labelled "Max parallelism".
+  const inputId = useId();
   const [draft, setDraft] = useState<string>(
     current == null ? "" : String(current),
   );
@@ -155,7 +158,9 @@ function ParallelismRow({
   return (
     <section className={styles.row}>
       <div className={styles.label}>
-        <span className={styles.rowTitle}>Max parallelism</span>
+        <label className={styles.rowTitle} htmlFor={inputId}>
+          Max parallelism
+        </label>
         <span className={styles.hint}>
           {current == null
             ? "No limit: runs of this harness are dispatched as capacity allows."
@@ -164,31 +169,32 @@ function ParallelismRow({
       </div>
       {canEdit ? (
         <form
-          className={styles.limitForm}
           onSubmit={(e) => {
             e.preventDefault();
             if (busy || !valid || !changed) return;
             onSave(parsed);
           }}
         >
-          <input
-            className={styles.input}
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={draft}
-            disabled={busy}
-            placeholder="No limit"
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <button
-            className={styles.primary}
-            type="submit"
-            disabled={busy || !valid || !changed}
-          >
-            Save
-          </button>
+          <ControlRow>
+            <Input
+              id={inputId}
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={draft}
+              disabled={busy}
+              placeholder="No limit"
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={busy || !valid || !changed}
+            >
+              Save
+            </Button>
+          </ControlRow>
         </form>
       ) : (
         <span className={styles.hint}>

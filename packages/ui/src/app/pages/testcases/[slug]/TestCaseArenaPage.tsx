@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Panel } from "@clockwyrks/ui";
+import { Button, Select } from "../../../../primitives";
 import type { ControllerRef, MatchSummary } from "@clockwyrks/run-record";
 import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
 import { useControllerName } from "../../../data/useControllerName";
@@ -129,8 +130,7 @@ function ArenaPanels({
         <Panel>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Worker</span>
-            <select
-              className={styles.select}
+            <Select
               value={workerId}
               onChange={(e) => setWorkerId(e.target.value)}
             >
@@ -139,7 +139,7 @@ function ArenaPanels({
                   {w.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <p className={styles.muted}>
             Matches run on this worker, and its locally-produced (unpushed) runs
@@ -276,37 +276,24 @@ function QuickMatchPanel({
       <div className={styles.fields}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Red</span>
-          <select
-            className={styles.select}
-            value={redId}
-            onChange={(e) => setRedId(e.target.value)}
-          >
+          <Select value={redId} onChange={(e) => setRedId(e.target.value)}>
             <ControllerOptions controllers={controllers} />
-          </select>
+          </Select>
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Blue</span>
-          <select
-            className={styles.select}
-            value={blueId}
-            onChange={(e) => setBlueId(e.target.value)}
-          >
+          <Select value={blueId} onChange={(e) => setBlueId(e.target.value)}>
             <ControllerOptions controllers={controllers} />
-          </select>
+          </Select>
         </label>
       </div>
 
       <SubmitNotice message={error} />
 
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onRun}
-          disabled={!canRun}
-        >
+        <Button variant="primary" onClick={onRun} disabled={!canRun}>
           {running ? "Running…" : "Run match"}
-        </button>
+        </Button>
       </div>
 
       {result && (
@@ -320,13 +307,9 @@ function QuickMatchPanel({
               No replay is available: a controller failed to load.
             </p>
           ) : !launched ? (
-            <button
-              type="button"
-              className={styles.secondary}
-              onClick={() => setLaunched(true)}
-            >
+            <Button variant="secondary" onClick={() => setLaunched(true)}>
               Launch replay
-            </button>
+            </Button>
           ) : (
             <ReplayOverlay
               label={`Quick match ${result.summary.matchId}`}
@@ -459,14 +442,9 @@ function TournamentPanel({
       <SubmitNotice message={error} />
 
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onRun}
-          disabled={!canRun}
-        >
+        <Button variant="primary" onClick={onRun} disabled={!canRun}>
           {running ? "Running…" : `Run tournament (${picked.size})`}
-        </button>
+        </Button>
       </div>
 
       {running && progress && (

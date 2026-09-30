@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { Input } from "../../primitives";
 import {
   readNumberField,
   useNumberDraft,
@@ -28,9 +29,9 @@ import styles from "./NumberField.module.scss";
  * Clearing it is not corrected: the field reports itself invalid and the form is
  * expected to refuse to submit while it is.
  *
- * It brings no look of its own. Pass the class the surrounding form styles its
- * inputs with (`exec.input` on the run-execution surfaces) and this adds the
- * invalid border and the sentence beneath.
+ * The control is the {@link Input} primitive, so it wears the shared control
+ * treatment and its invalid border; this adds the sentence beneath. `className`
+ * is handed through for a form's layout rule (a width, a flex basis).
  */
 export interface NumberFieldProps extends NumberFieldBounds {
   /** The text the field shows: state the caller holds, verbatim. */
@@ -41,7 +42,7 @@ export interface NumberFieldProps extends NumberFieldBounds {
   step?: number;
   /** Claims the id a {@link SettingRow} or {@link CapField} hands its label. */
   id?: string;
-  /** The form's own input class. */
+  /** A layout class for the control (a width, a flex basis). */
   className?: string;
   /** Wraps the input and its problem sentence. */
   wrapperClassName?: string;
@@ -93,15 +94,10 @@ export function NumberField({
     <span
       className={[styles.field, wrapperClassName].filter(Boolean).join(" ")}
     >
-      <input
+      <Input
         id={id}
-        className={[
-          className,
-          styles.input,
-          verdict.valid || disabled ? null : styles.invalid,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        className={className}
+        invalid={!(verdict.valid || disabled)}
         type="number"
         // The numeric soft keyboard, rather than the full one a `type="number"`
         // gets on some mobile browsers. `decimal` keeps the separator key for a
@@ -115,7 +111,6 @@ export function NumberField({
         title={title}
         disabled={disabled}
         aria-label={ariaLabel}
-        aria-invalid={verdict.valid || disabled ? undefined : true}
         aria-describedby={showing ? problemId : undefined}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}

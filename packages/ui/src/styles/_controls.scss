@@ -1,0 +1,214 @@
+@use "tokens" as t;
+@use "surfaces" as s;
+
+// The one treatment every form control takes. The form primitives (`Input`,
+// `Textarea`, `Select`, `Button`, `ControlRow`) are these mixins and nothing
+// else; a stylesheet that must style a native control it cannot replace with the
+// primitive includes the same mixin, so every control on every form changes in
+// one place. See components/ui/overview.md, "Forms".
+
+// Declarations a caller may override with a plain class of its own (a width, a
+// flex basis, a compact padding): emitted at zero specificity, so the caller's
+// rule wins whatever order the stylesheets load in.
+@mixin overridable {
+  @at-root :where(#{&}) {
+    @content;
+  }
+}
+
+// Shared focus cue: the accent border and a soft glow, no native outline.
+@mixin control-focus {
+  outline: none;
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+// A text-entry control: an input or a textarea. Fills its container so a
+// caller sizes it by the box it sits in, never by restating a width here.
+@mixin text-control {
+  @include overridable {
+    width: 100%;
+    min-width: 0;
+    padding: t.$space-sm t.$space-md;
+    font-family: var(--tcab-font);
+    font-size: t.$font-md;
+    line-height: 1.4;
+  }
+  box-sizing: border-box;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    @include control-focus;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  // A refused value keeps its negative cue while focused: this follows `:focus`
+  // at the same specificity, so it wins both the border and the glow.
+  &[aria-invalid="true"] {
+    border-color: t.$color-negative;
+    box-shadow: 0 0 0.75rem
+      color-mix(in srgb, t.$color-negative 35%, transparent);
+  }
+}
+
+// A textarea: the text control, resizable downward only.
+@mixin textarea-control {
+  @include text-control;
+  @include overridable {
+    min-height: 9rem;
+  }
+  resize: vertical;
+}
+
+// The dropdown's appearance reset and chevron, without the surface.
+//
+// A native `<select>` is one of the few controls a browser still draws with the
+// host platform's own chrome, and the result diverges hard across engines: macOS
+// WebKit renders the rounded Aqua pill with a system-blue chevron, Chromium a
+// flat box. Stripping the native appearance and drawing our own chevron is the
+// only way a dropdown reads identically everywhere.
+@mixin select-appearance {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  // Encoded inline so it ships in the CSS with no extra request. The stroke
+  // (`%23b69ad0`) mirrors `--tcab-muted`; keep the two in sync.
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23b69ad0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right t.$space-sm center;
+  background-size: 0.75rem;
+
+  // Reserve room for the chevron so a long option label never runs under it.
+  @include overridable {
+    padding-right: calc(#{t.$space-sm} * 2 + 0.75rem);
+  }
+
+  // Legacy Edge/IE drew its own arrow on top of ours — suppress it.
+  &::-ms-expand {
+    display: none;
+  }
+}
+
+// A dropdown: the text control's surface with our own chevron.
+@mixin select-control {
+  @include text-control;
+  @include select-appearance;
+  cursor: pointer;
+}
+
+// --- Buttons -----------------------------------------------------------------
+
+// What every button variant shares. `inline-flex` with a fixed line-height so a
+// `<button>` and an `<a>` wearing the same class render at one height side by
+// side.
+@mixin button-base {
+  @include overridable {
+    font-family: var(--tcab-font);
+    font-size: t.$font-md;
+    line-height: 1.2;
+    padding: t.$space-sm t.$space-lg;
+  }
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: t.$space-xs;
+  box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: t.$space-2xs;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// The small size: the uppercase affordance a form's secondary actions wear
+// (fetch this, fill that, add a row, delete).
+@mixin button-small {
+  @include overridable {
+    font-size: t.$font-sm;
+    padding: t.$space-xs t.$space-md;
+  }
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+// The one filled button on a form: the accent surface and its glow.
+@mixin button-primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--tcab-glow);
+}
+
+// An outlined action on the panel surface, brightening to the accent on hover.
+@mixin button-secondary {
+  background: s.$panel-bg;
+  color: t.$color-text;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+}
+
+// A destructive action: reads like the secondary button until hover, where it
+// takes on the negative cue.
+@mixin button-danger {
+  background: s.$panel-bg;
+  color: t.$color-negative;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-negative;
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+}
+
+// A text-only action: no box, underlined on hover.
+@mixin button-link {
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  color: t.$color-text-muted;
+
+  &:hover:not(:disabled) {
+    color: t.$color-accent;
+    text-decoration: underline;
+  }
+}
+
+// A control beside its own action: the control takes the spare width, the row
+// wraps when the two no longer fit so the action drops under the control.
+@mixin control-row($control-basis: 12rem) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  width: 100%;
+  min-width: 0;
+
+  > :first-child {
+    flex: 1 1 $control-basis;
+    min-width: 0;
+  }
+}

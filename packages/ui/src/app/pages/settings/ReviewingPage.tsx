@@ -17,6 +17,7 @@ import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { Button, Input } from "../../../primitives";
 import styles from "./ReviewingPage.module.scss";
 
 // The Reviewing settings tab (`/settings/reviewing`, web console only): the
@@ -171,7 +172,7 @@ function BufferSetting({
           onSave(target);
         }}
       >
-        <input
+        <Input
           className={styles.input}
           type="number"
           min={0}
@@ -192,13 +193,9 @@ function BufferSetting({
           />
           <span>No limit</span>
         </label>
-        <button
-          className={styles.primary}
-          type="submit"
-          disabled={busy || !dirty}
-        >
+        <Button variant="primary" type="submit" disabled={busy || !dirty}>
           {dirty || !valid ? "Save buffer" : "Saved"}
-        </button>
+        </Button>
       </form>
     </section>
   );
