@@ -55,6 +55,9 @@ export interface ModelSummary {
   providerPin: string | null;
   /** Whether `providerPin` is set by hand rather than observed. */
   providerPinSetByHand: boolean;
+  /** Whether a gg run's candidate list is filtered to the native quantization.
+   * False accepts every endpoint at whatever level it declares. */
+  quantizationFilter: boolean;
   /** The native quantization set by hand, or null for the listing's highest. */
   nativeQuantization: string | null;
   /** The price ceiling's input half, USD per million tokens, or null. */
@@ -93,7 +96,9 @@ export function toModelSummary(model: Model): ModelSummary {
     contextLength: model.contextLength,
     providerPin: model.providerPin,
     providerPinSetByHand: model.providerPinSetByHand,
-    // A snapshot published before the provider policy existed carries none of it.
+    // A snapshot published before the provider policy existed carries none of it,
+    // and one published before the filter could be switched off had it on.
+    quantizationFilter: model.quantizationFilter ?? true,
     nativeQuantization: model.nativeQuantization ?? null,
     maxInputPrice: model.maxInputPrice ?? null,
     maxOutputPrice: model.maxOutputPrice ?? null,

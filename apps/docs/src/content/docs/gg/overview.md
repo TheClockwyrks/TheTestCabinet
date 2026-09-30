@@ -171,7 +171,10 @@ endpoint is a candidate when it passes every filter:
 - Its quantization is the model's native level. Native is the highest level any
   endpoint of the model declares, and the model's catalog entry can set it by
   hand. An endpoint declaring `unknown` is left out unless the catalog entry
-  allows that provider by name.
+  allows that provider by name. The catalog entry can switch this filter off,
+  for a model every provider serves at one precision nobody discloses, as a
+  closed model's providers do: every endpoint then passes at whatever level it
+  declares, `unknown` included, and the other filters still apply.
 - Its input and output prices are at or below the developer endpoint's. When the
   listing has no developer endpoint, the ceiling is the one the catalog entry
   sets, and a model with neither has no candidate.

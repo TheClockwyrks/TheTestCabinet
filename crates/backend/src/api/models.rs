@@ -100,6 +100,10 @@ pub struct ModelOut {
     /// Whether [`provider_pin`](Self::provider_pin) is set by hand on the catalog entry rather
     /// than observed on the listing.
     pub provider_pin_set_by_hand: bool,
+    /// Whether a gg run's candidate list is filtered to the native quantization. False accepts
+    /// every endpoint at whatever level it declares, `unknown` included, for a model every
+    /// provider serves at one precision nobody discloses. Always true for a derived model.
+    pub quantization_filter: bool,
     /// The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
     /// level any endpoint declares. Always null for a derived model.
     pub native_quantization: Option<String>,
@@ -189,9 +193,16 @@ pub struct ModelConfigInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider_pin: Option<String>,
+    /// Whether a gg run's candidate list is filtered to the native quantization. Absent is true.
+    /// False accepts every endpoint at whatever level it declares, `unknown` included, for a
+    /// model every provider serves at one precision nobody discloses; the other filters still
+    /// apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub quantization_filter: Option<bool>,
     /// The native quantization every provider of a gg run's candidate list must serve the model
-    /// at (`fp8`, `bf16`, …). Absent or blank takes the highest level any endpoint declares; any
-    /// other value must be a level OpenRouter declares.
+    /// at (`fp8`, `bf16`, …) while the filter is on. Absent or blank takes the highest level any
+    /// endpoint declares; any other value must be a level OpenRouter declares.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub native_quantization: Option<String>,
@@ -392,6 +403,7 @@ async fn write_config(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let policy = normalize_provider_policy(
+        input.quantization_filter.unwrap_or(true),
         input.native_quantization.as_deref(),
         input.max_input_price,
         input.max_output_price,
@@ -492,6 +504,7 @@ async fn write_config(
                 .provider_pin
                 .map(|slug| slug.trim().to_string())
                 .filter(|slug| !slug.is_empty()),
+            quantization_filter: policy.quantization_filter,
             native_quantization: policy.native_quantization,
             max_input_price: policy.max_input_price,
             max_output_price: policy.max_output_price,
@@ -671,8 +684,10 @@ pub async fn logo(
 
 /// A catalog entry's provider policy as a write stores it: every field normalized, or the reason
 /// the write is refused.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ProviderPolicyWrite {
+    /// Whether the quantization filter applies.
+    pub quantization_filter: bool,
     /// The native level, lowercased, or `None` for blank.
     pub native_quantization: Option<String>,
     /// The input half of the ceiling, USD per million tokens.
@@ -687,11 +702,14 @@ pub(crate) struct ProviderPolicyWrite {
 
 /// Normalize and check the provider policy fields of a config write.
 ///
-/// A native level is lowercased and must be one OpenRouter declares, or blank. A price ceiling
+/// A native level is lowercased and must be one OpenRouter declares, or blank, whether or not
+/// the quantization filter is on: a level set while the filter is off is kept for when it is
+/// switched back on. A price ceiling
 /// needs both halves or neither, each finite and above zero: half a ceiling would leave one rate
 /// unbounded, and a zero one would refuse every provider. Provider names are trimmed, blanks are
 /// dropped, and a name repeated (ignoring case and punctuation) is kept once.
 pub(crate) fn normalize_provider_policy(
+    quantization_filter: bool,
     native_quantization: Option<&str>,
     max_input_price: Option<f64>,
     max_output_price: Option<f64>,
@@ -730,6 +748,7 @@ pub(crate) fn normalize_provider_policy(
         }
     };
     Ok(ProviderPolicyWrite {
+        quantization_filter,
         native_quantization,
         max_input_price,
         max_output_price,
@@ -931,6 +950,7 @@ pub fn compose_catalog(
             input_modalities: facts.input_modalities,
             provider_pin_set_by_hand: hand_set_pin.is_some(),
             provider_pin: hand_set_pin.or(facts.provider_pin),
+            quantization_filter: config.quantization_filter,
             native_quantization: config.native_quantization.clone(),
             max_input_price: config.max_input_price,
             max_output_price: config.max_output_price,
@@ -977,6 +997,7 @@ pub fn compose_catalog(
             input_modalities: facts.input_modalities,
             provider_pin: facts.provider_pin,
             provider_pin_set_by_hand: false,
+            quantization_filter: true,
             native_quantization: None,
             max_input_price: None,
             max_output_price: None,

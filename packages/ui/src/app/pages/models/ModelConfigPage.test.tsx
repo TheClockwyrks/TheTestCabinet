@@ -457,11 +457,31 @@ describe("ModelConfigPage's provider policy", () => {
     await waitFor(() => expect(createModel).toHaveBeenCalled());
     expect(createModel.mock.calls[0]![0]).toMatchObject({
       providerPin: "Z.AI",
+      quantizationFilter: true,
       nativeQuantization: "fp8",
       maxInputPrice: 0.6,
       maxOutputPrice: 2.2,
       bannedProviders: ["Cheapo", "Flaky"],
       unknownQuantizationProviders: ["Vague"],
+    });
+  });
+
+  it("saves the quantization filter off, with the native level untouched", async () => {
+    const createModel = vi.fn().mockResolvedValue({ slug: "gpt" });
+    renderPage(vi.fn(), createModel);
+    fireEvent.change(nameInput(), { target: { value: "GPT-6.1 Sol" } });
+    const filter = screen.getByLabelText("Quantization filter");
+    expect(filter).toBeChecked();
+    fireEvent.click(filter);
+    expect(filter).not.toBeChecked();
+    // The level is the filter's to read, so it is not for editing while off.
+    expect(screen.getByLabelText("Native quantization")).toBeDisabled();
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(createModel).toHaveBeenCalled());
+    expect(createModel.mock.calls[0]![0]).toMatchObject({
+      quantizationFilter: false,
+      nativeQuantization: null,
     });
   });
 

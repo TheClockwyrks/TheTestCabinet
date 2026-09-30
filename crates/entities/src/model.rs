@@ -65,9 +65,13 @@ pub struct Model {
     /// enqueue, or `NULL` when the model carries none.
     #[sea_orm(nullable)]
     pub list_price_source: Option<String>,
+    /// Whether a gg run's candidate list is filtered to the model's native quantization. `false`
+    /// accepts every endpoint at whatever level it declares, `unknown` included, for a model
+    /// every provider serves at one precision nobody discloses.
+    pub quantization_filter: bool,
     /// The native quantization set by hand (`fp8`, `bf16`, …), lowercased: the level every
-    /// provider of a gg run's candidate list must serve the model at. `NULL` takes the highest
-    /// level any endpoint of the model declares.
+    /// provider of a gg run's candidate list must serve the model at while the filter is on.
+    /// `NULL` takes the highest level any endpoint of the model declares.
     #[sea_orm(nullable)]
     pub native_quantization: Option<String>,
     /// The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no

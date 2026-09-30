@@ -68,9 +68,13 @@ pub fn native_quantization(offers: &[EndpointOffer]) -> Option<String> {
 }
 
 /// The catalog entry's say over one model's candidate list. Every field is optional: a model with
-/// no catalog entry takes every figure from the listing.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// no catalog entry takes every figure from the listing, under the quantization filter.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CandidatePolicy {
+    /// Whether the quantization filter applies. Off, every endpoint passes it at whatever level
+    /// it declares, `unknown` included, for a model every provider serves at one precision nobody
+    /// discloses; the other filters still apply.
+    pub quantization_filter: bool,
     /// The native level set by hand, winning over the one the listing implies.
     pub native_quantization: Option<String>,
     /// The input-price ceiling, USD per token, used when the listing has no developer endpoint.
@@ -81,6 +85,20 @@ pub struct CandidatePolicy {
     pub banned: Vec<String>,
     /// The providers kept despite declaring `unknown` quantization.
     pub unknown_quantization: Vec<String>,
+}
+
+impl Default for CandidatePolicy {
+    /// An uncurated model's policy: the quantization filter on, and every figure the listing's.
+    fn default() -> Self {
+        Self {
+            quantization_filter: true,
+            native_quantization: None,
+            max_input: None,
+            max_output: None,
+            banned: Vec::new(),
+            unknown_quantization: Vec::new(),
+        }
+    }
 }
 
 /// One provider the filter kept, with the figures the order and the console read.
@@ -112,8 +130,10 @@ impl ProviderCandidate {
 /// A model's candidate list with the native level it was filtered to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CandidateList {
-    /// The native level the quantization filter kept.
-    pub native_quantization: String,
+    /// The native level the quantization filter kept: the catalog entry's, else the best level
+    /// any endpoint declares. `None` only when the policy switches the filter off and no endpoint
+    /// declares a level.
+    pub native_quantization: Option<String>,
     /// The candidates, in the order a run tries them. Never empty.
     pub candidates: Vec<ProviderCandidate>,
 }
@@ -123,7 +143,8 @@ pub struct CandidateList {
 pub enum CandidateRefusal {
     /// The listing names no endpoint for the model.
     NoEndpoints,
-    /// No endpoint declares a known level, and the catalog entry sets none.
+    /// No endpoint declares a known level, the catalog entry sets none, and its quantization
+    /// filter is on.
     NoNativeLevel,
     /// The listing has no priced developer endpoint, and the catalog entry sets no ceiling.
     NoPriceCeiling,
@@ -202,9 +223,10 @@ pub fn run_parameters(reasoning: bool) -> Vec<&'static str> {
 /// [provider key](provider_key).
 ///
 /// The filters run in the order the documentation lists them, so a refusal names the first
-/// filter that left nothing. A provider with several passing endpoints is one candidate at its
-/// cheapest. The developer's endpoint comes first when it passes; the rest follow by fault rate,
-/// then input price, output price and name.
+/// filter that left nothing. A policy with the quantization filter off skips that filter, and
+/// only that one: every endpoint passes it at whatever level it declares. A provider with
+/// several passing endpoints is one candidate at its cheapest. The developer's endpoint comes
+/// first when it passes; the rest follow by fault rate, then input price, output price and name.
 pub fn provider_candidates(
     developer: Option<&str>,
     offers: &[EndpointOffer],
@@ -220,8 +242,10 @@ pub fn provider_candidates(
         .as_deref()
         .map(|level| level.trim().to_ascii_lowercase())
         .filter(|level| !level.is_empty())
-        .or_else(|| native_quantization(offers))
-        .ok_or(CandidateRefusal::NoNativeLevel)?;
+        .or_else(|| native_quantization(offers));
+    if policy.quantization_filter && native.is_none() {
+        return Err(CandidateRefusal::NoNativeLevel);
+    }
     let is_developer =
         |offer: &EndpointOffer| developer.is_some_and(|dev| same_provider(&offer.provider, dev));
     // The developer's own rates are the ceiling whenever the listing prices its endpoint, at any
@@ -234,23 +258,33 @@ pub fn provider_candidates(
         .or(policy.max_input.zip(policy.max_output))
         .ok_or(CandidateRefusal::NoPriceCeiling)?;
 
-    let native_rank = quantization_rank(&native);
-    let at_native: Vec<&EndpointOffer> = offers
-        .iter()
-        .filter(|offer| {
-            let level = offer.quantization.trim();
-            (native_rank.is_some() && quantization_rank(level) == native_rank)
-                || level.eq_ignore_ascii_case(&native)
-                || (level.eq_ignore_ascii_case(QUANTIZATION_UNKNOWN)
-                    && policy
-                        .unknown_quantization
-                        .iter()
-                        .any(|allowed| same_provider(allowed, &offer.provider)))
-        })
-        .collect();
-    if at_native.is_empty() {
-        return Err(CandidateRefusal::NoneAtNativeLevel { native });
-    }
+    let at_native: Vec<&EndpointOffer> =
+        match native.as_deref().filter(|_| policy.quantization_filter) {
+            // The filter off: every endpoint passes at whatever level it declares.
+            None => offers.iter().collect(),
+            Some(native) => {
+                let native_rank = quantization_rank(native);
+                let at_native: Vec<&EndpointOffer> = offers
+                    .iter()
+                    .filter(|offer| {
+                        let level = offer.quantization.trim();
+                        (native_rank.is_some() && quantization_rank(level) == native_rank)
+                            || level.eq_ignore_ascii_case(native)
+                            || (level.eq_ignore_ascii_case(QUANTIZATION_UNKNOWN)
+                                && policy
+                                    .unknown_quantization
+                                    .iter()
+                                    .any(|allowed| same_provider(allowed, &offer.provider)))
+                    })
+                    .collect();
+                if at_native.is_empty() {
+                    return Err(CandidateRefusal::NoneAtNativeLevel {
+                        native: native.to_string(),
+                    });
+                }
+                at_native
+            }
+        };
     let within: Vec<&EndpointOffer> = at_native
         .into_iter()
         .filter(|offer| {

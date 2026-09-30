@@ -59,6 +59,7 @@ const MODEL = {
   maxInputPrice: null,
   maxOutputPrice: null,
   bannedProviders: [],
+  quantizationFilter: true,
   unknownQuantizationProviders: [],
   releasedAt: null,
   inputModalities: [],
@@ -122,9 +123,9 @@ const ACCURACY: ModelAccuracy = {
   unattributableRuns: 2,
 };
 
-function galleryValue(): GalleryDataInput {
+function galleryValue(model: ModelSummary = MODEL): GalleryDataInput {
   return {
-    models: [MODEL],
+    models: [model],
     modelsStatus: "ready",
     canExecute: true,
     queryRunSummaries: () => Promise.resolve({ summaries: [], total: 0 }),
@@ -142,7 +143,7 @@ function backendValue(client: object): BackendContextValue {
   } as unknown as BackendContextValue;
 }
 
-function renderStats(client: object | null) {
+function renderStats(client: object | null, model: ModelSummary = MODEL) {
   const page = (
     <Routes>
       <Route path="/models/:modelId/stats" element={<ModelStatsPage />} />
@@ -150,7 +151,7 @@ function renderStats(client: object | null) {
   );
   render(
     <MemoryRouter initialEntries={["/models/claude-x/stats"]}>
-      <GalleryDataProvider value={galleryValue()}>
+      <GalleryDataProvider value={galleryValue(model)}>
         {client ? (
           <BackendProvider value={backendValue(client)}>{page}</BackendProvider>
         ) : (
@@ -252,6 +253,29 @@ describe("the Stats tab's Provider candidates section", () => {
     // The list assumes an agent that sets no reasoning, and says so.
     expect(screen.getByText(/sets no reasoning/)).toBeTruthy();
     expect(screen.getByText(/Native quantization fp8/)).toBeTruthy();
+  });
+
+  it("says the quantization filter is off in place of a native level", async () => {
+    authState.token = "t";
+    renderStats(
+      {
+        getModelCandidates: vi.fn().mockResolvedValue({
+          ...CANDIDATES,
+          nativeQuantization: null,
+          candidates: CANDIDATES.candidates.map((candidate) => ({
+            ...candidate,
+            quantization: "unknown",
+          })),
+        }),
+      },
+      { ...MODEL, quantizationFilter: false },
+    );
+
+    expect(await screen.findByText("Bedrock")).toBeTruthy();
+    expect(
+      screen.getByText(/Quantization filter off \(set by hand\)/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Native quantization/)).toBeNull();
   });
 
   it("names the filter that emptied the list", async () => {

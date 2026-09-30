@@ -52,7 +52,7 @@ fn the_list_keeps_native_priced_caching_endpoints_developer_first() {
         &no_faults(),
     )
     .expect("three endpoints pass");
-    assert_eq!(list.native_quantization, "fp8");
+    assert_eq!(list.native_quantization.as_deref(), Some("fp8"));
     assert_eq!(names(&list), ["OpenAI", "Novita", "Baidu"]);
     assert!(list.candidates[0].developer);
     assert_eq!(
@@ -157,6 +157,99 @@ fn a_provider_with_several_endpoints_is_one_candidate() {
     .expect("both pass");
     assert_eq!(names(&list), ["OpenAI", "BaseTen"]);
     assert_eq!(list.candidates[1].input, 0.8 / 1e6);
+}
+
+/// With the quantization filter off, every endpoint passes it at whatever level it declares,
+/// `unknown` included, and no native level is needed; the price, cache-read, parameter and ban
+/// filters still apply.
+#[test]
+fn the_filter_off_keeps_every_level_and_needs_no_native_one() {
+    let policy = CandidatePolicy {
+        quantization_filter: false,
+        banned: vec!["Banned".to_string()],
+        ..CandidatePolicy::default()
+    };
+    // A closed model: no endpoint declares a level.
+    let offers = vec![
+        offer("OpenAI", "unknown", 1.0, 4.0, Some(0.1)),
+        offer("Azure", "unknown", 1.0, 4.0, Some(0.1)),
+        offer("Pricey", "unknown", 2.0, 8.0, Some(0.2)),
+        offer("Mute", "unknown", 0.9, 3.6, None),
+        offer("Banned", "unknown", 0.8, 3.2, Some(0.08)),
+    ];
+    let list = provider_candidates(Some("OpenAI"), &offers, &policy, TOOLS, &no_faults())
+        .expect("the developer and one other pass");
+    assert_eq!(list.native_quantization, None);
+    assert_eq!(names(&list), ["OpenAI", "Azure"]);
+    assert_eq!(list.candidates[0].quantization, "unknown");
+    assert_eq!(
+        list.candidates[0].to_invocation(),
+        crate::gg::GgProviderCandidate::new("OpenAI", "unknown")
+    );
+
+    // A model with declared levels: every level passes, and the best one is still reported.
+    let offers = vec![
+        offer("OpenAI", "fp8", 1.0, 4.0, Some(0.1)),
+        offer("Together", "fp4", 0.4, 1.6, Some(0.04)),
+        offer("Vague", "unknown", 0.5, 2.0, Some(0.05)),
+    ];
+    let list = provider_candidates(Some("OpenAI"), &offers, &policy, TOOLS, &no_faults())
+        .expect("every level passes");
+    assert_eq!(list.native_quantization.as_deref(), Some("fp8"));
+    assert_eq!(names(&list), ["OpenAI", "Together", "Vague"]);
+    assert_eq!(list.candidates[1].quantization, "fp4");
+
+    // A hand-set level is reported but filters nothing.
+    let hand_set = CandidatePolicy {
+        native_quantization: Some("bf16".to_string()),
+        ..policy.clone()
+    };
+    let list = provider_candidates(Some("OpenAI"), &offers, &hand_set, TOOLS, &no_faults())
+        .expect("every level passes");
+    assert_eq!(list.native_quantization.as_deref(), Some("bf16"));
+    assert_eq!(names(&list), ["OpenAI", "Together", "Vague"]);
+
+    // The other filters still empty the list, and the refusal names them.
+    let refuse = |offers: Vec<EndpointOffer>| {
+        provider_candidates(Some("OpenAI"), &offers, &policy, TOOLS, &no_faults())
+            .expect_err("nothing passes")
+    };
+    assert_eq!(refuse(vec![]), CandidateRefusal::NoEndpoints);
+    assert_eq!(
+        refuse(vec![offer("OpenAI", "unknown", 1.0, 4.0, None)]),
+        CandidateRefusal::NoneCaching
+    );
+    assert_eq!(
+        refuse(vec![offer("Banned", "unknown", 1.0, 4.0, Some(0.1))]),
+        CandidateRefusal::NoPriceCeiling
+    );
+    let ceiling = CandidatePolicy {
+        max_input: Some(1.0 / 1e6),
+        max_output: Some(4.0 / 1e6),
+        ..policy.clone()
+    };
+    assert_eq!(
+        provider_candidates(
+            None,
+            &[offer("Pricey", "unknown", 2.0, 8.0, Some(0.2))],
+            &ceiling,
+            TOOLS,
+            &no_faults()
+        )
+        .expect_err("above the ceiling"),
+        CandidateRefusal::NoneWithinCeiling
+    );
+    assert_eq!(
+        provider_candidates(
+            None,
+            &[offer("Banned", "unknown", 1.0, 4.0, Some(0.1))],
+            &ceiling,
+            TOOLS,
+            &no_faults()
+        )
+        .expect_err("banned"),
+        CandidateRefusal::AllBanned
+    );
 }
 
 /// Each filter that empties the list is the one the refusal names.

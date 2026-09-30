@@ -1136,9 +1136,10 @@ catalog entry, for an agent that sets no reasoning. Each candidate reports its
 provider, quantization, input, output and cache-read prices per Mtok, whether it
 is the developer's endpoint, and its recorded fault rate, `null` for a provider
 with no recorded calls, which orders as a rate of zero. The response also
-reports the native level the filter used, and a `refusal` naming why the list is
-empty when it is. Requires a bearer token, because it reaches a third party on
-the caller's behalf.
+reports the native level the filter used, null when the catalog entry switches
+the quantization filter off and no endpoint declares a level, and a `refusal`
+naming why the list is empty when it is. Requires a bearer token, because it
+reaches a third party on the caller's behalf.
 
 ```jsonc
 {

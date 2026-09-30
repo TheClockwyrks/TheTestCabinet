@@ -447,6 +447,7 @@ async fn snapshot_emits_the_composed_model_catalog() {
         input_modalities: vec![],
         provider_pin: Some("Anthropic".to_string()),
         provider_pin_set_by_hand: false,
+        quantization_filter: true,
         native_quantization: None,
         max_input_price: None,
         max_output_price: None,

@@ -69,8 +69,14 @@ A model record has these fields:
   listing matches the author segment of the model id, ignoring case and
   punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
   endpoint's rates are the billed rate the catalog records.
+- Quantization filter, on by default. Off accepts every endpoint at whatever
+  level it declares, `unknown` included, for a model every provider serves at
+  one precision nobody discloses: a closed model's providers declare none, so
+  the filter would otherwise leave it no candidate. The other filters still
+  apply.
 - Native quantization, the level every provider a gg run uses must serve the
-  model at. Blank takes the highest level any endpoint of the model declares.
+  model at while the filter is on. Blank takes the highest level any endpoint of
+  the model declares.
 - Price ceiling, the input and output rates in USD per million tokens a provider
   must be at or below when OpenRouter lists no developer endpoint. It is unused
   while the developer endpoint is listed, since that endpoint's own rates are
@@ -79,7 +85,7 @@ A model record has these fields:
 - Unknown-quantization providers, the providers accepted despite declaring
   `unknown` quantization. Every other `unknown` endpoint is left out.
 
-The last five fields decide a gg run's
+The last six fields decide a gg run's
 [candidate list](/gg/overview/#the-candidate-list). See
 [Choosing the providers a gg run uses](#choosing-the-providers-a-gg-run-uses).
 
@@ -242,8 +248,10 @@ A model with no candidate refuses the enqueue with the reason, which names the
 filter that emptied the list. The usual fixes are on the model's form: set the
 developer provider when the listing spells it differently, set the native level
 when the observed one is wrong, name a provider under unknown-quantization
-providers when its endpoint is known to serve the native level, or set a price
-ceiling when OpenRouter lists no developer endpoint.
+providers when its endpoint is known to serve the native level, switch the
+quantization filter off when no endpoint declares a level because the model's
+precision is undisclosed, or set a price ceiling when OpenRouter lists no
+developer endpoint.
 
 ## Updating an existing model
 

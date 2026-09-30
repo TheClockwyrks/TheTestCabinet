@@ -6404,7 +6404,7 @@ pub struct StoredModel {
 }
 
 /// The write payload for [`Db::upsert_model_config`].
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ModelConfigWrite {
     pub slug: String,
     pub display_name: String,
@@ -6417,6 +6417,9 @@ pub struct ModelConfigWrite {
     /// developer's own endpoint, or `None` to take the one the endpoints listing names for the
     /// model id's author segment.
     pub provider_pin: Option<String>,
+    /// Whether a gg run's candidate list is filtered to the native quantization. Off accepts
+    /// every endpoint at whatever level it declares.
+    pub quantization_filter: bool,
     /// The native quantization set by hand, lowercased, or `None` to take the highest level any
     /// endpoint declares.
     pub native_quantization: Option<String>,
@@ -6453,6 +6456,35 @@ pub struct ModelConfigWrite {
     pub aliases: Vec<AliasEntry>,
     /// RFC 3339 timestamp for the created/updated stamp.
     pub now: String,
+}
+
+impl Default for ModelConfigWrite {
+    /// Every field blank, with the quantization filter on, as an uncurated model's is.
+    fn default() -> Self {
+        Self {
+            slug: String::new(),
+            display_name: String::new(),
+            provider: String::new(),
+            provider_logo_url: None,
+            provider_logo_svg: None,
+            description_md: None,
+            openrouter_slug: None,
+            provider_pin: None,
+            quantization_filter: true,
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: Vec::new(),
+            unknown_quantization_providers: Vec::new(),
+            list_price_input: None,
+            list_price_cached_input: None,
+            list_price_output: None,
+            list_price_as_of: None,
+            list_price_source: None,
+            aliases: Vec::new(),
+            now: String::new(),
+        }
+    }
 }
 
 /// The write payload for [`Db::set_list_price`]: a complete, dated list price
@@ -6605,6 +6637,7 @@ impl Db {
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
             provider_pin: Set(write.provider_pin),
+            quantization_filter: Set(write.quantization_filter),
             native_quantization: Set(write.native_quantization),
             max_input_price: Set(write.max_input_price),
             max_output_price: Set(write.max_output_price),
@@ -6631,6 +6664,7 @@ impl Db {
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
                         model::Column::ProviderPin,
+                        model::Column::QuantizationFilter,
                         model::Column::NativeQuantization,
                         model::Column::MaxInputPrice,
                         model::Column::MaxOutputPrice,

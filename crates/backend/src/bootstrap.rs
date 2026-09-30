@@ -179,6 +179,7 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             provider_pin: None,
             // The seed sets no provider policy: every figure comes from the listing until an
             // operator sets one on the model's form.
+            quantization_filter: true,
             native_quantization: None,
             max_input_price: None,
             max_output_price: None,

@@ -898,6 +898,68 @@ async fn the_catalog_entry_shapes_the_candidate_list() {
     );
 }
 
+/// A closed model: no endpoint declares a quantization level, so the enqueue is refused for want
+/// of a native level, until the catalog entry switches the quantization filter off. Every
+/// endpoint then passes at `unknown`, and the other filters still apply: the developer's rates
+/// remain the ceiling, and the ban list still removes a provider.
+#[tokio::test]
+async fn the_quantization_filter_off_admits_a_model_no_endpoint_declares_a_level_for() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("openai/gpt-6.1-sol", 400_000))
+        .await
+        .unwrap();
+    let write = |quantization_filter: bool| crate::db::ModelConfigWrite {
+        slug: "gpt-6-1-sol".to_string(),
+        display_name: "GPT-6.1 Sol".to_string(),
+        provider: "OpenAI".to_string(),
+        openrouter_slug: Some("openai/gpt-6.1-sol".to_string()),
+        quantization_filter,
+        banned_providers: vec!["Banned".to_string()],
+        list_price_input: Some(2e-6),
+        list_price_cached_input: Some(2e-7),
+        list_price_output: Some(8e-6),
+        list_price_as_of: Some("2026-10-01".to_string()),
+        list_price_source: Some("hand".to_string()),
+        aliases: vec![crate::db::AliasEntry {
+            alias: "openai/gpt-6.1-sol".to_string(),
+            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
+    };
+    let prices = endpoints_listing(serde_json::json!([
+        endpoint("OpenAI", "unknown", 2.0, 8.0),
+        endpoint("Azure", "unknown", 2.0, 8.0),
+        endpoint("Banned", "unknown", 1.0, 4.0),
+        endpoint("Pricey", "unknown", 3.0, 12.0),
+    ]))
+    .await;
+
+    db.upsert_model_config(write(true)).await.unwrap();
+    let mut launch = launch_of(GgCapabilitySet::minimal("openai/gpt-6.1-sol"));
+    let refusal = resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
+        .await
+        .expect_err("no endpoint declares a level");
+    assert!(
+        refusal.contains("no endpoint declares a quantization level"),
+        "{refusal}"
+    );
+
+    db.upsert_model_config(write(false)).await.unwrap();
+    let mut launch = launch_of(GgCapabilitySet::minimal("openai/gpt-6.1-sol"));
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch, &|| {})
+        .await
+        .expect("every endpoint passes the quantization filter");
+    assert_eq!(
+        providers_of(&launch, "openai/gpt-6.1-sol"),
+        ["OpenAI", "Azure"]
+    );
+    assert_eq!(
+        launch.gg_model_providers["openai/gpt-6.1-sol"][0].quantization,
+        "unknown"
+    );
+}
+
 /// A bound model whose window resolves nowhere — not in the catalog, and not from a live
 /// lookup either — **rejects the launch**, naming the model. There is no default window: a
 /// run measured against an assumed figure would report fullness, trigger compaction, and
