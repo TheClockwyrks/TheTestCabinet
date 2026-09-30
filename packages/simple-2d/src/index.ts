@@ -336,10 +336,24 @@ export function createEngine<S, D = unknown>(
   // surface's event target and are inert over a target with none, so the
   // headless case costs nothing and reports `null`.
   const layout = input.layout();
-  const touchControls =
-    layout === null
-      ? null
-      : new TouchControls({ surface, actions: input, layout, emit });
+  let touchControls: TouchControls | null = null;
+  if (layout !== null) {
+    try {
+      touchControls = new TouchControls({
+        surface,
+        actions: input,
+        layout,
+        emit,
+      });
+    } catch (error) {
+      // The registry's key listeners and the pointer's listeners are on the
+      // target by now, and a refused drawing means no engine is returned to
+      // detach them with. Undo before rethrowing, as the layout gate above does.
+      input.detach();
+      pointer.detach();
+      throw error;
+    }
+  }
 
   /** The fit as a caller owns it — a copy, so holding one observes no later frame. */
   const snapshot = (): Viewport => ({

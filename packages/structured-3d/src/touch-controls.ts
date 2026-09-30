@@ -4,12 +4,12 @@
  *
  * A layout names a control scheme and the actions it drives, and a build on a
  * phone is playable only if something on the screen drives those actions. This
- * module draws that something. It is a DOM overlay rather than part of the
- * canvas, for three reasons that each rule the canvas out on their own:
+ * module draws that something. It is a DOM overlay rather than part of either
+ * canvas, for three reasons that each rule the canvases out on their own:
  *
- * - The canvas is the game's own picture. The recorder and a captured frame
- *   hold what the pipeline drew, and a set of buttons baked into it would
- *   misreport that.
+ * - The canvases are the game's own picture. The frame recorder and a captured
+ *   frame hold what the build drew, and a set of buttons composited into it
+ *   would misreport that.
  * - A contact on a control has to be told apart from a contact on the game, and
  *   the element that received the event is what tells them apart. On a canvas
  *   every contact is a contact on the game, and the engine would be hit-testing
@@ -19,10 +19,14 @@
  *   a canvas cannot.
  *
  * The controls drive the actions through the same seam a key does —
- * {@link ActionDriver.drive}, which is `InputSystem.drive` — so the game reads
- * one number whichever source moved it: an analog action receives the partial
- * magnitude a stick gives, a digital one quantizes it, and each crossing from
- * rest arms the edge `pressed` reports exactly as a keypress would.
+ * {@link ActionDriver.drive}, which is `InputSystem.drive` — so the game
+ * reads one number whichever source moved it: an analog action receives the
+ * partial magnitude a stick gives, a digital one quantizes it, and each crossing
+ * from rest arms the edge `pressed` reports exactly as a keypress would. A stick
+ * is the 3D catalogue's distinctive control, and it reports its deflection as two
+ * analog pairs — the vertical component to its up and down actions and the
+ * horizontal to its left and right — which is the shape the input system's module
+ * comment says a stick arrives in.
  *
  * **Appearance.** The controls are hidden at construction and shown by the first
  * `pointerdown` whose `pointerType` is `"touch"`. A `keydown`, or a `pointerdown`
@@ -34,31 +38,37 @@
  * does. Only pointer and key events are read, never `mousedown` or `touchstart`:
  * a browser does not synthesize a `pointerdown` with `pointerType: "mouse"` from
  * a touch, so the compatibility mouse events cannot hide the controls by mistake.
+ * The rule holds wherever the pointer lands: a mouse or a pen reaching a control
+ * hides the controls rather than operating them, and a control acts on a touch
+ * alone.
  *
  * **Isolation.** A contact on a control belongs to the control. Its `pointerdown`,
  * `pointermove`, `pointerup`, and `pointercancel` stop propagating at the control,
  * so they never reach the input system listening on the document, and the
  * control captures the pointer so a thumb that slides off keeps driving until it
  * lifts. The touch that first reveals the controls lands on the game, not on a
- * control, and reaches the pointer as any other.
+ * control, and reaches the pointer as any other. A control whose overlay is
+ * hidden is not there: it ignores its pointer events, which go on to the target
+ * as a touch on the game does, so a driver dispatching at a hidden control
+ * drives nothing.
+ *
+ * **Driving is never cached.** A control drives its actions afresh on every
+ * contact it reads and on every release, and hiding the controls releases every
+ * control. The input system accepts a repeat harmlessly, and a memory of the last
+ * value sent would go stale the moment a key or a caller moved the action in
+ * between, leaving the control unable to drive it back.
  *
  * **No document, no controls.** An engine built over a surface whose event target
  * has no document behind it — the headless case — has nowhere to put an overlay.
  * The class is then inert: it draws nothing, listens to nothing, and reports
- * `null`, and the engine keeps working exactly as it did.
- *
- * **The third dimension.** Where a 2D layout draws a slider, this catalogue draws
- * a stick: one control that reports a point in the unit disc, whose horizontal
- * component drives the stick's left and right actions and whose vertical
- * component drives its up and down actions, each by the magnitude the thumb has
- * pushed it to. Splitting the deflection is this module's job, which is what the
- * input system's `drive` doc asks of a source, so a controller reads four
- * unipolar magnitudes from a stick exactly as it reads them from four keys.
+ * `null`, and the engine keeps working exactly as it did. Once detached, the
+ * overlay is gone and the class reports `null` likewise.
  *
  * This module depends on the surface, the one method of the input system it
  * drives, the layout, and an emit function, and on nothing else in the engine.
- * What a control *is* is kept in the pure functions at the bottom of the file,
- * and what it *does to the DOM* in the class above them.
+ * It is a port of the Simple 3D engine's module of the same name, kept as close
+ * as the two registries allow: what a control *is* lives in the pure functions at
+ * the bottom of the file, and what it *does to the DOM* in the class above them.
  */
 
 import type {
@@ -66,7 +76,7 @@ import type {
   TouchControlsState,
   TouchLayout,
 } from "./contract";
-import type { EngineEventEmitter, EngineEventMap } from "./events";
+import type { EngineEventMap } from "./events";
 import { MENU_ACTIONS } from "./input";
 
 /** The one thing the controls need of the input system. */
@@ -84,7 +94,10 @@ export interface TouchControlsOptions {
   /** The selected layout, whose controls are drawn. */
   layout: TouchLayout;
   /** The engine's event broadcaster. */
-  emit: EngineEventEmitter;
+  emit: <K extends keyof EngineEventMap>(
+    event: K,
+    payload: EngineEventMap[K],
+  ) => void;
 }
 
 /** Why the controls were hidden, as `touch-controls:hidden` reports it. */
@@ -122,9 +135,9 @@ export const DEAD_ZONE = 0.15;
 /**
  * The magnitudes one contact gives a control's actions, by action name.
  *
- * A stick gives each of its four directions the component of its deflection
- * along that direction; a pad gives the engaged directions their axis
- * magnitudes; a button gives its action `1`.
+ * A stick gives each of its two pairs one side's component and the other `0`; a
+ * pad gives the engaged directions their axis magnitudes; a button gives its
+ * action `1`.
  */
 export type Contribution = Readonly<Record<string, number>>;
 
@@ -148,6 +161,9 @@ type ControlSpec =
       classes: string[];
     };
 
+/** Where the menu strip goes for a layout. */
+type MenuPlacement = "centre" | "right";
+
 /**
  * A control as it is held once built: its element, what it drives, and the
  * pointer holding it, if one is.
@@ -166,7 +182,7 @@ interface Control {
 export class TouchControls {
   readonly #layout: TouchLayout;
   readonly #actions: ActionDriver;
-  readonly #emit: EngineEventEmitter;
+  readonly #emit: TouchControlsOptions["emit"];
   /** The target the visibility listeners went on, taken once (see `InputSystem`). */
   readonly #target: EventTarget;
   /** The overlay, or `null` when there was no document to place one in. */
@@ -180,8 +196,6 @@ export class TouchControls {
    * the other is held leaves the action held.
    */
   readonly #contributions = new Map<string, Map<Control, number>>();
-  /** The value each action was last driven to, so an unchanged value is not re-sent. */
-  readonly #driven = new Map<string, number>();
   #visible = false;
   #detached = false;
 
@@ -214,6 +228,10 @@ export class TouchControls {
    * Built at construction rather than at first touch so the elements a driver
    * finds by their markers exist from the moment the engine does, hidden or not,
    * and so the first touch has nothing to build and shows the controls at once.
+   *
+   * @throws for a layout with no drawing (see {@link layoutControls}), before
+   * anything has been added to the document or listened to, so a refused build
+   * leaves the page as it found it.
    */
   constructor(options: TouchControlsOptions) {
     this.#layout = options.layout;
@@ -229,10 +247,11 @@ export class TouchControls {
       return;
     }
 
+    const { menu, controls } = layoutControls(this.#layout);
+
     this.#style = document.createElement("style");
     this.#style.setAttribute(STYLE_ATTRIBUTE, "");
     this.#style.textContent = STYLESHEET;
-    (document.head ?? host).append(this.#style);
 
     this.#container = document.createElement("div");
     this.#container.setAttribute(CONTAINER_ATTRIBUTE, this.#layout.name);
@@ -244,11 +263,9 @@ export class TouchControls {
     frame.className = "frame";
     this.#container.append(frame);
 
-    for (const spec of layoutControls(this.#layout)) {
-      frame.append(this.#build(document, spec));
-    }
+    for (const spec of controls) frame.append(this.#build(document, spec));
     const strip = document.createElement("div");
-    strip.className = "menu";
+    strip.className = `menu menu-${menu}`;
     for (const action of MENU_ACTIONS) {
       strip.append(
         this.#build(document, {
@@ -260,7 +277,11 @@ export class TouchControls {
       );
     }
     frame.append(strip);
+
+    // The document is touched last, once every element exists: nothing above
+    // can throw with half an overlay in the page.
     host.append(this.#container);
+    (document.head ?? host).append(this.#style);
 
     this.#target.addEventListener("pointerdown", this.#onPointerDown);
     this.#target.addEventListener("pointermove", this.#onPointerMove);
@@ -269,10 +290,10 @@ export class TouchControls {
 
   /**
    * The layout and whether its controls are showing, as a fresh copy, or `null`
-   * when there was no document to draw them in.
+   * when there was no document to draw them in or the overlay has been detached.
    */
   state(): TouchControlsState | null {
-    if (this.#container === null) return null;
+    if (this.#container === null || this.#detached) return null;
     return { layout: this.#layout.name, visible: this.#visible };
   }
 
@@ -329,10 +350,13 @@ export class TouchControls {
    * Builds one control's element, marks it, and attaches the pointer listeners
    * that isolate it from the game and drive its actions.
    *
-   * The four listeners stop propagation unconditionally, whether or not the
-   * control ends up acting on the event: a contact on a control is the control's
-   * whatever it does with it, and a `pointermove` from a mouse hovering a visible
-   * control is likewise not a report the game's pointer should receive.
+   * Each of the four listeners reads the same way. A hidden control ignores the
+   * event outright, and it goes on to the target as a touch on the game does. A
+   * visible control stops the event whatever it does with it: a contact on a
+   * control is the control's, and a `pointermove` from a mouse hovering a
+   * visible control is likewise not a report the game's pointer should receive.
+   * A mouse or a pen then hides the controls, by the appearance rule, and only a
+   * touch operates the control.
    */
   #build(document: Document, spec: ControlSpec): HTMLElement {
     const element = document.createElement("div");
@@ -354,8 +378,20 @@ export class TouchControls {
       listeners: [],
     };
 
-    const onDown = (event: Event): void => {
+    /**
+     * The guard every listener opens with: `false` for an event the control
+     * ignores or has already answered by hiding, `true` for a touch to act on.
+     */
+    const accepts = (event: Event): boolean => {
+      if (!this.#visible) return false;
       event.stopPropagation();
+      const device = pointerDevice(event);
+      if (device === "touch") return true;
+      this.#hide(device);
+      return false;
+    };
+    const onDown = (event: Event): void => {
+      if (!accepts(event)) return;
       // No focus change, no text selection, and no compatibility mouse events
       // synthesized for this contact: the control has already taken it.
       event.preventDefault();
@@ -367,14 +403,14 @@ export class TouchControls {
       this.#engage(control, event);
     };
     const onMove = (event: Event): void => {
-      event.stopPropagation();
+      if (!accepts(event)) return;
       if (control.pointer === null || control.pointer !== pointerId(event)) {
         return;
       }
       this.#engage(control, event);
     };
     const onEnd = (event: Event): void => {
-      event.stopPropagation();
+      if (!accepts(event)) return;
       if (control.pointer === null || control.pointer !== pointerId(event)) {
         return;
       }
@@ -405,8 +441,8 @@ export class TouchControls {
       const y =
         (contribution[control.spec.up] ?? 0) -
         (contribution[control.spec.down] ?? 0);
-      control.element.style.setProperty("--stick-x", String(x));
-      control.element.style.setProperty("--stick-y", String(y));
+      control.element.style.setProperty("--dx", String(x));
+      control.element.style.setProperty("--dy", String(y));
     }
     this.#drive(control, contribution);
   }
@@ -416,8 +452,8 @@ export class TouchControls {
     const held = control.pointer;
     control.pointer = null;
     control.element.removeAttribute(HELD_ATTRIBUTE);
-    control.element.style.removeProperty("--stick-x");
-    control.element.style.removeProperty("--stick-y");
+    control.element.style.removeProperty("--dx");
+    control.element.style.removeProperty("--dy");
     if (held !== null) releasePointerCapture(control.element, held);
     this.#drive(control, {});
   }
@@ -426,11 +462,10 @@ export class TouchControls {
    * Records what `control` now gives each of its actions and drives each to the
    * largest value any control gives it.
    *
-   * An action's value is sent only when it changed, an action never driven
-   * counting as at rest. The input system would accept a repeat harmlessly,
-   * but a `pointermove` arrives many times a frame and the one call that
-   * matters is the one that moved the number, and a release of a control that
-   * was never engaged is not a change at all.
+   * Every value is sent, changed or not. The input system accepts a repeat
+   * harmlessly, and remembering the last value sent in order to skip a repeat
+   * would let a key or a caller that moved the action in between leave the
+   * control unable to drive it back.
    */
   #drive(control: Control, contribution: Contribution): void {
     for (const action of control.actions) {
@@ -446,8 +481,6 @@ export class TouchControls {
       let resolved = 0;
       for (const given of byControl.values())
         resolved = Math.max(resolved, given);
-      if ((this.#driven.get(action) ?? 0) === resolved) continue;
-      this.#driven.set(action, resolved);
       this.#actions.drive(action, resolved);
     }
   }
@@ -496,35 +529,33 @@ export function axisDeflection(
 }
 
 /**
- * A stick's deflection: a point in the unit disc, `x` positive rightward and
- * `y` positive upward, `(0, 0)` inside the dead zone about its centre.
+ * A stick's deflection for a contact: a vector in the unit disc, `x` positive
+ * rightward and `y` positive upward, clamped to the stick's radius, with the
+ * dead zone applied radially and the remaining travel rescaled to reach the rim
+ * at `1`.
  *
- * The dead zone is radial rather than per axis, and so is the rescaling: a thumb
- * pushed straight to the rim reads `1` along that axis, and one pushed to the
- * rim on a diagonal reads a unit vector rather than `(1, 1)`, so the magnitude a
- * controller rebuilds from the four directions is the distance the thumb moved
- * whatever the heading. A contact past the rim is clamped onto it. A rect with
- * no extent, or a contact with no position on either axis, reads as rest.
+ * Radial rather than per axis, because a stick is round: a thumb resting a few
+ * pixels off centre in any direction reads as rest, and one pushed to the rim on
+ * a diagonal reads as full deflection along the diagonal rather than full on
+ * both axes. An axis the contact does not report, or a rect with no extent on
+ * it, reads as rest along that axis.
  */
 export function stickDeflection(rect: Extent, contact: Point): Point {
   const rest = { x: 0, y: 0 };
-  if (
-    !(rect.width > 0) ||
-    !(rect.height > 0) ||
-    !Number.isFinite(contact.x) ||
-    !Number.isFinite(contact.y)
-  ) {
-    return rest;
-  }
-  const rawX = (contact.x - (rect.left + rect.width / 2)) / (rect.width / 2);
-  const rawY = (rect.top + rect.height / 2 - contact.y) / (rect.height / 2);
+  const rawX =
+    rect.width > 0 && Number.isFinite(contact.x)
+      ? (contact.x - (rect.left + rect.width / 2)) / (rect.width / 2)
+      : 0;
+  const rawY =
+    rect.height > 0 && Number.isFinite(contact.y)
+      ? (rect.top + rect.height / 2 - contact.y) / (rect.height / 2)
+      : 0;
   const magnitude = Math.hypot(rawX, rawY);
   if (magnitude < DEAD_ZONE) return rest;
-  const rescaled = Math.min(1, (magnitude - DEAD_ZONE) / (1 - DEAD_ZONE));
-  return {
-    x: (rawX / magnitude) * rescaled,
-    y: (rawY / magnitude) * rescaled,
-  };
+  const clamped = Math.min(1, magnitude);
+  const rescaled = (clamped - DEAD_ZONE) / (1 - DEAD_ZONE);
+  const scale = rescaled / magnitude;
+  return { x: rawX * scale, y: rawY * scale };
 }
 
 /**
@@ -572,12 +603,12 @@ export function contributionOf(
     case "button":
       return { [spec.action]: 1 };
     case "stick": {
-      const deflection = stickDeflection(rect, contact);
+      const { x, y } = stickDeflection(rect, contact);
       return {
-        [spec.up]: Math.max(0, deflection.y),
-        [spec.down]: Math.max(0, -deflection.y),
-        [spec.left]: Math.max(0, -deflection.x),
-        [spec.right]: Math.max(0, deflection.x),
+        [spec.up]: Math.max(0, y),
+        [spec.down]: Math.max(0, -y),
+        [spec.left]: Math.max(0, -x),
+        [spec.right]: Math.max(0, x),
       };
     }
     case "pad": {
@@ -596,7 +627,7 @@ export function contributionOf(
 /* The catalogue's drawings                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** The pad every `dpad-` layout draws, at the bottom left. */
+/** The four-way pad every pad layout draws at the bottom left. */
 const PAD: ControlSpec = {
   kind: "pad",
   up: "up",
@@ -606,7 +637,7 @@ const PAD: ControlSpec = {
   classes: [],
 };
 
-/** The move stick every `-stick` layout draws, at the bottom left. */
+/** The move stick every stick layout draws at the bottom left. */
 const MOVE_STICK: ControlSpec = {
   kind: "stick",
   up: "move-up",
@@ -616,7 +647,7 @@ const MOVE_STICK: ControlSpec = {
   classes: ["left"],
 };
 
-/** The look stick the `dual-stick` layouts draw, at the bottom right. */
+/** The look stick the dual-stick layouts draw at the bottom right. */
 const LOOK_STICK: ControlSpec = {
   kind: "stick",
   up: "look-up",
@@ -626,8 +657,8 @@ const LOOK_STICK: ControlSpec = {
   classes: ["right"],
 };
 
-/** The large `confirm` under the thumb of a layout with no action buttons. */
-const LARGE_CONFIRM: ControlSpec = {
+/** The large round confirm a layout without action buttons puts under the thumb. */
+const THUMB_CONFIRM: ControlSpec = {
   kind: "button",
   action: "confirm",
   label: "OK",
@@ -635,8 +666,7 @@ const LARGE_CONFIRM: ControlSpec = {
 };
 
 /**
- * What each layout draws, beside the menu strip every layout carries at the
- * top right.
+ * What each layout draws, beside the menu strip every layout carries.
  *
  * Keyed by the layout's name rather than derived from its vocabulary, because
  * the vocabulary says which actions exist and not where a thumb finds them. A
@@ -644,37 +674,54 @@ const LARGE_CONFIRM: ControlSpec = {
  * layout to one without the other fails at construction rather than drawing an
  * empty overlay.
  */
-const DRAWINGS: Readonly<Record<string, readonly ControlSpec[]>> = {
-  "dpad-4": [PAD, LARGE_CONFIRM],
-  "dpad-4-two-buttons": [
-    PAD,
-    { kind: "button", action: "a", label: "A", classes: ["round", "a"] },
-    { kind: "button", action: "b", label: "B", classes: ["round", "b"] },
-    {
-      kind: "button",
-      action: "confirm",
-      label: "OK",
-      classes: ["round", "small"],
-    },
-  ],
-  "single-stick": [MOVE_STICK, LARGE_CONFIRM],
-  "dual-stick": [MOVE_STICK, LOOK_STICK],
-  "dual-stick-two-buttons": [
-    MOVE_STICK,
-    LOOK_STICK,
-    {
-      kind: "button",
-      action: "a",
-      label: "A",
-      classes: ["round", "above", "a"],
-    },
-    {
-      kind: "button",
-      action: "b",
-      label: "B",
-      classes: ["round", "above", "b"],
-    },
-  ],
+const DRAWINGS: Readonly<
+  Record<string, { menu: MenuPlacement; controls: ControlSpec[] }>
+> = {
+  "dpad-4": {
+    menu: "right",
+    controls: [PAD, THUMB_CONFIRM],
+  },
+  "dpad-4-two-buttons": {
+    menu: "right",
+    controls: [
+      PAD,
+      { kind: "button", action: "a", label: "A", classes: ["round", "a"] },
+      { kind: "button", action: "b", label: "B", classes: ["round", "b"] },
+      {
+        kind: "button",
+        action: "confirm",
+        label: "OK",
+        classes: ["round", "small"],
+      },
+    ],
+  },
+  "single-stick": {
+    menu: "right",
+    controls: [MOVE_STICK, THUMB_CONFIRM],
+  },
+  "dual-stick": {
+    menu: "right",
+    controls: [MOVE_STICK, LOOK_STICK],
+  },
+  "dual-stick-two-buttons": {
+    menu: "right",
+    controls: [
+      MOVE_STICK,
+      LOOK_STICK,
+      {
+        kind: "button",
+        action: "a",
+        label: "A",
+        classes: ["round", "a", "above-stick"],
+      },
+      {
+        kind: "button",
+        action: "b",
+        label: "B",
+        classes: ["round", "b", "above-stick"],
+      },
+    ],
+  },
 };
 
 /**
@@ -684,7 +731,10 @@ const DRAWINGS: Readonly<Record<string, readonly ControlSpec[]>> = {
  * must agree, and a layout that can be selected but not drawn is a build that
  * runs and shows a phone nothing.
  */
-export function layoutControls(layout: TouchLayout): readonly ControlSpec[] {
+export function layoutControls(layout: TouchLayout): {
+  menu: MenuPlacement;
+  controls: ControlSpec[];
+} {
   const drawing = DRAWINGS[layout.name];
   if (drawing === undefined) {
     throw new Error(
@@ -716,9 +766,9 @@ function decorate(
       element.textContent = spec.label;
       return;
     case "stick": {
-      const knob = document.createElement("span");
-      knob.className = "knob";
-      element.append(knob);
+      const thumb = document.createElement("span");
+      thumb.className = "thumb";
+      element.append(thumb);
       return;
     }
     case "pad": {
@@ -780,8 +830,8 @@ function pointerId(event: Event): number {
 
 /**
  * The event's client position, or `NaN` on an axis the event does not report,
- * which a stick or a pad reads as rest. A button reads no position at all, so a
- * hand-dispatched `pointerdown` with none still presses it.
+ * which a stick or a pad reads as rest along that axis. A button reads no
+ * position at all, so a hand-dispatched `pointerdown` with none still presses it.
  */
 function clientPosition(event: Event): Point {
   const candidate = event as Partial<MouseEvent>;
@@ -830,12 +880,11 @@ function releasePointerCapture(element: HTMLElement, id: number): void {
  * shortest side; a stick and a pad take about a quarter of the viewport's
  * shorter side. The frame inside the container is inset by the device's
  * safe-area insets, so a control sits clear of a notch or a home indicator.
- * The action buttons of `dual-stick-two-buttons` sit above the look stick,
- * measured from the stick's own size, so they clear it in either orientation.
+ * A stick's thumb follows the deflection through the `--dx` and `--dy`
+ * properties the class sets while a pointer holds it.
  */
 const STYLESHEET = `
 [${CONTAINER_ATTRIBUTE}] {
-  --stick-size: max(132px, 25vmin);
   position: fixed;
   inset: 0;
   z-index: 2147483000;
@@ -879,16 +928,16 @@ const STYLESHEET = `
 }
 [${CONTAINER_ATTRIBUTE}] .stick {
   bottom: 16px;
-  width: var(--stick-size);
-  height: var(--stick-size);
+  width: max(132px, 25vmin);
+  height: max(132px, 25vmin);
   border-radius: 50%;
 }
 [${CONTAINER_ATTRIBUTE}] .stick.left { left: 16px; }
 [${CONTAINER_ATTRIBUTE}] .stick.right { right: 16px; }
-[${CONTAINER_ATTRIBUTE}] .stick .knob {
+[${CONTAINER_ATTRIBUTE}] .stick .thumb {
   position: absolute;
-  left: calc(50% + var(--stick-x, 0) * (50% - 26px));
-  top: calc(50% - var(--stick-y, 0) * (50% - 26px));
+  left: calc(50% + var(--dx, 0) * (50% - 26px));
+  top: calc(50% - var(--dy, 0) * (50% - 26px));
   width: 48px;
   height: 48px;
   margin: -24px 0 0 -24px;
@@ -898,8 +947,8 @@ const STYLESHEET = `
 [${CONTAINER_ATTRIBUTE}] .pad {
   left: 16px;
   bottom: 16px;
-  width: var(--stick-size);
-  height: var(--stick-size);
+  width: max(132px, 25vmin);
+  height: max(132px, 25vmin);
   border-radius: 50%;
   display: grid;
   grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr;
@@ -924,6 +973,14 @@ const STYLESHEET = `
 }
 [${CONTAINER_ATTRIBUTE}] .round.a { right: 16px; bottom: 16px; }
 [${CONTAINER_ATTRIBUTE}] .round.b { right: 100px; bottom: 76px; }
+[${CONTAINER_ATTRIBUTE}] .round.a.above-stick {
+  right: 16px;
+  bottom: calc(max(132px, 25vmin) + 32px);
+}
+[${CONTAINER_ATTRIBUTE}] .round.b.above-stick {
+  right: 100px;
+  bottom: calc(max(132px, 25vmin) + 92px);
+}
 [${CONTAINER_ATTRIBUTE}] .round.small {
   right: 112px;
   bottom: 8px;
@@ -931,22 +988,18 @@ const STYLESHEET = `
   height: 52px;
   font-size: 14px;
 }
-[${CONTAINER_ATTRIBUTE}] .round.above.a {
-  right: 16px;
-  bottom: calc(var(--stick-size) + 32px);
-}
-[${CONTAINER_ATTRIBUTE}] .round.above.b {
-  right: 100px;
-  bottom: calc(var(--stick-size) + 92px);
-}
 [${CONTAINER_ATTRIBUTE}] .menu {
   position: absolute;
   top: 8px;
-  right: 12px;
   display: flex;
   gap: 8px;
   pointer-events: none;
 }
+[${CONTAINER_ATTRIBUTE}] .menu-centre {
+  left: 50%;
+  transform: translateX(-50%);
+}
+[${CONTAINER_ATTRIBUTE}] .menu-right { right: 12px; }
 [${CONTAINER_ATTRIBUTE}] .menu-button {
   position: relative;
   height: 44px;

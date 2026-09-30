@@ -377,10 +377,26 @@ export function createEngine<S, D = unknown>(
   // surface's event target and are inert over a target with none, so the
   // headless case costs nothing and reports `null`.
   const layout = input.layout();
-  const touchControls =
-    layout === null
-      ? null
-      : new TouchControls({ surface, actions: input, layout, emit });
+  let touchControls: TouchControls | null = null;
+  if (layout !== null) {
+    try {
+      touchControls = new TouchControls({
+        surface,
+        actions: input,
+        layout,
+        emit,
+      });
+    } catch (error) {
+      // The registry's key listeners and the pointer's listeners are on the
+      // target by now and the stage holds a GL context, and a refused drawing
+      // means no engine is returned to undo any of it with. Undo before
+      // rethrowing, as the layout gate above does.
+      input.detach();
+      pointer.detach();
+      stage.dispose();
+      throw error;
+    }
+  }
 
   /**
    * The camera as it stood at the most recent render, and the one call that

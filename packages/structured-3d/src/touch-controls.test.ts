@@ -82,6 +82,18 @@ function touch(target: EventTarget, fields: PointerFields = {}): Event {
   return pointer(target, "pointerdown", { pointerType: "touch", ...fields });
 }
 
+/**
+ * A contact on a control: a touch unless the fields say otherwise, since a
+ * control acts on a touch alone and every other device hides the controls.
+ */
+function contact(
+  target: EventTarget,
+  type: PointerType,
+  fields: PointerFields = {},
+): Event {
+  return pointer(target, type, { pointerType: "touch", ...fields });
+}
+
 function keyDown(target: EventTarget, code = "KeyA"): void {
   target.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true }));
 }
@@ -277,6 +289,27 @@ describe("the overlay", () => {
     ).toEqual(["confirm", "back", "pause", "mute"]);
   });
 
+  it("leaves the document untouched when the layout has no drawing", () => {
+    const surface = surfaceOver(document);
+    const input = new InputSystem({ surface, viewport: () => VIEWPORT });
+    const added = vi.spyOn(document, "addEventListener");
+
+    expect(
+      () =>
+        new TouchControls({
+          surface,
+          actions: input,
+          layout: { name: "not-drawn", actions: [] },
+          emit: () => undefined,
+        }),
+    ).toThrow(/not-drawn/);
+
+    expect(document.querySelector(`[${CONTAINER_ATTRIBUTE}]`)).toBeNull();
+    expect(document.querySelector("style")).toBeNull();
+    expect(added).not.toHaveBeenCalled();
+    input.detach();
+  });
+
   it("refuses a layout the catalogue holds but the drawings do not, naming it", () => {
     expect(() => layoutControls({ name: "not-drawn", actions: [] })).toThrow(
       /not-drawn/,
@@ -384,6 +417,30 @@ describe("appearance", () => {
     expect(hidden(container)).toBe(true);
   });
 
+  it.each([
+    ["a mouse pointerdown", "pointerdown", "mouse"],
+    ["a mouse pointermove", "pointermove", "mouse"],
+    ["a pen pointerdown", "pointerdown", "pen"],
+  ] as const)(
+    "hides on %s at a control, which drives nothing",
+    (_, type, device) => {
+      const { control, container, reader, emitted } = rig("single-stick");
+      touch(document);
+      emitted.length = 0;
+
+      pointer(control("confirm"), type, { pointerType: device });
+
+      expect(hidden(container)).toBe(true);
+      expect(reader.value("confirm")).toBe(0);
+      expect(emitted).toEqual([
+        {
+          event: "touch-controls:hidden",
+          payload: { layout: "single-stick", reason: device },
+        },
+      ]);
+    },
+  );
+
   it("leaves the touch that reveals it to reach the game's pointer", () => {
     const { container, reader } = rig("single-stick");
 
@@ -400,7 +457,7 @@ describe("a button", () => {
     const { control, reader } = rig("single-stick");
     touch(document);
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
     expect(reader.value("confirm")).toBe(1);
     expect(reader.pressed("confirm")).toBe(true);
@@ -410,9 +467,9 @@ describe("a button", () => {
   it("drives its action back to 0 on pointerup", () => {
     const { control, reader } = rig("single-stick");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
-    pointer(control("confirm"), "pointerup", { pointerType: "touch" });
+    contact(control("confirm"), "pointerup");
 
     expect(reader.value("confirm")).toBe(0);
   });
@@ -420,9 +477,9 @@ describe("a button", () => {
   it("drives its action back to 0 on pointercancel", () => {
     const { control, reader } = rig("single-stick");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
-    pointer(control("confirm"), "pointercancel", { pointerType: "touch" });
+    contact(control("confirm"), "pointercancel");
 
     expect(reader.value("confirm")).toBe(0);
   });
@@ -430,11 +487,11 @@ describe("a button", () => {
   it("arms the edge again on the next press, as a key would", () => {
     const { control, input, reader } = rig("single-stick");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
-    pointer(control("confirm"), "pointerup", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
+    contact(control("confirm"), "pointerup");
     input.endFrame();
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
     expect(reader.pressed("confirm")).toBe(true);
   });
@@ -442,13 +499,13 @@ describe("a button", () => {
   it("is held by the first pointer alone; a second finger changes nothing", () => {
     const { control, reader } = rig("single-stick");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
-    pointer(control("confirm"), "pointerdown", { pointerId: 2 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointerdown", { pointerId: 2 });
 
-    pointer(control("confirm"), "pointerup", { pointerId: 2 });
+    contact(control("confirm"), "pointerup", { pointerId: 2 });
     expect(reader.value("confirm")).toBe(1);
 
-    pointer(control("confirm"), "pointerup", { pointerId: 1 });
+    contact(control("confirm"), "pointerup", { pointerId: 1 });
     expect(reader.value("confirm")).toBe(0);
   });
 
@@ -463,12 +520,12 @@ describe("a button", () => {
       throw new Error("dpad-4 draws confirm twice");
     }
 
-    pointer(large, "pointerdown", { pointerId: 1 });
-    pointer(menu, "pointerdown", { pointerId: 2 });
-    pointer(large, "pointerup", { pointerId: 1 });
+    contact(large, "pointerdown", { pointerId: 1 });
+    contact(menu, "pointerdown", { pointerId: 2 });
+    contact(large, "pointerup", { pointerId: 1 });
     expect(reader.value("confirm")).toBe(1);
 
-    pointer(menu, "pointerup", { pointerId: 2 });
+    contact(menu, "pointerup", { pointerId: 2 });
     expect(reader.value("confirm")).toBe(0);
   });
 
@@ -476,8 +533,8 @@ describe("a button", () => {
     const { control, reader } = rig("dual-stick-two-buttons");
     touch(document);
 
-    pointer(control("a"), "pointerdown", { pointerId: 1 });
-    pointer(control("b"), "pointerdown", { pointerId: 2 });
+    contact(control("a"), "pointerdown", { pointerId: 1 });
+    contact(control("b"), "pointerdown", { pointerId: 2 });
 
     expect(reader.value("a")).toBe(1);
     expect(reader.value("b")).toBe(1);
@@ -500,13 +557,32 @@ describe("a stick", () => {
     clientY: centre.y - raw(deflection) * half,
   });
 
+  it("drives a value the registry was moved away from in between", () => {
+    const { multi, input, reader } = rig("single-stick", [
+      "move-up",
+      "move-down",
+    ]);
+    touch(document);
+    const stick = multi("move-up");
+    pin(stick, rect);
+    contact(stick, "pointerdown", up(0.5));
+    expect(reader.value("move-up")).toBeCloseTo(0.5);
+    // A caller moves the action under the held thumb, as a key would.
+    input.drive("move-up", 0);
+    expect(reader.value("move-up")).toBe(0);
+
+    contact(stick, "pointermove", up(0.5));
+
+    expect(reader.value("move-up")).toBeCloseTo(0.5);
+  });
+
   it("hands an analog action the fraction the thumb pushed it to", () => {
     const { multi, reader } = rig("single-stick", ["move-up", "move-down"]);
     touch(document);
     const stick = multi("move-up");
     pin(stick, rect);
 
-    pointer(stick, "pointerdown", up(0.5));
+    contact(stick, "pointerdown", up(0.5));
 
     expect(reader.value("move-up")).toBeCloseTo(0.5);
     expect(reader.value("move-down")).toBe(0);
@@ -527,7 +603,7 @@ describe("a stick", () => {
     // Up and to the right at 45°, pushed to a radial deflection of 0.5.
     const along = (raw(0.5) * half) / Math.SQRT2;
 
-    pointer(stick, "pointerdown", {
+    contact(stick, "pointerdown", {
       clientX: centre.x + along,
       clientY: centre.y - along,
     });
@@ -544,8 +620,8 @@ describe("a stick", () => {
     const stick = multi("move-up");
     pin(stick, rect);
 
-    pointer(stick, "pointerdown", up(0.5));
-    pointer(stick, "pointermove", {
+    contact(stick, "pointerdown", up(0.5));
+    contact(stick, "pointermove", {
       clientX: centre.x,
       clientY: centre.y + raw(0.5) * half,
     });
@@ -561,7 +637,7 @@ describe("a stick", () => {
     const stick = multi("move-up");
     pin(stick, rect);
 
-    pointer(stick, "pointerdown", {
+    contact(stick, "pointerdown", {
       clientX: centre.x + 5,
       clientY: centre.y - 5,
     });
@@ -577,8 +653,8 @@ describe("a stick", () => {
     const stick = multi("move-up");
     pin(stick, rect);
 
-    pointer(stick, "pointerdown", up(0.5));
-    pointer(stick, "pointermove", {
+    contact(stick, "pointerdown", up(0.5));
+    contact(stick, "pointermove", {
       clientX: centre.x,
       clientY: rect.top - 500,
     });
@@ -591,14 +667,14 @@ describe("a stick", () => {
     touch(document);
     const stick = multi("move-up");
     pin(stick, rect);
-    pointer(stick, "pointerdown", {
+    contact(stick, "pointerdown", {
       clientX: centre.x + half * 0.7,
       clientY: centre.y - half * 0.7,
     });
     expect(reader.value("move-up")).toBeGreaterThan(0);
     expect(reader.value("move-right")).toBeGreaterThan(0);
 
-    pointer(stick, "pointerup", {
+    contact(stick, "pointerup", {
       clientX: centre.x + half * 0.7,
       clientY: centre.y - half * 0.7,
     });
@@ -616,8 +692,8 @@ describe("a stick", () => {
     pin(move, rect);
     pin(look, { ...rect, left: 440 });
 
-    pointer(move, "pointerdown", { pointerId: 1, ...up(1) });
-    pointer(look, "pointerdown", {
+    contact(move, "pointerdown", { pointerId: 1, ...up(1) });
+    contact(look, "pointerdown", {
       pointerId: 2,
       clientX: 540 - raw(0.25) * half,
       clientY: centre.y,
@@ -630,18 +706,18 @@ describe("a stick", () => {
     expect(reader.value("look-up")).toBe(0);
   });
 
-  it("places its knob where the thumb is", () => {
-    const { multi } = rig("single-stick", ["move-up", "move-right"]);
+  it("poses its thumb by the deflection while held", () => {
+    const { multi } = rig("single-stick", ["move-up", "move-down"]);
     touch(document);
     const stick = multi("move-up");
     pin(stick, rect);
 
-    pointer(stick, "pointerdown", up(1));
-    expect(stick.style.getPropertyValue("--stick-y")).toBe("1");
-    expect(stick.style.getPropertyValue("--stick-x")).toBe("0");
+    contact(stick, "pointerdown", up(0.5));
+    expect(Number(stick.style.getPropertyValue("--dy"))).toBeCloseTo(0.5);
+    expect(Number(stick.style.getPropertyValue("--dx"))).toBe(0);
 
-    pointer(stick, "pointerup", up(1));
-    expect(stick.style.getPropertyValue("--stick-y")).toBe("");
+    contact(stick, "pointerup", up(0.5));
+    expect(stick.style.getPropertyValue("--dy")).toBe("");
   });
 });
 
@@ -663,7 +739,7 @@ describe("a pad", () => {
     const pad = multi("up");
     pin(pad, rect);
 
-    pointer(pad, "pointerdown", { clientX: x, clientY: y });
+    contact(pad, "pointerdown", { clientX: x, clientY: y });
 
     for (const action of ["up", "down", "left", "right"]) {
       expect(reader.value(action), action).toBe(
@@ -678,15 +754,15 @@ describe("a pad", () => {
     const pad = multi("up");
     pin(pad, rect);
 
-    pointer(pad, "pointerdown", { clientX: 170, clientY: 30 });
-    pointer(pad, "pointermove", { clientX: 100, clientY: 100 });
+    contact(pad, "pointerdown", { clientX: 170, clientY: 30 });
+    contact(pad, "pointermove", { clientX: 100, clientY: 100 });
     expect(reader.value("up")).toBe(0);
     expect(reader.value("right")).toBe(0);
 
-    pointer(pad, "pointermove", { clientX: 100, clientY: 20 });
+    contact(pad, "pointermove", { clientX: 100, clientY: 20 });
     expect(reader.value("up")).toBe(1);
 
-    pointer(pad, "pointerup", { clientX: 100, clientY: 20 });
+    contact(pad, "pointerup", { clientX: 100, clientY: 20 });
     expect(reader.value("up")).toBe(0);
   });
 
@@ -697,7 +773,7 @@ describe("a pad", () => {
     pin(pad, rect);
 
     // Straight up, 60 of the 100 half-height above centre: raw 0.6.
-    pointer(pad, "pointerdown", { clientX: 100, clientY: 40 });
+    contact(pad, "pointerdown", { clientX: 100, clientY: 40 });
 
     expect(reader.value("up")).toBeCloseTo((0.6 - DEAD_ZONE) / (1 - DEAD_ZONE));
     expect(reader.value("right")).toBe(0);
@@ -711,19 +787,19 @@ describe("isolation from the game's pointer", () => {
     pointer(document, "pointerup", { pointerId: 1, clientX: 5, clientY: 5 });
     input.endFrame();
 
-    pointer(control("confirm"), "pointerdown", {
+    contact(control("confirm"), "pointerdown", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 300,
       clientY: 20,
     });
-    pointer(control("confirm"), "pointermove", {
+    contact(control("confirm"), "pointermove", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 305,
       clientY: 22,
     });
-    pointer(control("confirm"), "pointerup", {
+    contact(control("confirm"), "pointerup", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 305,
@@ -751,10 +827,10 @@ describe("isolation from the game's pointer", () => {
       document.addEventListener(type, listener);
     }
 
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
-    pointer(control("confirm"), "pointermove", { pointerId: 1 });
-    pointer(control("confirm"), "pointercancel", { pointerId: 1 });
-    pointer(control("confirm"), "pointerup", { pointerId: 9 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointermove", { pointerId: 1 });
+    contact(control("confirm"), "pointercancel", { pointerId: 1 });
+    contact(control("confirm"), "pointerup", { pointerId: 9 });
 
     expect(reached).toEqual([]);
     for (const type of [
@@ -767,13 +843,24 @@ describe("isolation from the game's pointer", () => {
     }
   });
 
-  it("does not let a mouse on a control hide the controls", () => {
-    const { control, container } = rig("single-stick");
-    touch(document);
+  it("ignores a contact while hidden, which reaches the target as a touch on the game", () => {
+    const { control, container, reader, emitted } = rig("single-stick");
+    const reached: string[] = [];
+    const listener = (event: Event): void => {
+      reached.push(event.type);
+    };
+    document.addEventListener("pointerdown", listener);
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "mouse" });
+    contact(control("confirm"), "pointerdown");
 
+    expect(reader.value("confirm")).toBe(0);
+    expect(reached).toEqual(["pointerdown"]);
+    // The touch went on to the target, which is exactly what shows the controls.
     expect(hidden(container)).toBe(false);
+    expect(emitted.map((entry) => entry.event)).toEqual([
+      "touch-controls:shown",
+    ]);
+    document.removeEventListener("pointerdown", listener);
   });
 
   it("captures the pointer on the control and releases it on lift", () => {
@@ -785,10 +872,10 @@ describe("isolation from the game's pointer", () => {
     button.setPointerCapture = capture;
     button.releasePointerCapture = release;
 
-    pointer(button, "pointerdown", { pointerId: 4 });
+    contact(button, "pointerdown", { pointerId: 4 });
     expect(capture).toHaveBeenCalledWith(4);
 
-    pointer(button, "pointerup", { pointerId: 4 });
+    contact(button, "pointerup", { pointerId: 4 });
     expect(release).toHaveBeenCalledWith(4);
   });
 
@@ -801,7 +888,7 @@ describe("isolation from the game's pointer", () => {
     };
 
     expect(() =>
-      pointer(button, "pointerdown", { pointerId: 4 }),
+      contact(button, "pointerdown", { pointerId: 4 }),
     ).not.toThrow();
     expect(reader.value("confirm")).toBe(1);
   });
@@ -810,7 +897,7 @@ describe("isolation from the game's pointer", () => {
     const { control } = rig("single-stick");
     touch(document);
 
-    const event = pointer(control("confirm"), "pointerdown");
+    const event = contact(control("confirm"), "pointerdown");
 
     expect(event.defaultPrevented).toBe(true);
   });
@@ -820,12 +907,25 @@ describe("hiding while held", () => {
   it("returns a held action to rest when a keyboard hides the controls", () => {
     const { control, reader } = rig("single-stick");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
     expect(reader.value("confirm")).toBe(1);
 
     keyDown(document);
 
     expect(reader.value("confirm")).toBe(0);
+  });
+
+  it("drives the control again once the next touch shows it", () => {
+    const { control, reader } = rig("single-stick");
+    touch(document);
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    keyDown(document);
+    expect(reader.value("confirm")).toBe(0);
+    touch(document);
+
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+
+    expect(reader.value("confirm")).toBe(1);
   });
 });
 
@@ -905,7 +1005,7 @@ describe("detach", () => {
     keyDown(document);
 
     expect(emitted).toEqual([]);
-    expect(controls.state()?.visible).toBe(false);
+    expect(controls.state()).toBeNull();
     expect(removed.mock.calls.map((call) => call[0]).sort()).toEqual([
       "keydown",
       "pointerdown",
@@ -916,12 +1016,20 @@ describe("detach", () => {
   it("returns a held action to rest on the way out", () => {
     const { controls, control, reader } = rig("dpad-4-two-buttons");
     touch(document);
-    pointer(control("a"), "pointerdown", { pointerId: 1 });
+    contact(control("a"), "pointerdown", { pointerId: 1 });
     expect(reader.value("a")).toBe(1);
 
     controls.detach();
 
     expect(reader.value("a")).toBe(0);
+  });
+
+  it("reports null once detached, the overlay being gone", () => {
+    const { controls } = rig("dpad-4");
+
+    controls.detach();
+
+    expect(controls.state()).toBeNull();
   });
 
   it("is idempotent, because teardown races", () => {
@@ -950,39 +1058,34 @@ describe("the geometry", () => {
     expect(axisDeflection(Number.NaN, 0, 100)).toBe(0);
   });
 
-  it("reads a stick as a point in the unit disc, dead about the centre, clamped at the rim", () => {
+  it("deflects a stick radially: rest inside the dead zone, the rim at 1", () => {
     const rect = { left: 0, top: 0, width: 100, height: 100 };
     expect(stickDeflection(rect, { x: 50, y: 50 })).toEqual({ x: 0, y: 0 });
+    expect(stickDeflection(rect, { x: 55, y: 45 })).toEqual({ x: 0, y: 0 });
     expect(stickDeflection(rect, { x: 50, y: 0 })).toEqual({ x: 0, y: 1 });
     expect(stickDeflection(rect, { x: 100, y: 50 })).toEqual({ x: 1, y: 0 });
-    expect(stickDeflection(rect, { x: 50, y: 100 })).toEqual({ x: 0, y: -1 });
-    expect(stickDeflection(rect, { x: 0, y: 50 })).toEqual({ x: -1, y: 0 });
-    // Inside the dead zone on the diagonal, though each axis alone is past it.
-    expect(stickDeflection(rect, { x: 50 + 3, y: 50 - 3 })).toEqual({
-      x: 0,
-      y: 0,
-    });
-    // Past the rim on the diagonal: a unit vector, not (1, 1).
-    const corner = stickDeflection(rect, { x: 100, y: 0 });
-    expect(Math.hypot(corner.x, corner.y)).toBeCloseTo(1);
-    expect(corner.x).toBeCloseTo(Math.SQRT1_2);
-    expect(corner.y).toBeCloseTo(Math.SQRT1_2);
-    // Half way up: the rescaled magnitude.
+    const diagonal = stickDeflection(rect, { x: 500, y: -400 });
+    expect(Math.hypot(diagonal.x, diagonal.y)).toBeCloseTo(1);
+    expect(diagonal.x).toBeGreaterThan(0);
+    expect(diagonal.y).toBeGreaterThan(0);
     expect(stickDeflection(rect, { x: 50, y: 25 }).y).toBeCloseTo(
       (0.5 - DEAD_ZONE) / (1 - DEAD_ZONE),
     );
   });
 
-  it("reads a stick over a rect with no extent, or a contact with no position, as rest", () => {
+  it("reads a stick's unreported axis, or a rect with no extent, as rest along it", () => {
     const rect = { left: 0, top: 0, width: 100, height: 100 };
-    expect(stickDeflection({ ...rect, width: 0 }, { x: 10, y: 10 })).toEqual({
+    expect(stickDeflection(rect, { x: Number.NaN, y: 0 })).toEqual({
       x: 0,
-      y: 0,
+      y: 1,
     });
-    expect(stickDeflection(rect, { x: Number.NaN, y: 10 })).toEqual({
+    expect(stickDeflection({ ...rect, width: 0 }, { x: 100, y: 0 })).toEqual({
       x: 0,
-      y: 0,
+      y: 1,
     });
+    expect(
+      stickDeflection({ left: 0, top: 0, width: 0, height: 0 }, { x: 5, y: 5 }),
+    ).toEqual({ x: 0, y: 0 });
   });
 
   it("resolves a pad's eight ways from its two axes", () => {

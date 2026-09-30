@@ -1577,7 +1577,7 @@ describe("touch controls over the real subsystems", () => {
     engine.destroy();
   });
 
-  it("is removed by destroy", () => {
+  it("is removed by destroy, which reports no controls from then on", () => {
     const engine = real({
       layout: "dual-vertical",
       surface: fakeSurface(document),
@@ -1586,10 +1586,25 @@ describe("touch controls over the real subsystems", () => {
     engine.destroy();
 
     expect(overlay()).toBeNull();
-    expect(engine.touchControls()).toEqual({
-      layout: "dual-vertical",
-      visible: false,
+    expect(engine.touchControls()).toBeNull();
+  });
+
+  it("detaches the listeners it attached when the overlay cannot be built", () => {
+    vi.spyOn(document.body, "append").mockImplementationOnce(() => {
+      throw new Error("no room for an overlay");
     });
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+
+    expect(() =>
+      real({ layout: "dpad-4", surface: fakeSurface(document) }),
+    ).toThrow(/no room/);
+
+    const types = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0])).sort();
+    expect(types(added).length).toBeGreaterThan(0);
+    expect(types(removed)).toEqual(types(added));
+    vi.restoreAllMocks();
   });
 });
 

@@ -34,18 +34,31 @@
  * does. Only pointer and key events are read, never `mousedown` or `touchstart`:
  * a browser does not synthesize a `pointerdown` with `pointerType: "mouse"` from
  * a touch, so the compatibility mouse events cannot hide the controls by mistake.
+ * The rule holds wherever the pointer lands: a mouse or a pen reaching a control
+ * hides the controls rather than operating them, and a control acts on a touch
+ * alone.
  *
  * **Isolation.** A contact on a control belongs to the control. Its `pointerdown`,
  * `pointermove`, `pointerup`, and `pointercancel` stop propagating at the control,
  * so they never reach the pointer module listening on the document, and the
  * control captures the pointer so a thumb that slides off keeps driving until it
  * lifts. The touch that first reveals the controls lands on the game, not on a
- * control, and reaches the pointer as any other.
+ * control, and reaches the pointer as any other. A control whose overlay is
+ * hidden is not there: it ignores its pointer events, which go on to the target
+ * as a touch on the game does, so a driver dispatching at a hidden control
+ * drives nothing.
+ *
+ * **Driving is never cached.** A control drives its actions afresh on every
+ * contact it reads and on every release, and hiding the controls releases every
+ * control. The registry accepts a repeat harmlessly, and a memory of the last
+ * value sent would go stale the moment a key or a caller moved the action in
+ * between, leaving the control unable to drive it back.
  *
  * **No document, no controls.** An engine built over a surface whose event target
  * has no document behind it — the headless case — has nowhere to put an overlay.
  * The class is then inert: it draws nothing, listens to nothing, and reports
- * `null`, and the engine keeps working exactly as it did.
+ * `null`, and the engine keeps working exactly as it did. Once detached, the
+ * overlay is gone and the class reports `null` likewise.
  *
  * This module depends on the surface, the one method of the registry it drives,
  * the layout, and an emit function, and on nothing else in the engine. It is the
@@ -171,8 +184,6 @@ export class TouchControls {
    * the other is held leaves the action held.
    */
   readonly #contributions = new Map<string, Map<Control, number>>();
-  /** The value each action was last driven to, so an unchanged value is not re-sent. */
-  readonly #driven = new Map<string, number>();
   #visible = false;
   #detached = false;
 
@@ -205,6 +216,10 @@ export class TouchControls {
    * Built at construction rather than at first touch so the elements a driver
    * finds by their markers exist from the moment the engine does, hidden or not,
    * and so the first touch has nothing to build and shows the controls at once.
+   *
+   * @throws for a layout with no drawing (see {@link layoutControls}), before
+   * anything has been added to the document or listened to, so a refused build
+   * leaves the page as it found it.
    */
   constructor(options: TouchControlsOptions) {
     this.#layout = options.layout;
@@ -220,10 +235,11 @@ export class TouchControls {
       return;
     }
 
+    const { menu, controls } = layoutControls(this.#layout);
+
     this.#style = document.createElement("style");
     this.#style.setAttribute(STYLE_ATTRIBUTE, "");
     this.#style.textContent = STYLESHEET;
-    (document.head ?? host).append(this.#style);
 
     this.#container = document.createElement("div");
     this.#container.setAttribute(CONTAINER_ATTRIBUTE, this.#layout.name);
@@ -235,7 +251,6 @@ export class TouchControls {
     frame.className = "frame";
     this.#container.append(frame);
 
-    const { menu, controls } = layoutControls(this.#layout);
     for (const spec of controls) frame.append(this.#build(document, spec));
     const strip = document.createElement("div");
     strip.className = `menu menu-${menu}`;
@@ -250,7 +265,11 @@ export class TouchControls {
       );
     }
     frame.append(strip);
+
+    // The document is touched last, once every element exists: nothing above
+    // can throw with half an overlay in the page.
     host.append(this.#container);
+    (document.head ?? host).append(this.#style);
 
     this.#target.addEventListener("pointerdown", this.#onPointerDown);
     this.#target.addEventListener("pointermove", this.#onPointerMove);
@@ -259,10 +278,10 @@ export class TouchControls {
 
   /**
    * The layout and whether its controls are showing, as a fresh copy, or `null`
-   * when there was no document to draw them in.
+   * when there was no document to draw them in or the overlay has been detached.
    */
   state(): TouchControlsState | null {
-    if (this.#container === null) return null;
+    if (this.#container === null || this.#detached) return null;
     return { layout: this.#layout.name, visible: this.#visible };
   }
 
@@ -319,10 +338,13 @@ export class TouchControls {
    * Builds one control's element, marks it, and attaches the pointer listeners
    * that isolate it from the game and drive its actions.
    *
-   * The four listeners stop propagation unconditionally, whether or not the
-   * control ends up acting on the event: a contact on a control is the control's
-   * whatever it does with it, and a `pointermove` from a mouse hovering a visible
-   * control is likewise not a report the game's pointer should receive.
+   * Each of the four listeners reads the same way. A hidden control ignores the
+   * event outright, and it goes on to the target as a touch on the game does. A
+   * visible control stops the event whatever it does with it: a contact on a
+   * control is the control's, and a `pointermove` from a mouse hovering a
+   * visible control is likewise not a report the game's pointer should receive.
+   * A mouse or a pen then hides the controls, by the appearance rule, and only a
+   * touch operates the control.
    */
   #build(document: Document, spec: ControlSpec): HTMLElement {
     const element = document.createElement("div");
@@ -344,8 +366,20 @@ export class TouchControls {
       listeners: [],
     };
 
-    const onDown = (event: Event): void => {
+    /**
+     * The guard every listener opens with: `false` for an event the control
+     * ignores or has already answered by hiding, `true` for a touch to act on.
+     */
+    const accepts = (event: Event): boolean => {
+      if (!this.#visible) return false;
       event.stopPropagation();
+      const device = pointerDevice(event);
+      if (device === "touch") return true;
+      this.#hide(device);
+      return false;
+    };
+    const onDown = (event: Event): void => {
+      if (!accepts(event)) return;
       // No focus change, no text selection, and no compatibility mouse events
       // synthesized for this contact: the control has already taken it.
       event.preventDefault();
@@ -357,14 +391,14 @@ export class TouchControls {
       this.#engage(control, event);
     };
     const onMove = (event: Event): void => {
-      event.stopPropagation();
+      if (!accepts(event)) return;
       if (control.pointer === null || control.pointer !== pointerId(event)) {
         return;
       }
       this.#engage(control, event);
     };
     const onEnd = (event: Event): void => {
-      event.stopPropagation();
+      if (!accepts(event)) return;
       if (control.pointer === null || control.pointer !== pointerId(event)) {
         return;
       }
@@ -411,9 +445,10 @@ export class TouchControls {
    * Records what `control` now gives each of its actions and drives each to the
    * largest value any control gives it.
    *
-   * An action's value is sent only when it changed. The registry would accept a
-   * repeat harmlessly, but a `pointermove` arrives many times a frame and the
-   * one call that matters is the one that moved the number.
+   * Every value is sent, changed or not. The registry accepts a repeat
+   * harmlessly, and remembering the last value sent in order to skip a repeat
+   * would let a key or a caller that moved the action in between leave the
+   * control unable to drive it back.
    */
   #drive(control: Control, contribution: Contribution): void {
     for (const action of control.actions) {
@@ -429,8 +464,6 @@ export class TouchControls {
       let resolved = 0;
       for (const given of byControl.values())
         resolved = Math.max(resolved, given);
-      if (this.#driven.get(action) === resolved) continue;
-      this.#driven.set(action, resolved);
       this.#actions.setAction(action, resolved);
     }
   }

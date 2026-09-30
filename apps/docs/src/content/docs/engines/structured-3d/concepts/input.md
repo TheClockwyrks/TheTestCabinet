@@ -171,10 +171,11 @@ The controls are hidden when the engine is created and appear on the first
 touch the surface receives. A keyboard, mouse, or pen input hides them again,
 and the next touch brings them back, so a device that has both a touchscreen
 and a keyboard shows the controls exactly while the player is using the screen.
-The engine watches the same event target its key and pointer listeners use,
-which is what lets a caller show or hide the controls by dispatching the events
-a player would produce. The touch that reveals the controls is a touch on the
-game, and reaches the game's pointer as any other.
+A mouse or pen reaching a control hides the controls rather than operating
+them. The engine watches the same event target its key and pointer listeners
+use, which is what lets a caller show or hide the controls by dispatching the
+events a player would produce. The touch that reveals the controls is a touch
+on the game, and reaches the game's pointer as any other.
 
 Each layout draws its controls in fixed places:
 
@@ -184,31 +185,33 @@ Each layout draws its controls in fixed places:
 - `dpad-4-two-buttons`: the pad at the bottom left, round `a` and `b` buttons
   at the bottom right with `a` nearer the thumb and a smaller `confirm` beside
   them, and the menu buttons at the top right.
-- `single-stick`: an analog stick at the bottom left driving the `move-*`
-  actions, a large round `confirm` button at the bottom right, and the menu
-  buttons at the top right.
-- `dual-stick`: the move stick at the bottom left, a second analog stick at the
-  bottom right driving the `look-*` actions, and the menu buttons at the top
+- `single-stick`: an analog stick at the bottom left driving the four `move-`
+  directions, a large round `confirm` button at the bottom right so a
+  stick-only game has a confirm under the thumb, and the menu buttons at the
+  top right.
+- `dual-stick`: the move stick at the bottom left, a second stick at the bottom
+  right driving the four `look-` directions, and the menu buttons at the top
   right.
 - `dual-stick-two-buttons`: the two sticks, round `a` and `b` buttons above the
-  look stick with `a` nearer the thumb, and the menu buttons at the top right.
+  right stick with `a` nearer the thumb, and the menu buttons at the top right.
 
 A control drives its actions through the same resolution a key goes through, so
 the game reads one number whichever source moved it. A stick reports its
-deflection as two analog pairs: the horizontal component drives the left and
-right actions and the vertical component the up and down actions, each by the
-magnitude the thumb has pushed it to, so an analog action receives the partial
-magnitude and a digital one quantizes it to full. A pad resolves eight ways
-from its two axes and drives two actions at once on a diagonal. A button is a
-momentary hold that drives its action to full while it is down and back to rest
-when it lifts, which is what a key does, so a press edge arms once per contact.
-Releasing any control returns its actions to rest.
+deflection as two analog pairs, the vertical component to its up and down
+actions and the horizontal component to its left and right actions, so an
+analog action receives the partial magnitude the thumb has pushed it to and a
+digital one quantizes it to full. A pad resolves eight ways and drives two
+actions on a diagonal. A button is a momentary hold that drives its action to
+full while it is down and back to rest when it lifts, which is what a key does,
+so a press edge arms once per contact. Releasing any control returns its
+actions to rest.
 
 A contact on a control belongs to the control. The engine captures the pointer
 so a thumb that slides off keeps driving until it lifts, and stops the event
 before it reaches the game's pointer, so the contact appears in no snapshot,
 sample, or contact list. A touch on the game outside a control reaches the
-pointer as before.
+pointer as before, and so does a touch at a control while the controls are
+hidden: a hidden control ignores its pointer events and drives nothing.
 
 The overlay is marked for a driver or a check to find. The container carries
 `data-touch-controls` naming the layout, and each control carries
@@ -219,7 +222,7 @@ An engine created without a layout has no vocabulary to draw and draws no
 controls, and an engine over a surface with no document behind it has nowhere
 to place the overlay and draws none either; in both cases the engine reports
 that there are no controls. Destroying the engine removes the overlay along
-with every other listener.
+with every other listener, and the engine reports no controls from then on.
 
 ## The menu vocabulary
 

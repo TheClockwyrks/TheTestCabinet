@@ -322,9 +322,9 @@ interface Engine<D = unknown> {
 }
 ```
 
-| Member            | Result                       | Semantics                                                                                                                                                                                                                          |
-| ----------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `touchControls()` | `TouchControlsState \| null` | The selected layout's name and whether its controls are showing, as a fresh copy the caller owns. `null` when the engine was built without a layout, or over a surface whose event target has no document to place the overlay in. |
+| Member            | Result                       | Semantics                                                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `touchControls()` | `TouchControlsState \| null` | The selected layout's name and whether its controls are showing, as a fresh copy the caller owns. `null` when the engine was built without a layout, over a surface whose event target has no document to place the overlay in, or after `destroy` removed the overlay. |
 
 The engine draws the selected layout's controls as one container element
 appended to the body of the canvas's owning document: fixed to the viewport,
@@ -341,8 +341,9 @@ own picture.
 The controls are hidden at construction. A `pointerdown` whose `pointerType` is
 `"touch"`, delivered to the event target the key listeners use, shows them. A
 `keydown`, or a `pointerdown` or `pointermove` whose `pointerType` is `"mouse"`
-or `"pen"`, hides them, and the next touch shows them again. Each transition
-emits `touch-controls:shown` or `touch-controls:hidden` from
+or `"pen"`, hides them, and the next touch shows them again. A mouse or pen
+reaching a control hides the controls rather than operating them. Each
+transition emits `touch-controls:shown` or `touch-controls:hidden` from
 [`EngineEvents`](/engines/structured-2d/apis/engine/), and a hide names the
 input that caused it as its `reason`.
 
@@ -354,21 +355,28 @@ mouse events a browser synthesizes from a touch leave the controls showing.
 ### Driving
 
 Each control drives its actions through the same resolution a key event goes
-through. A slider reports a deflection in `[-1, 1]` along its axis, mapped to
-its action pair so the positive direction drives one action and the negative
-direction the other by the magnitude, and a pad resolves eight ways from its
-two axes, driving two actions on a diagonal. A button drives its action to `1`
+through, and acts on a pointer whose `pointerType` is `"touch"` alone. A slider
+reports a deflection in `[-1, 1]` along its axis, mapped to its action pair so
+the positive direction drives one action and the negative direction the other
+by the magnitude, and a pad resolves eight ways from its two axes, driving two
+actions on a diagonal. A slider and a pad read as rest inside an axial dead
+zone of 15 % of the half-extent about the centre, and the travel past it is
+rescaled so full deflection still reads `1`. A button drives its action to `1`
 on `pointerdown` and to `0` on `pointerup` or `pointercancel`. An analog action
 reads the magnitude given and a digital one quantizes it, exactly as `value`
-describes, and each crossing from rest arms the edge `pressed` reports for
-every player controller. A release of any control drives every action it holds
-back to `0`.
+describes, and each crossing from rest arms the edge `pressed` reports for every player controller.
+A release of any control drives every action it holds back to `0`, and so does
+hiding the controls. A control drives its actions afresh on every contact it
+reads, so an action a key or a caller moved in between follows the control
+again on its next contact.
 
 A control's `pointerdown`, `pointermove`, `pointerup`, and `pointercancel` stop
 propagating at the control, and the control captures the pointer as it comes
 into contact. A contact on a control therefore reaches neither the pointer
 snapshot, the samples, nor the contacts, and a thumb that slides off the
-control keeps driving until it lifts.
+control keeps driving until it lifts. A control whose overlay is hidden ignores
+pointer events, so an event dispatched at a hidden control drives nothing and
+reaches the event target as a touch on the game does.
 
 ### Markers
 
@@ -382,7 +390,8 @@ A driver or a check finds the controls by these attributes and operates one by
 dispatching pointer events at its element, which drives the build exactly as a
 player's thumb does.
 
-`destroy` removes the overlay and every listener behind it.
+`destroy` removes the overlay and every listener behind it, and
+`touchControls()` reports `null` from then on.
 
 ## Errors
 

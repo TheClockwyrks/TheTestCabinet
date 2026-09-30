@@ -242,7 +242,7 @@ interface Engine<D = unknown> {
 | `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                           |
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                       |
 | `diagnostics`    | Every registered diagnostic source and what it reports now, the instance registry's first and then the world's. See `diagnostics.md`.   |
-| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none. See `input.md`.                      |
+| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none or after `destroy`. See `input.md`.   |
 | `recording`      | Whether the recorder is capturing frames. See `recording.md`.                                                                           |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                     |
 | `stopRecording`  | Disarm, flush the encoder, and resolve with everything captured since `startRecording`.                                                 |

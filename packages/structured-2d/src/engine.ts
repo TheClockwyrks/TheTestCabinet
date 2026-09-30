@@ -809,15 +809,24 @@ export function assembleEngine<D = unknown>(
   // surface's event target and are inert over a target with none, so the
   // headless case costs nothing and reports `null`.
   const layout = subsystems.input.layout();
-  const touchControls =
-    layout === null
-      ? null
-      : new TouchControls({
-          surface,
-          actions: subsystems.input,
-          layout,
-          emit: (event, payload) => bus.emit(event, payload),
-        });
+  let touchControls: TouchControls | null = null;
+  if (layout !== null) {
+    try {
+      touchControls = new TouchControls({
+        surface,
+        actions: subsystems.input,
+        layout,
+        emit: (event, payload) => bus.emit(event, payload),
+      });
+    } catch (error) {
+      // The input system's key and pointer listeners are on the target by now,
+      // and a refused drawing means no engine is returned to detach them with.
+      // Undo before rethrowing, so a rejected build leaves the page as it
+      // found it.
+      subsystems.input.detach();
+      throw error;
+    }
+  }
 
   /**
    * The world currently open, for a frame that is entitled to one.

@@ -146,27 +146,27 @@ interface RunOptions {
 }
 ```
 
-| Member           | Effect                                                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `events`         | Subscribe to engine [events](/engines/simple-3d/apis/game/). Available from construction.                                              |
-| `state`          | The current state, as a read-only view: the value the most recent transition left.                                                     |
-| `debug`          | The [debug surface](/engines/simple-3d/apis/game/) the game returned beside its state.                                                 |
-| `scene`          | The [scene](/engines/simple-3d/apis/rendering/) the engine renders, live. Available from construction.                                 |
-| `camera`         | The camera the engine renders through, live. Available from construction.                                                              |
-| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                      |
-| `apply`          | Replace the state with what a [`Transition<S>`](/engines/simple-3d/apis/game/) returns from the current one, and return the new state. |
-| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                         |
-| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                        |
-| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                    |
-| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                          |
-| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                      |
-| `view`           | The [`View`](/engines/simple-3d/apis/view/): the camera as it stood at the most recent render, with picking and projection through it. |
-| `diagnostics`    | Every registered [diagnostic](/engines/simple-3d/apis/diagnostics/) source and what it reports now, in registration order.             |
-| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/simple-3d/apis/input/) are showing, or `null` when there are none.   |
-| `recording`      | Whether the [recorder](/engines/simple-3d/apis/recording/) is capturing frames.                                                        |
-| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                    |
-| `stopRecording`  | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`.                                   |
-| `destroy`        | Halt the loop, remove the on-screen controls, drop every listener, and dispose the renderer.                                           |
+| Member           | Effect                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine [events](/engines/simple-3d/apis/game/). Available from construction.                                                               |
+| `state`          | The current state, as a read-only view: the value the most recent transition left.                                                                      |
+| `debug`          | The [debug surface](/engines/simple-3d/apis/game/) the game returned beside its state.                                                                  |
+| `scene`          | The [scene](/engines/simple-3d/apis/rendering/) the engine renders, live. Available from construction.                                                  |
+| `camera`         | The camera the engine renders through, live. Available from construction.                                                                               |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                                       |
+| `apply`          | Replace the state with what a [`Transition<S>`](/engines/simple-3d/apis/game/) returns from the current one, and return the new state.                  |
+| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                                          |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                                         |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                                     |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                                           |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                                       |
+| `view`           | The [`View`](/engines/simple-3d/apis/view/): the camera as it stood at the most recent render, with picking and projection through it.                  |
+| `diagnostics`    | Every registered [diagnostic](/engines/simple-3d/apis/diagnostics/) source and what it reports now, in registration order.                              |
+| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/simple-3d/apis/input/) are showing, or `null` when there are none or after `destroy`. |
+| `recording`      | Whether the [recorder](/engines/simple-3d/apis/recording/) is capturing frames.                                                                         |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                                     |
+| `stopRecording`  | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`.                                                    |
+| `destroy`        | Halt the loop, remove the on-screen controls, drop every listener, and dispose the renderer.                                                            |
 
 ### `initialize`
 

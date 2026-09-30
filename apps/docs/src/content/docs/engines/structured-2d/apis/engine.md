@@ -147,7 +147,7 @@ interface RunOptions {
 | `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                                               |
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                                           |
 | `diagnostics`    | Every registered [diagnostic](/engines/structured-2d/apis/diagnostics/) source and what it reports now, the instance registry's first and then the world's. |
-| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/structured-2d/apis/input/) are showing, or `null` when there are none.                    |
+| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/structured-2d/apis/input/) are showing, or `null` when there are none or after `destroy`. |
 | `recording`      | Whether draw-command [recording](/engines/structured-2d/apis/recording/) is currently capturing.                                                            |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                                         |
 | `stopRecording`  | Disarm the recorder and return everything captured since `startRecording`.                                                                                  |

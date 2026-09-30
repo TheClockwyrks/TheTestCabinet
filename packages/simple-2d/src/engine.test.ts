@@ -1539,12 +1539,37 @@ describe("touch controls", () => {
     expect(pressed).toBe(false);
   });
 
-  it("is removed by destroy", () => {
+  it("is removed by destroy, which reports no controls from then on", () => {
     const { engine } = build({ layout: "dual-vertical" });
 
     engine.destroy();
 
     expect(document.querySelector("[data-touch-controls]")).toBeNull();
+    expect(engine.touchControls()).toBeNull();
+  });
+
+  it("detaches the listeners it attached when the overlay cannot be built", () => {
+    const { canvas } = mount();
+    vi.spyOn(document.body, "append").mockImplementationOnce(() => {
+      throw new Error("no room for an overlay");
+    });
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+
+    expect(() =>
+      createEngine<TestState>({
+        canvas,
+        width: 400,
+        height: 200,
+        game: testGame(),
+        layout: "dpad-4",
+      }),
+    ).toThrow(/no room/);
+
+    const types = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0])).sort();
+    expect(types(added).length).toBeGreaterThan(0);
+    expect(types(removed)).toEqual(types(added));
   });
 });
 

@@ -1361,8 +1361,43 @@ describe("touch controls", () => {
     engine.destroy();
 
     expect(document.querySelector("[data-touch-controls]")).toBeNull();
-    expect(fixture.driven).toEqual([["pause", 0]]);
+    expect(engine.touchControls()).toBeNull();
+    // Every control is released on the way out, the held one included, and a
+    // release drives rest whether or not the action was held.
+    expect(fixture.driven).toContainEqual(["pause", 0]);
+    expect(fixture.driven.every(([, value]) => value === 0)).toBe(true);
     expect(fixture.log).toEqual(["audio.silence", "input.detach"]);
+  });
+
+  it("detaches the input port and disposes the renderer when the overlay cannot be built", () => {
+    const fixture = fakes();
+    const stage = createStage({ cssWidth: 320, cssHeight: 180, dpr: 2 });
+    const live = watchContextLoss(stage.stage.canvas);
+    const append = document.body.append.bind(document.body);
+    document.body.append = (): void => {
+      document.body.append = append;
+      throw new Error("no room for an overlay");
+    };
+
+    expect(() =>
+      assembleEngine(
+        {
+          canvas: stage.stage.canvas,
+          screen: stage.screen.canvas,
+          width: 640,
+          height: 360,
+          game: definition(),
+          clock: new ConstantClock(10),
+          surface: documented(),
+          layout: "dpad-4",
+        },
+        () => fixture.subsystems,
+        {},
+      ),
+    ).toThrow(/no room/);
+
+    expect(fixture.log).toContain("input.detach");
+    expect(live()).toBe(0);
   });
 
   it("drives a registered action a player controller reads on its next tick", async () => {

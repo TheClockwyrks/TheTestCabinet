@@ -350,8 +350,9 @@ The controls are hidden at construction and appear on the first `pointerdown`
 whose `pointerType` is `"touch"`. A `keydown`, or a `pointerdown` or
 `pointermove` whose `pointerType` is `"mouse"` or `"pen"`, hides them, and the
 next touch shows them again, so a device with both a touchscreen and a keyboard
-shows them exactly while the screen is in use. The touch that shows them is a
-touch on the game and reaches the pointer as any other.
+shows them exactly while the screen is in use. A mouse or pen reaching a
+control hides the controls rather than operating them. The touch that shows
+them is a touch on the game and reaches the pointer as any other.
 
 A control drives its actions through the same resolution a key goes through,
 so `value` and `pressed` read one number whichever source moved it. A stick
@@ -359,9 +360,13 @@ reports its deflection as two analog pairs, the vertical component to its up
 and down actions and the horizontal component to its left and right actions:
 an analog action receives the partial magnitude the thumb has pushed it to, and
 a digital one quantizes it to `1`. A pad resolves eight ways and drives two
-actions on a diagonal. A button drives its action to `1` while it is held and
-back to `0` when it lifts, exactly as a key does, so each press arms the edge
-`pressed` reports once. Releasing any control returns its actions to `0`.
+actions on a diagonal. A stick reads as rest inside a radial dead zone of 15 %
+of its radius about the centre, and a pad inside an axial one of 15 % of its
+half-extent; past either, the travel is rescaled so full deflection still reads
+`1`. A button drives its action to `1` while it is held and back to `0` when
+it lifts, exactly as a key does, so each press arms the edge `pressed` reports
+once. Releasing any control returns its actions to `0`, and so does hiding the
+controls.
 
 A contact on a control belongs to the control: the engine captures the pointer
 so a thumb that slides off keeps driving until it lifts, and the contact
@@ -369,7 +374,8 @@ reaches neither the pointer snapshot, the samples, nor the contacts. The
 container carries `data-touch-controls` naming the layout and each control
 carries `data-action` naming the action it drives, with a stick or a pad
 listing every action it drives in `data-actions`, so a test finds a control
-and drives it by dispatching pointer events at its element.
+and drives it by dispatching touch pointer events at its element while the
+controls are showing; a hidden control ignores its pointer events.
 
 ```ts
 interface TouchControlsState {
@@ -382,15 +388,17 @@ engine.touchControls(): TouchControlsState | null;
 
 `engine.touchControls()` reports the selected layout and whether its controls
 are showing, as a fresh copy, or `null` when the engine was built without a
-layout or over a surface with no document to place the overlay in. Each
-transition emits an event, subscribed to with `engine.events.on`:
+layout, over a surface with no document to place the overlay in, or after
+`destroy`. Each transition emits an event, subscribed to with
+`engine.events.on`:
 
 ```ts
 "touch-controls:shown": { layout: string };
 "touch-controls:hidden": { layout: string; reason: "keyboard" | "mouse" | "pen" };
 ```
 
-`destroy` removes the overlay along with every other listener.
+`destroy` removes the overlay along with every other listener, and
+`engine.touchControls()` reports `null` from then on.
 
 ## `RegisteredAction`
 

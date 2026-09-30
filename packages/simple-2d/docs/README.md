@@ -197,24 +197,24 @@ interface Engine<S, D = unknown> {
 }
 ```
 
-| Member           | Effect                                                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `events`         | Subscribe to engine events. Available from construction.                                                                           |
-| `state`          | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
-| `debug`          | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`.              |
-| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                  |
-| `apply`          | Replace the state with the one `transition` returns from the current one, and return the new state. See below.                     |
-| `run`            | Drive frames off the host's frame callback until the signal aborts.                                                                |
-| `advance`        | Tick the clock `frames` times, running a frame for each tick it accepts.                                                           |
-| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                |
-| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                      |
-| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                  |
-| `diagnostics`    | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`.                           |
-| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none. See `input.md`.                 |
-| `recording`      | Whether draw-command recording is currently capturing. See `recording.md`.                                                         |
-| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                |
-| `stopRecording`  | Disarm and return everything captured since `startRecording`.                                                                      |
-| `destroy`        | Halt the loop, remove the on-screen controls, and drop every listener.                                                             |
+| Member           | Effect                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine events. Available from construction.                                                                              |
+| `state`          | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws.    |
+| `debug`          | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`.                 |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                     |
+| `apply`          | Replace the state with the one `transition` returns from the current one, and return the new state. See below.                        |
+| `run`            | Drive frames off the host's frame callback until the signal aborts.                                                                   |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick it accepts.                                                              |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                   |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                         |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                     |
+| `diagnostics`    | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`.                              |
+| `touchControls`  | The selected layout and whether its on-screen controls are showing, or `null` when there are none or after `destroy`. See `input.md`. |
+| `recording`      | Whether draw-command recording is currently capturing. See `recording.md`.                                                            |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                   |
+| `stopRecording`  | Disarm and return everything captured since `startRecording`.                                                                         |
+| `destroy`        | Halt the loop, remove the on-screen controls, and drop every listener.                                                                |
 
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.

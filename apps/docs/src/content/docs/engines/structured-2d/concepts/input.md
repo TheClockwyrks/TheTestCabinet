@@ -154,10 +154,11 @@ The controls are hidden when the engine is created and appear on the first
 touch the surface receives. A keyboard, mouse, or pen input hides them again,
 and the next touch brings them back, so a device that has both a touchscreen
 and a keyboard shows the controls exactly while the player is using the screen.
-The engine watches the same event target its key and pointer listeners use,
-which is what lets a caller show or hide the controls by dispatching the events
-a player would produce. The touch that reveals the controls is a touch on the
-game, and reaches the game's pointer as any other.
+A mouse or pen reaching a control hides the controls rather than operating
+them. The engine watches the same event target its key and pointer listeners
+use, which is what lets a caller show or hide the controls by dispatching the
+events a player would produce. The touch that reveals the controls is a touch
+on the game, and reaches the game's pointer as any other.
 
 Each layout draws its controls in fixed places:
 
@@ -187,7 +188,9 @@ A contact on a control belongs to the control. The engine captures the pointer
 so a thumb that slides off keeps driving until it lifts, and stops the event
 before it reaches the game's pointer, so the contact appears in no snapshot,
 sample, or contact list a controller reads. A touch on the game outside a
-control reaches the pointer as before.
+control reaches the pointer as before, and so does a touch at a control while
+the controls are hidden: a hidden control ignores its pointer events and drives
+nothing.
 
 The overlay is marked for a driver or a check to find. The container carries
 `data-touch-controls` naming the layout, and each control carries
@@ -198,7 +201,7 @@ An engine created without a layout has no vocabulary to draw and draws no
 controls, and an engine over a surface with no document behind it has nowhere
 to place the overlay and draws none either; in both cases the engine reports
 that there are no controls. Destroying the engine removes the overlay along
-with every other listener.
+with every other listener, and the engine reports no controls from then on.
 
 ## The menu vocabulary
 

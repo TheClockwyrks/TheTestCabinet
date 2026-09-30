@@ -900,15 +900,25 @@ export function assembleEngine<D = unknown>(
   // headless case costs nothing and reports `null`.
   const selectedLayout =
     options.layout === undefined ? undefined : TOUCH_LAYOUTS[options.layout];
-  const touchControls =
-    selectedLayout === undefined
-      ? null
-      : new TouchControls({
-          surface,
-          actions: subsystems.input,
-          layout: selectedLayout,
-          emit: (event, payload) => bus.emit(event, payload),
-        });
+  let touchControls: TouchControls | null = null;
+  if (selectedLayout !== undefined) {
+    try {
+      touchControls = new TouchControls({
+        surface,
+        actions: subsystems.input,
+        layout: selectedLayout,
+        emit: (event, payload) => bus.emit(event, payload),
+      });
+    } catch (error) {
+      // The input system's key and pointer listeners are on the target by now
+      // and the pipeline holds a renderer, and a refused drawing means no
+      // engine is returned to undo either with. Undo before rethrowing, as
+      // `refuse` does above.
+      subsystems.input.detach();
+      pipeline.dispose();
+      throw error;
+    }
+  }
 
   /**
    * The world currently open, for a frame that is entitled to one.

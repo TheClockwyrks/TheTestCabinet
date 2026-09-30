@@ -2400,7 +2400,7 @@ describe("touch controls", () => {
     expect(forward).toBeLessThan(1);
   });
 
-  it("is removed by destroy", () => {
+  it("is removed by destroy, which reports no controls from then on", () => {
     const { engine } = build({
       layout: "dual-stick",
       surface: documentSurface(),
@@ -2409,6 +2409,24 @@ describe("touch controls", () => {
     engine.destroy();
 
     expect(document.querySelector("[data-touch-controls]")).toBeNull();
+    expect(engine.touchControls()).toBeNull();
+  });
+
+  it("detaches the listeners it attached when the overlay cannot be built", () => {
+    vi.spyOn(document.body, "append").mockImplementationOnce(() => {
+      throw new Error("no room for an overlay");
+    });
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+
+    expect(() =>
+      build({ layout: "dpad-4", surface: documentSurface() }),
+    ).toThrow(/no room/);
+
+    const types = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0])).sort();
+    expect(types(added).length).toBeGreaterThan(0);
+    expect(types(removed)).toEqual(types(added));
   });
 });
 

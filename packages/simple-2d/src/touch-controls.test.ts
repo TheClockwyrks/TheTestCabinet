@@ -73,6 +73,18 @@ function touch(target: EventTarget, fields: PointerFields = {}): Event {
   return pointer(target, "pointerdown", { pointerType: "touch", ...fields });
 }
 
+/**
+ * A contact on a control: a touch unless the fields say otherwise, since a
+ * control acts on a touch alone and every other device hides the controls.
+ */
+function contact(
+  target: EventTarget,
+  type: PointerType,
+  fields: PointerFields = {},
+): Event {
+  return pointer(target, type, { pointerType: "touch", ...fields });
+}
+
 function keyDown(target: EventTarget, code = "KeyA"): void {
   target.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true }));
 }
@@ -253,6 +265,27 @@ describe("the overlay", () => {
     expect(multi("p2-up").getAttribute(ACTION_ATTRIBUTE)).toBe("p2-up");
   });
 
+  it("leaves the document untouched when the layout has no drawing", () => {
+    const surface = surfaceOver(document);
+    const input = new InputRegistry(surface);
+    const added = vi.spyOn(document, "addEventListener");
+
+    expect(
+      () =>
+        new TouchControls({
+          surface,
+          actions: input,
+          layout: { name: "not-drawn", actions: [] },
+          emit: () => undefined,
+        }),
+    ).toThrow(/not-drawn/);
+
+    expect(document.querySelector(`[${CONTAINER_ATTRIBUTE}]`)).toBeNull();
+    expect(document.querySelector("style")).toBeNull();
+    expect(added).not.toHaveBeenCalled();
+    input.detach();
+  });
+
   it("refuses a layout the catalogue holds but the drawings do not, naming it", () => {
     expect(() => layoutControls({ name: "not-drawn", actions: [] })).toThrow(
       /not-drawn/,
@@ -363,6 +396,30 @@ describe("appearance", () => {
     expect(hidden(container)).toBe(true);
   });
 
+  it.each([
+    ["a mouse pointerdown", "pointerdown", "mouse"],
+    ["a mouse pointermove", "pointermove", "mouse"],
+    ["a pen pointerdown", "pointerdown", "pen"],
+  ] as const)(
+    "hides on %s at a control, which drives nothing",
+    (_, type, device) => {
+      const { control, container, input, emitted } = rig("single-vertical");
+      touch(document);
+      emitted.length = 0;
+
+      pointer(control("confirm"), type, { pointerType: device });
+
+      expect(hidden(container)).toBe(true);
+      expect(input.value("confirm")).toBe(0);
+      expect(emitted).toEqual([
+        {
+          event: "touch-controls:hidden",
+          payload: { layout: "single-vertical", reason: device },
+        },
+      ]);
+    },
+  );
+
   it("leaves the touch that reveals it to reach the game's pointer", () => {
     const { container } = rig("single-vertical");
     const viewport: Viewport = {
@@ -387,7 +444,7 @@ describe("a button", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
     expect(input.value("confirm")).toBe(1);
     expect(input.pressed("confirm")).toBe(true);
@@ -397,9 +454,9 @@ describe("a button", () => {
   it("drives its action back to 0 on pointerup", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
-    pointer(control("confirm"), "pointerup", { pointerType: "touch" });
+    contact(control("confirm"), "pointerup");
 
     expect(input.value("confirm")).toBe(0);
   });
@@ -407,9 +464,9 @@ describe("a button", () => {
   it("drives its action back to 0 on pointercancel", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
-    pointer(control("confirm"), "pointercancel", { pointerType: "touch" });
+    contact(control("confirm"), "pointercancel");
 
     expect(input.value("confirm")).toBe(0);
   });
@@ -417,11 +474,11 @@ describe("a button", () => {
   it("arms the edge again on the next press, as a key would", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
-    pointer(control("confirm"), "pointerup", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
+    contact(control("confirm"), "pointerup");
     input.endFrame();
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "touch" });
+    contact(control("confirm"), "pointerdown");
 
     expect(input.pressed("confirm")).toBe(true);
   });
@@ -429,13 +486,13 @@ describe("a button", () => {
   it("is held by the first pointer alone; a second finger changes nothing", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
-    pointer(control("confirm"), "pointerdown", { pointerId: 2 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointerdown", { pointerId: 2 });
 
-    pointer(control("confirm"), "pointerup", { pointerId: 2 });
+    contact(control("confirm"), "pointerup", { pointerId: 2 });
     expect(input.value("confirm")).toBe(1);
 
-    pointer(control("confirm"), "pointerup", { pointerId: 1 });
+    contact(control("confirm"), "pointerup", { pointerId: 1 });
     expect(input.value("confirm")).toBe(0);
   });
 
@@ -450,12 +507,12 @@ describe("a button", () => {
       throw new Error("dpad-4 draws confirm twice");
     }
 
-    pointer(large, "pointerdown", { pointerId: 1 });
-    pointer(menu, "pointerdown", { pointerId: 2 });
-    pointer(large, "pointerup", { pointerId: 1 });
+    contact(large, "pointerdown", { pointerId: 1 });
+    contact(menu, "pointerdown", { pointerId: 2 });
+    contact(large, "pointerup", { pointerId: 1 });
     expect(input.value("confirm")).toBe(1);
 
-    pointer(menu, "pointerup", { pointerId: 2 });
+    contact(menu, "pointerup", { pointerId: 2 });
     expect(input.value("confirm")).toBe(0);
   });
 });
@@ -470,13 +527,29 @@ describe("a slider", () => {
     return rect.top + rect.height / 2 - raw * (rect.height / 2);
   };
 
+  it("drives a value the registry was moved away from in between", () => {
+    const { multi, input } = rig("single-vertical", ["up", "down"]);
+    touch(document);
+    const slider = multi("up");
+    pin(slider, rect);
+    contact(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
+    expect(input.value("up")).toBeCloseTo(0.5);
+    // A caller moves the action under the held thumb, as a key would.
+    input.setAction("up", 0);
+    expect(input.value("up")).toBe(0);
+
+    contact(slider, "pointermove", { clientX: 32, clientY: at(0.5) });
+
+    expect(input.value("up")).toBeCloseTo(0.5);
+  });
+
   it("hands an analog action the fraction the thumb pushed it to", () => {
     const { multi, input } = rig("single-vertical", ["up", "down"]);
     touch(document);
     const slider = multi("up");
     pin(slider, rect);
 
-    pointer(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
+    contact(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
 
     expect(input.value("up")).toBeCloseTo(0.5);
     expect(input.value("down")).toBe(0);
@@ -488,8 +561,8 @@ describe("a slider", () => {
     const slider = multi("up");
     pin(slider, rect);
 
-    pointer(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
-    pointer(slider, "pointermove", { clientX: 32, clientY: at(-0.5) });
+    contact(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
+    contact(slider, "pointermove", { clientX: 32, clientY: at(-0.5) });
 
     expect(input.value("up")).toBe(0);
     // `down` is digital: half a deflection reads as held.
@@ -502,7 +575,7 @@ describe("a slider", () => {
     const slider = multi("up");
     pin(slider, rect);
 
-    pointer(slider, "pointerdown", {
+    contact(slider, "pointerdown", {
       clientX: 32,
       clientY: rect.top + rect.height / 2 - 5,
     });
@@ -517,8 +590,8 @@ describe("a slider", () => {
     const slider = multi("up");
     pin(slider, rect);
 
-    pointer(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
-    pointer(slider, "pointermove", { clientX: 32, clientY: rect.top - 500 });
+    contact(slider, "pointerdown", { clientX: 32, clientY: at(0.5) });
+    contact(slider, "pointermove", { clientX: 32, clientY: rect.top - 500 });
 
     expect(input.value("up")).toBe(1);
   });
@@ -528,9 +601,9 @@ describe("a slider", () => {
     touch(document);
     const slider = multi("up");
     pin(slider, rect);
-    pointer(slider, "pointerdown", { clientX: 32, clientY: at(0.8) });
+    contact(slider, "pointerdown", { clientX: 32, clientY: at(0.8) });
 
-    pointer(slider, "pointerup", { clientX: 32, clientY: at(0.8) });
+    contact(slider, "pointerup", { clientX: 32, clientY: at(0.8) });
 
     expect(input.value("up")).toBe(0);
     expect(input.value("down")).toBe(0);
@@ -544,8 +617,8 @@ describe("a slider", () => {
     pin(left, rect);
     pin(right, { ...rect, left: 576 });
 
-    pointer(left, "pointerdown", { pointerId: 1, clientX: 32, clientY: at(1) });
-    pointer(right, "pointerdown", {
+    contact(left, "pointerdown", { pointerId: 1, clientX: 32, clientY: at(1) });
+    contact(right, "pointerdown", {
       pointerId: 2,
       clientX: 600,
       clientY: at(-0.25),
@@ -576,7 +649,7 @@ describe("a pad", () => {
     const pad = multi("up");
     pin(pad, rect);
 
-    pointer(pad, "pointerdown", { clientX: x, clientY: y });
+    contact(pad, "pointerdown", { clientX: x, clientY: y });
 
     for (const action of ["up", "down", "left", "right"]) {
       expect(input.value(action), action).toBe(
@@ -591,15 +664,15 @@ describe("a pad", () => {
     const pad = multi("up");
     pin(pad, rect);
 
-    pointer(pad, "pointerdown", { clientX: 170, clientY: 30 });
-    pointer(pad, "pointermove", { clientX: 100, clientY: 100 });
+    contact(pad, "pointerdown", { clientX: 170, clientY: 30 });
+    contact(pad, "pointermove", { clientX: 100, clientY: 100 });
     expect(input.value("up")).toBe(0);
     expect(input.value("right")).toBe(0);
 
-    pointer(pad, "pointermove", { clientX: 100, clientY: 20 });
+    contact(pad, "pointermove", { clientX: 100, clientY: 20 });
     expect(input.value("up")).toBe(1);
 
-    pointer(pad, "pointerup", { clientX: 100, clientY: 20 });
+    contact(pad, "pointerup", { clientX: 100, clientY: 20 });
     expect(input.value("up")).toBe(0);
   });
 
@@ -610,7 +683,7 @@ describe("a pad", () => {
     pin(pad, rect);
 
     // Straight up, 60 of the 100 half-height above centre: raw 0.6.
-    pointer(pad, "pointerdown", { clientX: 100, clientY: 40 });
+    contact(pad, "pointerdown", { clientX: 100, clientY: 40 });
 
     expect(input.value("up")).toBeCloseTo((0.6 - DEAD_ZONE) / (1 - DEAD_ZONE));
     expect(input.value("right")).toBe(0);
@@ -633,19 +706,19 @@ describe("isolation from the game's pointer", () => {
     pointer(document, "pointerup", { pointerId: 1, clientX: 5, clientY: 5 });
     game.endFrame();
 
-    pointer(control("confirm"), "pointerdown", {
+    contact(control("confirm"), "pointerdown", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 300,
       clientY: 20,
     });
-    pointer(control("confirm"), "pointermove", {
+    contact(control("confirm"), "pointermove", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 305,
       clientY: 22,
     });
-    pointer(control("confirm"), "pointerup", {
+    contact(control("confirm"), "pointerup", {
       pointerId: 2,
       pointerType: "touch",
       clientX: 305,
@@ -674,10 +747,10 @@ describe("isolation from the game's pointer", () => {
       document.addEventListener(type, listener);
     }
 
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
-    pointer(control("confirm"), "pointermove", { pointerId: 1 });
-    pointer(control("confirm"), "pointercancel", { pointerId: 1 });
-    pointer(control("confirm"), "pointerup", { pointerId: 9 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointermove", { pointerId: 1 });
+    contact(control("confirm"), "pointercancel", { pointerId: 1 });
+    contact(control("confirm"), "pointerup", { pointerId: 9 });
 
     expect(reached).toEqual([]);
     for (const type of [
@@ -690,13 +763,24 @@ describe("isolation from the game's pointer", () => {
     }
   });
 
-  it("does not let a mouse on a control hide the controls", () => {
-    const { control, container } = rig("single-vertical");
-    touch(document);
+  it("ignores a contact while hidden, which reaches the target as a touch on the game", () => {
+    const { control, container, input, emitted } = rig("single-vertical");
+    const reached: string[] = [];
+    const listener = (event: Event): void => {
+      reached.push(event.type);
+    };
+    document.addEventListener("pointerdown", listener);
 
-    pointer(control("confirm"), "pointerdown", { pointerType: "mouse" });
+    contact(control("confirm"), "pointerdown");
 
+    expect(input.value("confirm")).toBe(0);
+    expect(reached).toEqual(["pointerdown"]);
+    // The touch went on to the target, which is exactly what shows the controls.
     expect(hidden(container)).toBe(false);
+    expect(emitted.map((entry) => entry.event)).toEqual([
+      "touch-controls:shown",
+    ]);
+    document.removeEventListener("pointerdown", listener);
   });
 
   it("captures the pointer on the control and releases it on lift", () => {
@@ -708,10 +792,10 @@ describe("isolation from the game's pointer", () => {
     button.setPointerCapture = capture;
     button.releasePointerCapture = release;
 
-    pointer(button, "pointerdown", { pointerId: 4 });
+    contact(button, "pointerdown", { pointerId: 4 });
     expect(capture).toHaveBeenCalledWith(4);
 
-    pointer(button, "pointerup", { pointerId: 4 });
+    contact(button, "pointerup", { pointerId: 4 });
     expect(release).toHaveBeenCalledWith(4);
   });
 
@@ -724,7 +808,7 @@ describe("isolation from the game's pointer", () => {
     };
 
     expect(() =>
-      pointer(button, "pointerdown", { pointerId: 4 }),
+      contact(button, "pointerdown", { pointerId: 4 }),
     ).not.toThrow();
     expect(input.value("confirm")).toBe(1);
   });
@@ -733,7 +817,7 @@ describe("isolation from the game's pointer", () => {
     const { control } = rig("single-vertical");
     touch(document);
 
-    const event = pointer(control("confirm"), "pointerdown");
+    const event = contact(control("confirm"), "pointerdown");
 
     expect(event.defaultPrevented).toBe(true);
   });
@@ -743,12 +827,25 @@ describe("hiding while held", () => {
   it("returns a held action to rest when a keyboard hides the controls", () => {
     const { control, input } = rig("single-vertical");
     touch(document);
-    pointer(control("confirm"), "pointerdown", { pointerId: 1 });
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
     expect(input.value("confirm")).toBe(1);
 
     keyDown(document);
 
     expect(input.value("confirm")).toBe(0);
+  });
+
+  it("drives the control again once the next touch shows it", () => {
+    const { control, input } = rig("single-vertical");
+    touch(document);
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+    keyDown(document);
+    expect(input.value("confirm")).toBe(0);
+    touch(document);
+
+    contact(control("confirm"), "pointerdown", { pointerId: 1 });
+
+    expect(input.value("confirm")).toBe(1);
   });
 });
 
@@ -823,7 +920,7 @@ describe("detach", () => {
     keyDown(document);
 
     expect(emitted).toEqual([]);
-    expect(controls.state()?.visible).toBe(false);
+    expect(controls.state()).toBeNull();
     expect(removed.mock.calls.map((call) => call[0]).sort()).toEqual([
       "keydown",
       "pointerdown",
@@ -834,12 +931,20 @@ describe("detach", () => {
   it("returns a held action to rest on the way out", () => {
     const { controls, control, input } = rig("dpad-4-two-buttons");
     touch(document);
-    pointer(control("a"), "pointerdown", { pointerId: 1 });
+    contact(control("a"), "pointerdown", { pointerId: 1 });
     expect(input.value("a")).toBe(1);
 
     controls.detach();
 
     expect(input.value("a")).toBe(0);
+  });
+
+  it("reports null once detached, the overlay being gone", () => {
+    const { controls } = rig("dpad-4");
+
+    controls.detach();
+
+    expect(controls.state()).toBeNull();
   });
 
   it("is idempotent, because teardown races", () => {
