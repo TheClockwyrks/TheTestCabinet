@@ -36,9 +36,9 @@
  *   whole, non-negative number or it throws a `RangeError` naming the value.
  * - **`destroy` is idempotent**: close the world (controllers, actors, and
  *   game mode end play), run the instance's `shutdown`, halt the loop, silence
- *   the audio bus, and drop every listener. It resolves any promise `run`
- *   returned; aborting a run's signal halts the loop and leaves the engine
- *   usable.
+ *   the audio bus, remove the on-screen touch controls, and drop every
+ *   listener. It resolves any promise `run` returned; aborting a run's signal
+ *   halts the loop and leaves the engine usable.
  *
  * ## How the engine reaches the other subsystems
  *
@@ -81,6 +81,7 @@ import type {
   LoadApi,
   RunOptions,
   SurfaceMetrics,
+  TouchControlsState,
   TouchLayout,
   Viewport,
   World,
@@ -91,6 +92,7 @@ import { bindGameInstance, GameInstance } from "./game-instance";
 import { InputSystem, TOUCH_LAYOUTS } from "./input";
 import { ContextRecorder } from "./recording";
 import { RenderPipeline } from "./rendering";
+import { TouchControls } from "./touch-controls";
 import { EngineWorld, type EngineEventEmitter } from "./worlds";
 
 /** The key that toggles the diagnostics overlay: engine chrome, not an action. */
@@ -303,6 +305,11 @@ export interface InputPort {
   register(name: string, binding: ActionBinding): void;
   /** `InitApi.input.layout`, forwarded. */
   layout(): TouchLayout | null;
+  /**
+   * Drives an action's magnitude through the same resolution a key goes
+   * through; the seam the on-screen touch controls push their values through.
+   */
+  drive(name: string, value: number): void;
   /** Closes the input frame; called last in every frame. */
   endFrame(): void;
   /** Removes every listener; called from `engine.destroy`. */
@@ -795,6 +802,23 @@ export function assembleEngine<D = unknown>(
   const subsystems = factory(services);
   const pipeline = new RenderPipeline();
 
+  // After the input system, whose pointer listeners went on the target first,
+  // so the touch that reveals the controls reaches the game's pointer before
+  // the overlay appears; and only under a layout, since without one there is
+  // no vocabulary to draw. The controls find their document through the
+  // surface's event target and are inert over a target with none, so the
+  // headless case costs nothing and reports `null`.
+  const layout = subsystems.input.layout();
+  const touchControls =
+    layout === null
+      ? null
+      : new TouchControls({
+          surface,
+          actions: subsystems.input,
+          layout,
+          emit: (event, payload) => bus.emit(event, payload),
+        });
+
   /**
    * The world currently open, for a frame that is entitled to one.
    *
@@ -1262,6 +1286,14 @@ export function assembleEngine<D = unknown>(
     diagnostics: (): readonly DiagnosticReading[] =>
       subsystems.diagnostics.read(),
 
+    /**
+     * The selected layout's on-screen controls and whether they are showing,
+     * or `null` when there are none to report on: no layout was selected, or
+     * the surface's event target has no document to draw them in.
+     */
+    touchControls: (): TouchControlsState | null =>
+      touchControls?.state() ?? null,
+
     recording: (): boolean => recorder.active,
 
     /**
@@ -1301,16 +1333,18 @@ export function assembleEngine<D = unknown>(
     },
 
     /**
-     * Close the world, run the instance's `shutdown`, halt the loop, and drop
-     * every listener.
+     * Close the world, run the instance's `shutdown`, halt the loop, remove
+     * the on-screen controls, and drop every listener.
      *
      * Idempotent, because teardown races: a page unload, an explicit call, and
      * a test's `afterEach` all reach here, and only the first one has anything
      * to do. The loop is halted first so no frame runs into a world that is
      * closing, the audio bus is silenced so a looping cue does not outlive the
-     * engine that started it, and the subscriptions go last: a handler
-     * typically closes over the caller's own scene, and leaving the bus
-     * subscribed after teardown keeps that scope alive.
+     * engine that started it, the touch controls go before the input system
+     * they drive so a control a thumb was holding returns its action to rest
+     * through a system that is still attached, and the subscriptions go last:
+     * a handler typically closes over the caller's own scene, and leaving the
+     * bus subscribed after teardown keeps that scope alive.
      */
     destroy(): void {
       if (destroyed) return;
@@ -1319,6 +1353,7 @@ export function assembleEngine<D = unknown>(
       if (ready) subsystems.worlds.close();
       if (built !== null) built.instance.shutdown();
       subsystems.audio.silence();
+      touchControls?.detach();
       subsystems.input.detach();
       target.removeEventListener("keydown", onOverlayKey);
       removeUnlockListeners();
