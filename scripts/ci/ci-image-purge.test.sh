@@ -72,6 +72,7 @@ readonly MASTER="c0ffee0000000000000000000000000000000002"
 readonly STAGING="c0ffee0000000000000000000000000000000003"
 readonly NIGHTLY="c0ffee0000000000000000000000000000000004"
 readonly STALE="c0ffee0000000000000000000000000000000005"
+readonly OWN="c0ffee0000000000000000000000000000000006"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
 # answered with the status STUB_DELETE_STATUS names and logged; the catalogue
@@ -136,7 +137,13 @@ while [[ "${1:-}" == -c ]]; do
 done
 printf '%s\n' "$*" >>"$STUB_DIR/git.log"
 case "$1" in
-	rev-parse) echo "${STUB_SHALLOW:-false}" ;;
+	rev-parse)
+		case "$2" in
+			--is-shallow-repository) echo "${STUB_SHALLOW:-false}" ;;
+			--verify) [ -z "${STUB_HEAD:-}" ] && exit 1 || echo "$STUB_HEAD" ;;
+			*) echo "git stub: unexpected $*" >&2; exit 1 ;;
+		esac
+		;;
 	fetch)
 		branch="${*: -1}"
 		if [ -f "$STUB_DIR/branch-$branch.yml" ]; then
@@ -195,6 +202,8 @@ write_fixtures() {
 		echo ,
 		manifest sha256:stale "$(at '10 days ago')" "$STALE"
 		echo ,
+		manifest sha256:own "$(at '1 minute ago')" "$OWN"
+		echo ,
 		manifest sha256:untagged-old "$(at '2 hours ago')"
 		echo ,
 		manifest sha256:untagged-young "$(at '10 minutes ago')"
@@ -232,6 +241,7 @@ check_contains "deletes the cache repository's old untagged manifests" "deleted 
 check_lacks "not its young one" "sha256:cache-young" "$out"
 check_equal "the deletes, in order" \
 	"${REPOSITORY}@sha256:stale
+${REPOSITORY}@sha256:own
 ${REPOSITORY}@sha256:untagged-old
 ${REPOSITORY}-cache@sha256:cache-old" "$(deleted)"
 check_contains "fetches master" "fetch --quiet origin master" "$(cat "$stub/git.log")"
@@ -243,6 +253,24 @@ check_contains "with the service principal's credential as Basic" \
 	"DELETE https://${REGISTRY}/v2/${REPOSITORY}/manifests/sha256:stale Basic $(printf 'principal-id:principal-secret' | base64 -w0)" \
 	"$(cat "$stub/curl.log")"
 check_lacks "and exchanges no token" "oauth2/token" "$(cat "$stub/curl.log")"
+
+echo "--- the commit this run is on ---"
+write_fixtures
+out="$(BUILD_SOURCEVERSION=$OWN run rust)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the image the run pushed, named by Azure" \
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY $OWN" "$out"
+check_lacks "and does not delete it" "@sha256:own" "$(deleted)"
+check_contains "while still deleting the stale one" "${REPOSITORY}@sha256:stale" "$(deleted)"
+write_fixtures
+out="$(STUB_HEAD=$OWN run rust)"
+check_equal "asked of git in a terminal, exits 0" "0" "$?"
+check_contains "and keeps it too" "keeping $CHECKOUT $MASTER $STAGING $NIGHTLY $OWN" "$out"
+write_fixtures
+out="$(BUILD_SOURCEVERSION=not-a-commit run rust)"
+check_equal "a value that is no object id exits 0" "0" "$?"
+check_lacks "and is not kept" "not-a-commit" "$out"
+check_contains "so the run's image, unnamed, is deleted with the rest" "${REPOSITORY}@sha256:own" "$(deleted)"
 
 echo "--- the web track ---"
 write_fixtures
@@ -286,16 +314,20 @@ check_equal "a branch without the pins file refuses too" "1" "$?"
 check_contains "naming it" "origin/nightly carries no ci/images/tags.yml; refusing to purge" "$out"
 check_equal "and deletes nothing" "" "$(deleted)"
 
-echo "--- nothing resolves ---"
 write_fixtures
-for branch in master staging nightly; do
-	printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$stub/branch-$branch.yml"
-done
+printf 'variables:\n  rustImageTag: v1-e9e53ee1c4db\n  webImageTag: v1-ffe3b49d464e\n' >"$stub/branch-staging.yml"
+out="$(run rust)"
+check_equal "a branch whose file pins no ciImageTag refuses too" "1" "$?"
+check_contains "naming it" "origin/staging pins no ciImageTag in ci/images/tags.yml; refusing to purge" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+echo "--- a checkout whose file pins nothing ---"
+write_fixtures
 printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$repo/ci/images/tags.yml"
 out="$(run rust)"
-check_equal "exits 1" "1" "$?"
-check_contains "refuses" "no tag resolved as kept; refusing to purge" "$out"
-check_equal "and deletes nothing" "" "$(deleted)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the live branches' pins" "${REPOSITORY}: keeping $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes the checkout's former image" "${REPOSITORY}@sha256:checkout" "$(deleted)"
 
 echo "--- a delete that fails ---"
 write_fixtures

@@ -12,9 +12,11 @@
 #
 # What is kept is what `master`, `staging` and `nightly` pin in
 # ci/images/tags.yml as `ciImageTag`, the commit whose image pipeline run built
-# both tracks' images, plus what this checkout's copy of the file pins. Usually
-# that is one tag; it is two or three while a change sits on `nightly` or
-# `staging` and has not reached `master`. Nothing older is kept. This project
+# both tracks' images, plus what this checkout's copy of the file pins, plus
+# the commit this run is on: the image the job pushed a step ago is tagged with
+# it, and nothing pins it until the next commit writes it into the file.
+# Usually that is one or two tags; it is more while a change sits on `nightly`
+# or `staging` and has not reached `master`. Nothing older is kept. This project
 # runs no CI on an old commit, so an image that no live branch names is an
 # image nothing will ever pull, and a count or an age would only decide how
 # long to pay for it.
@@ -45,7 +47,9 @@ readonly UNTAGGED_MIN_AGE_SECONDS=3600
 
 # The branches whose pins are kept. A branch this cannot resolve stops the
 # purge, because a fetch that failed must not read as "no branch names this
-# tag": every tag that branch pins would look unkept and be deleted.
+# tag": every tag that branch pins would look unkept and be deleted. So does a
+# branch whose file has no `ciImageTag` line: a file in another shape is not a
+# branch that pins nothing.
 readonly LIVE_BRANCHES=("master" "staging" "nightly")
 
 usage() {
@@ -166,6 +170,16 @@ kept_tags() {
 	fi
 
 	pins_in "$(cat "$PINS_FILE")"
+	# The commit this run is on, whose image the job pushed a step ago and
+	# which no file pins until the next commit. Azure names it; a terminal
+	# asks git. Anything but a full object id is dropped rather than kept,
+	# since it can name no image the run pushed.
+	local own
+	own="${BUILD_SOURCEVERSION:-$(git rev-parse --verify --quiet HEAD 2>/dev/null || true)}"
+	if [[ "$own" =~ ^[0-9a-f]{40}$ ]]; then
+		printf '%s\n' "$own"
+	fi
+	local pins
 	for branch in "${LIVE_BRANCHES[@]}"; do
 		if ! git "${auth[@]}" fetch --quiet "${depth[@]}" origin "$branch"; then
 			echo "ci-image-purge.sh: cannot fetch origin/$branch; refusing to purge" >&2
@@ -175,7 +189,12 @@ kept_tags() {
 			echo "ci-image-purge.sh: origin/$branch carries no ${PINS_FILE}; refusing to purge" >&2
 			return 1
 		fi
-		pins_in "$text"
+		pins="$(pins_in "$text")"
+		if [ -z "$pins" ]; then
+			echo "ci-image-purge.sh: origin/$branch pins no ciImageTag in ${PINS_FILE}; refusing to purge" >&2
+			return 1
+		fi
+		printf '%s\n' "$pins"
 	done
 	return 0
 }
