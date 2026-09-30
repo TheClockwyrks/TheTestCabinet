@@ -100,11 +100,13 @@ the game through the contacts and the samples alone.
 
 ## Touch layouts
 
-A touch layout is a vocabulary contract rather than a widget. Naming
-`dual-vertical` states that the control scheme is two vertical sliders and that
-the actions in play are the four the scheme drives. Selection is declarative: it
-draws nothing and registers nothing, and the game still registers each action
-with its own binding.
+A touch layout names a control scheme, and with it two things: the action
+vocabulary the scheme drives and the on-screen controls the engine draws for
+it. Naming `dual-vertical` states that the scheme is two vertical sliders, that
+the actions in play are the four the sliders drive, and that a player on a
+touchscreen is given those two sliders. The game still registers each action
+with its own key binding, so one vocabulary is playable from a keyboard and
+from the screen alike.
 
 A layout is selected when the engine is created, so every registration the game
 makes happens under it. An action whose name is in the selected layout's
@@ -116,6 +118,64 @@ silent fallback to a default would let a run be configured for one control
 scheme and executed under another, leaving the run record describing a run that
 never happened. Adding a layout is a deliberate change to the engine and a new
 engine version.
+
+## On-screen controls
+
+The engine draws the selected layout's controls itself, so a game gets them by
+selecting the layout and registering its vocabulary, and does nothing further.
+The controls are a DOM overlay above the canvas rather than part of the
+picture: the canvas stays the game's own drawing, the recorder and a validator's
+captures see the game alone, and a contact on a control is told apart from a
+contact on the game by the element that received it.
+
+The controls are hidden when the engine is created and appear on the first
+touch the surface receives. A keyboard, mouse, or pen input hides them again,
+and the next touch brings them back, so a device that has both a touchscreen
+and a keyboard shows the controls exactly while the player is using the screen.
+The engine watches the same event target its key and pointer listeners use,
+which is what lets a caller show or hide the controls by dispatching the events
+a player would produce. The touch that reveals the controls is a touch on the
+game, and reaches the game's pointer as any other.
+
+Each layout draws its controls in fixed places:
+
+- `dual-vertical`: a vertical slider along the left edge driving `p1-up` and
+  `p1-down`, one along the right edge driving `p2-up` and `p2-down`, and the
+  menu buttons across the top centre.
+- `single-vertical`: one vertical slider along the right edge driving `up` and
+  `down`, and the menu buttons across the top centre.
+- `dpad-4`: a four-way pad at the bottom left, a large round `confirm` button
+  at the bottom right so a pad-only game has a confirm under the thumb, and the
+  menu buttons at the top right.
+- `dpad-4-two-buttons`: the pad at the bottom left, round `a` and `b` buttons
+  at the bottom right with `a` nearer the thumb and a smaller `confirm` beside
+  them, and the menu buttons at the top right.
+
+A control drives its actions through the same resolution a key goes through, so
+the game reads one number whichever source moved it. A slider or a pad reports
+a deflection: an analog action receives the partial magnitude the thumb has
+pushed it to, a digital one quantizes it to full, and a diagonal on the pad
+drives two actions at once. A button is a momentary hold that drives its action
+to full while it is down and back to rest when it lifts, which is what a key
+does, so a press edge arms once per contact. Releasing any control returns its
+actions to rest.
+
+A contact on a control belongs to the control. The engine captures the pointer
+so a thumb that slides off keeps driving until it lifts, and stops the event
+before it reaches the game's pointer, so the contact appears in no snapshot,
+sample, or contact list. A touch on the game outside a control reaches the
+pointer as before.
+
+The overlay is marked for a driver or a check to find. The container carries
+`data-touch-controls` naming the layout, and each control carries
+`data-action` naming the action it drives, so operating a control through
+its element drives the build exactly as a player's thumb does.
+
+An engine created without a layout has no vocabulary to draw and draws no
+controls, and an engine over a surface with no document behind it has nowhere
+to place the overlay and draws none either; in both cases the engine reports
+that there are no controls. Destroying the engine removes the overlay along
+with every other listener.
 
 ## The menu vocabulary
 

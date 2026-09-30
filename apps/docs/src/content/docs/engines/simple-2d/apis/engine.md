@@ -47,7 +47,7 @@ interface EngineOptions<S, D = unknown> {
 | `height`     | —                    | The logical design height the game draws in. Finite and positive.                                                                                                                                 |
 | `game`       | —                    | The [game](/engines/simple-2d/apis/game/) this engine drives.                                                                                                                                     |
 | `background` | —                    | A CSS color cleared to before every frame. Absent, the frame is cleared to transparency. The letterbox bars hold it alone: the context is clipped to the logical field for `update` and `render`. |
-| `layout`     | —                    | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers.                                                                                    |
+| `layout`     | —                    | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers and whose on-screen controls the engine draws.                                      |
 | `clock`      | `new WallClock()`    | The [clock](/engines/simple-2d/apis/clocks/) supplying each frame's delta.                                                                                                                        |
 | `surface`    | Read from the canvas | Where the engine reads its element size and device pixel ratio.                                                                                                                                   |
 | `assetRoot`  | `"assets/"`          | The root every [asset path](/engines/simple-2d/apis/assets/) resolves under.                                                                                                                      |
@@ -71,7 +71,9 @@ The engine reads the canvas's laid-out size and device pixel ratio through this
 seam every frame, and attaches its key and pointer listeners to the event target
 it returns. Supplied, it replaces every measurement the engine would otherwise
 take from the DOM, which is what lets the engine run over a canvas with no
-document behind it.
+document behind it. The on-screen touch controls are a DOM overlay, so over a
+surface whose event target has no document there are none, and
+`touchControls()` reports `null`.
 
 `origin()` is the canvas's top-left corner in the client coordinate space
 pointer events report their positions in, and it is what the engine subtracts
@@ -114,6 +116,7 @@ interface Engine<S, D = unknown> {
   frame(): FrameInfo;
   viewport(): Viewport;
   diagnostics(): readonly DiagnosticReading[];
+  touchControls(): TouchControlsState | null;
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -138,10 +141,11 @@ interface RunOptions {
 | `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                          |
 | `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                      |
 | `diagnostics`    | Every registered [diagnostic](/engines/simple-2d/apis/diagnostics/) source and what it reports now, in registration order.             |
+| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/simple-2d/apis/input/) are showing, or `null` when there are none.   |
 | `recording`      | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing.                                           |
 | `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                    |
 | `stopRecording`  | Disarm the recorder and return everything captured since `startRecording`.                                                             |
-| `destroy`        | Halt the loop and drop every listener.                                                                                                 |
+| `destroy`        | Halt the loop, remove the on-screen controls, and drop every listener.                                                                 |
 
 ### `initialize`
 
@@ -267,7 +271,8 @@ The returned object is a copy, so holding one does not observe later frames.
 
 ## `engine.destroy()`
 
-Halts the loop and detaches every listener. Idempotent, because teardown races.
+Halts the loop, removes the on-screen touch controls, and detaches every
+listener. Idempotent, because teardown races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
 the loop and leaves the engine usable, so the two are separate acts.
