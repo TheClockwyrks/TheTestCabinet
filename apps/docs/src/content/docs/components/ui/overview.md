@@ -165,6 +165,34 @@ to nothing only where the store answered and holds no such entity — the store'
 own `404` — and fails for every other unanswered read, so no host turns an
 unreachable store into an absence.
 
+## Forms
+
+Every text input, textarea, dropdown and button a form renders is one of the
+form primitives (`Input`, `Textarea`, `Select` and `Button`) or a native
+control whose stylesheet includes the `controls` style mixins the primitives
+are built from, so a control looks the same on every form and changes in one
+place. A primitive's size declarations carry no specificity, so a form's own
+class sets a control's width or padding whatever order the stylesheets load
+in. A `Select` draws its own
+chevron so a dropdown reads identically across browser engines. A `Button` has
+a `primary`, `secondary`, `danger` or `link` variant and a regular or small
+size; the small size is the uppercase affordance a form's secondary actions
+use.
+
+A control that sits beside its own action, such as a URL beside the button that
+fetches it, is a `ControlRow`. The control takes the row's spare width and the
+row wraps when the two no longer fit, so the action drops under the control
+instead of squeezing it.
+
+A form lays its fields out one of two ways. A stacked field puts the label above
+its control, and a grid of stacked fields reflows by the width available. A
+`SettingRow` puts the setting's name and description on the left and its control
+on the right. The name column never shrinks below the width a label of a few
+words needs, so the control column is what gives way when the row is cramped,
+and below the medium breakpoint the control drops under its name at the row's
+full width. A form is
+therefore usable at every viewport width from a phone to a desktop.
+
 ## Numeric fields
 
 A form's numeric input holds what the operator typed, including nothing at all,
