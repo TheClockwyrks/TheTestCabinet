@@ -328,7 +328,7 @@ The project's own gates, wired the same way:
 | `audio-packs` | Every version's `[audio] packs` resolves against the pack registry |
 | `build-context` | Every project Dockerfile's `COPY` sources, and the `containers/` Rust pins |
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
-| `ci-image-pins` | Every CI image reference in `.azure/**/*.yml` and `azure-pipelines-release.yml` reads `${{ variables.ciImageTag }}`, and the release pipeline includes `ci/images/tags.yml` |
+| `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, `azure-pipelines.yml` passes the Rust one to `.azure/project/jobs.yml` as `rustImage`, and no file under `.azure/` names one |
 | `scripts-test` | `node --test` over `scripts/lib` |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
@@ -910,11 +910,14 @@ off it.
 in `.azure/tcab/`, shared with the release pipeline. The amd64 jobs that
 compile Rust run as container jobs in the template's Rust CI image, with the
 template `rust` job's paths, variables and cargo cache, so they share its caches
-and seed them. Each names that image the way the template's `rust` job does,
+and seed them. A template cannot read the pin itself (a `${{ variables.* }}`
+inside an included jobs template expands to nothing), so `azure-pipelines.yml`
+names the image the way its `rust` job does,
 `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
-reading the pin out of `ci/images/tags.yml`, which the main pipeline includes
-before `jobs.yml` and the release pipeline includes itself; the
-`ci-image-pins` gate fails on a CI image named any other way.
+and passes it to `jobs.yml` as its `rustImage` parameter; the release
+pipeline, a root file itself, names it the same way. The `ci-image-pins` gate
+fails on a root pipeline naming a CI image any other way, on the include
+passing anything else, and on a file under `.azure/` naming an image at all.
 
 | Job | Runs on | What it does |
 | --- | --- | --- |

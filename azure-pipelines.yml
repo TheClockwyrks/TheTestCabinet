@@ -599,8 +599,14 @@ stages:
             artifact: test-results-web-$(System.JobAttempt)
             condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), eq(variables['testResultsCollected'], 'true'))
 
-      # The project's own jobs in the gates stage.
+      # The project's own jobs in the gates stage. A template cannot read
+      # `ciImageTag` itself (a `${{ variables.* }}` inside an included jobs
+      # template expands to nothing), so the Rust CI image its container jobs
+      # run in is named here, where the expression is the one the `rust` job
+      # above uses, and handed over.
       - template: .azure/project/jobs.yml
+        parameters:
+          rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
 
   # The one image, the server's with the web app's bundle inside it, built
   # and pushed under the commit's tag and `latest`. The staging branch

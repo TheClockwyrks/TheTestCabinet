@@ -194,13 +194,14 @@ overrides it. `make gate` therefore does not run gg's tests; a change under
 `crates/gg/` runs `scripts/ci/gg-test.sh` too.
 
 Every project job that compiles Rust in a container runs in the template's Rust CI
-image at the commit `ci/images/tags.yml` pins as `ciImageTag`, which the main
-pipeline includes before `.azure/project/jobs.yml` and the release pipeline includes
-itself: each names the image as
+image at the commit `ci/images/tags.yml` pins as `ciImageTag`. A template cannot
+read that variable, so the root pipelines name the image,
 `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
-the expression the template's `rust` job uses, and the `ci-image-pins` gate fails on
-any CI image a project pipeline file names another way. Moving the pin is one edit
-of `tags.yml` once the image pipeline's run on a commit has pushed both images.
+the expression the template's `rust` job uses: `azure-pipelines.yml` passes it to
+`.azure/project/jobs.yml` as its `rustImage` parameter, and the release pipeline uses
+it directly. The `ci-image-pins` gate fails on a root pipeline naming a CI image
+another way and on any file under `.azure/` naming one. Moving the pin is one edit of
+`tags.yml` once the image pipeline's run on a commit has pushed both images.
 
 Those jobs take the template `rust` job's variables (`CARGO_HOME` under
 `$(Pipeline.Workspace)/ci-cache`, `CARGO_INCREMENTAL` 0, `CARGO_PROFILE_DEV_DEBUG`
