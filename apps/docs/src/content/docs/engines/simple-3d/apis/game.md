@@ -272,6 +272,8 @@ interface EngineEventMap {
   "cue:looped": { cue: string; t: number; gain: number; at: Vec3 | null };
   "cue:stopped": { cue: string; t: number };
   "audio:unlocked": Record<string, never>;
+  "touch-controls:shown": { layout: string };
+  "touch-controls:hidden": { layout: string; reason: "keyboard" | "mouse" | "pen" };
 }
 ```
 
@@ -285,6 +287,11 @@ Subscription is what a caller uses to observe the engine as it works, in place
 of accumulating a record and reading it afterwards. Handlers are called
 synchronously at the moment the event happens, so a subscriber sees the frame
 the event belongs to.
+
+`touch-controls:shown` and `touch-controls:hidden` report the selected layout's
+[on-screen controls](/engines/simple-3d/apis/input/) appearing on a touch and
+disappearing on a keyboard, mouse, or pen input, with `reason` naming which of
+the three hid them.
 
 ## `FrameInfo`
 

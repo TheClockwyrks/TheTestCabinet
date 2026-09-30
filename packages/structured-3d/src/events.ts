@@ -41,13 +41,14 @@ import type { Controller } from "./controllers";
  * event or destructures a field the payload does not carry is a compile error
  * rather than a handler that never runs.
  *
- * The events divide into five groups by who emits them. The asset root emits
+ * The events divide into six groups by who emits them. The asset root emits
  * the two `asset:` events, the audio bus the three `cue:` events and
  * `audio:unlocked`, the engine's transition sequence the three `world:` events,
  * a world the two `actor:` events, a controller `possession:changed` and a game
- * mode `match:phase`, and the collision pass the two `overlap:` events and
- * `hit`. Nothing here is a command: every one of them reports something that
- * has already happened, and a handler that throws changes nothing about it.
+ * mode `match:phase`, the collision pass the two `overlap:` events and `hit`,
+ * and the on-screen touch controls the two `touch-controls:` events. Nothing
+ * here is a command: every one of them reports something that has already
+ * happened, and a handler that throws changes nothing about it.
  */
 export interface EngineEventMap {
   /** A loader's value arrived. */
@@ -105,6 +106,16 @@ export interface EngineEventMap {
     b: Actor;
     colliders: [ColliderComponent, ColliderComponent];
     manifold: Manifold;
+  };
+  /** The selected layout's on-screen controls appeared, on a touch `pointerdown`. */
+  "touch-controls:shown": { layout: string };
+  /**
+   * The controls disappeared, on a `keydown` or a mouse or pen pointer event,
+   * with `reason` naming which of the three hid them.
+   */
+  "touch-controls:hidden": {
+    layout: string;
+    reason: "keyboard" | "mouse" | "pen";
   };
 }
 

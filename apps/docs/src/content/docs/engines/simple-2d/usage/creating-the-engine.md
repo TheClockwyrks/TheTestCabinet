@@ -77,7 +77,7 @@ const opening = await engine.initialize();
 | Option       | Effect                                                                                                                                                 |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `background` | A CSS color the whole canvas is filled with before every frame. Left out, the frame clears to transparency and the page shows through behind the game. |
-| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions.                                                      |
+| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions and whose on-screen controls the engine draws.        |
 | `assetRoot`  | The root every asset path resolves under. Defaults to `assets/`.                                                                                       |
 | `surface`    | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document.                 |
 

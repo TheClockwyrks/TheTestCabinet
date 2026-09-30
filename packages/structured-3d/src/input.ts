@@ -78,8 +78,10 @@ import type {
  * means a game binds `pause` once and gets it under whichever layout is live,
  * and it keeps the two halves of a vocabulary apart: a catalogue entry
  * describes the control scheme, this describes the shell that surrounds it.
+ * The on-screen controls draw them as the menu strip every layout carries, in
+ * this order.
  */
-const MENU_ACTIONS = ["confirm", "back", "pause", "mute"] as const;
+export const MENU_ACTIONS = ["confirm", "back", "pause", "mute"] as const;
 
 /** One catalogue entry: the layout's own vocabulary then the menu actions. */
 function layout(name: string, own: readonly string[]): TouchLayout {
@@ -101,9 +103,11 @@ function layout(name: string, own: readonly string[]): TouchLayout {
  * two-button entry, and a game whose control scheme is outside the catalogue
  * registers its own actions under any names it likes.
  *
- * A closed catalogue rather than a game-supplied description, so a reviewer's
- * touch chrome is drawn by the host from a vocabulary it already knows.
- * `EngineOptions.layout` names an entry; a name outside the catalogue is
+ * A closed catalogue rather than a game-supplied description, so the on-screen
+ * controls a touchscreen player is given are drawn by the engine from a
+ * vocabulary it already knows (see `touch-controls.ts`): naming an entry
+ * fixes both the actions in play and the sticks, pads, and buttons that drive
+ * them. `EngineOptions.layout` names an entry; a name outside the catalogue is
  * refused at `createEngine`, naming every valid layout.
  *
  * Frozen all the way down to each entry's action list: the catalogue is shared
@@ -556,9 +560,9 @@ export class InputSystem {
 
   /**
    * Drives an action's magnitude directly, with no key event involved — the
-   * seam a host's touch chrome pushes a stick's deflection through. Internal:
-   * the documented sources are keys and touch controls, and a game reads the
-   * one resolved number whichever moved it.
+   * seam the on-screen touch controls push a stick's deflection through.
+   * Internal: the documented sources are keys and touch controls, and a game
+   * reads the one resolved number whichever moved it.
    *
    * A stick pushes four of these, one per direction; keeping each direction's
    * magnitude in `0..1` belongs to the source that split the deflection,

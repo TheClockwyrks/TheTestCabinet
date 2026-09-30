@@ -116,12 +116,15 @@ const LAYOUT_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
 /**
  * The catalogue, keyed by layout name, with the menu vocabulary already appended.
  *
- * A layout is a *vocabulary contract*, not a widget. Naming `dual-stick` says "the
- * control scheme is two analog sticks, and the actions in play are the eight the
- * scheme drives". Selecting one registers nothing and draws nothing — the game
- * still registers each action with its own binding — but it fixes the vocabulary,
- * which is what lets a driver read back what the build is meant to speak as a
- * static fact instead of inferring it from behaviour.
+ * A layout names a control scheme, and with it two things. Naming `dual-stick`
+ * says "the control scheme is two analog sticks, and the actions in play are the
+ * eight the scheme drives". Selecting one fixes the vocabulary, which is what
+ * lets a driver read back what the build is meant to speak as a static fact
+ * instead of inferring it from behaviour, and it is what the engine draws the
+ * on-screen controls for (see `touch-controls.ts`): the two sticks a touchscreen
+ * player is given. Selection registers nothing — the game still registers each
+ * action with its own key binding — so one vocabulary is playable from a keyboard
+ * and from the screen alike.
  *
  * Frozen all the way down: the layouts are shared state read by the engine and by
  * the game, so a caller that mutated a vocabulary in place would change what every

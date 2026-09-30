@@ -30,17 +30,24 @@ interface TouchLayout {
   name: string;
   actions: string[];
 }
+
+interface TouchControlsState {
+  layout: string;
+  visible: boolean;
+}
 ```
 
-| Field                     | Meaning                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `ActionBinding.keys`      | The `KeyboardEvent.code` values that drive the action.                                                  |
-| `ActionBinding.kind`      | How a magnitude reaching the action is reported. Defaults to `"digital"`.                               |
-| `RegisteredAction.name`   | The name the action was registered under.                                                               |
-| `RegisteredAction.keys`   | The bound codes, as a copy.                                                                             |
-| `RegisteredAction.kind`   | The resolved kind, always present.                                                                      |
-| `RegisteredAction.layout` | The touch layout the action belongs to, or `null` when the selected layout's vocabulary omits the name. |
-| `TouchLayout.actions`     | The layout's own vocabulary followed by the four menu actions.                                          |
+| Field                        | Meaning                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ActionBinding.keys`         | The `KeyboardEvent.code` values that drive the action.                                                  |
+| `ActionBinding.kind`         | How a magnitude reaching the action is reported. Defaults to `"digital"`.                               |
+| `RegisteredAction.name`      | The name the action was registered under.                                                               |
+| `RegisteredAction.keys`      | The bound codes, as a copy.                                                                             |
+| `RegisteredAction.kind`      | The resolved kind, always present.                                                                      |
+| `RegisteredAction.layout`    | The touch layout the action belongs to, or `null` when the selected layout's vocabulary omits the name. |
+| `TouchLayout.actions`        | The layout's own vocabulary followed by the four menu actions.                                          |
+| `TouchControlsState.layout`  | The selected layout, whose controls the engine draws.                                                   |
+| `TouchControlsState.visible` | Whether the controls are showing.                                                                       |
 
 A `RegisteredAction` is the resolved form of a registration: the binding with
 its defaults filled in and its layout provenance attached.
@@ -62,7 +69,9 @@ readonly input: {
 The layout is chosen at construction through
 [`EngineOptions.layout`](/engines/simple-3d/apis/engine/) and holds for the
 engine's lifetime, so every registration is attributed against the same
-vocabulary.
+vocabulary. Selecting it is also what gives a touchscreen the layout's
+on-screen controls, which the engine draws and which drive the registered
+actions.
 
 ## Reading
 
@@ -277,17 +286,19 @@ const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>>;
 entries and their `actions` arrays. The menu actions are `["confirm", "back",
 "pause", "mute"]`, appended to every entry's own vocabulary in that order.
 
-| Layout                   | Controls                                 | Own vocabulary                                                                                       |
-| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        |
-| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              |
-| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    |
-| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
-| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     |
+| Layout                   | Controls                                 | Own vocabulary                                                                                       | Drawn on screen                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        | A four-way pad at the bottom left, a large round `confirm` button at the bottom right, and the menu buttons at the top right.                                                   |
+| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              | The pad at the bottom left, round `a` and `b` buttons at the bottom right with `a` nearer the thumb and a smaller `confirm` beside them, and the menu buttons at the top right. |
+| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    | An analog stick at the bottom left for the `move-` directions, a large round `confirm` button at the bottom right, and the menu buttons at the top right.                       |
+| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` | The move stick at the bottom left, a second stick at the bottom right for the `look-` directions, and the menu buttons at the top right.                                        |
+| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     | The two sticks, round `a` and `b` buttons above the right stick with `a` nearer the thumb, and the menu buttons at the top right.                                               |
 
 Each entry's `actions` is the vocabulary above followed by the four menu
 actions, so `TOUCH_LAYOUTS["single-stick"].actions` is `["move-up",
 "move-down", "move-left", "move-right", "confirm", "back", "pause", "mute"]`.
+The menu buttons are small labelled buttons for `confirm`, `back`, `pause`, and
+`mute`, in that order.
 
 ### Analog sticks
 
@@ -307,6 +318,87 @@ api.input.register("move-right", {
 });
 ```
 
+## On-screen controls
+
+```ts
+interface Engine<S, D = unknown> {
+  touchControls(): TouchControlsState | null;
+}
+```
+
+| Member            | Result                       | Semantics                                                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `touchControls()` | `TouchControlsState \| null` | The selected layout's name and whether its controls are showing, as a fresh copy the caller owns. `null` when the engine was built without a layout, over a surface whose event target has no document to place the overlay in, or after `destroy` removed the overlay. |
+
+The engine draws the selected layout's controls as one container element
+appended to the body of the canvas's owning document: fixed to the viewport,
+covering it, inset by the device's safe-area insets, and letting pointer events
+through everywhere but on the controls themselves. Each control accepts pointer
+events, declines the browser's touch gestures and text selection, and measures
+at least 44 CSS pixels on its shortest side; a stick spans about a quarter of
+the viewport's shorter side. The controls are drawn on the overlay alone, so
+the canvas, the recorder, and a captured frame hold the game's own picture.
+
+### Appearance
+
+The controls are hidden at construction. A `pointerdown` whose `pointerType` is
+`"touch"`, delivered to the event target the key listeners use, shows them. A
+`keydown`, or a `pointerdown` or `pointermove` whose `pointerType` is `"mouse"`
+or `"pen"`, hides them, and the next touch shows them again. A mouse or pen
+reaching a control hides the controls rather than operating them. Each
+transition emits `touch-controls:shown` or `touch-controls:hidden` from
+[`EngineEvents`](/engines/simple-3d/apis/game/), and a hide names the input
+that caused it as its `reason`.
+
+The engine reads `pointerType` from those events and leaves them otherwise
+untouched, so the touch that shows the controls still reaches the pointer. The
+visibility is read from pointer and key events alone, so the compatibility
+mouse events a browser synthesizes from a touch leave the controls showing.
+
+### Driving
+
+Each control drives its actions through the same resolution a key event goes
+through, and acts on a pointer whose `pointerType` is `"touch"` alone. A stick
+reports its deflection, clamped to its radius, as two analog pairs: the
+vertical component drives its up action or its down action by the magnitude,
+and the horizontal component its left action or its right action, so a stick
+pushed up and to the right drives `move-up` and `move-right` and leaves
+`move-down` and `move-left` at `0`. A pad resolves eight ways from its two
+axes, driving two actions on a diagonal. A stick reads as rest inside a radial
+dead zone of 15 % of its radius about the centre, and a pad inside an axial one
+of 15 % of its half-extent; past either, the travel is rescaled so full
+deflection still reads `1`. A button drives its action to `1` on `pointerdown`
+and to `0` on `pointerup` or `pointercancel`. An analog action reads the
+magnitude given and a digital one quantizes it, exactly as `value` describes,
+and each crossing from rest arms the edge `pressed` reports. A release of any
+control drives every action it holds back to `0`, and so does hiding the
+controls. A control drives its actions afresh on every contact it reads, so an
+action a key or a caller moved in between follows the control again on its
+next contact.
+
+A control's `pointerdown`, `pointermove`, `pointerup`, and `pointercancel` stop
+propagating at the control, and the control captures the pointer as it comes
+into contact. A contact on a control therefore reaches neither the pointer
+snapshot, the samples, nor the contacts, and a thumb that slides off the
+control keeps driving until it lifts. A control whose overlay is hidden ignores
+pointer events, so an event dispatched at a hidden control drives nothing and
+reaches the event target as a touch on the game does.
+
+### Markers
+
+| Attribute             | On                      | Value                                                                       |
+| --------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `data-touch-controls` | The container           | The selected layout's name.                                                 |
+| `data-action`         | Each control            | The action the control drives; the first of them on a stick or a pad.       |
+| `data-actions`        | Each stick and each pad | Every action the control drives, space-separated, in the order it lays out. |
+
+A driver or a check finds the controls by these attributes and operates one by
+dispatching pointer events at its element, which drives the build exactly as a
+player's thumb does.
+
+`destroy` removes the overlay and every listener behind it, and
+`touchControls()` reports `null` from then on.
+
 ## Errors
 
 | Condition                                                     | Result                                           |
@@ -317,6 +409,7 @@ api.input.register("move-right", {
 ## Exports
 
 `ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
-`PointerDevice`, `PointerButton`, `PointerSampleType`, `PointerSample`,
-`PointerSnapshot`, `PointerContact`, and `WheelDelta` are exported as types from
-`@clockwyrks/simple-3d`, and `TOUCH_LAYOUTS` is exported as a value.
+`TouchControlsState`, `PointerDevice`, `PointerButton`, `PointerSampleType`,
+`PointerSample`, `PointerSnapshot`, `PointerContact`, and `WheelDelta` are
+exported as types from `@clockwyrks/simple-3d`, and `TOUCH_LAYOUTS` is exported
+as a value.

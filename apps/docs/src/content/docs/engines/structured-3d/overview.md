@@ -20,11 +20,11 @@ The engine owns the frame loop, the
 delta time is, the fit from the logical design size to the canvas, the camera
 and its projection, the rendering pipeline over three.js and the screen layer
 it composites over the picture, collision detection, the input action registry
-and its bindings, the audio bus with its positional cues, the asset loader with
-its texture and model decoders, the debug overlay together with the frame
-metrics it reports, the recorder that captures the rendered frames as video,
-and the debug surface the game instance returned from its
-`initialize`, held for a caller to read back.
+and its bindings, the on-screen touch controls a layout draws, the audio bus
+with its positional cues, the asset loader with its texture and model decoders,
+the debug overlay together with the frame metrics it reports, the recorder that
+captures the rendered frames as video, and the debug surface the game instance
+returned from its `initialize`, held for a caller to read back.
 
 The game owns the levels it registers, the game modes that hold its rules, the
 actors and components that populate a world, and the controllers that drive
@@ -60,7 +60,7 @@ transform and field of view. The render components resolve meshes, materials,
 models, and lights, and the render modes swap materials at draw time so
 wireframe, unlit, and normals views cover the direct path as well. The
 collision shapes and queries are volumetric. The touch layouts add analog
-sticks to the pads.
+sticks to the pads, and the engine draws each layout's on-screen controls.
 
 ## Where it fits
 

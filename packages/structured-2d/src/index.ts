@@ -27,7 +27,8 @@
  *   it.
  * - **Input** — named actions over `KeyboardEvent.code` bindings and a closed
  *   catalogue of touch layouts, read only through a player controller, with
- *   edges consumed per controller.
+ *   edges consumed per controller, and the on-screen controls a layout draws
+ *   for a touchscreen, shown while the screen is the input in use.
  * - **Audio** — cues played by name, synthesized or file-backed, and the
  *   first-gesture unlock a browser insists on.
  * - **Assets** — resolution and loading under one fixed root.
