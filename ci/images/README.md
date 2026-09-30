@@ -50,6 +50,13 @@ first cache write is a permission error.
 - This architecture's musl target and `musl-tools`, whose `musl-gcc` links a
   static build against it, so a static build compiles here as it does in the
   devcontainer.
+- The project's own packages, which the checks on this track reach for and a
+  compile does not: `ruby`, which gg's Ruby arm reflects its signature
+  catalogue with when `crates/gg` builds; `libicu-dev`, which the .NET runtime
+  behind gg's C# arm loads; `cmake`, for the crates whose build scripts compile
+  native code; and `ffmpeg`, `python3` and `zip`, for the scripts the Rust
+  jobs run. `ci/images/rust.Dockerfile` lists them; the devcontainer's own
+  list is `.devcontainer/system/apt.sh`.
 - `uv` and `pre-commit`, because every gate is invoked as
   `uv run --quiet --project ci gate run <id>`.
 

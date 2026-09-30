@@ -69,8 +69,9 @@
 # the files under .azure/project/, which this pipeline includes and which
 # belong to the project: its setup and its steps in each gate job, its jobs in
 # the gates stage, its steps before and after the deploy script, and its
-# stages after this file's. The template renders each empty once and never
-# renders over it, so this file stays exactly what the template renders.
+# stages after this file's. The template renders nothing under .azure/project/,
+# so what the project adds to its pipeline lives there, and this file keeps to
+# the template's shape plus the includes and the names above.
 #
 # Pull requests are not triggered from this file. Azure Repos ignores a `pr:`
 # block, and runs a pipeline on a pull request only through a build validation

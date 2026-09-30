@@ -23,8 +23,11 @@ guide is the task-oriented path over it.
 Runs are driven by the `tcab` CLI (binary `tcab`, crate `test-cabinet-cli`).
 There are two ways to invoke it:
 
-- A released binary, `tcab run …`. Released binaries are published on GitHub for
-  Linux (static musl, x86_64), Windows (x86_64), and macOS (Apple silicon).
+- A released binary, `tcab run …`. A tag's release-pipeline run publishes the
+  smoke-tested `tcab-linux` (static musl, `x86_64`) and `tcab-windows`
+  artifacts; every other platform, macOS included, builds `tcab` from source
+  with `cargo build --release -p test-cabinet-cli` (see
+  [Releasing `tcab`](/development/releasing/#releasing-tcab)).
 - A source checkout, `cargo run -p test-cabinet-cli -- run …`. Everything after
   `--` is passed to `tcab`. Use this form while working in the repository.
 

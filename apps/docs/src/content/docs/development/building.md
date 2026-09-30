@@ -347,10 +347,9 @@ The same file carries the checks the hook framework brings from its pinned
 upstream repositories, the file checks of `pre-commit-hooks` and `shellcheck`;
 they are hooks, not gates, so `make gate` does not run them and
 `pre-commit run --all-files` does, and the pipeline gives each a step of its
-own. Two of them carry excludes for what a test case ships:
-`check-added-large-files` leaves out test-case and game-jam media, which is the
-size a playable game needs, and `end-of-file-fixer` leaves out every test-case
-and game-jam version directory, because a
+own. Two of them, `check-added-large-files` and `end-of-file-fixer`, leave out
+every test-case and game-jam version directory: a version ships what a playable
+game needs, media and oracle output far over the size limit, and a
 [frozen version](/development/frozen-versions/) may never change.
 
 A reference implementation's scripts are model output, so each slug directory

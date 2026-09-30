@@ -59,11 +59,12 @@ by hand.
 
 Frozen versions are also left out of every check that would otherwise change
 them. `format` derives its exclusions from the `.frozen` markers on each run,
-and the upstream `end-of-file-fixer` hook excludes every test-case and game-jam
-version directory in `.pre-commit-config.yaml`, frozen or not, since a version
-becomes frozen without its files changing. The `check-added-large-files` hook
-excludes test-case and game-jam media there for the same reason: a reference
-implementation's recording or music track is the size a playable game needs.
+and the upstream `end-of-file-fixer` and `check-added-large-files` hooks
+exclude every test-case and game-jam version directory in
+`.pre-commit-config.yaml`, frozen or not, since a version becomes frozen without
+its files changing, and what it ships (a reference implementation's recording
+or music track, a performance case's oracle output) is the size a playable game
+needs.
 
 ## Freezing a version
 

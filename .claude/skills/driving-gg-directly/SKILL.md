@@ -1,10 +1,6 @@
 ---
-name: driving-gg-directly description: Read this skill before running gg outside The Test
-Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg
-against a tasks/ file". gg is normally launched by core inside a run container; this is
-the recipe for launching the bare binary from a dev box with a hand-written invocation, in
-responses-as-code or tool-calling mode, and reading its telemetry. Verified in the
-devcontainer on 2026-09-22.
+name: driving-gg-directly
+description: Read this skill before running gg outside The Test Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg against a tasks/ file". gg is normally launched by core inside a run container; this is the recipe for launching the bare binary from a dev box with a hand-written invocation, in responses-as-code or tool-calling mode, and reading its telemetry. Verified in the devcontainer on 2026-09-22.
 ---
 
 # Driving gg directly
