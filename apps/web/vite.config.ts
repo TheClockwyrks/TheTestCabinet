@@ -188,7 +188,22 @@ export default defineConfig({
           fileParallelism: false,
           browser: {
             enabled: true,
-            provider: playwright(),
+            /*
+             * Every page mounts the WebGL synthwave scene behind its content
+             * unless the browser asks for reduced motion, and a headless engine
+             * on a machine without a GPU rasterizes that scene in software on
+             * the page's main thread. On a pipeline agent, six instances
+             * sharing two cores, the thread is then blocked for seconds at a
+             * stretch: a row's arrival outlasts a `findByRole` timeout, and a
+             * real pointer click outlasts the test. Nothing here states what
+             * the scene renders, so every context asks for reduced motion,
+             * which the backdrop answers with its static CSS fallback. The
+             * option is the provider's, not an instance's: an instance's
+             * `contextOptions` is not read.
+             */
+            provider: playwright({
+              contextOptions: { reducedMotion: "reduce" },
+            }),
             // Nothing here watches a browser render, in a pipeline or under a
             // developer, so no window is opened.
             headless: true,
