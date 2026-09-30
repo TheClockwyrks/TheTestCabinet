@@ -328,11 +328,20 @@ check_contains "keeping the others" "${REPOSITORY}: keeping $CHECKOUT $STAGING $
 check_contains "and deleting what only it named" "${REPOSITORY}@sha256:master" "$(deleted)"
 
 write_fixtures
+printf 'variables:\n  otherTag: %s\n' "$MASTER" >"$stub/branch-staging.yml"
+out="$(run rust)"
+check_equal "a branch whose file pins nothing this reads refuses too" "1" "$?"
+check_contains "naming it" "origin/staging pins no ciImageTag or rustImageTag in ci/images/tags.yml; refusing to purge" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+echo "--- a branch still on the per-track pins ---"
+write_fixtures
 printf 'variables:\n  rustImageTag: v1-e9e53ee1c4db\n  webImageTag: v1-ffe3b49d464e\n' >"$stub/branch-staging.yml"
 out="$(run rust)"
-check_equal "a branch whose file pins no ciImageTag refuses too" "1" "$?"
-check_contains "naming it" "origin/staging pins no ciImageTag in ci/images/tags.yml; refusing to purge" "$out"
-check_equal "and deletes nothing" "" "$(deleted)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps this track's old tag in place of its ciImageTag" \
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $NIGHTLY v1-e9e53ee1c4db" "$out"
+check_lacks "and not the other track's" "v1-ffe3b49d464e" "$out"
 
 echo "--- a checkout whose file pins nothing ---"
 write_fixtures

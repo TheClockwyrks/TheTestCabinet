@@ -48,8 +48,8 @@ readonly UNTAGGED_MIN_AGE_SECONDS=3600
 # The branches whose pins are kept. A branch this cannot resolve stops the
 # purge, because a fetch that failed must not read as "no branch names this
 # tag": every tag that branch pins would look unkept and be deleted. So does a
-# branch whose file has no `ciImageTag` line: a file in another shape is not a
-# branch that pins nothing. The one branch that does pin nothing is one with
+# branch whose file pins nothing this can read: a file in yet another shape is
+# not a branch that pins nothing. The one branch that does pin nothing is one with
 # no ci/images/ at all, which predates the CI images (`master` still does)
 # and whose pipeline pulls none.
 readonly LIVE_BRANCHES=("master" "staging" "nightly")
@@ -139,12 +139,15 @@ authorization_for() {
 	printf 'Basic %s' "$basic"
 }
 
-# The commit ci/images/tags.yml pins in one revision of the file: the value of
-# its `ciImageTag:` line, which names the image of every track. Read with grep
-# rather than a YAML parser because this runs on the agent, which carries
-# neither PyYAML nor a reason to.
+# The tag ci/images/tags.yml pins in one revision of the file: the value of
+# its `ciImageTag:` line, which names the image of every track, or, on a
+# branch the template's v0.24.0 scheme has not reached (`staging` and `nightly`
+# until this shape is promoted through them), the value of this track's
+# `<track>ImageTag:` line, a `v1-<digest>` tag. Read with grep rather than a
+# YAML parser because this runs on the agent, which carries neither PyYAML nor
+# a reason to.
 pins_in() {
-	grep -oE "^[[:space:]]*ciImageTag:[[:space:]]*[A-Za-z0-9_.-]+" <<<"$1" |
+	grep -oE "^[[:space:]]*(ciImageTag|${track}ImageTag):[[:space:]]*[A-Za-z0-9_.-]+" <<<"$1" |
 		sed -E 's/^.*:[[:space:]]*//' || true
 }
 
@@ -197,7 +200,7 @@ kept_tags() {
 		fi
 		pins="$(pins_in "$text")"
 		if [ -z "$pins" ]; then
-			echo "ci-image-purge.sh: origin/$branch pins no ciImageTag in ${PINS_FILE}; refusing to purge" >&2
+			echo "ci-image-purge.sh: origin/$branch pins no ciImageTag or ${track}ImageTag in ${PINS_FILE}; refusing to purge" >&2
 			return 1
 		fi
 		printf '%s\n' "$pins"
