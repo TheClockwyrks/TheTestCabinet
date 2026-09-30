@@ -1009,6 +1009,13 @@ published image directly from their own registry configuration; the script does
 **not** register anything with the backend, which plays no part in container
 distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
 
+Each registry round trip that writes or fetches (a push, a pull, a `docker buildx
+imagetools create`) is tried up to `REGISTRY_ATTEMPTS` times (default 4), waiting
+`REGISTRY_RETRY_DELAY` seconds (default 10) times the attempt number between tries, because
+a registry refusing a connection for a moment is a failure the next attempt clears and
+every one of those operations is idempotent. One that fails every attempt ends the build
+at that image: nothing after it is pushed under its name, and it prints no reference.
+
 `RECLAIM=1`, set alongside `PUSH=1`, additionally reclaims as it goes: once an image is
 pushed and nothing later in the build order is `FROM` it, `build.sh` removes it from the
 local store and prunes the builder cache, and prints the remaining disk. The whole set
