@@ -153,6 +153,10 @@
 #                 performance image is IMAGE_NAME_PREFIXperformance
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
+#   REGISTRY_ATTEMPTS  how many times one registry round trip (a push, a pull, a
+#                 manifest write) is tried before the build fails on it (default: 4)
+#   REGISTRY_RETRY_DELAY  seconds before the first retry; the Nth retry waits N times
+#                 this (default: 10)
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -193,6 +197,12 @@ readonly IMAGE_TAG="${IMAGE_TAG:-latest}"
 readonly IMAGE_NAME_PREFIX="${IMAGE_NAME_PREFIX:-test-cabinet-}"
 readonly DOCKER="${DOCKER:-docker}"
 readonly REUSE_INPUTS="${REUSE_INPUTS:-}"
+readonly REGISTRY_ATTEMPTS="${REGISTRY_ATTEMPTS:-4}"
+readonly REGISTRY_RETRY_DELAY="${REGISTRY_RETRY_DELAY:-10}"
+if [[ ! "${REGISTRY_ATTEMPTS}" =~ ^[1-9][0-9]*$ || ! "${REGISTRY_RETRY_DELAY}" =~ ^[0-9]+$ ]]; then
+	echo "REGISTRY_ATTEMPTS must be a positive integer and REGISTRY_RETRY_DELAY a whole number of seconds" >&2
+	exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Options
@@ -490,6 +500,31 @@ registry_has() {
 	"$DOCKER" buildx imagetools inspect "$1" >/dev/null 2>&1
 }
 
+# Runs one registry round trip that writes or fetches (a push, a pull, a manifest write),
+# trying it again when it fails. A registry that refuses a connection for a moment is a
+# failure one agent meets mid-build and the next attempt clears; a staging build lost an
+# arm64 commit tag to exactly that, a `connect: connection refused` on one blob upload.
+# Each of these is idempotent — a push sends only the blobs the registry lacks, a pull
+# fetches only the layers the store lacks, a manifest write names a digest — so trying
+# again is safe. When every attempt fails it returns the last one's status, and `set -e`
+# in the caller ends the build there. `registry_has` is not retried: its "no" is an
+# answer, and a transient failure there costs a rebuild, never a missing image.
+registry_retry() {
+	local attempt=1 status
+	while true; do
+		status=0
+		"$@" || status=$?
+		[[ "${status}" -ne 0 ]] || return 0
+		if ((attempt >= REGISTRY_ATTEMPTS)); then
+			echo "==> ERROR: \`$*\` failed ${attempt} time(s), exiting ${status}; giving up" >&2
+			return "${status}"
+		fi
+		echo "==> WARNING: \`$*\` failed (exit ${status}, attempt ${attempt} of ${REGISTRY_ATTEMPTS}); retrying in $((REGISTRY_RETRY_DELAY * attempt))s" >&2
+		sleep "$((REGISTRY_RETRY_DELAY * attempt))"
+		attempt=$((attempt + 1))
+	done
+}
+
 # True when the image is in the table and its inputs tag is in the registry. A name the
 # table does not carry is built; an unreachable registry reads as absent, which builds
 # too.
@@ -506,7 +541,7 @@ push_inputs_tag() {
 	[[ -n "${REUSE_INPUTS}" && -n "${INPUTS_DIGEST[$name]:-}" ]] || return 0
 	ref="$(inputs_ref "$name")"
 	"$DOCKER" tag "${local_image}" "${ref}"
-	"$DOCKER" push --quiet "${ref}" >&2
+	registry_retry "$DOCKER" push --quiet "${ref}" >&2
 	echo "==> ${name} inputs tag: ${ref}" >&2
 }
 
@@ -523,7 +558,7 @@ reuse_image() {
 	REUSED["${name}"]=1
 	if [[ "${name}" != tools ]]; then
 		repo="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}"
-		"$DOCKER" buildx imagetools create --tag "${repo}:${IMAGE_TAG}" "${ref}" >&2
+		registry_retry "$DOCKER" buildx imagetools create --tag "${repo}:${IMAGE_TAG}" "${ref}" >&2
 		digest="$("$DOCKER" buildx imagetools inspect "${repo}:${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
 		if [[ -z "${digest}" ]]; then
 			echo "could not resolve the digest of ${repo}:${IMAGE_TAG} after retagging ${ref}" >&2
@@ -533,7 +568,7 @@ reuse_image() {
 	fi
 	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
 		echo "==> pulling ${ref} to drive gg selfcheck in it: a reused representative is checked like a built one" >&2
-		"$DOCKER" pull --quiet "${ref}" >&2
+		registry_retry "$DOCKER" pull --quiet "${ref}" >&2
 		"$DOCKER" tag "${ref}" "${local_image}"
 		gg_selfcheck "${name}" "${local_image}"
 		if [[ -n "${RECLAIM}" ]]; then
@@ -554,7 +589,7 @@ ensure_parents_local() {
 		image_present "${local_image}" && continue
 		ref="$(inputs_ref "${parent}")"
 		echo "==> pulling ${ref} as ${local_image} (${name} is built from it, and this run reused it)"
-		if ! "$DOCKER" pull --quiet "${ref}" >&2; then
+		if ! registry_retry "$DOCKER" pull --quiet "${ref}" >&2; then
 			echo "ERROR: ${name} is built from ${parent}, which this run neither built nor found as ${ref}." >&2
 			exit 1
 		fi
@@ -579,10 +614,17 @@ produce() {
 }
 
 # Push a locally-built image to the registry under a tag, then resolve and print
-# its pushed digest reference (repo@sha256:...). The digest is read back from the
-# pushed manifest so the reference pins exactly what landed in the registry.
-# Arguments: the local image tag, and the image's short name (e.g. base, sprite,
-# sprite-sheet, adversarial) used to build its registry repository.
+# its pushed digest reference as `==> <name> reference: repo@sha256:...`. The digest is
+# read back from the pushed manifest so the reference pins exactly what landed in the
+# registry. Arguments: the local image tag, and the image's short name (e.g. base,
+# sprite, sprite-sheet, adversarial) used to build its registry repository.
+#
+# CALL IT AS A COMMAND, NEVER INSIDE `$(...)`. Bash does not carry `set -e` into a command
+# substitution, so every caller once read `reference="$(push_and_pin ...)"` and a push that
+# failed there was not noticed: the function went on to push the inputs tag, printed a
+# reference, and returned 0, the reclaim removed the image, and the commit's tag was
+# missing from the registry until the multi-arch fuse failed on it half an hour later.
+# Printing the reference line here is what lets the callers run it directly.
 push_and_pin() {
 	local local_image="$1"
 	local name="$2"
@@ -592,7 +634,7 @@ push_and_pin() {
 	echo "==> tagging ${local_image} as ${pushed}" >&2
 	"$DOCKER" tag "${local_image}" "${pushed}"
 	echo "==> pushing ${pushed}" >&2
-	"$DOCKER" push "${pushed}" >&2
+	registry_retry "$DOCKER" push "${pushed}" >&2
 	push_inputs_tag "${local_image}" "${name}"
 
 	# Resolve the pushed image's digest into a pullable repo@digest reference.
@@ -602,7 +644,7 @@ push_and_pin() {
 		echo "could not resolve a pushed digest for ${pushed}" >&2
 		exit 1
 	fi
-	echo "${digest}"
+	echo "==> ${name} reference: ${digest}"
 }
 
 # ---------------------------------------------------------------------------
@@ -840,9 +882,7 @@ build_gg_toolchains() {
 		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains)"
-		echo "==> gg-toolchains reference: ${reference}"
+		push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains
 	fi
 }
 
@@ -890,9 +930,7 @@ build_audio_store() {
 		-f "${SCRIPT_DIR}/audio-store/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${AUDIO_STORE_IMAGE}" audio-store)"
-		echo "==> audio-store reference: ${reference}"
+		push_and_pin "${AUDIO_STORE_IMAGE}" audio-store
 	fi
 }
 
@@ -1228,9 +1266,7 @@ build_gg_variant() {
 	fi
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" "${name}")"
-		echo "==> ${name} reference: ${reference}"
+		push_and_pin "${image}" "${name}"
 	fi
 }
 
@@ -1243,9 +1279,7 @@ build_base() {
 	"$DOCKER" build -t "${BASE_IMAGE}" -f "${SCRIPT_DIR}/base/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${BASE_IMAGE}" base)"
-		echo "==> base reference: ${reference}"
+		push_and_pin "${BASE_IMAGE}" base
 	fi
 }
 
@@ -1265,9 +1299,7 @@ build_base_wasm() {
 		-f "${SCRIPT_DIR}/base-wasm/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${BASE_WASM_IMAGE}" base-wasm)"
-		echo "==> base-wasm reference: ${reference}"
+		push_and_pin "${BASE_WASM_IMAGE}" base-wasm
 	fi
 }
 
@@ -1290,9 +1322,7 @@ build_asset_image() {
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" "${name}")"
-		echo "==> ${name} reference: ${reference}"
+		push_and_pin "${image}" "${name}"
 	fi
 }
 
@@ -1334,9 +1364,7 @@ build_full_stack() {
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" "${name}")"
-		echo "==> ${name} reference: ${reference}"
+		push_and_pin "${image}" "${name}"
 	fi
 }
 
@@ -1356,9 +1384,7 @@ build_game_jam() {
 		-f "${SCRIPT_DIR}/game-jam/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" game-jam)"
-		echo "==> game-jam reference: ${reference}"
+		push_and_pin "${image}" game-jam
 	fi
 }
 
@@ -1379,9 +1405,7 @@ build_adversarial() {
 		-f "${SCRIPT_DIR}/adversarial/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${ADVERSARIAL_IMAGE}" adversarial)"
-		echo "==> adversarial reference: ${reference}"
+		push_and_pin "${ADVERSARIAL_IMAGE}" adversarial
 	fi
 }
 
@@ -1399,9 +1423,7 @@ build_blender() {
 		-f "${SCRIPT_DIR}/blender/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" blender)"
-		echo "==> blender reference: ${reference}"
+		push_and_pin "${image}" blender
 	fi
 }
 
@@ -1423,9 +1445,7 @@ build_performance() {
 		-f "${SCRIPT_DIR}/performance/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${PERFORMANCE_IMAGE}" performance)"
-		echo "==> performance reference: ${reference}"
+		push_and_pin "${PERFORMANCE_IMAGE}" performance
 	fi
 }
 
