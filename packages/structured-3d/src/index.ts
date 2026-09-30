@@ -19,7 +19,9 @@
  * collects every enabled, visible render component and draws it through a
  * `THREE.WebGLRenderer` under one of four render modes, the 2D screen layer
  * composited over that picture, volumetric collision detection reported as events
- * and manifolds, named input actions read only through a player controller, the
+ * and manifolds, named input actions read only through a player controller and
+ * the on-screen controls a touch layout draws for a touchscreen, shown while
+ * the screen is the input in use, the
  * audio cue bus with its positional cues and its first-gesture unlock, asset
  * resolution under one fixed root, the diagnostics overlay, the recorder that
  * captures the frames the pipeline drew as video, and the debug surface the game
@@ -93,7 +95,9 @@ export type { PacedClockOptions } from "./clocks";
  *
  * A game reads actions through its player controller and never through this
  * table; it is exported so a build can name a layout it supports and a check
- * can assert the actions that layout carries.
+ * can assert the actions that layout carries. Selecting an entry is also what
+ * has the engine draw that layout's on-screen controls, reported through
+ * `engine.touchControls()` and the two `touch-controls:` events.
  */
 export { TOUCH_LAYOUTS } from "./input";
 

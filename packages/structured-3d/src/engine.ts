@@ -91,6 +91,7 @@ import type {
   Renderer,
   RunOptions,
   SurfaceMetrics,
+  TouchControlsState,
   TouchLayout,
   Viewport,
   WorldAudio,
@@ -108,6 +109,7 @@ import {
 import { InputSystem, TOUCH_LAYOUTS } from "./input";
 import { FrameRecorder } from "./recording";
 import { RenderPipeline, type RenderCounts } from "./rendering";
+import { TouchControls } from "./touch-controls";
 import { EngineWorld, type LoadApi, type World } from "./worlds";
 
 /** The key that toggles the diagnostics overlay: engine chrome, not an action. */
@@ -153,7 +155,10 @@ export interface EngineOptions<D = unknown> {
    * bilinearly; `false` samples nearest-neighbor, which keeps pixel art crisp.
    */
   imageSmoothing?: boolean;
-  /** A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game registers. */
+  /**
+   * A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game registers
+   * and whose on-screen controls the engine draws.
+   */
   layout?: string;
   /** The clock supplying each frame's delta; defaults to a {@link WallClock}. */
   clock?: Clock;
@@ -220,6 +225,12 @@ export interface Engine<D = unknown> {
    * registry's first and then the world's.
    */
   diagnostics(): readonly DiagnosticReading[];
+  /**
+   * The selected layout and whether its on-screen controls are showing, as a
+   * fresh copy, or `null` when the engine was built without a layout or over a
+   * surface whose event target has no document to place the overlay in.
+   */
+  touchControls(): TouchControlsState | null;
   /** Whether the recorder is capturing frames. */
   recording(): boolean;
   /** Arm the recorder. Capture begins at the next frame. */
@@ -227,8 +238,8 @@ export interface Engine<D = unknown> {
   /** Disarm the recorder, flush the encoder, and resolve with what it caught. */
   stopRecording(): Promise<Recording>;
   /**
-   * Close the world, halt the loop, drop every listener, discard an armed
-   * capture, and dispose the renderer. Idempotent.
+   * Close the world, halt the loop, remove the on-screen controls, drop every
+   * listener, discard an armed capture, and dispose the renderer. Idempotent.
    */
   destroy(): void;
 }
@@ -300,6 +311,11 @@ export interface InputPort {
   register(name: string, binding: ActionBinding): void;
   /** `InitApi.input.layout`, forwarded. */
   layout(): TouchLayout | null;
+  /**
+   * Drives an action's magnitude with no key event involved; the seam the
+   * on-screen touch controls push a stick's deflection through.
+   */
+  drive(name: string, value: number): void;
   /** Closes the input frame; called last in every frame. */
   endFrame(): void;
   /** Removes every listener; called from `engine.destroy`. */
@@ -875,6 +891,25 @@ export function assembleEngine<D = unknown>(
 
   const subsystems = factory(services);
 
+  // After the subsystems, so the input system's own listeners are on the target
+  // before the overlay's and the touch that reveals the controls reaches the
+  // pointer first; and only under a layout, since without one there is no
+  // vocabulary to draw. The entry is taken from the catalogue directly, the
+  // name having been validated above. The controls find their document through
+  // the surface's event target and are inert over a target with none, so the
+  // headless case costs nothing and reports `null`.
+  const selectedLayout =
+    options.layout === undefined ? undefined : TOUCH_LAYOUTS[options.layout];
+  const touchControls =
+    selectedLayout === undefined
+      ? null
+      : new TouchControls({
+          surface,
+          actions: subsystems.input,
+          layout: selectedLayout,
+          emit: (event, payload) => bus.emit(event, payload),
+        });
+
   /**
    * The world currently open, for a frame that is entitled to one.
    *
@@ -1359,6 +1394,14 @@ export function assembleEngine<D = unknown>(
     diagnostics: (): readonly DiagnosticReading[] =>
       subsystems.diagnostics.read(),
 
+    /**
+     * The selected layout's on-screen controls and whether they are showing,
+     * or `null` when there are none to report on: no layout was selected, or
+     * the surface's event target has no document to draw them in.
+     */
+    touchControls: (): TouchControlsState | null =>
+      touchControls?.state() ?? null,
+
     recording: (): boolean => recorder.active,
 
     /**
@@ -1389,8 +1432,9 @@ export function assembleEngine<D = unknown>(
     },
 
     /**
-     * Close the world, run the instance's `shutdown`, halt the loop, discard an
-     * armed capture, dispose the renderer, and drop every listener.
+     * Close the world, run the instance's `shutdown`, halt the loop, remove the
+     * on-screen controls, discard an armed capture, dispose the renderer, and
+     * drop every listener.
      *
      * Idempotent, because teardown races: a page unload, an explicit call, and a
      * test's `afterEach` all reach here, and only the first one has anything to
@@ -1415,6 +1459,9 @@ export function assembleEngine<D = unknown>(
       subsystems.worlds.close();
       if (built !== null) built.instance.shutdown();
       subsystems.audio.silence();
+      // Before the input system they drive, so a control a thumb was holding
+      // returns its action to rest through a system that is still attached.
+      touchControls?.detach();
       subsystems.input.detach();
       recorder.discard();
       pipeline.dispose();
