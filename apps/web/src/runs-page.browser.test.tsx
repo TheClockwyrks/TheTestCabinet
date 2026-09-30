@@ -89,6 +89,22 @@ function galleryValue(): GalleryDataInput {
   } as unknown as GalleryDataInput;
 }
 
+/**
+ * How long the first row is given to arrive.
+ *
+ * The rows are answered from a fixed cabinet the moment the page asks, so what
+ * this budgets is the page's own render, which is cheap everywhere but in a cold
+ * WebKit on a pipeline agent: six instances share the agent's cores, and the
+ * first render of this page there, before the engine has compiled any of the
+ * gallery's modules, has outlasted ten seconds while the same render a test
+ * later takes two. The budget is the cold render's, and a test's own timeout
+ * is set to hold it.
+ */
+const ARRIVAL_BUDGET = 30_000;
+
+/** The time a test is given, which holds the arrival budget and the click. */
+const TEST_TIMEOUT = 45_000;
+
 /** Where the router is, readable from the page, so a navigation is observable. */
 function LocationProbe() {
   const { pathname } = useLocation();
@@ -114,7 +130,7 @@ async function openRunsPage(): Promise<HTMLElement> {
   const row = await screen.findByRole(
     "link",
     { name: /Alpha/ },
-    { timeout: 10_000 },
+    { timeout: ARRIVAL_BUDGET },
   );
   return within(row).getByText("Alpha");
 }
@@ -140,7 +156,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("the Runs page in a browser", () => {
+describe("the Runs page in a browser", { timeout: TEST_TIMEOUT }, () => {
   it("puts a run's title under the pointer, not the selection control", async () => {
     const title = await openRunsPage();
 
