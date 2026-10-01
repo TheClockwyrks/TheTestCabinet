@@ -127,42 +127,44 @@ export function ToolchainCoverage({
 
       {coverage.files.length > 0 && (
         <div className={styles.toolchainCard}>
-          <table className={styles.table}>
-            <caption className={styles.tableCaption}>
-              {formatCodeNumber(coverage.filesMeasured)}{" "}
-              {coverage.filesMeasured === 1 ? "file" : "files"} measured
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">File</th>
-                {COVERAGE_METRIC_KEYS.map((key) => (
-                  <th key={key} scope="col" className={styles.numeric}>
-                    {COVERAGE_METRIC_META[key].label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {coverage.files.map((file) => (
-                <tr key={file.path}>
-                  <th scope="row">{file.path}</th>
+          <div className={styles.tableScroll}>
+            <table className={`${styles.table} ${styles.tableFull}`}>
+              <caption className={styles.tableCaption}>
+                {formatCodeNumber(coverage.filesMeasured)}{" "}
+                {coverage.filesMeasured === 1 ? "file" : "files"} measured
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">File</th>
                   {COVERAGE_METRIC_KEYS.map((key) => (
-                    <td key={key} className={styles.numeric}>
-                      <span className={styles.covCell}>
-                        <span>
-                          {formatCoveragePercent(coveragePercent(file[key]))}
-                        </span>
-                        <span className={styles.covCounts}>
-                          {formatCodeNumber(file[key].covered)}/
-                          {formatCodeNumber(file[key].total)}
-                        </span>
-                      </span>
-                    </td>
+                    <th key={key} scope="col" className={styles.numeric}>
+                      {COVERAGE_METRIC_META[key].label}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {coverage.files.map((file) => (
+                  <tr key={file.path}>
+                    <th scope="row">{file.path}</th>
+                    {COVERAGE_METRIC_KEYS.map((key) => (
+                      <td key={key} className={styles.numeric}>
+                        <span className={styles.covCell}>
+                          <span>
+                            {formatCoveragePercent(coveragePercent(file[key]))}
+                          </span>
+                          <span className={styles.covCounts}>
+                            {formatCodeNumber(file[key].covered)}/
+                            {formatCodeNumber(file[key].total)}
+                          </span>
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {coverage.filesTruncated && (
             <p className={styles.caveat}>
               List capped at {coverage.files.length} of{" "}
