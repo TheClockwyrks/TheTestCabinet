@@ -482,8 +482,9 @@ function comboIdentity(combo: ReviewPlanCombo): string {
 }
 
 /**
- * The member editor shared by the group, plan and ladder editors: the combinations
- * already chosen, over an add-row that builds the next one.
+ * The member editor shared by the group, plan and ladder editors: an add-row that
+ * builds the next combination, over the combinations already chosen — so what is
+ * being assembled accumulates at the foot of the editor, above its Save.
  *
  * The add-row asks for a kind because a combination has two shapes — a harness and the
  * model it runs, or a saved [gg configuration](../runs/gg/useGgConfigs) and a model for
@@ -497,10 +498,17 @@ export function ComboPicker({
   combos,
   onChange,
   models,
+  membersLabel,
 }: {
   combos: ReviewPlanCombo[];
   onChange: (next: ReviewPlanCombo[]) => void;
   models: Model[];
+  /**
+   * A heading for the chosen members, set where they are the thing the editor makes
+   * (a group) rather than one input among several (a plan's one-offs). With it, an
+   * empty list says so instead of rendering nothing.
+   */
+  membersLabel?: string;
 }) {
   const { token } = useAuth();
   const {
@@ -737,83 +745,9 @@ export function ComboPicker({
 
   return (
     <>
-      {(comboGroups.length > 0 || ggMembers.length > 0) && (
-        <div className={styles.chipGroups}>
-          {comboGroups.map((group) => (
-            <div key={group.key} className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>{group.title}</span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  // Scoped by the indices the block actually holds, so clearing one
-                  // harness leaves every other harness's members alone.
-                  onClick={() => {
-                    const dropped = new Set(group.items.map((item) => item.i));
-                    onChange(combos.filter((_, j) => !dropped.has(j)));
-                  }}
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.chipList}>
-                {group.items.map(({ combo, i, label }) => (
-                  <li
-                    key={`${comboIdentity(combo)}:${i}`}
-                    className={styles.chip}
-                  >
-                    <span>{label}</span>
-                    <button
-                      type="button"
-                      className={styles.chipRemove}
-                      aria-label="Remove combination"
-                      onClick={() => onChange(combos.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          {/* One section for every gg member, under the same divided heading a harness
-              block carries. The heading names the shape rather than a configuration
-              because the configuration names each row: one block per configuration made
-              a heading and a divider out of a single entry, and stacked several of them
-              between the reviewer and the add-row. */}
-          {ggMembers.length > 0 && (
-            <div className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>gg Configurations</span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  // Every gg member, since the section is every gg member. Decided on
-                  // what makes a member a gg member rather than on the row list, so a
-                  // member the rows could not name is still cleared.
-                  onClick={() => onChange(combos.filter((c) => !isGgCombo(c)))}
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.ggMemberList}>
-                {ggMembers.map((entry) => (
-                  <GgMemberRow
-                    key={`${comboIdentity(entry.combo)}:${entry.i}`}
-                    entry={entry}
-                    onRemove={() =>
-                      onChange(combos.filter((_, j) => j !== entry.i))
-                    }
-                  />
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
       {/* One labelled field rather than two lit pills: the shape is a choice from a
           fixed set, which is what a select is for, and a pair of filled pills directly
-          under a list of member pills read as members of it. Matches the comparison
+          over a list of member pills read as members of it. Matches the comparison
           editor's own Kind field, which offers this same choice. */}
       <label className={`${exec.field} ${styles.kindField}`}>
         <span className={exec.fieldLabel}>Combination kind</span>
@@ -1026,6 +960,86 @@ export function ComboPicker({
           </div>
         </div>
       )}
+      {membersLabel && (
+        <MembersHeading
+          label={membersLabel}
+          empty={comboGroups.length === 0 && ggMembers.length === 0}
+        />
+      )}
+      {(comboGroups.length > 0 || ggMembers.length > 0) && (
+        <div className={styles.chipGroups}>
+          {comboGroups.map((group) => (
+            <div key={group.key} className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>{group.title}</span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  // Scoped by the indices the block actually holds, so clearing one
+                  // harness leaves every other harness's members alone.
+                  onClick={() => {
+                    const dropped = new Set(group.items.map((item) => item.i));
+                    onChange(combos.filter((_, j) => !dropped.has(j)));
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.chipList}>
+                {group.items.map(({ combo, i, label }) => (
+                  <li
+                    key={`${comboIdentity(combo)}:${i}`}
+                    className={styles.chip}
+                  >
+                    <span>{label}</span>
+                    <button
+                      type="button"
+                      className={styles.chipRemove}
+                      aria-label="Remove combination"
+                      onClick={() => onChange(combos.filter((_, j) => j !== i))}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {/* One section for every gg member, under the same divided heading a harness
+              block carries. The heading names the shape rather than a configuration
+              because the configuration names each row: one block per configuration made
+              a heading and a divider out of a single entry, and stacked several of them
+              between the reviewer and the add-row. */}
+          {ggMembers.length > 0 && (
+            <div className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>gg Configurations</span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  // Every gg member, since the section is every gg member. Decided on
+                  // what makes a member a gg member rather than on the row list, so a
+                  // member the rows could not name is still cleared.
+                  onClick={() => onChange(combos.filter((c) => !isGgCombo(c)))}
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.ggMemberList}>
+                {ggMembers.map((entry) => (
+                  <GgMemberRow
+                    key={`${comboIdentity(entry.combo)}:${entry.i}`}
+                    entry={entry}
+                    onRemove={() =>
+                      onChange(combos.filter((_, j) => j !== entry.i))
+                    }
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -1033,9 +1047,16 @@ export function ComboPicker({
 export function CasePicker({
   cases,
   onChange,
+  membersLabel,
 }: {
   cases: ReviewPlanCase[];
   onChange: (next: ReviewPlanCase[]) => void;
+  /**
+   * A heading for the chosen members, set where they are the thing the editor makes
+   * (a group) rather than one input among several (a plan's one-offs). With it, an
+   * empty list says so instead of rendering nothing.
+   */
+  membersLabel?: string;
 }) {
   const testCaseName = useTestCaseName();
   const sel = useCatalog();
@@ -1165,53 +1186,6 @@ export function CasePicker({
 
   return (
     <>
-      {caseGroups.length > 0 && (
-        <div className={styles.chipGroups}>
-          {caseGroups.map((group) => (
-            <div key={group.category ?? "other"} className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>
-                  {group.category ? categoryLabel(group.category) : "Other"}
-                </span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  onClick={() =>
-                    onChange(
-                      cases.filter(
-                        (c) => slugCategory(c.slug) !== group.category,
-                      ),
-                    )
-                  }
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.chipList}>
-                {group.items.map(({ c, i }) => (
-                  <li
-                    key={`${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}`}
-                    className={styles.chip}
-                  >
-                    {/* Through the shared pin label, so a pill spells the engine the
-                        same way the matrix and the review queue do — and so two pills
-                        differing only on engine are not the same line of text. */}
-                    <span>{caseLabel(testCaseName(c.slug), c)}</span>
-                    <button
-                      type="button"
-                      className={styles.chipRemove}
-                      aria-label="Remove case"
-                      onClick={() => onChange(cases.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
       {/* The new-run form's Test grid, so choosing a case reads the same wherever it
           is done: the type, case and version on the first row, and the variant, the
           engine and the add control — everything the resolved version decides, plus
@@ -1296,6 +1270,67 @@ export function CasePicker({
           + Add
         </button>
       </div>
+      {membersLabel && (
+        <MembersHeading label={membersLabel} empty={caseGroups.length === 0} />
+      )}
+      {caseGroups.length > 0 && (
+        <div className={styles.chipGroups}>
+          {caseGroups.map((group) => (
+            <div key={group.category ?? "other"} className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>
+                  {group.category ? categoryLabel(group.category) : "Other"}
+                </span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  onClick={() =>
+                    onChange(
+                      cases.filter(
+                        (c) => slugCategory(c.slug) !== group.category,
+                      ),
+                    )
+                  }
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.chipList}>
+                {group.items.map(({ c, i }) => (
+                  <li
+                    key={`${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}`}
+                    className={styles.chip}
+                  >
+                    {/* Through the shared pin label, so a pill spells the engine the
+                        same way the matrix and the review queue do — and so two pills
+                        differing only on engine are not the same line of text. */}
+                    <span>{caseLabel(testCaseName(c.slug), c)}</span>
+                    <button
+                      type="button"
+                      className={styles.chipRemove}
+                      aria-label="Remove case"
+                      onClick={() => onChange(cases.filter((_, j) => j !== i))}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// The heading over a picker's chosen members, with a placeholder line while there
+// are none so the section reads as the (still empty) thing being built.
+function MembersHeading({ label, empty }: { label: string; empty: boolean }) {
+  return (
+    <>
+      <p className={`${exec.sectionLabel} ${styles.membersLabel}`}>{label}</p>
+      {empty && <p className={styles.fieldHint}>No members yet.</p>}
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import type {
   CoverageGroupInput,
@@ -17,6 +18,11 @@ import { ComboPicker, CasePicker } from "./coveragePickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
+
+const KIND_OPTIONS: ReadonlyArray<SegmentedOption<CoverageGroupKind>> = [
+  { value: "combo", label: "Combinations" },
+  { value: "case", label: "Test cases" },
+];
 
 // The coverage group editor (`/account/groups/new` and `/account/groups/:groupId/
 // edit`): a group's name, kind (combinations or cases — fixed once created),
@@ -156,37 +162,31 @@ export function GroupEditPage() {
 
           <p className={exec.sectionLabel}>Kind</p>
           <div className={styles.kindRow}>
-            <button
-              type="button"
-              className={`${styles.groupPick} ${
-                kind === "combo" ? styles.groupPickOn : ""
-              }`}
-              aria-pressed={kind === "combo"}
+            <SegmentedControl
+              ariaLabel="Kind"
+              value={kind}
+              onChange={setKind}
               // A group's kind is fixed once it exists (its stored members are of
-              // that kind), so the toggle is disabled while editing.
+              // that kind), so the toggle is inert while editing.
               disabled={editing}
-              onClick={() => setKind("combo")}
-            >
-              Combinations
-            </button>
-            <button
-              type="button"
-              className={`${styles.groupPick} ${
-                kind === "case" ? styles.groupPickOn : ""
-              }`}
-              aria-pressed={kind === "case"}
-              disabled={editing}
-              onClick={() => setKind("case")}
-            >
-              Test cases
-            </button>
+              options={KIND_OPTIONS}
+            />
           </div>
 
-          <p className={exec.sectionLabel}>Members</p>
+          <p className={exec.sectionLabel}>Configuration</p>
           {kind === "combo" ? (
-            <ComboPicker combos={combos} onChange={setCombos} models={models} />
+            <ComboPicker
+              combos={combos}
+              onChange={setCombos}
+              models={models}
+              membersLabel="Members"
+            />
           ) : (
-            <CasePicker cases={cases} onChange={setCases} />
+            <CasePicker
+              cases={cases}
+              onChange={setCases}
+              membersLabel="Members"
+            />
           )}
 
           <SubmitNotice message={error} />

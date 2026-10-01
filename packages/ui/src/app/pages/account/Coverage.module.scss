@@ -623,12 +623,19 @@
 // The member sections stacked as a column of groups, each a labelled header +
 // divider over its own list. A section is a harness, a test-case category, or the
 // one gg Configurations section — and that last one lists rows rather than pills,
-// because a gg member is more than a pill holds (see `.ggMemberList`).
+// because a gg member is more than a pill holds (see `.ggMemberList`). Sits under
+// the add-row, so its gap is above it.
 .chipGroups {
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
-  margin-bottom: t.$space-md;
+  margin-top: t.$space-lg;
+}
+
+// A picker's own members heading (the group editor's) already carries a section
+// label's top margin, so the list under it drops its own.
+.membersLabel + .chipGroups {
+  margin-top: 0;
 }
 
 // A group's header row: the section title on the left, the "Clear all" action on
@@ -687,24 +694,24 @@
   margin-bottom: 0;
 }
 
-// An added combination/case reads as a pill: fully-rounded ends (a large radius
-// resolves to the pill shape at any height), so a row of them looks like tags
-// rather than boxed cards.
+// An added combination/case reads as a tag: a rectangle with softly rounded
+// corners, so a row of them looks like labels rather than pill buttons or boxed
+// cards. With no curved end to clear, the leading padding shrinks to match.
 .chip {
   display: inline-flex;
   align-items: center;
   gap: t.$space-xs;
-  padding: t.$space-2xs t.$space-sm t.$space-2xs t.$space-md;
+  padding: t.$space-2xs t.$space-xs t.$space-2xs t.$space-sm;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: 999px;
+  border-radius: t.$radius-sm;
   color: t.$color-text;
   font-size: t.$font-sm;
 }
 
 // The chip's remove control: a bare glyph (no border or fill of its own) that
 // brightens to the negative cue on hover, so it reads as an inline "x" on the
-// pill rather than a nested button.
+// tag rather than a nested button.
 .chipRemove {
   display: inline-flex;
   align-items: center;
@@ -1047,11 +1054,10 @@
   max-width: 28rem;
 }
 
-// The kind selector on the group editor: two radio pills (Combinations / Test cases),
-// locked once the group exists (a group's kind is fixed after create).
+// The kind selector on the group editor: a segmented control (Combinations / Test
+// cases), locked once the group exists (a group's kind is fixed after create).
 .kindRow {
   display: flex;
-  gap: t.$space-sm;
   margin-bottom: t.$space-lg;
 }
 
