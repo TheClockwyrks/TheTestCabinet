@@ -265,7 +265,9 @@ export function LadderEditPage() {
             />
           </label>
 
-          <p className={exec.sectionLabel}>The climb</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            The climb
+          </p>
           <RungListEditor
             rungs={rungs}
             runsPerCell={runsPerCell}
@@ -294,14 +296,18 @@ export function LadderEditPage() {
             )}
           </SettingRow>
 
-          <p className={exec.sectionLabel}>The gate</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            The gate
+          </p>
           <GateEditor
             gate={gate}
             runsPerCell={runsPerCell}
             onChange={setGate}
           />
 
-          <p className={exec.sectionLabel}>Feeding the ladder</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            Feeding the ladder
+          </p>
           <LadderAxisPicker value={outerAxis} onChange={setOuterAxis} />
           <BufferTargetField
             value={bufferTarget}
@@ -327,7 +333,7 @@ export function LadderEditPage() {
             </p>
           )}
 
-          <p className={exec.sectionLabel}>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
             Climbers{" "}
             <HelpTip text="Groups are shared with your coverage plans, so editing one reshapes both. A climber added to a standing ladder starts at rung one while the others carry on from where they had got to." />
           </p>

@@ -607,6 +607,14 @@
   margin-bottom: t.$space-xl;
 }
 
+// A top-level section label in the ladder editor (The climb, The gate, Feeding the
+// ladder, Climbers): a little more room above it than a section label's own, so the
+// editor's sections read apart. Scoped under `.editor` to outrank `sectionLabel`'s
+// margin whichever stylesheet loads last.
+.editor .sectionBreak {
+  margin-top: calc(#{t.$space-lg} + #{t.$space-sm});
+}
+
 // The plan editor's action row — its own, not the shared new-run `.actions`, so
 // its spacing can be tuned for this widget. The gap above the buttons is double
 // the standard row gap (so the buttons sit clear of the test-case row), and the
@@ -622,8 +630,8 @@
 
 // The member sections stacked as a column of groups, each a labelled header +
 // divider over its own list. A section is a harness, a test-case category, or the
-// one gg Configurations section — and that last one lists rows rather than pills,
-// because a gg member is more than a pill holds (see `.ggMemberList`). Sits under
+// one gg Configurations section — and that last one lists rows rather than tags,
+// because a gg member is more than a tag holds (see `.ggMemberList`). Sits under
 // the add-row, so its gap is above it.
 .chipGroups {
   display: flex;
@@ -659,7 +667,7 @@
 }
 
 // The group's "Clear all": a bare text control (no border or fill) that brightens
-// to the negative cue on hover, matching the per-pill remove glyph's affordance.
+// to the negative cue on hover, matching the per-tag remove glyph's affordance.
 .chipGroupClear {
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -688,7 +696,7 @@
   gap: t.$space-sm;
 }
 
-// Inside a group the surrounding column controls spacing, so the pill row drops
+// Inside a group the surrounding column controls spacing, so the tag row drops
 // its own bottom margin.
 .chipGroup .chipList {
   margin-bottom: 0;
@@ -735,8 +743,8 @@
   }
 }
 
-// The gg members, as rows rather than pills. A gg member carries a configuration, the
-// models it binds and the slot each is bound to, which is more than fits a pill: the
+// The gg members, as rows rather than tags. A gg member carries a configuration, the
+// models it binds and the slot each is bound to, which is more than fits a tag: the
 // third of those is what tells two arms of one study apart, so it is disclosed under the
 // row instead of crowding it or being dropped.
 .ggMemberList {
@@ -1001,8 +1009,8 @@
   gap: t.$space-md;
 }
 
-// The pick-a-group toggle pills on the plan editor: a wrapping row of selectable
-// chips, one per existing group, with the selected ones filled in the accent.
+// The pick-a-group toggle tags on the plan and ladder editors: a wrapping row of
+// selectable tags, one per existing group, with the selected ones filled in the accent.
 .groupPicks {
   display: flex;
   flex-wrap: wrap;
@@ -1014,10 +1022,14 @@
   display: inline-flex;
   align-items: center;
   gap: t.$space-xs;
-  padding: t.$space-2xs t.$space-md;
+  // A step roomier than a member tag (`.chip`): these are buttons to press, not
+  // labels to read.
+  padding: t.$space-xs calc(#{t.$space-sm} + #{t.$space-2xs});
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: 999px;
+  // The same tag shape as a chosen member (`.chip`), so a group offered here and a
+  // member listed under it read as one family.
+  border-radius: t.$radius-sm;
   color: t.$color-text;
   font-size: t.$font-sm;
   cursor: pointer;
@@ -1028,14 +1040,14 @@
   }
 }
 
-// A selected group pill: filled in the accent to read as "included in this plan".
+// A selected group tag: filled in the accent to read as "included in this plan".
 .groupPickOn {
   background: t.$color-accent;
   border-color: t.$color-accent;
   color: t.$color-bg;
 }
 
-// The muted member count trailing a group pill / card subtitle.
+// The muted member count trailing a group tag / card subtitle.
 .groupPickCount {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
