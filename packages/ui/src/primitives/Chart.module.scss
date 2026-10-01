@@ -1,3 +1,5 @@
+@use "../styles/tokens" as t;
+
 // The chart figure fills its column; Plot injects its own <svg>/<figure>, we
 // only frame it.
 .chart {
@@ -11,5 +13,55 @@
   :global(svg) {
     max-width: 100%;
     height: auto;
+  }
+}
+
+// The page-level hover tip (see `createPageTip` in Chart.tsx): the same dark box
+// and hairline as Plot's own tip, drawn over the page instead of inside the SVG.
+.pageTip {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(32rem, calc(100vw - 16px));
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: t.$color-surface;
+  color: t.$color-text;
+  font-family: var(--tcab-font);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  // A title's newlines are its line breaks; a long path wraps rather than
+  // pushing the box past the viewport.
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
+  pointer-events: none;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+// A rotated square straddling the box's edge, pointing at the mark. Its two
+// visible sides carry the box's border, so it reads as part of the outline.
+.pageTipArrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  transform: rotate(45deg);
+
+  .pageTip[data-side="above"] & {
+    bottom: -5px;
+    border-top: none;
+    border-left: none;
+  }
+
+  .pageTip[data-side="below"] & {
+    top: -5px;
+    border-bottom: none;
+    border-right: none;
   }
 }

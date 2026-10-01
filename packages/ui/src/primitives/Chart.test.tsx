@@ -5,9 +5,9 @@
 // which is what these cover.
 
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Chart } from "./Chart";
-import { barChart } from "./plot/charts";
+import { barChart, horizontalBarChart } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
 
 const bars = [
@@ -135,5 +135,105 @@ describe("Chart", () => {
     unmount();
     expect(() => tapAway()).not.toThrow();
     expect(container.querySelector("svg")).toBeNull();
+  });
+
+  describe("page-level tip (horizontal bar charts)", () => {
+    const rows = [
+      { label: "a", value: 3, title: "a\nsrc/a.ts:12" },
+      { label: "b", value: 5, title: "b\nsrc/b.ts:4" },
+    ];
+    const rowSpec = (palette: ChartPalette) =>
+      horizontalBarChart(rows, palette);
+
+    // The bubble lives on document.body, outside the chart and every card around
+    // it, which is what keeps a wide tip from being clipped.
+    const pageTip = (): HTMLElement | null =>
+      [
+        ...document.body.querySelectorAll<HTMLElement>("[aria-hidden=true]"),
+      ].find((el) => el.textContent?.includes("src/")) ?? null;
+
+    function hoverChart(container: HTMLElement) {
+      container.querySelector("svg")!.dispatchEvent(
+        new PointerEvent("pointermove", {
+          pointerType: "mouse",
+          bubbles: true,
+          clientX: 100,
+          clientY: 20,
+        }),
+      );
+    }
+
+    it("shows the pointed-at bar's title outside the chart", () => {
+      const { container } = render(<Chart title="Ranking" spec={rowSpec} />);
+      hoverChart(container);
+      const tip = pageTip();
+      expect(tip).not.toBeNull();
+      expect(tip!.hidden).toBe(false);
+      expect(container.contains(tip)).toBe(false);
+      // Plot's own in-SVG tip is not drawn alongside it.
+      expect(tipShowing(container)).toBe(false);
+    });
+
+    // jsdom lays nothing out, so the geometry the bubble reads is stubbed: the
+    // highlighted bar's box, the bubble's own size, and the viewport's width.
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function placeOver(bar: Partial<DOMRect>) {
+      vi.spyOn(SVGElement.prototype, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        right: 0,
+        top: 200,
+        bottom: 213,
+        width: 0,
+        height: 13,
+        ...bar,
+      } as DOMRect);
+      vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(
+        200,
+      );
+      vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(
+        40,
+      );
+      vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(1280);
+    }
+
+    it("centres the bubble on a bar with length", () => {
+      placeOver({ left: 300, right: 400, width: 100 });
+      const { container } = render(<Chart title="Ranking" spec={rowSpec} />);
+      hoverChart(container);
+      // Centred on the bar's middle (350), half the box's width either side.
+      expect(pageTip()!.style.left).toBe("250px");
+    });
+
+    it("opens rightward from the bar start for a 0% bar", () => {
+      placeOver({ left: 300, right: 300, width: 0 });
+      const { container } = render(<Chart title="Ranking" spec={rowSpec} />);
+      hoverChart(container);
+      // The arrow's inset short of the bar start, rather than 100px back over
+      // the labels.
+      expect(pageTip()!.style.left).toBe("288px");
+    });
+
+    it("hides when the pointer leaves the chart", () => {
+      const { container } = render(<Chart title="Ranking" spec={rowSpec} />);
+      hoverChart(container);
+      container
+        .querySelector("svg")!
+        .dispatchEvent(
+          new PointerEvent("pointerleave", { pointerType: "mouse" }),
+        );
+      expect(pageTip()!.hidden).toBe(true);
+    });
+
+    it("is removed from the page on unmount", () => {
+      const { container, unmount } = render(
+        <Chart title="Ranking" spec={rowSpec} />,
+      );
+      hoverChart(container);
+      unmount();
+      expect(pageTip()).toBeNull();
+    });
   });
 });
