@@ -1,1 +1,5 @@
 clean = ["make", "clean"]
+
+[issues]
+format = "files"
+root = "tasks"
