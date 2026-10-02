@@ -1313,22 +1313,19 @@ const H_BAR_MARGIN_TOP = 12;
 const MIN_LABEL_MARGIN = 90;
 const MAX_LABEL_MARGIN = 260;
 
-// Hover-tip options for a chart whose categories run down y: same box as `tipBox`, with
-// the pointer selecting by ROW rather than by column, so the whole width of a row
-// responds and the tip describes the bar the pointer is actually beside.
-function tipBoxY(palette: ChartPalette): {
-  pointer: "y";
-  maxRadius: number;
-  fill: string;
-  stroke: string;
-} {
-  return {
-    pointer: "y",
-    maxRadius: POINTER_RADIUS,
-    fill: palette.surface,
-    stroke: palette.border,
-  };
-}
+/**
+ * The class a chart puts on its pointer-highlight mark to have `Chart` draw the hover
+ * tip as a page-level bubble instead of Plot's in-SVG one.
+ *
+ * Plot draws its tip inside the chart's own SVG, so a tip wider than the room beside
+ * the bar it describes is cut off at the chart's edge. A horizontal ranking is exactly
+ * where that happens: its tips lead with a full file path, and its charts are often
+ * narrow cards side by side. The page-level bubble floats above every container, keeps
+ * itself inside the viewport, and slides its arrow along its edge so it still points
+ * at the bar. It reads the selected datum's `title` from the figure's value, and its
+ * position from the highlighted mark carrying this class.
+ */
+export const PAGE_TIP_ANCHOR = "tcab-page-tip-anchor";
 
 /**
  * A horizontal bar chart: one bar per named thing, ranked by length.
@@ -1393,9 +1390,6 @@ export function horizontalBarChart(
         y: "label",
         fill: color,
         rx: 2,
-        ...(hasTips
-          ? { title: (d: HorizontalBarPoint) => d.title, tip: tipBoxY(palette) }
-          : {}),
       }),
       Plot.ruleX([0], { stroke: palette.border }),
       // Direct labels at the tips, in text ink — never the bar's color, which is a
@@ -1412,8 +1406,10 @@ export function horizontalBarChart(
             }),
           ]
         : []),
-      // The hover highlight: a wash over the pointer-selected row, matching the tip's
-      // row selection (renders nothing until the pointer is near).
+      // The hover highlight: a wash over the pointer-selected row, selecting by ROW so
+      // the whole width of a row responds (renders nothing until the pointer is near).
+      // It is also the tip's anchor: `Chart` draws the selected bar's `title` as a
+      // page-level bubble pointing at this mark — see `PAGE_TIP_ANCHOR`.
       ...(hasTips
         ? [
             Plot.barX(
@@ -1423,6 +1419,7 @@ export function horizontalBarChart(
                 y: "label",
                 rx: 2,
                 maxRadius: POINTER_RADIUS,
+                className: PAGE_TIP_ANCHOR,
                 ...highlightWash(palette),
               }),
             ),

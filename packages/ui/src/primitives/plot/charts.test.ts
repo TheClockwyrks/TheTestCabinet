@@ -4,6 +4,7 @@ import {
   barChart,
   distributionChart,
   horizontalBarChart,
+  PAGE_TIP_ANCHOR,
   metricLineChart,
   stackedAreaChart,
   stackedBarChart,
@@ -644,7 +645,7 @@ describe("horizontalBarChart", () => {
     expect(text).toContain("7");
   });
 
-  it("renders with hover tips when a bar carries a title, without throwing", () => {
+  it("hands its hover tips to the page-level bubble when a bar carries a title", () => {
     const node = render(
       horizontalBarChart(
         [
@@ -654,6 +655,10 @@ describe("horizontalBarChart", () => {
         palette,
       ),
     );
-    expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+    // The tip is drawn by `Chart` outside the SVG, where no card clips it, and is
+    // positioned from the highlight mark — so the chart tags that mark and draws
+    // no tip of Plot's own.
+    expect(node.querySelector(`.${PAGE_TIP_ANCHOR}`)).not.toBeNull();
+    expect(node.querySelector('[aria-label="tip"]')).toBeNull();
   });
 });

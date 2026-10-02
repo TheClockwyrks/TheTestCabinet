@@ -241,6 +241,19 @@
   }
 }
 
+// A table that fills its card. `.table` scrolls itself by being a block, and a block
+// table's own box shrinks to its content; this one is a real table at the card's width,
+// and the wrapper around it does the scrolling instead.
+.tableScroll {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.tableFull {
+  display: table;
+  overflow-x: visible;
+}
+
 .tableCaption {
   caption-side: top;
   text-align: left;
