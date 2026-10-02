@@ -724,8 +724,8 @@ fn main() -> Result<()> {
             ],
         },
         // Ladders (`/ladders`): an ordered series of rungs that harness+model
-        // combinations climb one at a time, gated at each rung by the requesting
-        // account's own reviews. A sibling of the coverage plan rather than a mode of
+        // combinations climb one at a time, gated at each rung by the validators'
+        // ratings of its runs. A sibling of the coverage plan rather than a mode of
         // it, so it gets its own module — but it reuses the plan's combination
         // pointers (`ReviewPlanCombo`, imported from `coverage.ts`) and the review
         // document's `Rating`, which is the gate's floor.
@@ -743,7 +743,7 @@ fn main() -> Result<()> {
                 bapi::LadderAxis, bapi::LadderSchedule,
                 bapi::LadderRung, bapi::LadderRungInput,
                 bapi::Ladder, bapi::LadderOut, bapi::LadderInput,
-                bapi::LadderOutcome, bapi::ClimberStatus,
+                bapi::LadderOutcome, bapi::ClimberStatus, bapi::ClimberBlock,
                 bapi::RungTally, bapi::LadderCell, bapi::LadderRungOutcome,
                 bapi::LadderClimber, bapi::LadderProgressRung, bapi::LadderProgress,
                 bapi::StoredClimberOut,

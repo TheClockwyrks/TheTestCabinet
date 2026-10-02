@@ -1006,6 +1006,8 @@ fn global_filter<'a>(states: &'a [&'a str]) -> JobCancelFilter<'a> {
         states,
         origin: None,
         user_id: None,
+        cell: None,
+        ids: None,
     }
 }
 
@@ -1282,6 +1284,22 @@ pub async fn update_status(
             // "harness unavailable", etc. The driver supplies it; retain whatever
             // record it managed to produce so the timeline is inspectable.
             let detail = update.detail.as_deref().unwrap_or("run failed");
+            // A `failed` report carries the driver's classified terminal state on the
+            // failure record it built (`Infrastructure` — our infra broke — or
+            // `TimedOut` — the model never converged). When no record could be built
+            // at all, the failure was severe enough that it is our infrastructure.
+            let terminal_state =
+                terminal_run_state(update.record.as_ref(), RunState::Infrastructure);
+            // Decided before the record is stored, so the retry and the attempt's
+            // `retried_by` stamp exist before its run does (see `maybe_enqueue_retry`).
+            let retried = maybe_enqueue_retry(
+                &state,
+                &job,
+                update.record.as_ref().map(|record| record.id.as_str()),
+                terminal_state,
+                already_terminal,
+            )
+            .await?;
             let record_id = persist_produced(&state, &id, update.record.as_ref()).await?;
             state
                 .db
@@ -1299,13 +1317,9 @@ pub async fn update_status(
                 ),
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
-            // A `failed` report carries the driver's classified terminal state on the
-            // failure record it built (`Infrastructure` — our infra broke — or
-            // `TimedOut` — the model never converged). When no record could be built
-            // at all, the failure was severe enough that it is our infrastructure.
-            let terminal_state =
-                terminal_run_state(update.record.as_ref(), RunState::Infrastructure);
-            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
+            if feeds_ladders(already_terminal, retried) {
+                spawn_ladder_feed(&state, &job);
+            }
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Succeeded => {
@@ -1315,6 +1329,17 @@ pub async fn update_status(
             let record = update.record.as_ref().ok_or_else(|| {
                 ApiError::unprocessable("a succeeded status must carry the run record")
             })?;
+            let terminal_state = terminal_run_state(Some(record), RunState::Completed);
+            // Decided before the record is stored, so the retry and the attempt's
+            // `retried_by` stamp exist before its run does (see `maybe_enqueue_retry`).
+            let retried = maybe_enqueue_retry(
+                &state,
+                &job,
+                Some(record.id.as_str()),
+                terminal_state,
+                already_terminal,
+            )
+            .await?;
             let record_id = persist_record(&state, &id, record).await?;
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
             // model claimed done but the build won't load) — the record carries
@@ -1323,7 +1348,6 @@ pub async fn update_status(
             // run lands the way every other infrastructure failure does, as a failed
             // job carrying the record's reason with a failure notification, so an
             // observer sees one shape for one kind of outcome.
-            let terminal_state = terminal_run_state(Some(record), RunState::Completed);
             match succeeded_job_outcome(record) {
                 (JobState::Failed, detail) => {
                     let detail = detail.unwrap_or("run failed");
@@ -1363,7 +1387,9 @@ pub async fn update_status(
                     );
                 }
             }
-            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
+            if feeds_ladders(already_terminal, retried) {
+                spawn_ladder_feed(&state, &job);
+            }
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Canceled => {
@@ -1376,8 +1402,9 @@ pub async fn update_status(
             // Everything else a terminal report normally does is deliberately
             // skipped: the job keeps its `canceled` state and its cancellation
             // detail, no completion notification fires (a kill is an operator
-            // action, not something to alert on), and no retry is enqueued (an
-            // operator who stopped a run does not want it started again).
+            // action, not something to alert on), no retry is enqueued (an
+            // operator who stopped a run does not want it started again), and no
+            // ladder is fed (the next run to finish feeds it).
             let Some(record) = update.record.as_ref() else {
                 return Err(ApiError::unprocessable(
                     "a canceled status must carry the run record",
@@ -1392,6 +1419,31 @@ pub async fn update_status(
             Ok(StatusCode::NO_CONTENT)
         }
     }
+}
+
+/// Whether a job that just reached a terminal state through the driver's report feeds
+/// the ladders it belongs to: the first time it goes terminal, and only when it did not
+/// enqueue an automatic retry — the retry takes its place in flight, so there is nothing
+/// new for a ladder to act on until the retry itself finishes.
+///
+/// Cancellations never reach this: a cancelled job — by hand, by a halt, or by an
+/// early-stopping gate — feeds nothing, which is also what keeps an early stop from
+/// looping.
+fn feeds_ladders(already_terminal: bool, retried: bool) -> bool {
+    !already_terminal && !retried
+}
+
+/// Top up the ladders a finished job feeds, on a task of its own.
+///
+/// Spawned rather than awaited, after the job's terminal state is stored: a top-up
+/// resolves a whole ladder and may reach the model catalog, and the driver's status
+/// report must neither wait on that nor ever fail because of it.
+fn spawn_ladder_feed(state: &AppState, job: &job::Model) {
+    let state = state.clone();
+    let job = job.clone();
+    tokio::spawn(async move {
+        super::ladders::feed_ladders(&state, &job).await;
+    });
 }
 
 /// The default `retryCount` when a launch request omits it: one retry after a
@@ -1521,21 +1573,37 @@ fn is_retryable(state: RunState) -> bool {
 /// outright when the plan or ladder that launched the run has been paused since: a
 /// halted queue that refills itself minutes later is indistinguishable from a queue
 /// that was never halted.
+///
+/// It runs **before** the attempt's record is stored, and the retry is enqueued in one
+/// transaction with the attempt's [`retried_by`](job::Model::retried_by) stamp and its
+/// `record_id` (`record_id`, the id the record will be stored under). A ladder leaves
+/// the run of a retried job out through those two columns, so the attempt's run is
+/// never visible without them: a top-up running concurrently never counts it, nor lets
+/// its gate decide on it, while its retry is still to be enqueued. A report that is
+/// sent again after the retry was enqueued but before the record was stored finds the
+/// stamp already set and enqueues nothing more.
+///
+/// Returns whether a retry was enqueued, which decides whether the job feeds its ladders
+/// ([`feeds_ladders`]).
 async fn maybe_enqueue_retry(
     state: &AppState,
     job: &job::Model,
+    record_id: Option<&str>,
     terminal_state: RunState,
     already_terminal: bool,
-) -> Result<(), ApiError> {
+) -> Result<bool, ApiError> {
     if already_terminal || !is_retryable(terminal_state) {
-        return Ok(());
+        return Ok(false);
+    }
+    if job.retried_by.is_some() {
+        return Ok(true);
     }
     let retry_count = retry_count_of(&job.request_json);
     let attempt = job.attempt + 1;
     // `attempt` is 1-based over the retries: attempt 1 is the first retry, so the
     // chain stops once it would exceed `retryCount` retries.
     if attempt as u32 > retry_count {
-        return Ok(());
+        return Ok(false);
     }
     if origin_is_paused(state, job).await? {
         tracing::info!(
@@ -1545,7 +1613,7 @@ async fn maybe_enqueue_retry(
             "skipped the automatic retry of a failed run: the plan or ladder that \
              launched it is paused"
         );
-        return Ok(());
+        return Ok(false);
     }
 
     // Re-seed the retried launch's model prices exactly as its original enqueue did.
@@ -1558,36 +1626,46 @@ async fn maybe_enqueue_retry(
     let retry_id = cuid2::create_id();
     let job_token = cuid2::create_id();
     let now = now_rfc3339()?;
-    state
+    // Enqueued together with the failed attempt's `retried_by` stamp, so a ladder counts
+    // the retry in its place rather than both (see `Db::enqueue_retry`).
+    let enqueued = state
         .db
-        .enqueue_job(crate::db::NewJob {
-            id: retry_id.clone(),
-            request_json: job.request_json.clone(),
-            test_case_slug: job.test_case_slug.clone(),
-            test_case_version: job.test_case_version.clone(),
-            variant: job.variant.clone(),
-            test_type: job.test_type.clone(),
-            harness_slug: job.harness_slug.clone(),
-            model_id: job.model_id.clone(),
-            // The retry is the same run on the same cell, so it carries the same pin the
-            // attempt it replaces was enqueued with — the engine included.
-            engine_slug: job.engine_slug.clone(),
-            // Carry the gg capability set and the cell it was lifted to through
-            // verbatim, so a retried gg run is configured identically and counts against
-            // the same cell as the attempt it replaces. `None` for every
-            // third-party-harness job.
-            gg_config_json: job.gg_config_json.clone(),
-            gg_preset: job.gg_preset.clone(),
-            gg_config_id: job.gg_config_id.clone(),
-            gg_models: job.gg_models.clone(),
-            job_token,
-            attempt,
-            user_id: job.user_id.clone(),
-            origin: job.origin.as_deref().and_then(JobOrigin::parse),
-            created_at: now,
-        })
+        .enqueue_retry(
+            &job.id,
+            record_id,
+            crate::db::NewJob {
+                id: retry_id.clone(),
+                request_json: job.request_json.clone(),
+                test_case_slug: job.test_case_slug.clone(),
+                test_case_version: job.test_case_version.clone(),
+                variant: job.variant.clone(),
+                test_type: job.test_type.clone(),
+                harness_slug: job.harness_slug.clone(),
+                model_id: job.model_id.clone(),
+                // The retry is the same run on the same cell, so it carries the same pin the
+                // attempt it replaces was enqueued with — the engine included.
+                engine_slug: job.engine_slug.clone(),
+                // Carry the gg capability set and the cell it was lifted to through
+                // verbatim, so a retried gg run is configured identically and counts against
+                // the same cell as the attempt it replaces. `None` for every
+                // third-party-harness job.
+                gg_config_json: job.gg_config_json.clone(),
+                gg_preset: job.gg_preset.clone(),
+                gg_config_id: job.gg_config_id.clone(),
+                gg_models: job.gg_models.clone(),
+                job_token,
+                attempt,
+                user_id: job.user_id.clone(),
+                origin: job.origin.as_deref().and_then(JobOrigin::parse),
+                created_at: now,
+            },
+        )
         .await
         .map_err(ApiError::from)?;
+    if !enqueued {
+        // A concurrent report of the same attempt enqueued its retry first.
+        return Ok(true);
+    }
     tracing::info!(
         parent_job = %job.id,
         retry_job = %retry_id,
@@ -1596,7 +1674,7 @@ async fn maybe_enqueue_retry(
         terminal_state = ?terminal_state,
         "re-enqueued an automatic retry of a failed run"
     );
-    Ok(())
+    Ok(true)
 }
 
 /// Persist a produced run record to the `run` store, using the events the relay

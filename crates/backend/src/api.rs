@@ -57,6 +57,7 @@ pub use comparisons::ComparisonInput;
 // public snapshot with the exact computation the internal `/comparisons` API uses.
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
+// The backend's boot feeds every self-feeding ladder once, so a restart never strands one.
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
     CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
@@ -77,11 +78,12 @@ pub use jobs::{
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
     StreamResync, StreamTopicsBody,
 };
+pub(crate) use ladders::spawn_startup_feed as spawn_ladder_startup_feed;
 pub use ladders::{
-    ClimberStatus, Ladder, LadderAxis, LadderCell, LadderClimber, LadderClimberInput, LadderInput,
-    LadderOut, LadderOutcome, LadderOverrideInput, LadderProgress, LadderProgressRung, LadderRung,
-    LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule, RungTally,
-    StoredClimberOut,
+    ClimberBlock, ClimberStatus, Ladder, LadderAxis, LadderCell, LadderClimber, LadderClimberInput,
+    LadderInput, LadderOut, LadderOutcome, LadderOverrideInput, LadderProgress, LadderProgressRung,
+    LadderRung, LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule,
+    RungTally, StoredClimberOut,
 };
 pub use model_candidates::{CandidateOut, ModelCandidatesOut};
 pub use model_probes::{

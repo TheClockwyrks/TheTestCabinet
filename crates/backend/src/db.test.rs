@@ -633,6 +633,100 @@ async fn the_updated_at_migration_seeds_existing_rows_from_finished_at() {
 }
 
 #[tokio::test]
+async fn the_retried_by_migration_pairs_each_retry_with_the_attempt_it_replaced() {
+    // The shape a deployment sees on the release that adds `retried_by`: retries already
+    // stored, with nothing linking them to their attempts but the launch they repeat.
+    // Identical launch requests are ordinary, so the backfill must pair an attempt only
+    // with a retry enqueued moments after it ended, and only an attempt a retry follows.
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let same_launch = |id: &str, attempt: i32, created_at: &str| NewJob {
+        request_json: "{\"cases\":[\"pong\"]}".to_string(),
+        attempt,
+        ..new_job(id, created_at)
+    };
+    async fn ended(db: &Db, id: &str, state: &str, at: &str, run: Option<(&str, RunState)>) {
+        if let Some((run_id, run_state)) = run {
+            let mut ran = record(run_id);
+            ran.status.state = run_state;
+            db.push(&ran, &links(), None, None).await.unwrap();
+        }
+        db.set_job_state(id, state, at, None, run.map(|(run_id, _)| run_id))
+            .await
+            .unwrap()
+            .expect("the job exists");
+    }
+    let t0 = "2026-09-19T20:00:00Z";
+    // A catastrophic attempt lands on a `succeeded` job, and its retry follows 14 ms on.
+    db.enqueue_job(same_launch("caught", 0, t0)).await.unwrap();
+    ended(
+        &db,
+        "caught",
+        "succeeded",
+        "2026-09-19T20:44:48.049Z",
+        Some(("caught-run", RunState::Catastrophic)),
+    )
+    .await;
+    // A repeat of the same launch that timed out ended a moment earlier still: the
+    // model's own outcome, which no retry follows.
+    db.enqueue_job(same_launch("timed-out", 0, t0))
+        .await
+        .unwrap();
+    ended(
+        &db,
+        "timed-out",
+        "succeeded",
+        "2026-09-19T20:44:48.04Z",
+        Some(("timed-out-run", RunState::TimedOut)),
+    )
+    .await;
+    // Another repeat whose infrastructure failure was not retried (the ladder was
+    // paused), ending after the retry above was already enqueued.
+    db.enqueue_job(same_launch("unretried", 0, t0))
+        .await
+        .unwrap();
+    ended(&db, "unretried", "failed", "2026-09-19T20:50:00Z", None).await;
+    db.enqueue_job(same_launch("retry", 1, "2026-09-19T20:44:48.063Z"))
+        .await
+        .unwrap();
+    // An infrastructure failure, and the same launch made again by hand an hour later.
+    db.enqueue_job(same_launch("lone", 1, t0)).await.unwrap();
+    ended(&db, "lone", "failed", "2026-09-19T21:00:00Z", None).await;
+    db.enqueue_job(same_launch("relaunch", 2, "2026-09-19T22:00:00Z"))
+        .await
+        .unwrap();
+
+    let conn = db.connection();
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261002_000052_add_job_retried_by")
+        .expect("the `retried_by` migration is registered");
+    let steps = (migrations.len() - index) as u32;
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
+        .await
+        .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
+        .await
+        .unwrap();
+
+    let retried_by = async |id: &str| {
+        job::Entity::find_by_id(id.to_string())
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("the job exists")
+            .retried_by
+    };
+    assert_eq!(retried_by("caught").await.as_deref(), Some("retry"));
+    assert_eq!(retried_by("timed-out").await, None);
+    assert_eq!(retried_by("unretried").await, None);
+    assert_eq!(retried_by("lone").await, None);
+    assert_eq!(retried_by("retry").await, None);
+}
+
+#[tokio::test]
 async fn the_startup_backfills_move_updated_at_on_the_rows_they_rewrite() {
     // The backfills rewrite lifted columns on rows that predate them, which is a
     // mutation like any other — and they are also what replaces the migration's
@@ -1730,6 +1824,50 @@ async fn fail_in_flight_jobs_reaps_only_executing_jobs() {
     let active = db.active_jobs().await.unwrap();
     let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
     assert_eq!(ids, vec!["q"]);
+}
+
+#[tokio::test]
+async fn enqueue_retry_stamps_the_attempt_once_before_its_record_is_stored() {
+    // The retry is enqueued before the attempt's record is stored, so the stamp carries
+    // the record's id too: the run is a retried attempt's from the moment it exists. A
+    // second report of the same attempt finds it stamped and enqueues nothing more.
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("attempt", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    let retry = |id: &str| NewJob {
+        attempt: 1,
+        ..new_job(id, "2026-06-23T00:50:00Z")
+    };
+
+    assert!(
+        db.enqueue_retry("attempt", Some("attempt-run"), retry("retry"))
+            .await
+            .unwrap()
+    );
+    let attempt = db.get_job("attempt").await.unwrap().expect("the attempt");
+    assert_eq!(attempt.retried_by.as_deref(), Some("retry"));
+    assert_eq!(attempt.record_id.as_deref(), Some("attempt-run"));
+    assert_eq!(
+        db.get_job("retry").await.unwrap().expect("the retry").state,
+        "queued"
+    );
+
+    assert!(
+        !db.enqueue_retry("attempt", Some("attempt-run"), retry("second"))
+            .await
+            .unwrap()
+    );
+    assert!(db.get_job("second").await.unwrap().is_none());
+    assert_eq!(
+        db.get_job("attempt")
+            .await
+            .unwrap()
+            .unwrap()
+            .retried_by
+            .as_deref(),
+        Some("retry")
+    );
 }
 
 #[tokio::test]
@@ -6064,52 +6202,261 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 }
 
 #[tokio::test]
-async fn cell_run_ratings_read_only_the_requesting_accounts_review() {
+async fn cell_run_ratings_read_the_validators_rating_and_never_a_review() {
+    use test_cabinet_core::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None, None).await.unwrap();
-    // Two reviewers disagree. The lifted `run.rating` is the worse of the two, and
-    // is exactly what a gate must not read.
-    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
-        .await
-        .unwrap();
-    db.add_review("r1", &review_by("u2", Rating::Broken), None, None)
-        .await
-        .unwrap();
+    let manifest = validator_manifest();
+    // The cosmetic point fails, so the validators rate the run `great`.
+    db.push(
+        &validator_record("r1", &[("serve", true), ("hud", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let evidence = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].run_id, "r1");
+    assert!(evidence[0].validator_rated);
     assert_eq!(
-        lifted(&db, "r1").await.rating.as_deref(),
-        Some("broken"),
-        "the run's aggregate is the worst across reviewers",
+        evidence[0].rating,
+        Some(Rating::Great),
+        "rated with no review at all"
     );
 
-    let mine = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
-    assert_eq!(mine.len(), 1);
-    assert_eq!(mine[0].run_id, "r1");
-    assert_eq!(
-        mine[0].rating,
-        Some(Rating::Great),
-        "u1's climb is gated on u1's own judgement, not u2's harsher one",
-    );
-    // And the account that has not reviewed it at all sees no rating — which is
-    // "undecided", not "bad".
-    assert_eq!(
-        db.cell_run_ratings(&sample_cell(), "u3").await.unwrap()[0].rating,
+    // Two reviewers override verdicts in opposite directions. The run's stored rating
+    // follows them; the gate's evidence does not move.
+    db.add_review(
+        "r1",
+        &override_review("u1", AestheticRating::Good, &[("hud", true)]),
         None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    db.add_review(
+        "r1",
+        &override_review("u2", AestheticRating::Slop, &[("serve", false)]),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(lifted(&db, "r1").await.rating.as_deref(), Some("broken"));
+    assert_eq!(
+        lifted(&db, "r1").await.validator_rating.as_deref(),
+        Some("great"),
+        "a review never touches the validators' own rating",
+    );
+    assert_eq!(
+        db.cell_run_ratings(&sample_cell()).await.unwrap()[0].rating,
+        Some(Rating::Great),
     );
 }
 
 #[tokio::test]
-async fn cell_run_ratings_hold_only_completed_runs() {
+async fn a_legacy_runs_reviews_never_rate_it_for_a_gate() {
     let db = Db::connect_in_memory().await.unwrap();
-    let mut failed = record("boom");
-    failed.status.state = RunState::HarnessError;
-    db.push(&failed, &links(), None, None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
+        .await
+        .unwrap();
+    let evidence = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    assert!(!evidence[0].validator_rated);
+    assert_eq!(
+        evidence[0].rating, None,
+        "only validators rate a run for a ladder's gate"
+    );
+}
+
+#[tokio::test]
+async fn push_writes_the_validators_own_rating_and_a_re_push_recomputes_it() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("r1", &[("serve", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.validator_rating.as_deref(),
+        Some("broken")
+    );
+
+    // The validators pass on a re-push: the figure follows the record.
+    db.push(
+        &validator_record("r1", &[("serve", true), ("hud", true)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.validator_rating.as_deref(),
+        Some("flawless")
+    );
+
+    // A re-push while the store does not hold the version decides nothing, so it
+    // leaves the figure an earlier push wrote rather than erasing it.
+    db.push(
+        &validator_record("r1", &[("serve", false)]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.validator_rating.as_deref(),
+        Some("flawless")
+    );
+
+    // A re-push against a version that is now legacy clears it: no validator rates it.
+    let mut legacy = validator_manifest();
+    legacy.engine_format = false;
+    db.push(
+        &validator_record("r1", &[("serve", true)]),
+        &links(),
+        None,
+        Some(&legacy),
+    )
+    .await
+    .unwrap();
+    assert_eq!(lifted(&db, "r1").await.validator_rating, None);
+
+    // A legacy run, and a run whose state is not scored, carry none at all.
+    db.push(&record("legacy"), &links(), None, Some(&legacy))
+        .await
+        .unwrap();
+    assert_eq!(lifted(&db, "legacy").await.validator_rating, None);
+    let mut catastrophic = validator_record("boom", &[]);
+    catastrophic.status.state = RunState::Catastrophic;
+    db.push(&catastrophic, &links(), None, Some(&manifest))
+        .await
+        .unwrap();
+    assert_eq!(lifted(&db, "boom").await.validator_rating, None);
+}
+
+/// Clear one run's `validator_rating`, as a row stored before the column existed reads.
+async fn forget_validator_rating(db: &Db, id: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::ValidatorRating, Expr::value(None::<String>))
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn the_backfill_rates_validator_rated_runs_stored_before_the_column() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = crate::store::DefinitionStore::open(dir.path()).unwrap();
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    for id in ["r1", "r2", "garbled"] {
+        db.push(
+            &validator_record(id, &[("serve", true), ("hud", false)]),
+            &links(),
+            None,
+            Some(&manifest),
+        )
+        .await
+        .unwrap();
+        forget_validator_rating(&db, id).await;
+    }
+    // A record that no longer deserializes is skipped, never guessed at.
+    run::Entity::update_many()
+        .col_expr(run::Column::RecordJson, Expr::value("{not a record"))
+        .filter(run::Column::Id.eq("garbled"))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+
+    // The store does not hold the version yet (a deployment whose store starts
+    // empty): nothing can be decided, and nothing is written.
+    assert_eq!(db.backfill_validator_rating(&store, None).await.unwrap(), 0);
+    assert_eq!(lifted(&db, "r1").await.validator_rating, None);
+
+    store.write_manifest(&manifest).unwrap();
+    // Narrowed to one run, it rates only that one.
+    assert_eq!(
+        db.backfill_validator_rating(&store, Some(&["r2".to_string()]))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        lifted(&db, "r2").await.validator_rating.as_deref(),
+        Some("great")
+    );
+    assert_eq!(lifted(&db, "r1").await.validator_rating, None);
+
+    assert_eq!(db.backfill_validator_rating(&store, None).await.unwrap(), 1);
+    assert_eq!(
+        lifted(&db, "r1").await.validator_rating.as_deref(),
+        Some("great")
+    );
+    assert_eq!(lifted(&db, "garbled").await.validator_rating, None);
+    // Idempotent: a second pass finds nothing left it can rate.
+    assert_eq!(db.backfill_validator_rating(&store, None).await.unwrap(), 0);
+    // And it never touched the reviewed rating column.
+    assert_eq!(lifted(&db, "r1").await.rating.as_deref(), Some("great"));
+}
+
+#[tokio::test]
+async fn cell_run_ratings_hold_the_models_outcomes_and_never_infrastructure() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut infra = record("infra");
+    infra.status.state = RunState::Infrastructure;
+    db.push(&infra, &links(), None, None).await.unwrap();
+    let mut canceled = record("canceled");
+    canceled.status.state = RunState::Canceled;
+    db.push(&canceled, &links(), None, None).await.unwrap();
+    let mut timed_out = record("timed-out");
+    timed_out.status.state = RunState::TimedOut;
+    db.push(&timed_out, &links(), None, None).await.unwrap();
     db.push(&record("ok"), &links(), None, None).await.unwrap();
 
-    let runs = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
-    // An infrastructure failure retries; it is never evidence, and never a wall.
+    let mut runs = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    runs.sort_by(|a, b| a.run_id.cmp(&b.run_id));
+    // An infrastructure failure retries and a cancel was somebody's decision: neither is
+    // evidence, and neither is ever a wall.
     assert_eq!(
         runs.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
-        vec!["ok"],
+        vec!["ok", "timed-out"],
+    );
+    // A run that ended on the model's own failure is evidence, as a broken run.
+    assert!(!runs[0].model_failure);
+    assert!(runs[1].model_failure);
+    assert_eq!(
+        runs[1].as_rung_run(),
+        RungRun {
+            rating: Some(Rating::Broken),
+            loaded: false,
+        }
+    );
+
+    // The same runs are what a ladder counts against a rung's target; a plan counts
+    // only the completed one.
+    let slugs = vec![sample_cell().0];
+    assert_eq!(
+        db.count_model_runs_by_cell(&slugs)
+            .await
+            .unwrap()
+            .get(&sample_cell()),
+        Some(&2)
+    );
+    assert_eq!(
+        db.count_completed_runs_by_cell(&slugs)
+            .await
+            .unwrap()
+            .get(&sample_cell()),
+        Some(&1)
     );
 }
 
@@ -6966,7 +7313,7 @@ async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
     // A gate reads the runs of the configuration its climber names — not every gg run
     // of the case, which would let one arm's failures wall another's climb.
     let a = db
-        .cell_run_ratings(&gg_cell("cfg-a", "root=mock/echo"), "u1")
+        .cell_run_ratings(&gg_cell("cfg-a", "root=mock/echo"))
         .await
         .unwrap();
     assert_eq!(
@@ -6976,7 +7323,7 @@ async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
 
     // And the harness cell's empty pair selects the runs that carry no configuration,
     // rather than matching nothing at all.
-    let harness = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
+    let harness = db.cell_run_ratings(&sample_cell()).await.unwrap();
     assert_eq!(
         harness
             .iter()
@@ -7458,7 +7805,7 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
 /// validated points: `serve` (gameplay-critical, cap `broken`, single-player only)
 /// and `hud` (cosmetic, cap `great`, both domains). Two domains: `single-player`
 /// (common) and `versus` (the base variant's own).
-fn validator_manifest() -> crate::store::StoredManifest {
+pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
     use crate::store::{
         StoredDomain, StoredManifest, StoredReviewItem, StoredReviewValidation, StoredVariant,
     };
@@ -7557,7 +7904,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
 }
 
 /// [`record`] with one decided validator verdict per `(point, pass)` pair.
-fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
+pub(crate) fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
     use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
     let mut record = record(id);
     record.validation.debug_scripts = verdicts
@@ -7595,7 +7942,7 @@ fn aesthetic_review(
 
 /// [`aesthetic_review`] plus the reviewer's verdict `overrides`, one binary
 /// pass/fail per `(verdict id, pass)` pair.
-fn override_review(
+pub(crate) fn override_review(
     account: &str,
     rating: test_cabinet_core::review::AestheticRating,
     overrides: &[(&str, bool)],

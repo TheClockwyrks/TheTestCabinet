@@ -85,6 +85,8 @@ fn standing<'a>(
     ClimberStanding {
         member,
         status,
+        blocked: None,
+        failing: false,
         current,
         reached,
     }
@@ -359,14 +361,18 @@ fn a_rung_finishes_its_runs_before_it_is_judged_unless_early_stop_is_on() {
 }
 
 #[test]
-fn the_two_shapes_of_undecided_are_kept_apart() {
+fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherwise() {
     let gate_rule = Gate::default();
-    // Runs still to come: the ladder's problem, and it will keep feeding this climber.
+    let model = member("claude-opus-5");
+    // Runs still to come: the ladder's to solve, and it keeps feeding this climber.
     let climbing = gate::tally(&[rated(Rating::Broken)], 5, &gate_rule);
-    assert_eq!(undecided_status(&climbing), ClimberStatus::Climbing);
-    // Everything ran and nobody has looked: the reviewer's problem, and exactly what a
-    // full review buffer is made of.
-    let waiting = gate::tally(
+    assert_eq!(
+        undecided_standing(&climbing, &model, 0, false),
+        (ClimberStatus::Climbing, None)
+    );
+    // Every run completed and one carries no validator rating: nothing the ladder
+    // launches can decide it, so it is blocked, naming how many runs are unrated.
+    let unrated = gate::tally(
         &[RungRun {
             rating: None,
             loaded: true,
@@ -374,7 +380,52 @@ fn the_two_shapes_of_undecided_are_kept_apart() {
         1,
         &gate_rule,
     );
-    assert_eq!(undecided_status(&waiting), ClimberStatus::AwaitingReview);
+    assert_eq!(
+        undecided_standing(&unrated, &model, 0, false),
+        (
+            ClimberStatus::Blocked,
+            Some(ClimberBlock::Unrated { runs: 1 })
+        )
+    );
+    // Runs still to come, but the cell keeps failing and nothing of it is in flight.
+    assert_eq!(
+        undecided_standing(&climbing, &model, 0, true),
+        (
+            ClimberStatus::Blocked,
+            Some(ClimberBlock::Failing {
+                attempts: FAILING_STREAK
+            })
+        )
+    );
+    // With a run still in flight it is climbing: that run may yet complete.
+    assert_eq!(
+        undecided_standing(&climbing, &model, 1, true),
+        (ClimberStatus::Climbing, None)
+    );
+    // A climber that cannot be launched is blocked for that reason first.
+    let gone = gg_member("cfg-9", "opus", "haiku");
+    let (status, blocked) = undecided_standing(&climbing, &gone, 0, true);
+    assert_eq!(status, ClimberStatus::Blocked);
+    assert!(
+        matches!(blocked, Some(ClimberBlock::Unlaunchable { ref reason }) if reason.contains("cfg-9")),
+        "{blocked:?}"
+    );
+}
+
+#[test]
+fn a_blocked_reason_names_its_kind_on_the_wire() {
+    let json = serde_json::to_value(ClimberBlock::UnsupportedRung {
+        rung_id: "rung-1".to_string(),
+    })
+    .unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "kind": "unsupportedRung", "rungId": "rung-1" })
+    );
+    assert_eq!(
+        serde_json::to_value(ClimberStatus::Blocked).unwrap(),
+        serde_json::json!("blocked")
+    );
 }
 
 #[test]
@@ -389,7 +440,7 @@ fn a_required_fraction_is_reported_as_the_run_count_it_actually_takes() {
     assert_eq!(tally.completed, 1);
     assert_eq!(tally.pending, 4);
     assert_eq!(tally.passing, 1);
-    assert_eq!(tally.unjudged, 0);
+    assert_eq!(tally.unrated, 0);
 }
 
 #[test]
@@ -683,24 +734,39 @@ fn a_climber_that_is_not_fed_is_still_reviewed() {
 }
 
 #[test]
-fn awaiting_review_is_fed_because_the_review_is_what_it_is_waiting_on() {
-    // `awaitingReview` is a rung that has run everything it was going to, so it feeds
-    // nothing new — but it stays in the fed set, because the moment the review lands
-    // the climber moves and the next rung is launched from exactly here.
+fn a_blocked_climber_is_fed_only_when_a_top_up_can_act_on_the_block() {
     let ladder = climb_of(&["carom", "pong"]);
     let model = member("claude-opus-5");
-    let (active, reviewable) = cell_sets(
-        &ladder,
-        LadderAxis::Rung,
-        &[standing(
-            &model,
-            ClimberStatus::AwaitingReview,
-            Some(1),
-            &[0, 1],
-        )],
-    );
+    let blocked = |block: &'static ClimberBlock| {
+        let mut standing = standing(&model, ClimberStatus::Blocked, Some(1), &[0, 1]);
+        standing.blocked = Some(block);
+        standing
+    };
+    // A failing rung is fed: a requested top-up relaunches it, and only a top-up a
+    // finished run triggered skips it.
+    static FAILING: ClimberBlock = ClimberBlock::Failing { attempts: 3 };
+    let mut failing = blocked(&FAILING);
+    failing.failing = true;
+    let (active, reviewable) = cell_sets(&ladder, LadderAxis::Rung, &[failing]);
     assert_eq!(placed(&active, &ladder), vec![("claude-opus-5".into(), 1)]);
+    assert!(active[0].failing);
     assert_eq!(reviewable.len(), 2);
+
+    // A rung that cannot be climbed, and one whose runs have all completed, are never
+    // fed: nothing a top-up launches would move either.
+    static UNSUPPORTED: ClimberBlock = ClimberBlock::UnsupportedRung {
+        rung_id: String::new(),
+    };
+    static UNRATED: ClimberBlock = ClimberBlock::Unrated { runs: 2 };
+    for block in [&UNSUPPORTED, &UNRATED] {
+        let (active, reviewable) = cell_sets(&ladder, LadderAxis::Rung, &[blocked(block)]);
+        assert!(active.is_empty());
+        assert_eq!(
+            reviewable.len(),
+            2,
+            "its runs are still counted and offered"
+        );
+    }
 }
 
 #[test]
@@ -1125,6 +1191,7 @@ fn a_climber_that_cannot_be_launched_says_so_on_the_board() {
         None,
         ClimberStatus::Climbing,
         None,
+        None,
         Vec::new(),
     );
     assert_eq!(row.unlaunchable, gone.unlaunchable);
@@ -1143,6 +1210,7 @@ fn a_climber_that_cannot_be_launched_says_so_on_the_board() {
             true,
         )),
         ClimberStatus::Climbing,
+        None,
         None,
         Vec::new(),
     );

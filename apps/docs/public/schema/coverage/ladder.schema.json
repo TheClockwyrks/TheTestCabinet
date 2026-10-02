@@ -38,7 +38,7 @@
       "properties": {
         "earlyStop": {
           "default": false,
-          "description": "Whether the gate may decide on partial results and let the caller cancel the\nrung's still-queued runs. **Off** by default — the runs are evidence in\ntheir own right, so a rung finishes what it started even when the verdict is\nalready certain.",
+          "description": "Whether the gate may decide on partial results, the caller then cancelling the\ncell's jobs that have not started yet. **Off** by default — the runs are evidence in\ntheir own right, so a rung finishes what it started even when the verdict is\nalready certain.",
           "type": "boolean"
         },
         "floor": {
@@ -51,7 +51,7 @@
         },
         "unloadedCountsAsBroken": {
           "default": true,
-          "description": "Whether a run whose build never loaded counts as [`Rating::Broken`] without\nwaiting for a review. On by default: there is nothing for a reviewer to\njudge, so counting it immediately keeps it from blocking the climb *and*\nfrom occupying a review-buffer slot.",
+          "description": "Whether a run whose build never loaded counts as [`Rating::Broken`] outright,\nwhatever its validator rating says. On by default: there was nothing to play.",
           "type": "boolean"
         }
       },
@@ -186,7 +186,7 @@
   "properties": {
     "autoTopUp": {
       "default": false,
-      "description": "Whether submitting a review re-runs this ladder's top-up automatically.\n\n**On** by default, because it is the only thing that moves an enabled ladder\nalong: a review is the verdict that decides a rung, and the moment it frees a\nbuffer slot is exactly the moment the next rung's runs should be asked for.\nEnqueueing is already gated on the ladder being enabled at all, so this cannot\nmake an untouched ladder start spending.",
+      "description": "Whether the backend tops this ladder up itself whenever a job of one of its\ncells finishes — \"keep climbing as runs finish\".\n\n**On** by default, because it is what moves an enabled ladder along without\nanyone watching: the run that finishes is the evidence that may decide a rung,\nand the moment it lands is exactly the moment the next rung's runs should be\nasked for. Off means the ladder is fed only by enabling it and by an explicit\ntop-up. Enqueueing is already gated on the ladder being enabled at all, so this\ncannot make an untouched ladder start spending.",
       "type": "boolean"
     },
     "bufferTarget": {
@@ -198,7 +198,7 @@
           "type": "null"
         }
       ],
-      "description": "This ladder's override of the account's review-buffer target, or null to\ninherit it. Null, a bound of `0`, and `unbounded` are three different\ninstructions — \"no opinion\", \"never top up\", and \"top up everything\". On a\nladder the last is the natural choice more often than on a plan: the gate is\nalready what stops a hopeless climb, so the buffer is only ever holding a\nclimber back from a rung it has earned."
+      "description": "This ladder's override of the account's buffer target, or null to inherit it.\nOn a ladder the target caps the runs **in flight** at once (queued through\nrunning); completed runs never occupy it, reviewed or not. Null, a bound of `0`,\nand `unbounded` are three different instructions — \"no opinion\", \"never launch\nautomatically\", and \"launch every rung as soon as it is earned\". On a ladder the\nlast is the natural choice more often than on a plan: the gate is already what\nstops a hopeless climb."
     },
     "comboGroupIds": {
       "description": "The referenced combination groups' ids — the same `kind = \"combo\"` coverage\ngroups a plan uses, so one saved set of models drives both and editing it\nreshapes both.",

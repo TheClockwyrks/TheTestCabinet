@@ -1,6 +1,6 @@
 use super::*;
 
-/// A completed run the requester has reviewed, whose build loaded.
+/// A completed run its validators rated, whose build loaded.
 fn rated(rating: Rating) -> RungRun {
     RungRun {
         rating: Some(rating),
@@ -8,15 +8,15 @@ fn rated(rating: Rating) -> RungRun {
     }
 }
 
-/// A completed run the requester has not reviewed, whose build loaded.
-fn unreviewed() -> RungRun {
+/// A completed run that carries no validator rating, whose build loaded.
+fn unrated() -> RungRun {
     RungRun {
         rating: None,
         loaded: true,
     }
 }
 
-/// A completed run whose build never loaded, with no review recorded.
+/// A completed run whose build never loaded, with no validator rating.
 fn unloaded() -> RungRun {
     RungRun {
         rating: None,
@@ -123,36 +123,36 @@ fn a_rating_better_than_the_floor_passes_it() {
 }
 
 #[test]
-fn an_unreviewed_run_leaves_the_rung_undecided_rather_than_walling_it() {
-    // The requester has not judged these, which is not the same as judging them
-    // badly — the climber holds instead of being walled on absent evidence.
+fn an_unrated_run_leaves_the_rung_undecided_rather_than_walling_it() {
+    // No validator rated these, which is not the same as rating them badly — the
+    // climber holds instead of being walled on absent evidence.
     let gate = all_broken();
     assert_eq!(
-        evaluate(&many(unreviewed(), 5), 5, &gate),
+        evaluate(&many(unrated(), 5), 5, &gate),
         GateOutcome::Undecided
     );
 
     let mut mixed = many(rated(Rating::Broken), 4);
-    mixed.push(unreviewed());
+    mixed.push(unrated());
     assert_eq!(evaluate(&mixed, 5, &gate), GateOutcome::Undecided);
 }
 
 #[test]
-fn an_unloaded_run_is_judged_broken_without_a_review() {
-    // Nothing loaded, so there is nothing for a reviewer to say: the gate decides
-    // immediately rather than stalling the climb and holding a buffer slot.
+fn an_unloaded_run_is_counted_broken_outright() {
+    // Nothing loaded, so there was nothing to play: the gate decides immediately
+    // rather than stalling the climb.
     let gate = all_broken();
     assert_eq!(evaluate(&many(unloaded(), 5), 5, &gate), GateOutcome::Wall);
 
     let counts = tally(&many(unloaded(), 5), 5, &gate);
-    assert_eq!(counts.judged, 5);
-    assert_eq!(counts.unjudged, 0);
+    assert_eq!(counts.rated, 5);
+    assert_eq!(counts.unrated, 0);
     assert_eq!(counts.passing, 0);
 }
 
 #[test]
 fn an_unloaded_run_is_only_decided_when_the_gate_says_so() {
-    // Turned off, an unloaded run is ordinary unreviewed evidence again.
+    // Turned off, an unloaded run is ordinary unrated evidence again.
     let gate = Gate {
         unloaded_counts_as_broken: false,
         ..all_broken()
@@ -161,12 +161,12 @@ fn an_unloaded_run_is_only_decided_when_the_gate_says_so() {
         evaluate(&many(unloaded(), 5), 5, &gate),
         GateOutcome::Undecided
     );
-    assert_eq!(tally(&many(unloaded(), 5), 5, &gate).unjudged, 5);
+    assert_eq!(tally(&many(unloaded(), 5), 5, &gate).unrated, 5);
 }
 
 #[test]
-fn an_unloaded_run_outranks_a_review_that_contradicts_it() {
-    // A review of a build that never loaded cannot be describing something that
+fn an_unloaded_run_outranks_a_validator_rating_that_contradicts_it() {
+    // A verdict on a build that never loaded cannot be describing something that
     // ran, so the unloaded verdict wins rather than being taken at face value.
     let gate = all_broken();
     let contradicted = RungRun {
@@ -311,13 +311,13 @@ fn the_tally_explains_the_decision_it_made() {
     let runs = [
         rated(Rating::Flawless),
         rated(Rating::Broken),
-        unreviewed(),
+        unrated(),
         unloaded(),
     ];
     let counts = tally(&runs, 6, &gate);
     assert_eq!(counts.completed, 4);
-    assert_eq!(counts.judged, 3);
-    assert_eq!(counts.unjudged, 1);
+    assert_eq!(counts.rated, 3);
+    assert_eq!(counts.unrated, 1);
     assert_eq!(counts.passing, 1);
     assert_eq!(counts.pending, 2);
     assert_eq!(counts.required, 3.0);
@@ -354,4 +354,29 @@ fn a_gate_round_trips_through_its_wire_form() {
     );
     // The threshold is tagged, so the console can tell the two shapes apart.
     assert!(json.contains(r#""kind":"fraction""#), "{json}");
+}
+
+#[test]
+fn an_unrated_run_is_a_possible_pass_in_both_directions() {
+    // One run carries no validator rating and the bar wants two passes. The rated
+    // runs alone fall one short, so the rung cannot advance yet — and because the
+    // unrated run could still turn out a pass, it cannot be walled either.
+    let gate = Gate {
+        floor: Rating::Passable,
+        threshold: GateThreshold::Count { runs: 2 },
+        ..Gate::default()
+    };
+    let runs = [rated(Rating::Great), rated(Rating::Broken), unrated()];
+    assert_eq!(evaluate(&runs, 3, &gate), GateOutcome::Undecided);
+    let counts = tally(&runs, 3, &gate);
+    assert_eq!(counts.pending, 0);
+    assert_eq!(counts.unrated, 1);
+
+    // Once the rated runs alone clear the bar, the unrated one cannot change it.
+    let cleared = [rated(Rating::Great), rated(Rating::Passable), unrated()];
+    assert_eq!(evaluate(&cleared, 3, &gate), GateOutcome::Advance);
+
+    // And once even an unrated pass could not reach it, the rung walls.
+    let hopeless = [rated(Rating::Broken), rated(Rating::Broken), unrated()];
+    assert_eq!(evaluate(&hopeless, 3, &gate), GateOutcome::Wall);
 }

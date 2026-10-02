@@ -83,9 +83,9 @@ pub struct Model {
     /// it stops new runs being emitted and leaves the queue untouched (`halt` is what
     /// additionally cancels).
     pub paused: bool,
-    /// Whether submitting a review re-runs this ladder's top-up automatically. Off by
-    /// default — a ladder that quietly enqueues work whenever a review lands has to be
-    /// asked for.
+    /// Whether the backend tops this ladder up itself whenever a run of one of its cells
+    /// finishes. The column defaults to off; the API creates a ladder with it on, and it
+    /// only ever feeds a ladder that is enabled.
     pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `NULL` to inherit
     /// `coverage_settings.buffer_target`. Nullable rather than defaulted because "no
@@ -100,6 +100,15 @@ pub struct Model {
     /// instead of wedging the ladder.
     #[sea_orm(nullable)]
     pub topping_up_at: Option<String>,
+    /// Whether a finished run asked for another top-up pass while the claim in
+    /// [`Self::topping_up_at`] was held. The holder runs that pass before it lets go, so a
+    /// run that lands mid-top-up is never left unseen.
+    pub top_up_pending: bool,
+    /// Whether the pending request in [`Self::top_up_pending`] came from the ladder's
+    /// owner ("Top up now") rather than from the backend feeding the ladder by itself.
+    /// The holder runs the pass for such a request as the owner's top-up, which
+    /// relaunches a rung whose runs keep failing where an automatic one does not.
+    pub top_up_requested: bool,
     /// The referenced combination groups' ids as a JSON array of strings — the same
     /// `coverage_group` pointers a plan uses, so editing a group reshapes both.
     #[sea_orm(column_type = "Text")]

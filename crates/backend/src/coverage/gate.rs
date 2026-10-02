@@ -4,12 +4,12 @@
 //! There is exactly **one** rule, parameterised — not a set of modes:
 //!
 //! ```text
-//! advance when count(my runs on this rung rated FLOOR or better) >= THRESHOLD
+//! advance when count(runs on this rung rated FLOOR or better) >= THRESHOLD
 //! ```
 //!
 //! [`Gate::floor`] is the worst [`Rating`] that still counts as a pass, and
 //! [`Gate::threshold`] is either an absolute number of runs or a fraction of the
-//! rung's completed runs. Between them they express the shapes a reviewer actually
+//! rung's completed runs. Between them they express the shapes a ladder's owner actually
 //! wants, without any of them being a special case in the code:
 //!
 //! | intent | floor | threshold |
@@ -20,21 +20,27 @@
 //!
 //! ## What the gate is allowed to read
 //!
-//! Only the **requesting account's own** judgement. A run's stored rating is the
-//! worst domain across *every* reviewer, so gating on it would let a stranger's
-//! harsh review wall someone else's ladder. Callers must pass the worst domain
-//! within the requester's single review as [`RungRun::rating`], and `None` when
-//! that account has not reviewed the run at all.
+//! Only the **validators'** rating of each run: the functional rating the validator
+//! scripts decided from the run record and the case version's checklist, with the
+//! toolchain gate on top and **no** reviewer's override folded in. The scripts are
+//! assumed correct, so this rating is the verdict, and a climb is the same whoever
+//! looks at its runs. Callers pass it as [`RungRun::rating`] (the lifted
+//! `run.validator_rating`), and `None` when the run carries none. Never the run's
+//! stored `rating`, which folds in every reviewer's overrides, and never a review.
 //!
-//! Two things are decided without a review:
+//! Two more rules apply:
 //!
 //! - A run whose build never loaded ([`RungRun::loaded`] is false) counts as
 //!   [`Rating::Broken`] outright when [`Gate::unloaded_counts_as_broken`] is on
-//!   (the default). There is nothing to play, so waiting for a human to say so
-//!   only stalls the climb and holds a review-buffer slot.
-//! - A failed or canceled **job** is never a wall at all and must not appear in
-//!   `runs`. Infrastructure failures are retried (`job.attempt`); only completed
-//!   runs feed the gate.
+//!   (the default). There was nothing to play.
+//! - A run that ended on the model's own failure — catastrophic, timed out, harness
+//!   error, limit exceeded, hung — is in `runs` as a [`Rating::Broken`] run whose
+//!   build never loaded. The model had its attempt at the rung and produced nothing
+//!   that works, and no rating can ever arrive for it; leaving it out would have the
+//!   rung relaunched for as long as the model keeps failing it.
+//! - An **infrastructure** failure or a canceled run is never a wall at all and must
+//!   not appear in `runs`. Neither says anything about the model: infrastructure
+//!   failures are retried (`job.attempt`), and a cancel was somebody's decision.
 //!
 //! ## Deciding early, or not
 //!
@@ -42,7 +48,7 @@
 //! even when the outcome is already certain, because the runs are evidence as much
 //! as they are a gate — five runs of a case on a model are worth having in full.
 //! Turned on, the gate decides the moment the outcome is determined and the caller
-//! cancels the rung's still-queued runs.
+//! cancels the cell's runs that have not started yet (`queued` and `pending`).
 
 use serde::{Deserialize, Serialize};
 
@@ -123,14 +129,12 @@ pub struct Gate {
     pub floor: Rating,
     /// How many runs must clear [`Self::floor`].
     pub threshold: GateThreshold,
-    /// Whether a run whose build never loaded counts as [`Rating::Broken`] without
-    /// waiting for a review. On by default: there is nothing for a reviewer to
-    /// judge, so counting it immediately keeps it from blocking the climb *and*
-    /// from occupying a review-buffer slot.
+    /// Whether a run whose build never loaded counts as [`Rating::Broken`] outright,
+    /// whatever its validator rating says. On by default: there was nothing to play.
     #[serde(default = "unloaded_counts_as_broken_default")]
     pub unloaded_counts_as_broken: bool,
-    /// Whether the gate may decide on partial results and let the caller cancel the
-    /// rung's still-queued runs. **Off** by default — the runs are evidence in
+    /// Whether the gate may decide on partial results, the caller then cancelling the
+    /// cell's jobs that have not started yet. **Off** by default — the runs are evidence in
     /// their own right, so a rung finishes what it started even when the verdict is
     /// already certain.
     #[serde(default)]
@@ -156,29 +160,32 @@ impl Default for Gate {
     }
 }
 
-/// One completed run on a rung, as the gate sees it.
+/// One run on a rung, as the gate sees it.
 ///
-/// Only completed runs belong here — a failed or canceled job is retried, never
-/// walled on.
+/// Completed runs belong here, and so do the model's own failures, passed as a
+/// [`Rating::Broken`] run that never loaded. An infrastructure failure or a canceled
+/// run does not — the first is retried and the second was a person's decision, so
+/// neither is ever walled on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RungRun {
-    /// The **requesting account's** rating for this run: the worst domain within
-    /// that one account's review. `None` when they have not reviewed it — which is
-    /// not the same as a bad rating, and is why [`GateOutcome::Undecided`] exists.
+    /// The run's **validator rating**: the functional rating its validators decided,
+    /// with no review override folded in. `None` when the run carries none (it was
+    /// pushed while the backend did not hold its case version) — which is not the
+    /// same as a bad rating, and counts as a possible pass.
     pub rating: Option<Rating>,
     /// Whether the produced build loaded (the run record's `validation.loaded`).
-    /// A run that did not is judged without a reviewer when the gate says so.
+    /// A run that did not counts as broken when the gate says so.
     pub loaded: bool,
 }
 
 impl RungRun {
     /// The rating the gate actually counts for this run: [`Rating::Broken`] when
     /// the build never loaded and the gate treats that as broken, otherwise the
-    /// requester's own rating (or `None` when they have not reviewed it).
+    /// validators' rating (or `None` when the run carries none).
     ///
-    /// The unloaded verdict overrides a recorded review rather than being averaged
-    /// with it: it is the harshest rating there is, and a review of a build that
-    /// never loaded cannot be describing something that ran.
+    /// The unloaded verdict overrides the validators' figure rather than being
+    /// averaged with it: it is the harshest rating there is, and a verdict on a build
+    /// that never loaded cannot be describing something that ran.
     fn effective_rating(&self, gate: &Gate) -> Option<Rating> {
         if !self.loaded && gate.unloaded_counts_as_broken {
             return Some(Rating::Broken);
@@ -198,24 +205,24 @@ pub enum GateOutcome {
     /// `promote` override advances past a wall — so this is a computed opinion,
     /// never a destroyed one.
     Wall,
-    /// Not enough evidence yet: runs are still to complete, or completed runs are
-    /// still waiting on the requester's review. The climber holds.
+    /// Not enough evidence yet: runs are still to complete, or completed runs carry
+    /// no validator rating. The climber holds.
     Undecided,
 }
 
 /// The counts a gate decision is made from, exposed so a ladder dashboard can show
-/// *why* a climber is walled or waiting without re-deriving the floor and
+/// *why* a climber is walled or still climbing without re-deriving the floor and
 /// unloaded-run rules a second time (and getting them subtly different).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GateTally {
     /// Completed runs on the rung.
     pub completed: u32,
-    /// Completed runs the gate has a rating for — reviewed by the requester, or
+    /// Completed runs the gate has a rating for — carrying a validator rating, or
     /// decided as broken because the build never loaded.
-    pub judged: u32,
-    /// Completed runs still waiting on the requester's review.
-    pub unjudged: u32,
-    /// Judged runs rated at or above the gate's floor.
+    pub rated: u32,
+    /// Completed runs with no validator rating.
+    pub unrated: u32,
+    /// Rated runs rated at or above the gate's floor.
     pub passing: u32,
     /// Runs the rung has yet to complete against its target. Zero once the rung has
     /// run everything it was going to.
@@ -243,11 +250,11 @@ impl GateTally {
 /// land one by one.
 pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
     let completed = runs.len() as u32;
-    let mut judged = 0u32;
+    let mut rated = 0u32;
     let mut passing = 0u32;
     for run in runs {
         if let Some(rating) = run.effective_rating(gate) {
-            judged += 1;
+            rated += 1;
             if rating.rank() <= gate.floor.rank() {
                 passing += 1;
             }
@@ -256,8 +263,8 @@ pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
     let pending = target.saturating_sub(completed);
     GateTally {
         completed,
-        judged,
-        unjudged: completed - judged,
+        rated,
+        unrated: completed - rated,
         passing,
         pending,
         required: gate.threshold.required(completed.saturating_add(pending)),
@@ -273,7 +280,7 @@ pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
 /// never has to be taken back as more evidence lands:
 ///
 /// - [`Advance`](GateOutcome::Advance) only when the runs already in hand clear the
-///   bar — every still-unreviewed and still-running run could come back broken and
+///   bar — every still-unrated and still-running run could come back broken and
 ///   the answer would not change.
 /// - [`Wall`](GateOutcome::Wall) only when they *cannot* clear it — every remaining
 ///   run could come back flawless and it would still fall short.
@@ -290,11 +297,11 @@ pub fn evaluate(runs: &[RungRun], target: u32, gate: &Gate) -> GateOutcome {
     if f64::from(counts.passing) + FRACTION_EPSILON >= counts.required {
         return GateOutcome::Advance;
     }
-    // The best case still open: every unreviewed run is judged a pass and every run
+    // The best case still open: every unrated run turns out a pass and every run
     // still to complete comes back a pass too.
     let best_case = counts
         .passing
-        .saturating_add(counts.unjudged)
+        .saturating_add(counts.unrated)
         .saturating_add(counts.pending);
     if f64::from(best_case) + FRACTION_EPSILON >= counts.required {
         GateOutcome::Undecided

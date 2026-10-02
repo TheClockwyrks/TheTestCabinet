@@ -129,6 +129,12 @@ pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "runn
 /// of magnitude longer than it can legitimately take.
 const TOP_UP_LEASE: time::Duration = time::Duration::minutes(2);
 
+/// The `detail` the startup reconciliation ([`Db::fail_in_flight_jobs`]) fails an
+/// orphaned job with. A constant rather than a caller's string, because it is also how a
+/// ladder recognises a failure that was the restart's rather than the cell's
+/// ([`Db::recent_terminal_jobs`]).
+pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this run was in flight";
+
 /// The job states a backend restart must reap: a driver was executing them (or
 /// being created for them) and went down with the backend, so the job can never
 /// reach a terminal state on its own. `queued`/`pending` jobs have no driver, so
@@ -248,6 +254,9 @@ pub struct StoredRun {
     /// catalog-free reader can get it from, since deciding it needs the case's
     /// checklist; on a legacy run the review aggregate the store maintains on
     /// review-add (`None` while unreviewed).
+    ///
+    /// A ladder's gate never reads this, since reviews move it: it reads the
+    /// `run.validator_rating` column instead (see `validator_only_rating`).
     #[serde(default)]
     pub rating: Option<Rating>,
     /// The lifted `run.aesthetic` column: the run's aggregate **aesthetic** rating,
@@ -578,6 +587,10 @@ impl Db {
         } else {
             None
         };
+        // The validators' own figure, which no review moves: what a ladder's gate reads.
+        // Decided only when the store resolves the case version — a re-push without it
+        // leaves whatever an earlier push (or the startup backfill) wrote.
+        let validator_rating = validator_only_rating(manifest, &record);
         let mut refreshed_columns = vec![
             run::Column::StartedAt,
             run::Column::FinishedAt,
@@ -609,6 +622,9 @@ impl Db {
         if validator_rated {
             refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
         }
+        if manifest.is_some() {
+            refreshed_columns.push(run::Column::ValidatorRating);
+        }
 
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
@@ -632,6 +648,7 @@ impl Db {
             cost_comparable: Set(lifted.cost_comparable),
             code_analyzer_version: Set(lifted.code_analyzer_version),
             rating: Set(rating),
+            validator_rating: Set(validator_rating.map(|rating| rating.as_str().to_string())),
             aesthetic: Set(None),
             validator_rated: Set(validator_rated),
             review_count: Set(0),
@@ -2426,6 +2443,26 @@ pub(crate) fn functional_rating(
     }
 }
 
+/// **The validators' own functional rating** for a validator-rated run: the figure
+/// [`functional_rating`] yields with zero reviews, so no reviewer's checklist override
+/// is folded in. This is what the lifted `run.validator_rating` column holds and what a
+/// ladder's gate reads — the validator scripts are assumed correct, so a climb is the
+/// same whoever looks at its runs.
+///
+/// The toolchain gate is composed on top, exactly as it is for the run's rating. `None`
+/// on a legacy version, when `manifest` is `None` (the store does not hold the version),
+/// and for a run whose terminal state is not
+/// [scored](test_cabinet_core::run_record::RunState::is_scored).
+pub(crate) fn validator_only_rating(
+    manifest: Option<&StoredManifest>,
+    record: &RunRecord,
+) -> Option<Rating> {
+    if !manifest.is_some_and(StoredManifest::validator_rated) {
+        return None;
+    }
+    functional_rating(manifest, record, &[])
+}
+
 /// Reviewer coverage plans and the run/job counts the coverage matrix is built
 /// from. A plan is per-account (keyed by the auth-service user id); the counts are
 /// **global** — they tally every run/job for a cell regardless of who launched it,
@@ -3427,10 +3464,46 @@ impl Db {
     /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
     /// per cell, thousands of serial round-trips for a large plan.
     pub async fn count_completed_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        self.count_runs_by_cell(slugs, &["completed"], false).await
+    }
+
+    /// Count the runs that say something about their **model** for every coverage cell
+    /// whose case slug is in `slugs`: the `completed` runs plus the publishable failure
+    /// tiers — catastrophic, timed out, harness error, limit exceeded and hung — keyed
+    /// exactly as [`Self::count_completed_runs_by_cell`] keys its counts.
+    ///
+    /// What a ladder's rung counts toward its target, because its gate counts the same
+    /// runs as evidence (see [`Self::cell_run_ratings`]): a run that ended on the model's
+    /// own failure has used one of the rung's runs, and leaving it out would relaunch the
+    /// rung for as long as the model keeps failing it. The infrastructure and canceled
+    /// states are still left out, since neither says anything about the model.
+    ///
+    /// The run of a job that was automatically retried ([`job::Model::retried_by`]) is
+    /// left out too: its retry takes its place, in flight until it ends, so one launch
+    /// counts once and a rung is never decided on an attempt whose retry is still to
+    /// come.
+    pub async fn count_model_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        self.count_runs_by_cell(slugs, &model_outcome_states(), true)
+            .await
+    }
+
+    /// The grouped count behind [`Self::count_completed_runs_by_cell`] and
+    /// [`Self::count_model_runs_by_cell`]: the runs in one of `states`, per cell, less
+    /// the runs of retried jobs when `skip_retried` is set.
+    async fn count_runs_by_cell(
+        &self,
+        slugs: &[String],
+        states: &[&str],
+        skip_retried: bool,
+    ) -> Result<CellCounts> {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let rows: Vec<CellCountRow> = run::Entity::find()
+        let mut query = run::Entity::find();
+        if skip_retried {
+            query = query.filter(not_a_retried_attempt());
+        }
+        let rows: Vec<CellCountRow> = query
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
@@ -3441,7 +3514,7 @@ impl Db {
             .column(run::Column::GgConfigId)
             .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
-            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::RunState.is_in(states.iter().copied()))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
@@ -3571,8 +3644,8 @@ impl Db {
         Ok(cell_counts(rows))
     }
 
-    /// The requesting account's own verdict on every completed run of one cell, oldest
-    /// first — the evidence a ladder's rung gate is evaluated from.
+    /// The validators' own rating of every run of one cell that says something about its
+    /// model, oldest first — the evidence a ladder's rung gate is evaluated from.
     ///
     /// `cell` is the same [`CellKey`] the grouped counts are keyed by, so a caller
     /// builds it exactly as it builds the key it looks a count up with. The model
@@ -3586,47 +3659,36 @@ impl Db {
     /// collapse (`cell_engine_segment`), so a `none` cell reads the runs recorded before
     /// the slug was lifted as the engineless runs they are.
     ///
-    /// Only `completed` runs are returned. A failed or canceled job is an
-    /// infrastructure problem that retries (`job.attempt`) and must never be mistaken
-    /// for a wall, so it has no place in a gate's evidence.
+    /// The runs returned are the ones that say something about the model: `completed`
+    /// runs, and runs that ended on one of the model's own failures (catastrophic, timed
+    /// out, harness error, limit exceeded, hung), which carry
+    /// [`CellRunRating::model_failure`]. An infrastructure failure or a cancel says
+    /// nothing about the model — the first retries (`job.attempt`), the second was a
+    /// person's decision — so neither is ever mistaken for a wall. Nor is the run of a
+    /// job that was automatically retried ([`job::Model::retried_by`]): the retry takes
+    /// its place, so the gate waits for the retry rather than deciding on the attempt it
+    /// replaced.
     ///
-    /// The rating is derived from that one account's review, never from `run.rating` —
-    /// see [`CellRunRating::rating`].
-    pub async fn cell_run_ratings(
-        &self,
-        cell: &CellKey,
-        reviewer_user_id: &str,
-    ) -> Result<Vec<CellRunRating>> {
+    /// The rating is the lifted `run.validator_rating`, never `run.rating` and never a
+    /// review — see [`CellRunRating::rating`].
+    pub async fn cell_run_ratings(&self, cell: &CellKey) -> Result<Vec<CellRunRating>> {
         let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
-        let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
+        let rows: Vec<(String, String, bool, bool, Option<String>)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
+            .column(run::Column::RunState)
             .column(run::Column::Loaded)
-            .column(review::Column::Ratings)
-            // The same narrowed left join the unreviewed count uses: this account's
-            // review if it wrote one, and nothing at all if it did not — never another
-            // reviewer's row.
-            .join(
-                JoinType::LeftJoin,
-                run::Relation::Review.def().on_condition({
-                    let reviewer = reviewer_user_id.to_string();
-                    move |_run, review| {
-                        Expr::col((review, review::Column::ReviewerUserId))
-                            .eq(reviewer.clone())
-                            .into_condition()
-                    }
-                }),
-            )
-            .filter(run::Column::RunState.eq("completed"))
+            .column(run::Column::ValidatorRated)
+            .column(run::Column::ValidatorRating)
+            .filter(run::Column::RunState.is_in(model_outcome_states()))
+            .filter(not_a_retried_attempt())
             .filter(run::Column::TestCaseSlug.eq(slug))
             .filter(run::Column::TestCaseVersion.eq(version))
             .filter(run::Column::Variant.eq(variant))
             .filter(Expr::expr(cell_engine_segment(run::Column::EngineSlug)).eq(engine.as_str()))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
-            .filter(
-                Expr::expr(cell_gg_segment(run::Column::GgConfigId)).eq(gg_config_id.as_str()),
-            )
+            .filter(Expr::expr(cell_gg_segment(run::Column::GgConfigId)).eq(gg_config_id.as_str()))
             .filter(Expr::expr(cell_gg_segment(run::Column::GgModels)).eq(gg_models.as_str()))
             .order_by_asc(run::Column::FinishedAt)
             .order_by_asc(run::Column::Id)
@@ -3636,23 +3698,129 @@ impl Db {
 
         Ok(rows
             .into_iter()
-            .map(|(run_id, loaded, ratings)| {
-                // A review whose stored ratings no longer parse, and one that rated no
-                // domain at all (a game jam is graded on categories, not domains),
-                // both read as "no rating" — which the gate treats as unjudged rather
-                // than as a bad result. Guessing either way would decide a climb on
-                // something nobody wrote down.
-                let ratings: Vec<DomainRating> = ratings
-                    .and_then(|json| serde_json::from_str(&json).ok())
-                    .unwrap_or_default();
-                CellRunRating {
+            .map(
+                |(run_id, run_state, loaded, validator_rated, rating)| CellRunRating {
                     run_id,
+                    model_failure: run_state != "completed",
                     loaded,
-                    rating: test_cabinet_core::review::aggregate_rating([ratings.as_slice()]),
-                }
+                    validator_rated,
+                    // A token that no longer parses reads as "no rating", which the gate
+                    // treats as unrated rather than as a bad result. Guessing either way
+                    // would decide a climb on something no validator said.
+                    rating: rating.as_deref().and_then(Rating::parse),
+                },
+            )
+            .collect())
+    }
+
+    /// One cell's most recent **terminal** jobs (`succeeded`, `failed`, `canceled`),
+    /// newest first, at most `limit` of them, whoever launched them, each read as a
+    /// [`TerminalJob`].
+    ///
+    /// What a ladder reads to tell a rung whose runs keep failing on infrastructure from
+    /// one still climbing: a job's terminal transition stamps its `updated_at`, so
+    /// ordering on it is ordering on when each job ended. The cell is matched through
+    /// the same collapses [`Self::count_in_flight_jobs_by_cell`] groups by.
+    ///
+    /// A job the backend failed because it restarted while the job was executing
+    /// ([`REAPED_DETAIL`]) is left out altogether. The restart is not the cell's fault,
+    /// and a top-up launches whole cells, so counting it would mark every cell that had
+    /// a few runs executing at the restart as failing.
+    pub async fn recent_terminal_jobs(
+        &self,
+        cell: &CellKey,
+        limit: u64,
+    ) -> Result<Vec<TerminalJob>> {
+        let rows: Vec<(String, Option<String>)> = cell_job_query(cell)
+            .select_only()
+            .column(job::Column::State)
+            .column(job::Column::RecordId)
+            .filter(job::Column::State.is_in(["succeeded", "failed", "canceled"]))
+            .filter(
+                Condition::any()
+                    .add(job::Column::Detail.is_null())
+                    .add(job::Column::Detail.ne(REAPED_DETAIL)),
+            )
+            .order_by_desc(job::Column::UpdatedAt)
+            .order_by_desc(job::Column::QueueSeq)
+            .limit(limit)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let record_ids: Vec<&str> = rows
+            .iter()
+            .filter_map(|(_, record)| record.as_deref())
+            .collect();
+        let model_outcomes: std::collections::HashSet<String> = if record_ids.is_empty() {
+            std::collections::HashSet::new()
+        } else {
+            run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .filter(run::Column::Id.is_in(record_ids))
+                .filter(run::Column::RunState.is_in(model_outcome_states()))
+                .into_tuple::<String>()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .collect()
+        };
+        Ok(rows
+            .into_iter()
+            .map(|(state, record)| TerminalJob {
+                model_outcome: record.is_some_and(|id| model_outcomes.contains(&id)),
+                state,
             })
             .collect())
     }
+
+    /// The cells a ladder's own jobs are still **waiting** in (`queued` or `pending`,
+    /// so nothing has been spent on them), keyed like every grouped count. What an
+    /// early-stopping ladder checks before it cancels anything, so a top-up that decides
+    /// nothing new costs one read rather than one sweep per decided rung.
+    pub async fn waiting_job_cells(&self, origin: &JobOrigin) -> Result<CellCounts> {
+        let rows: Vec<CellCountRow> = job::Entity::find()
+            .select_only()
+            .column(job::Column::TestCaseSlug)
+            .column(job::Column::TestCaseVersion)
+            .column(job::Column::Variant)
+            .column(job::Column::EngineSlug)
+            .column(job::Column::HarnessSlug)
+            .column(job::Column::ModelId)
+            .column(job::Column::GgConfigId)
+            .column(job::Column::GgModels)
+            .column_as(job::Column::Id.count(), "cnt")
+            .filter(job::Column::State.is_in(CANCELABLE_WAITING_STATES))
+            .filter(job::Column::Origin.eq(origin.as_token()))
+            .group_by(job::Column::TestCaseSlug)
+            .group_by(job::Column::TestCaseVersion)
+            .group_by(job::Column::Variant)
+            .group_by(job::Column::EngineSlug)
+            .group_by(job::Column::HarnessSlug)
+            .group_by(job::Column::ModelId)
+            .group_by(job::Column::GgConfigId)
+            .group_by(job::Column::GgModels)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
+    }
+}
+
+/// The `job` rows of one coverage cell, matched segment by segment through the same
+/// collapses the grouped counts use, so a cell read off a count selects exactly the jobs
+/// that count was made of.
+fn cell_job_query(cell: &CellKey) -> sea_orm::Select<job::Entity> {
+    let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
+    job::Entity::find()
+        .filter(job::Column::TestCaseSlug.eq(slug))
+        .filter(job::Column::TestCaseVersion.eq(version))
+        .filter(job::Column::Variant.eq(variant))
+        .filter(Expr::expr(cell_engine_segment(job::Column::EngineSlug)).eq(engine.as_str()))
+        .filter(job::Column::HarnessSlug.eq(harness))
+        .filter(job::Column::ModelId.eq(model))
+        .filter(Expr::expr(cell_gg_segment(job::Column::GgConfigId)).eq(gg_config_id.as_str()))
+        .filter(Expr::expr(cell_gg_segment(job::Column::GgModels)).eq(gg_models.as_str()))
 }
 
 /// How a coverage plan is **fed**, as opposed to what it declares: the order it emits
@@ -3699,30 +3867,66 @@ impl Default for CoveragePlanSchedule {
     }
 }
 
-/// One completed run of a coverage cell, reduced to what a ladder's rung gate reads.
+/// One terminal job of a coverage cell, as a ladder reads it to tell a rung whose runs
+/// keep failing on infrastructure ([`Db::recent_terminal_jobs`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalJob {
+    /// The job's terminal state: `succeeded`, `failed` or `canceled`.
+    pub state: String,
+    /// Whether the job's run ended on an outcome that says something about its model
+    /// (completed, or one of the model's own failures), as opposed to an infrastructure
+    /// failure or no run at all. A failed job with such a run failed on the model, which
+    /// is evidence for the rung's gate rather than a fault of the cell.
+    pub model_outcome: bool,
+}
+
+/// One run of a coverage cell that says something about its model — a completed run, or
+/// one that ended on the model's own failure — reduced to what a ladder's rung gate reads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellRunRating {
     /// The run's id, so a ladder dashboard can link to the evidence a verdict was
     /// decided from.
     pub run_id: String,
+    /// Whether the run ended on one of the model's own failures — catastrophic, timed
+    /// out, harness error, limit exceeded or hung — rather than completing. Such a run
+    /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
+    /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
+    pub model_failure: bool,
     /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
-    /// run that never loaded as broken without waiting for a review — there is nothing
-    /// to play, so waiting only stalls the climb.
+    /// run that never loaded as broken outright — there was nothing to play.
     pub loaded: bool,
-    /// The requesting account's overall rating for the run: the worst domain within
-    /// *that one account's* review, or `None` when they have not reviewed it (which is
-    /// not the same as a bad rating).
+    /// Whether the run's case version was validator-rated when it was pushed (the
+    /// lifted `run.validator_rated`). Such a run with no [`Self::rating`] has not been
+    /// rated *yet* — the store did not hold its version when the rating was last
+    /// decided — rather than being unratable.
+    pub validator_rated: bool,
+    /// The validators' own functional rating for the run (the lifted
+    /// `run.validator_rating`), or `None` when the run carries none — a run pushed while
+    /// the backend did not hold its case version, or one whose stored token no longer
+    /// parses. `None` is not a bad rating: the gate counts it as unrated.
     ///
-    /// Emphatically **not** the lifted `run.rating`, which is the worst domain across
-    /// every reviewer. Gating on that would let a stranger's harsher review wall
-    /// someone else's climb.
+    /// Emphatically **not** the lifted `run.rating`, which folds in every reviewer's
+    /// checklist overrides, and never a review: reviews are labels added after the fact
+    /// and never move a climb.
     pub rating: Option<Rating>,
 }
 
 impl CellRunRating {
     /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
     /// apart in how they name the same two facts.
+    ///
+    /// A [model failure](Self::model_failure) reaches the gate as a broken run whose
+    /// build never loaded, whatever the gate's `unloadedCountsAsBroken` says: that flag
+    /// decides how far a completed run's validator rating is trusted, and a run that
+    /// never completed has no rating to trust. The model had its attempt at the rung and
+    /// produced nothing that works, which is exactly what a broken run is.
     pub fn as_rung_run(&self) -> RungRun {
+        if self.model_failure {
+            return RungRun {
+                rating: Some(Rating::Broken),
+                loaded: false,
+            };
+        }
         RungRun {
             rating: self.rating,
             loaded: self.loaded,
@@ -3854,7 +4058,7 @@ fn cell_engine(engine: Option<String>) -> String {
 /// agree with the grouped counts, which collapse the same `NULL` to the same empty
 /// string — a filter written against the bare column would instead match nothing for
 /// every harness cell in the store.
-fn cell_gg_segment(column: run::Column) -> SimpleExpr {
+fn cell_gg_segment(column: impl ColumnTrait) -> SimpleExpr {
     Func::coalesce([column.into_expr().into(), Expr::val("").into()]).into()
 }
 
@@ -3862,7 +4066,7 @@ fn cell_gg_segment(column: run::Column) -> SimpleExpr {
 /// SQL twin of [`cell_engine`], and load-bearing for the same reason
 /// [`cell_gg_segment`] is — an equality test written against the bare column would match
 /// nothing for every run recorded before the slug was lifted, and those are `none` runs.
-fn cell_engine_segment(column: run::Column) -> SimpleExpr {
+fn cell_engine_segment(column: impl ColumnTrait) -> SimpleExpr {
     Func::coalesce([
         column.into_expr().into(),
         Expr::val(test_cabinet_core::engine::NONE_SLUG).into(),
@@ -4168,8 +4372,8 @@ pub struct StoredLadderRung {
 }
 
 /// How a ladder is **fed**: the order it emits its cells in, whether it is suspended,
-/// whether a submitted review tops it up, and its override of the account's buffer
-/// target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
+/// whether the backend tops it up as its runs finish, and its override of the account's
+/// buffer target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
 /// declaration for the same reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LadderSchedule {
@@ -4180,11 +4384,13 @@ pub struct LadderSchedule {
     pub outer_axis: String,
     /// Whether topping up is suspended.
     pub paused: bool,
-    /// Whether submitting a review re-runs this ladder's top-up automatically.
+    /// Whether the backend tops this ladder up itself whenever a job of one of its
+    /// cells finishes.
     pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `None` to inherit
     /// [`Db::coverage_buffer_target`]; the same three instructions as
-    /// [`CoveragePlanSchedule::buffer_target`].
+    /// [`CoveragePlanSchedule::buffer_target`], though on a ladder the bound caps the
+    /// runs in flight rather than a review backlog.
     pub buffer_target: Option<BufferTarget>,
 }
 
@@ -4407,6 +4613,8 @@ impl Db {
             buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
             // A fresh ladder is nobody's claim; only a top-up ever sets this.
             topping_up_at: Set(None),
+            top_up_pending: Set(false),
+            top_up_requested: Set(false),
             combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
             combos_json: Set(serde_json::to_string(&stored.combos)?),
             updated_at: Set(stored.updated_at.clone()),
@@ -4591,6 +4799,141 @@ impl Db {
             .exec(&self.conn())
             .await?;
         Ok(())
+    }
+
+    /// Ask for another top-up pass of a ladder whose claim somebody else holds: set its
+    /// `top_up_pending` flag, which the holder checks before letting go, and with
+    /// `by_owner` its `top_up_requested` flag too, so the pass runs as the owner's
+    /// top-up. A request never lowers the flag another left: an owner's request and an
+    /// automatic one that land together are served as the owner's. Not scoped to an
+    /// account — it is only ever reached from a ladder the caller already resolved.
+    pub async fn request_ladder_top_up(&self, id: &str, by_owner: bool) -> Result<()> {
+        let mut update =
+            ladder::Entity::update_many().col_expr(ladder::Column::TopUpPending, Expr::value(true));
+        if by_owner {
+            update = update.col_expr(ladder::Column::TopUpRequested, Expr::value(true));
+        }
+        update
+            .filter(ladder::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Take a ladder's pending top-up request, clearing it: `None` when there was none,
+    /// otherwise whether its owner made (or joined) it. A compare-and-swap on both
+    /// flags, retried when another write moved them in between, so two callers can
+    /// never both take one request and an owner's request is never taken as automatic.
+    pub async fn take_ladder_top_up_request(&self, id: &str) -> Result<Option<bool>> {
+        loop {
+            let Some(row) = ladder::Entity::find_by_id(id.to_string())
+                .one(&self.conn())
+                .await?
+            else {
+                return Ok(None);
+            };
+            if !row.top_up_pending {
+                return Ok(None);
+            }
+            let res = ladder::Entity::update_many()
+                .col_expr(ladder::Column::TopUpPending, Expr::value(false))
+                .col_expr(ladder::Column::TopUpRequested, Expr::value(false))
+                .filter(ladder::Column::Id.eq(id))
+                .filter(ladder::Column::TopUpPending.eq(true))
+                .filter(ladder::Column::TopUpRequested.eq(row.top_up_requested))
+                .exec(&self.conn())
+                .await?;
+            if res.rows_affected > 0 {
+                return Ok(Some(row.top_up_requested));
+            }
+        }
+    }
+
+    /// Release every ladder's top-up claim. Run once at startup, before anything is
+    /// served: the backend is a single coordinator, so no top-up can be running
+    /// anywhere at that moment, and a claim still held was held by a process that died
+    /// with it. Left in place, the claim would turn the startup feed of that ladder
+    /// away as busy until its lease ran out, with nobody left to serve the request it
+    /// leaves. A pending request is kept, for the startup feed to take.
+    pub async fn release_all_ladder_top_ups(&self) -> Result<u64> {
+        let res = ladder::Entity::update_many()
+            .col_expr(ladder::Column::ToppingUpAt, Expr::value(None::<String>))
+            .filter(ladder::Column::ToppingUpAt.is_not_null())
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected)
+    }
+
+    /// Whether a ladder has a top-up pass requested and not yet taken.
+    pub async fn ladder_top_up_requested(&self, id: &str) -> Result<bool> {
+        Ok(ladder::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+            .is_some_and(|row| row.top_up_pending))
+    }
+
+    /// The ladders a finished job of one case pin feeds, as `(ladder id, owner)` pairs:
+    /// every ladder holding a rung that pins `slug`, `version`, `variant` and `engine`
+    /// (an absent rung engine meaning `none`), plus the ladder `origin` names, kept only
+    /// when the ladder is enabled and has `auto_top_up` on.
+    ///
+    /// The combination is deliberately not matched here. Which climbers a ladder has,
+    /// gg ones included, is the board's to resolve, and a ladder whose climbers do not
+    /// include the job's combination simply finds nothing new to do.
+    pub async fn ladders_fed_by(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        engine: &str,
+        origin: Option<&str>,
+    ) -> Result<Vec<(String, String)>> {
+        let mut ids: Vec<String> = ladder_rung::Entity::find()
+            .filter(ladder_rung::Column::Slug.eq(slug))
+            .filter(ladder_rung::Column::Version.eq(version))
+            .filter(ladder_rung::Column::Variant.eq(variant))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .filter(|rung| {
+                rung.engine
+                    .as_deref()
+                    .unwrap_or(test_cabinet_core::engine::NONE_SLUG)
+                    == engine
+            })
+            .map(|rung| rung.ladder_id)
+            .collect();
+        ids.extend(origin.map(str::to_string));
+        ids.sort();
+        ids.dedup();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(ladder::Entity::find()
+            .filter(ladder::Column::Id.is_in(ids))
+            .filter(ladder::Column::Paused.eq(false))
+            .filter(ladder::Column::AutoTopUp.eq(true))
+            .order_by_asc(ladder::Column::Id)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.id, row.user_id))
+            .collect())
+    }
+
+    /// Every ladder the backend feeds by itself — enabled, with `auto_top_up` on — as
+    /// `(ladder id, owning account)`, ordered by id. What the backend tops up once at
+    /// startup, so a ladder a restart left with nothing in flight climbs on.
+    pub async fn ladders_fed_automatically(&self) -> Result<Vec<(String, String)>> {
+        Ok(ladder::Entity::find()
+            .filter(ladder::Column::Paused.eq(false))
+            .filter(ladder::Column::AutoTopUp.eq(true))
+            .order_by_asc(ladder::Column::Id)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.id, row.user_id))
+            .collect())
     }
 
     /// Every steering row on one ladder, ordered so the reviewer's own priority is the
@@ -5408,6 +5751,34 @@ fn publishable_failure_states() -> Vec<&'static str> {
         .collect()
 }
 
+/// The wire strings of the run states that say something about their **model**: every
+/// [publishable](test_cabinet_core::run_record::RunState::is_publishable) state, so
+/// `completed` and the publishable failure tiers, and never the infrastructure failure
+/// or an operator's cancel. What a ladder's rung counts as its runs and its gate reads
+/// as evidence ([`Db::cell_run_ratings`]).
+fn model_outcome_states() -> Vec<&'static str> {
+    test_cabinet_core::run_record::RunState::ALL
+        .into_iter()
+        .filter(|state| state.is_publishable())
+        .map(run_state_str)
+        .collect()
+}
+
+/// A condition on `run` that holds for every run **not** produced by a job that was
+/// automatically retried: the run's id is not the `record_id` of any job with a
+/// `retried_by`. What a ladder counts its rung's runs through, so an attempt and its
+/// retry are one of the rung's runs rather than two.
+fn not_a_retried_attempt() -> SimpleExpr {
+    run::Column::Id.not_in_subquery(
+        sea_orm::sea_query::Query::select()
+            .column(job::Column::RecordId)
+            .from(job::Entity)
+            .and_where(job::Column::RetriedBy.is_not_null())
+            .and_where(job::Column::RecordId.is_not_null())
+            .to_owned(),
+    )
+}
+
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
     use test_cabinet_core::run_record::RunState;
@@ -5536,6 +5907,14 @@ pub struct JobCancelFilter<'a> {
     /// silently skips them, which is correct for "cancel *my* runs" and wrong for
     /// "cancel everything".
     pub user_id: Option<&'a str>,
+    /// Restrict to the jobs of one coverage cell, matched through the same collapses
+    /// the grouped counts use. What an early-stopping ladder narrows its cancel to, so
+    /// deciding one rung for one climber never touches another cell's runs.
+    pub cell: Option<&'a CellKey>,
+    /// Restrict to these jobs. What a ladder's top-up narrows its cancel to when a
+    /// disable lands while it enqueues, so it takes back only what it just enqueued and
+    /// never the runs the ladder queued before.
+    pub ids: Option<&'a [String]>,
 }
 
 /// A run to enqueue: the minted id and token, the verbatim launch request, and
@@ -5658,6 +6037,7 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         // A queued job has not started; the anchor is stamped by the transition into
         // `starting`, not by joining the queue.
         started_at: Set(None),
+        retried_by: Set(None),
     }
 }
 
@@ -5689,6 +6069,46 @@ impl Db {
             .await?;
         txn.commit().await?;
         Ok(())
+    }
+
+    /// Enqueue `retry`, the automatic retry of the job `parent`, and stamp `parent`'s
+    /// [`retried_by`](job::Model::retried_by) with its id, in one transaction. A reader
+    /// therefore never sees the retry without the stamp, nor the stamp without the
+    /// retry, and a ladder never counts the failed attempt's run beside the retry that
+    /// replaces it.
+    ///
+    /// `record_id`, when given, is the id the attempt's record is about to be stored
+    /// under, and is written to `parent`'s `record_id` in the same transaction. The
+    /// caller enqueues the retry before it stores the record, so the run is left out of
+    /// a ladder's counts from the moment it exists.
+    ///
+    /// The stamp is a compare-and-swap on a `parent` not yet stamped: when another
+    /// report of the same attempt already enqueued its retry, nothing is written and
+    /// the answer is `false`.
+    pub async fn enqueue_retry(
+        &self,
+        parent: &str,
+        record_id: Option<&str>,
+        retry: NewJob,
+    ) -> Result<bool> {
+        let txn = self.conn().begin().await?;
+        let mut stamp = job::Entity::update_many()
+            .col_expr(job::Column::RetriedBy, Expr::value(retry.id.clone()))
+            .filter(job::Column::Id.eq(parent))
+            .filter(job::Column::RetriedBy.is_null());
+        if let Some(record_id) = record_id {
+            stamp = stamp.col_expr(job::Column::RecordId, Expr::value(record_id.to_string()));
+        }
+        if stamp.exec(&txn).await?.rows_affected == 0 {
+            txn.rollback().await?;
+            return Ok(false);
+        }
+        let seq = next_queue_seq(&txn).await?;
+        job::Entity::insert(new_job_model(retry, seq))
+            .exec(&txn)
+            .await?;
+        txn.commit().await?;
+        Ok(true)
     }
 
     /// Enqueue many runs, all in the `queued` state, in as few statements as
@@ -6020,6 +6440,25 @@ impl Db {
         if let Some(user_id) = filter.user_id {
             update = update.filter(job::Column::UserId.eq(user_id));
         }
+        if let Some(ids) = filter.ids {
+            update = update.filter(job::Column::Id.is_in(ids.iter().map(String::as_str)));
+        }
+        if let Some(cell) = filter.cell {
+            let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
+            update = update
+                .filter(job::Column::TestCaseSlug.eq(slug))
+                .filter(job::Column::TestCaseVersion.eq(version))
+                .filter(job::Column::Variant.eq(variant))
+                .filter(
+                    Expr::expr(cell_engine_segment(job::Column::EngineSlug)).eq(engine.as_str()),
+                )
+                .filter(job::Column::HarnessSlug.eq(harness))
+                .filter(job::Column::ModelId.eq(model))
+                .filter(
+                    Expr::expr(cell_gg_segment(job::Column::GgConfigId)).eq(gg_config_id.as_str()),
+                )
+                .filter(Expr::expr(cell_gg_segment(job::Column::GgModels)).eq(gg_models.as_str()));
+        }
         Ok(update.exec(&self.conn()).await?.rows_affected)
     }
 
@@ -6096,6 +6535,8 @@ impl Db {
     /// terminal state on its own and would otherwise show as forever "running".
     /// `queued` and `pending` jobs are deliberately left untouched: they have no
     /// driver yet, so the dispatcher drains them normally once it reconnects.
+    /// [`crate::build`] passes [`REAPED_DETAIL`], which a ladder recognises a reaped job
+    /// by.
     pub async fn fail_in_flight_jobs(&self, now: &str, detail: &str) -> Result<u64> {
         let result = job::Entity::update_many()
             .col_expr(job::Column::State, Expr::value("failed"))
@@ -7062,6 +7503,77 @@ impl Db {
             active.gg_models = Set(lifted.gg_models);
             active.update(&self.conn()).await?;
             touch_run(&self.conn(), &id).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `run.validator_rating` column — the validators' own rating a
+    /// ladder's gate reads — for the completed validator-rated runs stored before the
+    /// column existed (or pushed while their case version could not be resolved).
+    ///
+    /// Deciding the figure needs the case version's checklist, which lives in the
+    /// definition store, so this cannot be a SQL backfill in the migration: each
+    /// candidate's record is decoded and its manifest read from `store`, and
+    /// `validator_only_rating` decides it exactly as a push would.
+    ///
+    /// Scoped to the rows that are `completed`, `validator_rated`, and still `NULL`, so
+    /// the candidate set settles to empty: `validator_rated` is itself decided from the
+    /// store at push time, so the only rows left behind are ones whose record no longer
+    /// deserializes or whose version has since left the store. Best-effort per row, like
+    /// [`Self::backfill_sort_columns`]: such a row is skipped and retried next boot.
+    /// Never touches `rating`, a review, or the row's mutation timestamp — nothing a
+    /// reader is shown changes. Returns how many rows were filled.
+    ///
+    /// `only` narrows the pass to the named runs. A deployment whose definition store
+    /// starts empty at boot cannot fill anything at startup, so a ladder's gate also
+    /// calls this for the runs of a cell it finds unrated, once the store holds their
+    /// version.
+    pub async fn backfill_validator_rating(
+        &self,
+        store: &crate::store::DefinitionStore,
+        only: Option<&[String]>,
+    ) -> Result<usize> {
+        let mut query = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .column(run::Column::RecordJson)
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::ValidatorRated.eq(true))
+            .filter(run::Column::ValidatorRating.is_null());
+        if let Some(ids) = only {
+            if ids.is_empty() {
+                return Ok(0);
+            }
+            query = query.filter(run::Column::Id.is_in(ids.iter().map(String::as_str)));
+        }
+        let rows: Vec<(String, String, String, String)> =
+            query.into_tuple().all(&self.conn()).await?;
+
+        // One manifest read per case version, however many of its runs are candidates.
+        let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+        let mut backfilled = 0usize;
+        for (id, slug, version, record_json) in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&record_json) else {
+                continue;
+            };
+            let manifest = manifests
+                .entry((slug.clone(), version.clone()))
+                .or_insert_with(|| store.read_manifest(&slug, &version).ok());
+            let Some(rating) = validator_only_rating(manifest.as_ref(), &record) else {
+                continue;
+            };
+            run::Entity::update_many()
+                .col_expr(
+                    run::Column::ValidatorRating,
+                    Expr::value(rating.as_str().to_string()),
+                )
+                .filter(run::Column::Id.eq(id))
+                .filter(run::Column::ValidatorRating.is_null())
+                .exec(&self.conn())
+                .await?;
             backfilled += 1;
         }
         Ok(backfilled)

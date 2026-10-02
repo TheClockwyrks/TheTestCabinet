@@ -1,5 +1,13 @@
 //! The top-up scheduler: which cells to launch, and how many runs each, to refill
-//! a coverage plan's (or a ladder's) review buffer.
+//! a coverage plan's review buffer (or a ladder's runs in flight).
+//!
+//! The buffer is the one place a plan and a ladder differ here, and only in what the
+//! caller passes as `outstanding`: a plan passes its runs in flight plus the
+//! requester's unreviewed completed runs ([`outstanding_across`]), because a plan
+//! exists to feed a reviewer; a ladder passes its runs in flight alone, because its
+//! climb is decided by validators and no completed run ever waits on a person. The
+//! shape of the target, the whole-cell overshoot, and the harness-parallelism
+//! preference are the same for both.
 //!
 //! A plan holds a *review buffer* rather than a queue: the point is to keep a
 //! bounded number of runs waiting on the reviewer, not to enqueue every run the
@@ -124,6 +132,10 @@ pub struct CellDemand {
     /// Completed runs for this cell, counted **globally** — every run of the cell
     /// regardless of which account launched it. A run someone else produced still
     /// satisfies the target, so it is never re-requested.
+    ///
+    /// A plan counts its evaluable `completed` runs. A ladder also counts the runs that
+    /// ended on the model's own failure, because its gate reads those as broken runs:
+    /// they have used up the rung's attempts, and must not be relaunched.
     pub completed: u32,
     /// In-flight jobs for this cell (`queued`/`pending`/`dispatched`/`starting`/
     /// `running`), counted **globally** for the same reason as [`Self::completed`].

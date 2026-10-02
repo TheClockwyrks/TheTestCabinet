@@ -834,8 +834,10 @@ pub struct TopUpResult {
     /// The buffer target in force (the plan's override, else the account's setting,
     /// else the backend default).
     pub buffer_target: BufferTarget,
-    /// The requester's buffer occupancy as the scheduler saw it, or null when it
-    /// never ran.
+    /// The buffer occupancy as the scheduler saw it, or null when it never ran. On a
+    /// plan that is the requester's runs in flight plus their unreviewed completed runs;
+    /// on a ladder it is the runs in flight alone, since a ladder's buffer caps how many
+    /// runs the climb spends at once and completed runs never occupy it.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub outstanding: Option<u32>,
@@ -851,6 +853,10 @@ pub struct TopUpResult {
     /// One broken member never stops the rest of the plan being fed, so this list and
     /// [`Self::cells`] are routinely both non-empty.
     pub unlaunchable: Vec<TopUpBlocked>,
+    /// How many not-yet-started jobs (`queued` or `pending`) a ladder whose gate stops
+    /// early cancelled because the rung they belonged to was decided. Always `0` on a
+    /// coverage plan, and on a ladder with `earlyStop` off.
+    pub early_stop_canceled: u32,
 }
 
 /// One run in a scoped review queue: a completed run of this plan (or ladder) the
@@ -1191,7 +1197,7 @@ pub async fn plans_summary(
         .iter()
         .flat_map(|(_, _, cases)| cases.iter().map(|c| c.slug.clone()))
         .collect();
-    let ctx = MatrixCtx::load(&state, all_slugs, &user.0.id, false).await?;
+    let ctx = MatrixCtx::load(&state, all_slugs, &user.0.id, MatrixCounting::Plan).await?;
 
     let mut summaries = Vec::with_capacity(resolved.len());
     for (plan, combos, cases) in &resolved {
@@ -1226,7 +1232,7 @@ pub async fn plan_coverage(
     let (combos, cases) = resolve_members(&plan, &groups, &library);
 
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, false).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, MatrixCounting::Plan).await?;
     let buffer_target = resolve_buffer_target(&state, &user.0.id, schedule.buffer_target).await?;
     Ok(Json(ctx.matrix(
         plan.runs_per_cell,
@@ -1378,7 +1384,7 @@ async fn plan_top_up_locked(
     // A coverage plan has no gate, so a run whose build never loaded still wants a
     // human to look at it and still occupies a buffer slot. Only a ladder, which can
     // decide such a run without a reviewer, excludes them.
-    let ctx = MatrixCtx::load(state, slugs, &user.0.id, false).await?;
+    let ctx = MatrixCtx::load(state, slugs, &user.0.id, MatrixCounting::Plan).await?;
 
     let ordered = cells_in_order(axis, &combos, &cases);
     let mut demands: Vec<CellDemand> = Vec::with_capacity(ordered.len());
@@ -1409,7 +1415,8 @@ async fn plan_top_up_locked(
             }
         })
         .collect();
-    let enqueued = enqueue_top_up(state, user, &JobOrigin::Plan(plan.id.clone()), &cells).await?;
+    let enqueued =
+        enqueue_top_up(state, &user.0.id, &JobOrigin::Plan(plan.id.clone()), &cells).await?;
     unlaunchable.extend(enqueued.blocked);
 
     Ok(TopUpResult {
@@ -1419,6 +1426,7 @@ async fn plan_top_up_locked(
         enqueued: enqueued.launched.iter().map(|cell| cell.runs).sum(),
         cells: enqueued.launched,
         unlaunchable,
+        early_stop_canceled: 0,
     })
 }
 
@@ -1442,7 +1450,7 @@ pub async fn plan_queue(
     let library = gg_library(&state, &user.0.id).await?;
     let (combos, cases) = resolve_members(&plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, false).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, MatrixCounting::Plan).await?;
 
     let cells: Vec<QueueCell<'_>> = cells_in_order(schedule.outer_axis, &combos, &cases)
         .into_iter()
@@ -1563,6 +1571,8 @@ pub(super) async fn halt_jobs(
             states: &states,
             origin: Some(origin),
             user_id: None,
+            cell: None,
+            ids: None,
         },
         detail,
     )
@@ -2264,14 +2274,28 @@ pub(super) struct MatrixCtx {
     latest_by_slug: HashMap<String, String>,
 }
 
+/// Which runs a [`MatrixCtx`] counts, which differs between the two things that read
+/// one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MatrixCounting {
+    /// A coverage plan: a cell's runs are its evaluable `completed` runs, and every one
+    /// of them its requester has not reviewed occupies the review buffer.
+    Plan,
+    /// A ladder: a cell's runs are every run that says something about its model — the
+    /// completed runs and the model's own failures — because those are the runs its gate
+    /// reads as evidence, so a rung whose runs keep failing uses up its target rather
+    /// than relaunching forever.
+    Ladder {
+        /// The gate's `unloadedCountsAsBroken`. When it is on, a run whose build never
+        /// loaded is left out of the unreviewed count: there is nothing on it to label.
+        unloaded_counts_as_broken: bool,
+    },
+}
+
 impl MatrixCtx {
     /// Load the counts and latest-version map for a set of case slugs (deduped
-    /// internally), from the point of view of `reviewer_user_id`.
-    ///
-    /// `exclude_unloaded` leaves runs whose build never loaded out of the unreviewed
-    /// count. A ladder whose gate counts an unloaded build as broken decides those
-    /// without a reviewer, so they must not hold a buffer slot; a coverage plan has
-    /// no gate and still wants a human to look, so it passes `false`.
+    /// internally), from the point of view of `reviewer_user_id`, counted the way
+    /// `counting` says.
     ///
     /// The latest version per slug honors the deployment's experimental visibility so
     /// "latest" matches what the catalog offers.
@@ -2279,15 +2303,30 @@ impl MatrixCtx {
         state: &AppState,
         mut slugs: Vec<String>,
         reviewer_user_id: &str,
-        exclude_unloaded: bool,
+        counting: MatrixCounting,
     ) -> Result<Self, ApiError> {
         slugs.sort();
         slugs.dedup();
-        let completed = state
-            .db
-            .count_completed_runs_by_cell(&slugs)
-            .await
-            .map_err(ApiError::from)?;
+        let (completed, exclude_unloaded) = match counting {
+            MatrixCounting::Plan => (
+                state
+                    .db
+                    .count_completed_runs_by_cell(&slugs)
+                    .await
+                    .map_err(ApiError::from)?,
+                false,
+            ),
+            MatrixCounting::Ladder {
+                unloaded_counts_as_broken,
+            } => (
+                state
+                    .db
+                    .count_model_runs_by_cell(&slugs)
+                    .await
+                    .map_err(ApiError::from)?,
+                unloaded_counts_as_broken,
+            ),
+        };
         let in_flight = state
             .db
             .count_in_flight_jobs_by_cell(&slugs)
@@ -2733,12 +2772,12 @@ fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
 /// not tell this plan's queued runs from a run someone kicked off by hand.
 pub(super) async fn enqueue_top_up(
     state: &AppState,
-    user: &AuthUser,
+    user_id: &str,
     origin: &JobOrigin,
     cells: &[TopUpCell<'_>],
 ) -> Result<TopUpEnqueued, ApiError> {
     let now = now()?;
-    let attribution = super::jobs::JobAttribution::scheduled(&user.0.id, origin);
+    let attribution = super::jobs::JobAttribution::scheduled(user_id, origin);
     let mut jobs: Vec<crate::db::NewJob> = Vec::new();
     let mut launched: Vec<TopUpLaunch> = Vec::with_capacity(cells.len());
     let mut blocked: Vec<TopUpBlocked> = Vec::new();
@@ -3159,6 +3198,7 @@ impl TopUpResult {
             enqueued: 0,
             cells: Vec::new(),
             unlaunchable: Vec::new(),
+            early_stop_canceled: 0,
         }
     }
 }

@@ -13,9 +13,9 @@
 //!   rung of a ladder) in the order the owner chose, it answers which cells to
 //!   launch and how many runs each, keeping a bounded number of runs outstanding
 //!   rather than firing every missing run at once.
-//! - [`gate`] — the single parameterised rung gate. Given the requesting account's
-//!   own ratings for a rung's completed runs, it answers whether the climber
-//!   advances, is walled, or is not decided yet.
+//! - [`gate`] — the single parameterised rung gate. Given the validators' ratings
+//!   of a rung's completed runs, it answers whether the climber advances, is
+//!   walled, or is not decided yet.
 //!
 //! ## The scope seam
 //!
@@ -25,12 +25,14 @@
 //! - **Counts are global.** A cell's `completed`/`in_flight` counts every run of
 //!   that cell whoever launched it, so a run someone else already produced is
 //!   never re-requested.
-//! - **Judgement is per-account.** "Unreviewed" means no review row for the
-//!   *requesting* account, and a gate reads only that account's ratings. A run's
-//!   stored `rating` column is the worst domain across **all** reviewers and must
-//!   never be fed to [`gate::evaluate`]; pass the worst domain within the
-//!   requester's own single review instead (see
-//!   [`aggregate_rating`](test_cabinet_core::review::aggregate_rating)).
+//! - **Reviewing is per-account.** "Unreviewed" means no review row for the
+//!   *requesting* account. A plan's buffer counts those runs; a ladder only reports
+//!   them, because its buffer caps runs in flight.
+//! - **A gate reads the validators, never a reviewer.** A ladder's gate reads the
+//!   lifted `run.validator_rating` — the validators' own rating with no review
+//!   override folded in. Neither the run's stored `rating` column (which folds in
+//!   every reviewer's overrides) nor any review may ever be fed to
+//!   [`gate::evaluate`].
 
 pub mod gate;
 pub mod schedule;

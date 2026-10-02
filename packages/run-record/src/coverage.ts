@@ -759,8 +759,10 @@ export type TopUpResult = {
    */
   bufferTarget: BufferTarget;
   /**
-   * The requester's buffer occupancy as the scheduler saw it, or null when it
-   * never ran.
+   * The buffer occupancy as the scheduler saw it, or null when it never ran. On a
+   * plan that is the requester's runs in flight plus their unreviewed completed runs;
+   * on a ladder it is the runs in flight alone, since a ladder's buffer caps how many
+   * runs the climb spends at once and completed runs never occupy it.
    */
   outstanding?: number;
   /**
@@ -781,6 +783,12 @@ export type TopUpResult = {
    * [`Self::cells`] are routinely both non-empty.
    */
   unlaunchable: Array<TopUpBlocked>;
+  /**
+   * How many not-yet-started jobs (`queued` or `pending`) a ladder whose gate stops
+   * early cancelled because the rung they belonged to was decided. Always `0` on a
+   * coverage plan, and on a ladder with `earlyStop` off.
+   */
+  earlyStopCanceled: number;
 };
 
 /**

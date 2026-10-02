@@ -128,6 +128,17 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
     }
 
+    // The validators' own rating a ladder's gate reads, for the validator-rated runs
+    // stored before the column existed. Deciding it needs each version's checklist, so it
+    // reads the definition store; a run whose version the store does not hold yet (a
+    // deployment whose store starts empty) is left for the gate to rate when it next
+    // reads it. Idempotent, best-effort, never blocks startup.
+    match db.backfill_validator_rating(&store, None).await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run validator ratings"),
+        Err(err) => tracing::warn!(error = %err, "skipping run validator-rating backfill"),
+    }
+
     // The static analyzer's generation, lifted out of records that already carry a code
     // analysis but were stored before the column existed. This lifts a number the record
     // blob already holds — it never *analyses* anything, because a historical run's tree
@@ -240,10 +251,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if config.is_single_box() {
         let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
         let reaped = db
-            .fail_in_flight_jobs(
-                &now,
-                "interrupted: the backend restarted while this run was in flight",
-            )
+            .fail_in_flight_jobs(&now, crate::db::REAPED_DETAIL)
             .await?;
         if reaped > 0 {
             tracing::info!(
@@ -251,6 +259,18 @@ pub async fn build(config: Config) -> error::Result<Backend> {
                 "reaped in-flight jobs orphaned by a backend restart"
             );
         }
+    }
+
+    // A ladder's top-up claim still held at startup was held by a top-up that died with
+    // the previous process: the backend is the single coordinator, so nothing else can
+    // hold one. Left in place it would turn the startup feed below away as busy until its
+    // lease ran out, with no holder left to serve the request that leaves behind.
+    let released = db.release_all_ladder_top_ups().await?;
+    if released > 0 {
+        tracing::info!(
+            released,
+            "released ladder top-up claims left by the previous process"
+        );
     }
 
     let r2 = config.r2.clone().map(R2Client::new);
@@ -371,6 +391,10 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
+    // A ladder is fed when something happens to it, and a restart loses some of those
+    // moments (the reconciliation above fails orphaned jobs without feeding anyone).
+    // Feed every self-feeding ladder once, as soon as the store can be served.
+    api::spawn_ladder_startup_feed(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
