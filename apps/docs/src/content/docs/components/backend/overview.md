@@ -153,32 +153,50 @@ failing tree listing abandons the pass the same way.
 ## Review scheduling
 
 The backend holds each account's reviewer scheduling state: what runs that
-account wants to exist, and how fast it wants them arriving. The data is private
-to the account, stays inside the backend and the web console, and stays out of
-the public snapshot.
+account wants to exist, and how many of them it keeps in flight at once. The data
+is private to the account, stays inside the backend and the web console, and
+stays out of the public snapshot.
 
 - A [coverage plan](/components/backend/coverage/) declares cases pinned to a
   version, variant and engine, crossed with combinations and a target run count
   per cell. The backend expands the declaration into a matrix, counts what
-  exists against it, and enqueues what is missing.
-- A [ladder](/components/backend/ladders/) applies the same machinery to an
-  ordered series of cases, which each combination climbs automatically until a
-  gate over its runs' validator ratings stops it.
+  exists against it, and fills what is missing when asked.
+- A [ladder](/components/backend/ladders/) is a configuration of an ordered
+  series of cases. Each Run dispatches it, and each combination climbs
+  automatically until a gate over its runs' validator ratings stops it.
 
-Run counts stay global while judgement stays per-account. A run someone else
-produced satisfies a plan's target, and "unreviewed" means unreviewed by the
-requesting account, so two reviewers share the cabinet's runs while keeping
-separate worklists. A ladder's gate reads no review: it reads the rating the
-validators decided for each run.
+The validation scripts are assumed correct, so reviews never gate, meter, or
+trigger the launching of runs. A plan counts runs globally, so a run someone else
+produced satisfies its target. A ladder dispatch counts only the runs it
+launched.
 
-Enqueueing is buffered and serialized. A plan holds a review buffer rather than
-firing its whole matrix, and a ladder caps its runs in flight. Neither refills
-from a background daemon: a caller requests a plan's top-up, and the backend runs
-an enabled ladder's launch pass itself whenever one of its runs finishes. Each
-plan's top-up and each ladder's launch pass claims its row first, so two
-concurrent callers cannot both enqueue for one shortfall. The buffer is bounded
-unless the plan's or ladder's buffer target is unbounded, in which case each
-enqueues everything it is allowed to.
+Launching is limited and serialized. A plan or a ladder keeps at most its
+runs-in-flight limit of its own jobs in flight, so it shares the global queue
+fairly. There is no background daemon: the backend runs a launch pass of a
+filling plan or a running dispatch whenever one of its runs finishes. Each pass
+claims its row first, so two concurrent passes cannot both enqueue for one
+shortfall.
+
+## Restarts
+
+The backend never fails in-flight jobs when it starts. Every driver runs as its
+own Kubernetes `Job`, separate from the backend's lifecycle, so a run that was
+executing when the backend restarted is still executing and reports its terminal
+status itself once the backend is back.
+
+A driver that dies without reporting is found by the dispatcher, not by the
+backend's start. A driver `Job` that fails while the dispatcher holds its token is
+reported by [death detection](/components/dispatcher/overview/#death-detection).
+Every other lost driver, including every driver of a machine that restarted as a
+whole, is reported by [lost-driver
+detection](/components/dispatcher/overview/#lost-drivers). The dispatcher compares
+the jobs the backend believes are executing with the driver `Job`s the cluster
+runs, so it fails only jobs whose driver is actually gone.
+
+Once the definition store is servable after a start, the backend releases every
+launch-pass claim the previous process held and runs one launch pass for every
+filling plan and every running ladder dispatch, restoring the launch moments the
+restart lost.
 
 ## Public snapshot
 

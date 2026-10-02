@@ -172,7 +172,7 @@ endpoint's billed rate:
   completes, and again on a 24-hour periodic refresh.
 - It records a first observation the moment a model first appears: when you save
   it here with an OpenRouter slug, when a run that binds it is enqueued (on every
-  enqueue path — the run form, a gg launch, a coverage top-up, an automatic
+  enqueue path — the run form, a gg launch, a plan or ladder launch pass, an automatic
   retry), and at backend startup for every known model still missing one. The
   startup pass is what prices a freshly seeded deployment's curated catalog
   before its first run. All of this seeding is missing-only, so a model already
