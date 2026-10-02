@@ -23,7 +23,9 @@ import styles from "./ReviewingPage.module.scss";
 // account-wide preferences that govern how much reviewing work the cabinet puts in
 // front of you. Today that is the review buffer — how many runs the reviewer is
 // willing to have outstanding (in flight, or finished and waiting on their review)
-// before every plan and ladder of theirs stops enqueueing more.
+// before every plan of theirs stops enqueueing more. A ladder reads the same figure
+// as the most runs it keeps in flight at once: its gate reads validator ratings, so
+// its completed runs never wait on a review and never occupy it.
 //
 // It is a property of the *reviewer* rather than of any one plan, which is why it
 // sits in Settings rather than on the Coverage tab; a plan or ladder that wants a
@@ -159,8 +161,9 @@ function BufferSetting({
       <div className={styles.label}>
         <h2 className={styles.title}>Review buffer</h2>
         <p className={styles.description}>
-          Runs your plans may leave outstanding before a top-up stops. With no
-          limit, a top-up enqueues every missing run at once.
+          Runs your plans may leave outstanding before a top-up stops, and the
+          most runs a ladder keeps in flight at once. With no limit, a top-up
+          enqueues every missing run at once.
         </p>
       </div>
       <form

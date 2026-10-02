@@ -25,7 +25,10 @@ export interface LadderSummary {
   walled: number;
   /** Climbers that cleared every rung. */
   toppedOut: number;
-  /** Completed runs across the board the signed-in account has not reviewed. */
+  /** Climbers standing on a rung nothing the ladder does by itself will move. */
+  blocked: number;
+  /** Completed runs across the board the signed-in account has not reviewed —
+   *  information only: reviews are labels and never move a climb. */
   unreviewed: number;
 }
 
@@ -53,6 +56,7 @@ export function ladderSummary(progress: LadderProgress): LadderSummary {
     donePct: rungsTotal > 0 ? (rungsCleared / rungsTotal) * 100 : 0,
     walled: progress.climbersWalled,
     toppedOut: progress.climbersToppedOut,
+    blocked: progress.climbersBlocked,
     unreviewed: progress.runsUnreviewed,
   };
 }
@@ -154,9 +158,8 @@ export function LaddersPage() {
         <PromptHeader command="--ladders" comment={<>// your ladders</>} />
         <AccountTabs active="ladders" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use ladders. They are saved to your account, and a rung is
-          gated on <em>your</em> reviews. Use the account control in the top bar
-          to register or log in.
+          Sign in to use ladders. They are saved to your account. Use the
+          account control in the top bar to register or log in.
         </p>
       </PageLayout>
     );
@@ -218,10 +221,10 @@ export function LaddersPage() {
                     {entry.rungs.length} rung
                     {entry.rungs.length === 1 ? "" : "s"} · {entry.runsPerCell}{" "}
                     runs/rung
-                    {entry.autoTopUp && " · tops up on review"}
+                    {entry.autoTopUp && " · climbs automatically"}
                     {summary != null &&
                       summary.unreviewed > 0 &&
-                      ` · ${summary.unreviewed} waiting on you`}
+                      ` · ${summary.unreviewed} unreviewed`}
                   </span>
                 </div>
                 <div className={styles.rowRight}>
@@ -238,6 +241,7 @@ export function LaddersPage() {
                       </span>
                       <span className={styles.groupCount}>
                         {summary.walled} walled · {summary.toppedOut} topped out
+                        {summary.blocked > 0 && ` · ${summary.blocked} blocked`}
                       </span>
                     </span>
                   )}

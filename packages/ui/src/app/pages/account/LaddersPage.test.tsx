@@ -43,13 +43,15 @@ function progress(climbers: LadderClimber[]): LadderProgress {
       variant: "base",
       latestVersion: "v1.0.0",
       stale: false,
+      supported: true,
     })),
     climbers,
     climbersToppedOut: climbers.filter((c) => c.status === "toppedOut").length,
     climbersWalled: climbers.filter((c) => c.status === "walled").length,
+    climbersBlocked: climbers.filter((c) => c.status === "blocked").length,
     runsMissing: 0,
     runsUnreviewed: 2,
-    runsOutstanding: 0,
+    runsInFlight: 0,
     bufferTarget: { kind: "bounded", runs: 10 },
   };
 }
@@ -79,6 +81,19 @@ describe("ladderSummary", () => {
     );
     expect(summary.walled).toBe(1);
     expect(summary.unreviewed).toBe(2);
+  });
+
+  it("reports blocked climbers, which nothing will move until someone fixes them", () => {
+    const summary = ladderSummary(
+      progress([
+        at(1, {
+          status: "blocked",
+          blocked: { kind: "unsupportedRung", rungId: "r1" },
+        }),
+        at(3),
+      ]),
+    );
+    expect(summary.blocked).toBe(1);
   });
 
   it("does not divide by zero on a ladder nobody is climbing", () => {

@@ -53,16 +53,22 @@ function backendValue() {
 // A backend that actually resolves a case, for the add-a-rung half: the Engine
 // dropdown offers exactly what the resolved version declares support for, so a test
 // about the engine has to have a version to resolve.
-function catalogValue(engines: string[]) {
+//
+// `legacy` names the versions on the legacy manifest format: rated only by a reviewer,
+// so a ladder cannot climb them. Every other version resolves validator-rated.
+function catalogValue(
+  engines: string[],
+  { versions = ["v1.0.0"], legacy = [] as string[] } = {},
+) {
   return {
     client: {
-      listTestCases: async () => [
-        { slug: "alpha", versions: ["v1.0.0"], name: "Alpha" },
-      ],
-      resolveVersion: async () => ({
-        slug: "alpha",
-        version: "v1.0.0",
+      listTestCases: async () => [{ slug: "alpha", versions, name: "Alpha" }],
+      resolveVersion: async (slug: string, version: string) => ({
+        slug,
+        version,
         name: "Alpha",
+        testType: "end-to-end",
+        engineFormat: !legacy.includes(version),
         variants: [{ slug: "base", name: "Base" }],
         engines,
         maxRuntimeSeconds: 600,
@@ -274,7 +280,7 @@ describe("describeGate / gateExample", () => {
   it("says a rung finishes anyway unless early stop is on", () => {
     expect(gateExample(gate(), 5)).toMatch(/still finishes all of its runs/i);
     expect(gateExample(gate({ earlyStop: true }), 5)).toMatch(
-      /remaining runs are cancelled/i,
+      /runs that have not started are cancelled/i,
     );
   });
 
@@ -528,6 +534,84 @@ describe("RungListEditor", () => {
       expect(
         screen.getByText("Alpha · base · v1.0.0 · Simple 2D"),
       ).toBeTruthy();
+    });
+  });
+
+  // A ladder's gate reads validator ratings only, so a legacy version — rated by a
+  // reviewer alone — can never be a rung. The picker says so beside the version rather
+  // than leaving the author to meet the backend's refusal on save.
+  describe("versions a ladder cannot climb", () => {
+    async function renderVersions(
+      versions: string[],
+      legacy: string[],
+      rungs: LadderRungInput[] = [],
+      onChange = vi.fn(),
+    ) {
+      render(
+        <BackendProvider value={catalogValue(["none"], { versions, legacy })}>
+          <GalleryDataProvider value={catalogGalleryValue()}>
+            <RungListEditor rungs={rungs} runsPerCell={3} onChange={onChange} />
+          </GalleryDataProvider>
+        </BackendProvider>,
+      );
+      await act(async () => {});
+      await act(async () => {});
+      return onChange;
+    }
+
+    const versionSelect = () =>
+      screen.getByLabelText("Version") as HTMLSelectElement;
+
+    it("lists a legacy version as not climbable, and never selects it", async () => {
+      // The catalog leads with the newest version, which here is the legacy one.
+      const onChange = await renderVersions(["v1.0.0", "v2.0.0"], ["v2.0.0"]);
+      const legacy = [...versionSelect().options].find(
+        (o) => o.value === "v2.0.0",
+      )!;
+      expect(legacy.disabled).toBe(true);
+      expect(legacy.textContent).toBe("v2.0.0 (legacy, not climbable)");
+      expect(legacy.title).toMatch(/rated only by a reviewer/);
+      // The selection moved to the newest version a ladder can climb.
+      expect(versionSelect().value).toBe("v1.0.0");
+      expect(
+        screen.getByText(/Versions marked legacy are rated only by a reviewer/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      expect(onChange).toHaveBeenCalledWith([
+        { slug: "alpha", version: "v1.0.0", variant: "base" },
+      ]);
+    });
+
+    it("refuses a case with no validator-rated version at all, and says why", async () => {
+      const onChange = await renderVersions(["v1.0.0"], ["v1.0.0"]);
+      expect(screen.getByRole("button", { name: "+ Add rung" })).toBeDisabled();
+      expect(
+        screen.getByText(/No version of Alpha is validator-rated/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("marks a legacy rung the climb already holds, with its fix", async () => {
+      await renderVersions(
+        ["v1.0.0", "v2.0.0"],
+        ["v1.0.0"],
+        [{ id: "a", slug: "alpha", version: "v1.0.0", variant: "base" }],
+      );
+      expect(screen.getByText("Not climbable")).toBeTruthy();
+      expect(
+        screen.getByText(/Remove it and add a validator-rated version/),
+      ).toBeTruthy();
+    });
+
+    it("marks nothing when every version is validator-rated", async () => {
+      await renderVersions(
+        ["v1.0.0"],
+        [],
+        [{ id: "a", slug: "alpha", version: "v1.0.0", variant: "base" }],
+      );
+      expect(screen.queryByText("Not climbable")).toBeNull();
+      expect(screen.queryByText(/legacy/)).toBeNull();
     });
   });
 

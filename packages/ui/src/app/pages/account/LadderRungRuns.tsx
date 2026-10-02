@@ -18,11 +18,10 @@ import styles from "./Coverage.module.scss";
 
 // The runs behind one rung's verdict, for one climber, listed under the rung itself.
 //
-// This is the other half of the review loop the ladder dashboard exists to serve: the
-// board says a climber walled, and the only way to agree or disagree with that is to
-// look at the runs the gate counted. Listing them here rather than linking to a
-// pre-filtered Runs page keeps the reviewer on the board they were reading — they open
-// a run, review it, and come back to the same expanded rung.
+// The board says a climber walled or advanced, and the only way to agree or disagree
+// with that is to look at the runs the gate counted. Listing them here rather than
+// linking to a pre-filtered Runs page keeps the reader on the board they were reading —
+// they open a run, label it if they like, and come back to the same expanded rung.
 //
 // It is the shared run log, not a bespoke list: these are ordinary runs, and a rung's
 // runs must show the same columns, the same ratings, the same right-click menu, and the
@@ -68,8 +67,8 @@ export function RungRuns({
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      // Produced-but-unpublished runs included: on a ladder those are precisely the
-      // runs still waiting on the review that will decide the rung.
+      // Produced-but-unpublished runs included: a validator-rated run is rated the
+      // moment it completes, published or not, and the gate counts it either way.
       state: "any",
       testCase: slug,
       version,
@@ -141,7 +140,7 @@ export function RungRuns({
   const empty = summaries.length === 0 && active.length === 0;
 
   return (
-    // Any link out of this list is a step *into* the review loop, so the claim is made
+    // Any link out of this list leads into a run's pages, so the claim is made
     // for the whole list rather than per row: a run opened from here returns to this
     // ladder, not to the global runs index.
     <div

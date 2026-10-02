@@ -25,7 +25,6 @@ import {
 } from "../../../data/galleryContext";
 import { useTestCase } from "../../../data/useTestCase";
 import { topUpAfterReview } from "../../account/coveragePlan";
-import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
 import { SubmitNotice } from "../../../components/SubmitNotice";
 import { ReviewItemAssets } from "./AssetResultSection";
@@ -977,14 +976,15 @@ export function RunReviewEditor({
     runAction(ownReview ? "Review updated." : "Review submitted.", async () => {
       await client!.submitReview(runId, buildReview(), token!);
       setSubmittedThisSession(true);
-      // This review is what frees a review-buffer slot, and on a ladder it *is* the
-      // rung's verdict — so a plan or ladder with auto-top-up on is refilled here,
-      // at the only moment its shortfall can have changed. Deliberately not awaited
-      // and deliberately silent on failure: the review has already been recorded,
-      // and a slow or failing top-up must never make a successful submit look
-      // broken. Both helpers no-op unless the account has opted a plan or ladder in.
+      // This review is what frees a coverage plan's review-buffer slot, so a plan
+      // with auto-top-up on is refilled here, at the only moment its shortfall can
+      // have changed. Deliberately not awaited and deliberately silent on failure:
+      // the review has already been recorded, and a slow or failing top-up must never
+      // make a successful submit look broken. The helper no-ops unless the account
+      // has opted a plan in. Ladders are not fed here: their gate reads validator
+      // ratings only, and the backend tops a ladder up itself as each run finishes,
+      // so a review neither decides a rung nor moves a climb.
       void topUpAfterReview(backend, token);
-      void topUpLaddersAfterReview(backend, token);
       setEditNote("");
       // Collapse back to the summary; the just-submitted review now shows there.
       setEditing(false);

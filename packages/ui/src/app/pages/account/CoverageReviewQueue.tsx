@@ -29,16 +29,22 @@ import styles from "./Coverage.module.scss";
 // this queue (the plan's Reviews tab) passes one and gets the widget with the message
 // inside it; a surface that stacks the queue among others (the ladder board) passes
 // none and the widget disappears rather than occupying a panel to say nothing.
+//
+// `intro` is a line under the heading saying what the queue is *for*. The ladder board
+// passes one, because on a ladder the queue is optional labelling after the fact and a
+// list of runs titled as a worklist would otherwise read as something the climb waits on.
 export function CoverageReviewQueue({
   queue,
   returnLabel = "Back to the coverage plan",
   title = "Waiting on your review",
   emptyMessage,
+  intro,
 }: {
   queue: CoverageQueue;
   returnLabel?: string;
   title?: string;
   emptyMessage?: string;
+  intro?: string;
 }) {
   const testCaseName = useTestCaseName();
   if (queue.runs.length === 0) {
@@ -61,6 +67,7 @@ export function CoverageReviewQueue({
           {queue.truncated ? "+" : ""}
         </span>
       </header>
+      {intro && <p className={styles.queueIntro}>{intro}</p>}
       <ol className={styles.queueList}>
         {queue.runs.map((entry) => (
           <li key={entry.runId}>

@@ -47,6 +47,12 @@ import {
   samePinnedCase,
 } from "./caseLabels";
 import { NumberValueField } from "../../components/NumberField";
+import {
+  ineligibleReason,
+  isIneligible,
+  useVersionEligibility,
+  type RungEligibility,
+} from "./rungEligibility";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import exec from "../runs/RunExec.module.scss";
@@ -54,7 +60,7 @@ import styles from "./Coverage.module.scss";
 import ladder from "./Ladder.module.scss";
 
 // The controls a ladder has and a coverage plan does not: the ordering axis in the
-// ladder's own vocabulary, the gate every rung is judged by, and the ordered rung
+// ladder's own vocabulary, the gate every rung is decided by, and the ordered rung
 // list. They live here, apart from the pages, for the same reason the coverage
 // pickers do — the editor renders them and the dashboard has to be able to *name*
 // what they mean, and one home for them is what stops the two surfaces describing
@@ -104,7 +110,7 @@ const LADDER_AXIS_HINTS: Readonly<Record<LadderAxis, string>> = {
  * already chosen would answer the question they are not asking.
  */
 const LADDER_AXIS_HELP =
-  "Runs are enqueued in this order, so it is also the order they arrive and become reviewable in. Rung by rung lands a rung's runs together, where they can be judged against each other; model by model tells you how far a single climber gets soonest.";
+  "Runs are enqueued in this order, so it is also the order they finish in. Rung by rung lands a rung's runs together, where they can be compared with each other; model by model tells you how far a single climber gets soonest.";
 
 /** The order a ladder's runs will arrive in, named the way the console names it. */
 export function ladderAxisLabel(axis: LadderAxis): string {
@@ -125,8 +131,7 @@ export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
- * order shown here *is* the order the runs execute and therefore become reviewable
- * in.
+ * order shown here *is* the order the runs execute and therefore finish in.
  */
 export function LadderAxisPicker({
   value,
@@ -238,7 +243,7 @@ export function gateExample(gate: Gate, runsPerCell: number): string {
     return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to let the ladder stop anyone.`;
   }
   const decides = gate.earlyStop
-    ? "Its remaining runs are cancelled once the outcome is certain."
+    ? "Its runs that have not started are cancelled once the validators' ratings make the outcome certain."
     : "The rung still finishes all of its runs either way.";
   return (
     `At ${total} runs a rung: a climber advances once ${need} of its ${total} runs ` +
@@ -378,7 +383,7 @@ export function GateEditor({
 
       <SettingRow
         label="Count a run whose build never loaded as broken"
-        help="A build that does not load leaves a reviewer nothing to judge, so counting it at once keeps it from holding up the climb and from taking a slot in your review buffer."
+        help="A build that does not load leaves nothing to play, so it counts as broken outright, whatever its validators reported."
         modified={
           gate.unloadedCountsAsBroken !== DEFAULT_GATE.unloadedCountsAsBroken
         }
@@ -402,7 +407,7 @@ export function GateEditor({
 
       <SettingRow
         label="Decide a rung early and cancel its remaining runs"
-        help="A rung's runs are evidence as well as a verdict, so leaving this off keeps the full record of every rung. Turn it on to stop paying for runs whose outcome is already certain."
+        help="A rung's runs are evidence as well as a verdict, so leaving this off keeps the full record of every rung. Turn it on to stop paying for runs whose outcome is already certain: once the validators' ratings settle a rung, that climber's runs on it that have not started are cancelled. A run already executing always finishes."
         modified={gate.earlyStop !== DEFAULT_GATE.earlyStop}
         onReset={() => onChange({ ...gate, earlyStop: DEFAULT_GATE.earlyStop })}
       >
@@ -422,12 +427,15 @@ export function GateEditor({
  * The test types a rung may not hold, mirroring the backend's
  * `RUNG_INELIGIBLE_TEST_TYPES`.
  *
- * A performance case is graded automatically and never appears on a reviewer
- * worklist, and a game jam is scored on the graded category scale and records no
- * domain rating at all — so in both cases a rung's runs could never be judged, the
- * gate could never resolve, and the climber would stall forever with nothing looking
- * wrong. The backend rejects them outright; the picker simply never offers them, so
- * the rejection is not something a reviewer has to discover by hitting it.
+ * A ladder's gate reads only validator ratings. A performance case is graded on its
+ * own scale and records no functional rating, and a game jam is scored on the graded
+ * category scale and records no domain rating at all — so in both cases a rung's runs
+ * would never carry a rating the gate can read, and the climber would stall forever.
+ * A **legacy** version of any other type is refused for the same reason (its rating
+ * comes only from a reviewer); that is a property of the version rather than the
+ * type, so the version picker below marks it (see `rungEligibility`). The backend
+ * rejects all three outright; the picker never offers them, so the rejection is not
+ * something an author has to discover by hitting it.
  */
 const INELIGIBLE_CATEGORIES: ReadonlySet<CatalogCategory> =
   new Set<CatalogCategory>(["performance", "game-jam"]);
@@ -508,12 +516,15 @@ function SortableRung({
   total,
   label,
   runsPerCell,
+  problem,
   onMove,
   onRunsChange,
   onRemove,
 }: {
   id: string;
   rung: LadderRungInput;
+  /** Why a ladder cannot climb this rung, or null when it can. */
+  problem: string | null;
   index: number;
   /** How many rungs the climb has, so the ends know not to offer a move off it. */
   total: number;
@@ -539,7 +550,7 @@ function SortableRung({
       ref={setNodeRef}
       className={`${ladder.rungEditItem} ${
         isDragging ? ladder.rungEditItemDragging : ""
-      }`}
+      } ${problem ? ladder.rungEditItemProblem : ""}`}
       style={{
         // Translate rather than the full transform: a sorting list only ever needs to
         // slide rows past each other, and scaling a row mid-drag would resize the
@@ -559,6 +570,11 @@ function SortableRung({
       </button>
       <span className={ladder.rungEditIndex}>{index + 1}</span>
       <span className={ladder.rungEditName}>{label}</span>
+      {problem && (
+        <span className={ladder.rungProblem} title={problem}>
+          Not climbable
+        </span>
+      )}
       <label className={ladder.rungEditRuns}>
         runs
         {/* Optional: empty is the answer "use the ladder's own run count", not a
@@ -607,6 +623,14 @@ function SortableRung({
           ✕
         </button>
       </span>
+      {/* The reason and the fix on a line of their own: a badge alone would say the
+          rung is wrong without saying what to do about it. */}
+      {problem && (
+        <p className={ladder.rungEditProblemNote}>
+          {problem} Remove it and add a validator-rated version of the case in
+          its place; the ladder cannot be saved while it holds this rung.
+        </p>
+      )}
     </li>
   );
 }
@@ -713,9 +737,50 @@ export function RungListEditor({
   const engineChoice = useEngineChoice(sel.versionInfo?.engines);
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
-  const versions = [
-    ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
-  ].reverse();
+  const versions = useMemo(
+    () =>
+      [
+        ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
+      ].reverse(),
+    [sel.cases, sel.slug],
+  );
+
+  // Whether each version on offer, and each rung already in the climb, can be climbed
+  // at all. A ladder's gate reads validator ratings only, so a legacy version — rated
+  // by a reviewer alone — is marked and never added, and a rung the climb already
+  // holds that is one says so on its own row.
+  const pins = useMemo(
+    () => [
+      ...rungs.map((r) => ({ slug: r.slug, version: r.version })),
+      ...versions.map((version) => ({ slug: sel.slug, version })),
+    ],
+    [rungs, versions, sel.slug],
+  );
+  const eligibilityOf = useVersionEligibility(pins);
+  const versionEligibility = (version: string): RungEligibility | undefined =>
+    eligibilityOf({ slug: sel.slug, version });
+  const selectedIneligible = isIneligible(versionEligibility(sel.version));
+  const climbable = versions.filter(
+    (v) => !isIneligible(versionEligibility(v)),
+  );
+  const anyIneligible = climbable.length < versions.length;
+  // The newest version a ladder can climb, which the selection moves to when it lands
+  // on one it cannot — the catalog leads with the latest version, and on a case being
+  // migrated that can be the legacy one only until the next is ingested, or the
+  // other way about.
+  const newestClimbable =
+    climbable.find((v) => versionEligibility(v)?.kind !== undefined) ?? null;
+  useEffect(() => {
+    if (
+      selectedIneligible &&
+      newestClimbable &&
+      newestClimbable !== sel.version
+    ) {
+      sel.setVersion(newestClimbable);
+    }
+    // `sel` is a fresh object every render; its setter is all this needs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIneligible, newestClimbable, sel.version]);
 
   function move(from: number, to: number) {
     if (to < 0 || to >= rungs.length) return;
@@ -768,6 +833,8 @@ export function RungListEditor({
 
   function addRung() {
     if (!selectionShown || !sel.slug || !sel.version || !sel.variant) return;
+    // Never a version a ladder cannot climb: the backend would refuse the save.
+    if (selectedIneligible) return;
     const pin: LadderRungInput = {
       slug: sel.slug,
       version: sel.version,
@@ -813,6 +880,9 @@ export function RungListEditor({
                   index={index}
                   total={rungs.length}
                   label={caseLabel(testCaseName(rung.slug), rung)}
+                  problem={ineligibleReason(
+                    eligibilityOf({ slug: rung.slug, version: rung.version }),
+                  )}
                   runsPerCell={runsPerCell}
                   onMove={(to) => move(index, to)}
                   onRunsChange={(runs) =>
@@ -879,11 +949,26 @@ export function RungListEditor({
             value={sel.version}
             onChange={(e) => sel.setVersion(e.target.value)}
           >
-            {versions.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
+            {/* A version a ladder cannot climb stays listed, so the author can see it
+                exists and why it is not on offer, but cannot be chosen. */}
+            {versions.map((v) => {
+              const eligibility = versionEligibility(v);
+              const reason = ineligibleReason(eligibility);
+              return (
+                <option
+                  key={v}
+                  value={v}
+                  disabled={reason !== null}
+                  title={reason ?? undefined}
+                >
+                  {eligibility?.kind === "legacy"
+                    ? `${v} (legacy, not climbable)`
+                    : reason
+                      ? `${v} (not climbable)`
+                      : v}
+                </option>
+              );
+            })}
           </select>
         </label>
         <label className={exec.field}>
@@ -912,12 +997,25 @@ export function RungListEditor({
           className={`${exec.secondary} ${styles.editorAdd}`}
           onClick={addRung}
           disabled={
-            !selectionShown || !sel.slug || !sel.version || !sel.variant
+            !selectionShown ||
+            !sel.slug ||
+            !sel.version ||
+            !sel.variant ||
+            selectedIneligible
           }
         >
           + Add rung
         </button>
       </div>
+      {/* Why a version is greyed out, or why a whole case cannot be added, beside the
+          picker that refuses it rather than in the save's error. */}
+      {selectionShown && anyIneligible && (
+        <p className={styles.fieldHint}>
+          {climbable.length === 0
+            ? `No version of ${testCaseName(sel.slug)} is validator-rated, so a ladder cannot climb it: its runs are rated only by a reviewer, and a ladder's gate reads validator ratings. Use a coverage plan for it.`
+            : "Versions marked legacy are rated only by a reviewer, so a ladder cannot climb them: its gate reads validator ratings, and moves on without anyone reviewing."}
+        </p>
+      )}
     </>
   );
 }

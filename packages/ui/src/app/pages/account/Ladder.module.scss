@@ -129,8 +129,8 @@
 }
 
 // Where a climber stands, as a pill. Five states with five colours, because the
-// whole point of the board is that "stopped" has three different causes and the
-// reviewer's next move differs for each.
+// whole point of the board is that "stopped" has several different causes and the
+// operator's next move differs for each.
 .statusPill {
   flex: none;
   font-family: var(--ttc-font);
@@ -149,12 +149,6 @@
   background: t.$color-accent;
 }
 
-// Every run is in and the climb is waiting on *you* — the one state a reviewer can
-// clear themselves, so it takes the amber that means "your move".
-.statusAwaiting {
-  background: t.$color-warning;
-}
-
 // Stopped by the gate.
 .statusWalled {
   background: t.$color-negative;
@@ -171,18 +165,20 @@
   background: t.$color-positive;
 }
 
-// Cannot be launched at all: the configuration behind it is gone, or one of its launch
-// slots is unbound. Not a sixth state — a blocked climber still has one of the five
-// above, and this pill rides beside that one. Outlined rather than filled so it cannot
-// be mistaken for another verdict of the gate: the fault is in the ladder's
-// membership, not in the model's runs.
+// Blocked: the rung is undecided and nothing the ladder does by itself will move it
+// (a rung that is not validator-rated, a combination that cannot launch, runs that
+// keep failing, runs with no rating). Also the "cannot launch" pill a climber in
+// another state carries when its combination is broken. Outlined rather than filled
+// so it cannot be mistaken for a verdict of the gate: the fault is in the ladder or
+// its membership, not in the model's runs, and the fix is the operator's.
 .statusBlocked {
   background: none;
   color: t.$color-negative;
   border: t.$border-hairline solid t.$color-negative;
 }
 
-// Why a blocked climber can never enqueue, on a line of its own beneath the header —
+// Why a blocked climber is not moving and what fixes it, on a line of its own beneath
+// the header —
 // the ladder's counterpart of the plan matrix's `.cellBlocked`, and shown whether or
 // not the climber is expanded.
 .climberBlocked {
@@ -228,6 +224,28 @@
 // segment is the wall — which is the question the dashboard exists to answer.
 .rungStepWall {
   background: t.$color-negative;
+}
+
+// The rung a blocked climber stands on: outlined in the negative colour, dashed, so it
+// reads as "stuck here" without being mistaken for the filled segment of a wall.
+.rungStepBlocked {
+  background: t.$color-bg-2;
+  outline: t.$border-hairline dashed t.$color-negative;
+  outline-offset: -1px;
+}
+
+// A rung the ladder cannot climb at all (its version is not validator-rated), on the
+// dashboard's rung row and the editor's alike. Outlined like the blocked pill, because
+// it is the same kind of fault: in the ladder, not in anyone's runs.
+.rungProblem {
+  flex: none;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+  border: t.$border-hairline solid t.$color-negative;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
 }
 
 .rungCount {
@@ -416,6 +434,21 @@
   z-index: 1;
   border-color: t.$color-accent;
   box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+// A rung a ladder cannot climb (its version is not validator-rated): outlined in the
+// negative colour so it stands out of the climb before the save refuses it.
+.rungEditItemProblem {
+  border-color: t.$color-negative;
+}
+
+// The reason and the fix under such a rung, across the row's whole width.
+.rungEditProblemNote {
+  flex-basis: 100%;
+  margin: 0;
+  color: t.$color-negative;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
 }
 
 // The grip that starts a drag. Confined to its own control rather than the whole

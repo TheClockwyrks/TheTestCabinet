@@ -7,6 +7,7 @@ import type {
   TopUpResult,
 } from "@clockwyrks/run-record/coverage";
 import type {
+  ClimberBlock,
   LadderClimber,
   LadderOut,
   LadderProgress,
@@ -15,7 +16,6 @@ import type {
   LadderSchedule,
   RungTally,
 } from "@clockwyrks/run-record/ladders";
-import type { BackendClient } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -32,8 +32,8 @@ import { CoverageReviewQueue } from "./CoverageReviewQueue";
 import { describeUnlaunchable } from "./coveragePlan";
 import {
   bufferIsFull,
-  bufferedStatTitle,
   formatBufferTarget,
+  inFlightStatTitle,
 } from "./bufferTarget";
 import { comboLabel } from "./comboLabels";
 import { caseLabel } from "./caseLabels";
@@ -52,8 +52,11 @@ import ladderStyles from "./Ladder.module.scss";
 //
 // It shares the coverage pages' visual language (`Coverage.module.scss`) and their
 // review queue outright, because a ladder is a sibling of a coverage plan rather than
-// a different product: the same buffer, the same top-up, the same review loop, over an
-// ordered climb instead of a matrix.
+// a different product. What differs is who moves it: a ladder is an automated climb.
+// The validators rate every completed run, the gate reads those ratings, and the
+// backend launches the next rung itself as each run finishes — so nothing on this
+// board waits on a review, and the review queue is there only for labelling runs
+// after the fact.
 
 /** One rung as an expanded climber row describes it, for exactly one climber. */
 export interface RungView {
@@ -127,12 +130,72 @@ export function climberStatusLabel(
       return climber.currentRung ? `Held at rung ${at}` : "Held";
     case "walled":
       return `Walled at rung ${at}`;
-    case "awaitingReview":
-      return `Rung ${at}, waiting on your review`;
+    case "blocked":
+      return blockedLabel(climber.blocked, at);
     case "climbing":
       return null;
     case "toppedOut":
       return `Topped out: all ${rungCount} rungs cleared`;
+  }
+}
+
+/**
+ * The status pill of a blocked climber: where it is stuck, and the kind of fault in a
+ * few words. The full reason and its fix are on the line under the row's header.
+ */
+function blockedLabel(block: ClimberBlock | undefined, at: number): string {
+  switch (block?.kind) {
+    case "unsupportedRung":
+      return `Blocked at rung ${at}: not validator-rated`;
+    case "unlaunchable":
+      return `Blocked at rung ${at}: cannot launch`;
+    case "failing":
+      return `Blocked at rung ${at}: runs keep failing`;
+    case "unrated":
+      return `Blocked at rung ${at}: ${block.runs} run${block.runs === 1 ? "" : "s"} unrated`;
+    case undefined:
+      return `Blocked at rung ${at}`;
+  }
+}
+
+/**
+ * Why a climber is blocked and what moves it again, as one sentence — the line under
+ * the climber's header. Every reason names its fix, because a blocked climber is the
+ * one state on the board nothing will clear by itself.
+ *
+ * `rungs` and `caseName` name the rung an `unsupportedRung` block points at, so the
+ * reader is told *which* rung to replace rather than to go and find it.
+ */
+export function describeClimberBlock(
+  block: ClimberBlock,
+  rungs: LadderProgressRung[],
+  caseName: (slug: string) => string,
+): string {
+  switch (block.kind) {
+    case "unsupportedRung": {
+      const rung = rungs.find((r) => r.id === block.rungId);
+      const named = rung
+        ? `Rung ${rung.position + 1} (${caseLabel(caseName(rung.slug), rung)})`
+        : "This rung";
+      return (
+        `${named} is not validator-rated: its runs are rated only by a reviewer, and ` +
+        "this ladder's gate reads validator ratings, so it can never decide the rung. " +
+        "Replace it with a validator-rated version of the case, or remove it, and the climb resumes."
+      );
+    }
+    case "unlaunchable":
+      return `This combination cannot be launched: ${block.reason}. Fix the combination or drop it from the ladder, and the climb resumes.`;
+    case "failing":
+      return (
+        `The last ${block.attempts} runs on this rung failed, so the ladder has stopped ` +
+        "relaunching it by itself. Fix the cause, then press “Top up now” to launch it again."
+      );
+    case "unrated":
+      return (
+        `${block.runs} completed run${block.runs === 1 ? "" : "s"} on this rung ` +
+        `${block.runs === 1 ? "carries" : "carry"} no validator rating, so the gate ` +
+        "cannot decide the rung from them. Re-push those runs, or replace the rung."
+      );
   }
 }
 
@@ -143,8 +206,8 @@ function statusClass(climber: LadderClimber): string {
       return ladderStyles.statusHeld!;
     case "walled":
       return ladderStyles.statusWalled!;
-    case "awaitingReview":
-      return ladderStyles.statusAwaiting!;
+    case "blocked":
+      return ladderStyles.statusBlocked!;
     case "climbing":
       return ladderStyles.statusClimbing!;
     case "toppedOut":
@@ -156,17 +219,18 @@ function statusClass(climber: LadderClimber): string {
  * The gate evidence behind a rung, stated as a sentence.
  *
  * Every number here answers a different "why is this not moving": runs still to come
- * are the ladder's problem, runs waiting on a review are yours, and the required count
- * is what the two knobs of the gate actually add up to on this rung. A reviewer who
- * disagrees with a wall needs all of them to see where the disagreement is.
+ * are the ladder's to launch, runs with no validator rating are a fault the gate
+ * cannot see past, and the required count is what the two knobs of the gate actually
+ * add up to on this rung. Someone who disagrees with a wall needs all of them to see
+ * where the disagreement is.
  */
 export function describeTally(tally: RungTally): string {
   const parts = [
     `${tally.completed} run${tally.completed === 1 ? "" : "s"} in`,
-    `${tally.passing} of ${tally.judged} judged clear the bar (${tally.required} needed)`,
+    `${tally.passing} of ${tally.rated} rated clear the bar (${tally.required} needed)`,
   ];
-  if (tally.unjudged > 0) {
-    parts.push(`${tally.unjudged} waiting on your review`);
+  if (tally.unrated > 0) {
+    parts.push(`${tally.unrated} without a validator rating`);
   }
   if (tally.pending > 0) {
     parts.push(`${tally.pending} still to run`);
@@ -184,33 +248,43 @@ export function describeTally(tally: RungTally): string {
  * when in truth every model has stopped would be actively misleading. The climbers
  * nothing could launch trail every outcome the scheduler reached, exactly as they do
  * on a plan.
+ *
+ * On a ladder `outstanding` is the runs in flight alone, so a full cap is never a
+ * wait on a person: the climb carries on by itself as those runs finish. Jobs an early
+ * stop cancelled are reported on every outcome, because they are the one thing a
+ * top-up removes rather than adds.
  */
 export function describeLadderTopUp(result: TopUpResult): string {
   if (result.skipped === "paused") {
     return "This ladder is disabled, so nothing was enqueued. Switch it on to let it climb.";
   }
   if (result.skipped === "busy") {
-    return "A top-up for this ladder was already running, so nothing was enqueued twice.";
+    return "A top-up for this ladder was already running. It runs once more for this request before it finishes, so nothing is enqueued twice.";
   }
   const blocked = describeUnlaunchable(result.unlaunchable);
+  const stopped = result.earlyStopCanceled ?? 0;
+  const canceled =
+    stopped > 0
+      ? ` Cancelled ${stopped} job${stopped === 1 ? "" : "s"} that had not started, on rungs the gate had already decided.`
+      : "";
   if (result.enqueued > 0) {
     const runs = `${result.enqueued} run${result.enqueued === 1 ? "" : "s"}`;
     const rungs = `${result.cells.length} rung${result.cells.length === 1 ? "" : "s"}`;
-    return `Enqueued ${runs} across ${rungs}, in the order this ladder climbs them.${blocked}`;
+    return `Enqueued ${runs} across ${rungs}, in the order this ladder climbs them.${canceled}${blocked}`;
   }
-  const outstanding = result.outstanding ?? 0;
-  if (bufferIsFull(result.bufferTarget, outstanding)) {
+  const inFlight = result.outstanding ?? 0;
+  if (bufferIsFull(result.bufferTarget, inFlight)) {
     return (
-      `Nothing enqueued: your review buffer is full (${outstanding} of ` +
-      `${formatBufferTarget(result.bufferTarget)} outstanding). Review some runs and top up again.${blocked}`
+      `Nothing enqueued: ${inFlight} of ${formatBufferTarget(result.bufferTarget)} runs ` +
+      `are already in flight. The ladder climbs on as they finish.${canceled}${blocked}`
     );
   }
   if (blocked) {
-    return `Nothing enqueued: every climber is stopped, satisfied, or unlaunchable.${blocked}`;
+    return `Nothing enqueued: every climber is stopped, satisfied, or unlaunchable.${canceled}${blocked}`;
   }
   return (
     "Nothing left to enqueue: every climber is at its rung's target, walled, " +
-    "held, or topped out."
+    `blocked, held, or topped out.${canceled}`
   );
 }
 
@@ -231,46 +305,102 @@ export function describeLadderHalt(result: HaltResult): string {
   return `Canceled ${jobs} ${scope}.`;
 }
 
+/** The fix each kind of block asks for, as the status note groups them. */
+const BLOCK_NOTES: Record<ClimberBlock["kind"], (n: number) => string> = {
+  unsupportedRung: (n) =>
+    `${n} ${n === 1 ? "stands" : "stand"} on a rung that is not validator-rated: replace that rung in the ladder editor.`,
+  unlaunchable: (n) =>
+    `${n} cannot be launched at all: fix or drop the combination named on ${n === 1 ? "its row" : "each row"}.`,
+  failing: (n) =>
+    `${n} ${n === 1 ? "stands" : "stand"} on a rung whose runs keep failing: fix the cause, then press “Top up now”.`,
+  unrated: (n) =>
+    `${n} ${n === 1 ? "stands" : "stand"} on a rung whose runs carry no validator rating: re-push those runs, or replace the rung.`,
+};
+
+/** The order the block reasons are listed in: the ones only an edit fixes first. */
+const BLOCK_ORDER: ClimberBlock["kind"][] = [
+  "unsupportedRung",
+  "unlaunchable",
+  "failing",
+  "unrated",
+];
+
+/**
+ * Why a climber is blocked, as the board and its header count it: the `blocked` reason
+ * of a climber whose status is `blocked`, and nothing for any other status. A held,
+ * walled or topped-out climber whose combination cannot launch keeps that reason on
+ * its own row, where the "Cannot launch" pill shows it; it is not blocked, and the note
+ * must agree with the header's blocked count.
+ */
+function blockKind(climber: LadderClimber): ClimberBlock["kind"] | null {
+  return climber.status === "blocked" && climber.blocked
+    ? climber.blocked.kind
+    : null;
+}
+
 /**
  * Why this ladder is not currently producing runs, or null when nothing needs saying.
  *
- * A ladder has one idle state a plan does not: every climber stopped. That is the
- * ladder having *answered its question*, not a fault, and saying so is the difference
- * between a reviewer reading a result and a reviewer hunting a bug. The other matches
- * the plan's — a full review buffer waiting on them. Being disabled is not one: the
- * Enabled switch already says so, and a note repeating a control's state is noise.
+ * A ladder climbs by itself, so the note never asks anyone to review anything. It
+ * names the four things no control on the board shows: climbers that are blocked
+ * (grouped by reason, each with its fix), runs the in-flight cap is holding back, an
+ * enabled ladder with runs to launch and none in flight (no finishing run will feed
+ * it, so a stall is never silent), and a climb that has finished. Every climber stopped is the ladder having *answered its
+ * question*, not a fault, and saying so is the difference between reading a result
+ * and hunting a bug. Being disabled is not one: the Enabled switch already says so,
+ * and a note repeating a control's state is noise.
  */
-export function ladderStatusNote(progress: LadderProgress): string | null {
-  // A climber nothing can launch keeps its rung and its "climbing" status forever, so
-  // on a board it is indistinguishable from one merely waiting its turn for capacity —
-  // and unlike a plan's cell it is never re-counted as satisfied or missing. It is
-  // therefore named alongside every other outcome; the reason itself lives on the
-  // climber's own row.
-  const stuck = progress.climbers.filter((c) => c.unlaunchable).length;
+export function ladderStatusNote(
+  progress: LadderProgress,
+  enabled = false,
+): string | null {
+  const counts = new Map<ClimberBlock["kind"], number>();
+  for (const climber of progress.climbers) {
+    const kind = blockKind(climber);
+    if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  const stuck = [...counts.values()].reduce((n, c) => n + c, 0);
   const blocked =
     stuck > 0
-      ? ` ${stuck} climber${stuck === 1 ? " cannot" : "s cannot"} be launched at all — the reason is on each row, and until you fix or drop the combination it will not move again.`
+      ? ` ${stuck} climber${stuck === 1 ? " is" : "s are"} blocked. ` +
+        BLOCK_ORDER.filter((k) => counts.has(k))
+          .map((k) => BLOCK_NOTES[k](counts.get(k)!))
+          .join(" ")
       : "";
-  const climbing = progress.climbers.filter(
-    (c) => c.status === "climbing" || c.status === "awaitingReview",
-  ).length;
+
+  const count = (status: LadderClimber["status"]) =>
+    progress.climbers.filter((c) => c.status === status).length;
+  const climbing = count("climbing");
   if (climbing === 0 && progress.climbers.length > 0) {
-    return (
-      `Nobody is climbing: ${progress.climbersWalled} walled, ` +
-      `${progress.climbersToppedOut} topped out, and the rest held. This ladder has ` +
-      "answered its question. Promote a climber past a wall, release a hold, or add " +
-      `rungs to ask a harder one.${blocked}`
-    );
+    const parts = [
+      `${progress.climbersWalled} walled`,
+      `${progress.climbersToppedOut} topped out`,
+    ];
+    const blockedNow = count("blocked");
+    if (blockedNow > 0) parts.push(`${blockedNow} blocked`);
+    const held = count("held");
+    if (held > 0) parts.push(`${held} held`);
+    const listed = `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+    return blockedNow > 0
+      ? `Nobody is climbing: ${listed}. The blocked climbers have not finished; each needs the fix below.${blocked}`
+      : `Nobody is climbing: ${listed}. This ladder has answered its question. ` +
+          "Promote a climber past a wall, release a hold, or add rungs to ask a " +
+          `harder one.${blocked}`;
   }
   if (
     progress.runsMissing > 0 &&
-    bufferIsFull(progress.bufferTarget, progress.runsOutstanding)
+    bufferIsFull(progress.bufferTarget, progress.runsInFlight)
   ) {
     return (
-      `Waiting on you: ${progress.runsOutstanding} of ${formatBufferTarget(progress.bufferTarget)} ` +
-      "buffered runs are outstanding (in flight, or finished and unreviewed), so a " +
-      "top-up deliberately enqueues nothing until you review some. A rung's verdict " +
-      `is your review, and nothing else can decide it.${blocked}`
+      `${progress.runsInFlight} of ${formatBufferTarget(progress.bufferTarget)} runs ` +
+      "are in flight, the most this ladder runs at once. It launches the rest by " +
+      `itself as these finish.${blocked}`
+    );
+  }
+  if (enabled && progress.runsMissing > 0 && progress.runsInFlight === 0) {
+    return (
+      "Nothing is in flight, so no finishing run will feed this ladder. Press " +
+      `“Top up now” to launch the runs the climb needs next.${blocked}`
     );
   }
   return blocked.trim() || null;
@@ -308,12 +438,15 @@ function RungRow({
   view,
   climber,
   busy,
+  editTo,
   onOverride,
   onBump,
 }: {
   view: RungView;
   climber: LadderClimber;
   busy: boolean;
+  /** Where the ladder is edited, for the "Replace rung" fix; absent offers none. */
+  editTo?: string;
   onOverride: (rungId: string, outcome: "advanced" | "walled" | null) => void;
   onBump: (rung: LadderProgressRung) => void;
 }) {
@@ -336,6 +469,17 @@ function RungRow({
       <span className={ladderStyles.rungName}>
         {caseLabel(testCaseName(rung.slug), rung)}
       </span>
+      {/* A rung the ladder cannot climb at all: its version is rated only by a
+          reviewer, and the gate reads validator ratings. Said on the rung itself,
+          for every climber, because the fix is to the ladder and not to any run. */}
+      {!rung.supported && (
+        <span
+          className={ladderStyles.rungProblem}
+          title="This rung's case version is not validator-rated: its runs are rated only by a reviewer, so the gate can never decide it and the ladder never launches it. Replace it with a validator-rated version, or remove it."
+        >
+          Not validator-rated: cannot be climbed
+        </span>
+      )}
 
       {effective ? (
         <span
@@ -370,7 +514,7 @@ function RungRow({
       {outcome && !outcome.recorded && (
         <span
           className={ladderStyles.verdictNote}
-          title="Computed from your reviews for this view. The next top-up writes it down; reading a board never writes."
+          title="Computed from the validators' ratings for this view. The next top-up writes it down; reading a board never writes."
         >
           not written down yet
         </span>
@@ -389,6 +533,11 @@ function RungRow({
       )}
 
       <span className={ladderStyles.rungActions}>
+        {!rung.supported && editTo && (
+          <Link className={ladderStyles.rungLink} to={editTo}>
+            Replace rung
+          </Link>
+        )}
         {rung.stale && (
           <button
             type="button"
@@ -465,6 +614,7 @@ export function ClimberRow({
   climber,
   rungs,
   busy,
+  editTo,
   onSteer,
   onOverride,
   onBump,
@@ -472,6 +622,8 @@ export function ClimberRow({
   climber: LadderClimber;
   rungs: LadderProgressRung[];
   busy: boolean;
+  /** Where the ladder is edited, for the fixes that are an edit to it. */
+  editTo?: string;
   onSteer: (climber: LadderClimber, steering: SteeringPatch) => void;
   onOverride: (
     climber: LadderClimber,
@@ -484,10 +636,29 @@ export function ClimberRow({
   const cleared = climber.currentRung?.position ?? rungs.length;
   const views = buildRungViews(climber, rungs);
   const status = climberStatusLabel(climber, rungs.length);
-  // Read off the climber, never off its rung: a topped out or walled climber has no
-  // `currentRung` at all, and the rung-scoped copy would silently vanish for exactly
-  // the climbers whose fault is easiest to leave standing.
-  const blocked = climber.unlaunchable;
+  const testCaseName = useTestCaseName();
+  // Why the climber is not moving and what fixes it. Read off the climber, never off
+  // its rung: a topped out or walled climber has no `currentRung` at all, and the
+  // rung-scoped copy would silently vanish for exactly the climbers whose fault is
+  // easiest to leave standing. A blocked climber's reason comes first; a combination
+  // that cannot launch is named too when the block is something else (or the climber
+  // is in another state), because it will stop the climb the moment that clears.
+  const block = climber.blocked ?? null;
+  const reasons: string[] = [];
+  if (block) reasons.push(describeClimberBlock(block, rungs, testCaseName));
+  if (climber.unlaunchable && block?.kind !== "unlaunchable") {
+    reasons.push(
+      describeClimberBlock(
+        { kind: "unlaunchable", reason: climber.unlaunchable },
+        rungs,
+        testCaseName,
+      ),
+    );
+  }
+  // A climber in another state whose combination cannot launch gets a pill of its own
+  // beside its status; a blocked one already says so in its status pill.
+  const cannotLaunch =
+    Boolean(climber.unlaunchable) && climber.status !== "blocked";
 
   return (
     <section className={ladderStyles.climber}>
@@ -507,27 +678,25 @@ export function ClimberRow({
           {climber.provider && (
             <span className={ladderStyles.climberMeta}>{climber.provider}</span>
           )}
-          {/* Keyed off the reason and not off the status, because the two disagree
-              exactly where it matters: a climber whose configuration was deleted still
-              reports "climbing" and still stands on a rung — it simply never enqueues
-              again — so the status alone shows a dead arm as a live one. It rides
-              beside the status pill rather than replacing it: being blocked is a fault
-              in the membership, not a sixth thing the climb can be doing. */}
-          {blocked && (
-            <span
-              className={`${ladderStyles.statusPill} ${ladderStyles.statusBlocked}`}
-              title={blocked}
-            >
-              Blocked
-            </span>
-          )}
-          {/* Only the states that say something the track cannot: a wall, a hold, a
-              rung waiting on the reviewer, a finished climb. */}
+          {/* Only the states that say something the track cannot: a wall, a block,
+              a hold, a finished climb. */}
           {status && (
             <span
               className={`${ladderStyles.statusPill} ${statusClass(climber)}`}
+              title={reasons[0]}
             >
               {status}
+            </span>
+          )}
+          {/* A held, walled or finished climber whose combination cannot launch: it
+              rides beside the status rather than replacing it, because the fault is
+              in the membership and the climber's own state is still worth saying. */}
+          {cannotLaunch && (
+            <span
+              className={`${ladderStyles.statusPill} ${ladderStyles.statusBlocked}`}
+              title={climber.unlaunchable}
+            >
+              Cannot launch
             </span>
           )}
           {/* One segment per rung, so the wall is a position on a line rather than a
@@ -546,9 +715,11 @@ export function ClimberRow({
                     ? ladderStyles.rungStepDone
                     : index === cleared && climber.status === "walled"
                       ? ladderStyles.rungStepWall
-                      : index === cleared
-                        ? ladderStyles.rungStepCurrent
-                        : ""
+                      : index === cleared && climber.status === "blocked"
+                        ? ladderStyles.rungStepBlocked
+                        : index === cleared
+                          ? ladderStyles.rungStepCurrent
+                          : ""
                 }`}
               />
             ))}
@@ -597,11 +768,24 @@ export function ClimberRow({
       </div>
 
       {/* The reason gets a line of its own under the header, as a blocked cell's does
-          on the plan matrix: it is a sentence naming a configuration and a slot, not a
-          badge, and a reviewer cannot act on it truncated into the header's row. Shown
+          on the plan matrix: it is a sentence naming the fault and its fix, not a
+          badge, and nobody can act on it truncated into the header's row. Shown
           collapsed, because the whole failure of this state is that it is invisible
-          until somebody thinks to look. */}
-      {blocked && <p className={ladderStyles.climberBlocked}>{blocked}</p>}
+          until somebody thinks to look. A rung that needs replacing links straight to
+          the editor that replaces it. */}
+      {reasons.map((reason) => (
+        <p key={reason} className={ladderStyles.climberBlocked}>
+          {reason}
+          {block?.kind === "unsupportedRung" &&
+            reason === reasons[0] &&
+            editTo && (
+              <>
+                {" "}
+                <Link to={editTo}>Replace the rung</Link>
+              </>
+            )}
+        </p>
+      ))}
 
       {open && (
         <ol className={ladderStyles.rungList}>
@@ -611,6 +795,7 @@ export function ClimberRow({
               view={view}
               climber={climber}
               busy={busy}
+              {...(editTo === undefined ? {} : { editTo })}
               onOverride={(rungId, outcome) =>
                 onOverride(climber, rungId, outcome)
               }
@@ -694,50 +879,16 @@ export interface SteeringPatch {
   held?: boolean;
 }
 
-/**
- * Top up every ladder of the signed-in account that asked to be topped up on review.
- *
- * The ladder half of the plan's `topUpAfterReview`, and the moment that matters most:
- * there is no background scheduler, so an enabled ladder is fed by exactly three
- * gestures — enabling it, pressing "Top up now", and this — and on a ladder the review
- * *is* the verdict, so it may well have decided a rung and freed the climber to move up.
- *
- * The `paused` skip is what keeps a **disabled** ladder — which every new ladder is —
- * from being started by a review of something else entirely. `autoTopUp` is on by
- * default, and it is the enable switch, not this flag, that decides whether a ladder
- * spends anything at all.
- *
- * Failures are swallowed on purpose: this runs after a review has been accepted, and a
- * scheduling hiccup must never present itself as the review having failed. Resolves
- * how many runs were enqueued in total, for a caller that wants to say so.
- */
-export async function topUpLaddersAfterReview(
-  backend: BackendClient | null,
-  token: string | null,
-): Promise<number> {
-  if (!backend?.listLadders || !backend.topUpLadder || !token) return 0;
-  let enqueued = 0;
-  try {
-    const ladders = await backend.listLadders(token);
-    for (const entry of ladders) {
-      if (!entry.autoTopUp || entry.paused) continue;
-      const result = await backend.topUpLadder(entry.id, token);
-      enqueued += result.enqueued;
-    }
-  } catch {
-    // Deliberately silent — see above.
-  }
-  return enqueued;
-}
-
 // The per-ladder climb dashboard (`/account/ladders/:ladderId`): one row per climber
-// saying where it stopped and why, over the controls that feed the ladder (enable /
-// disable, top up, halt) and the review queue it has filled. Console-only; gated on a
-// signed-in account, because a rung's verdict is computed from *your* reviews alone.
+// saying where it stands and why, over the controls that feed the ladder (enable /
+// disable, top up, halt) and the runs left to label. Console-only; gated on a
+// signed-in account, because a ladder belongs to one.
 //
-// Opening this page is a read and only a read. Every run this ladder launches is
-// launched by a gesture that asked for runs — enabling the ladder, topping it up by
-// hand, or submitting a review with auto-top-up on.
+// Opening this page is a read and only a read. An enabled ladder is fed at three
+// moments: when it is enabled, when "Top up now" is pressed, and — with nobody
+// watching — by the backend itself whenever a run of one of its cells finishes. None
+// of them is a review: the validators rate every completed run, and that rating is
+// all the gate reads.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
   const enabledId = useId();
@@ -755,7 +906,7 @@ export function LadderPage() {
   // a snapshot taken when it was expanded: a queued run would never be seen to start,
   // and a finished one would sit in the list as "running" until someone navigated.
   useLiveRunUpdates();
-  const { refreshToken } = useRunsRuntime();
+  const { refreshToken, inProgress } = useRunsRuntime();
 
   const [ladder, setLadder] = useState<LadderOut | null>(null);
   const [progress, setProgress] = useState<LadderProgress | null>(null);
@@ -768,7 +919,7 @@ export function LadderPage() {
   const [note, setNote] = useState<string | null>(null);
 
   // Re-read everything the controls can move: the board (statuses, verdicts, counts)
-  // and the review queue the buffer has filled.
+  // and the runs left to label.
   const refresh = useCallback(async () => {
     if (!backend || !token) return;
     const [board, q] = await Promise.all([
@@ -809,8 +960,8 @@ export function LadderPage() {
     };
   }, [backend, token, ladderId]);
 
-  // A run of this ladder finishing is the one event that moves the board without anyone
-  // touching it: the tally gains a completed run, and a rung whose gate that settles
+  // A run of this ladder finishing is the event that moves the board without anyone
+  // touching it: the tally gains a rated run, and a rung whose gate that settles
   // changes verdict. The runs runtime bumps `refreshToken` on the stream's `finished`
   // events, so re-read the board on it — skipping the mount, which the load above has
   // just done.
@@ -820,6 +971,23 @@ export function LadderPage() {
     seenRefresh.current = refreshToken;
     void refresh();
   }, [refreshToken, refresh]);
+
+  // The backend then tops the ladder up itself, a moment *after* the run finished, and
+  // the runs it launches arrive on the same stream as newly queued runs. The finished
+  // event's re-read can land before that top-up has enqueued anything, so the board
+  // also re-reads whenever the set of runs in flight changes. Debounced, because a
+  // top-up enqueues a whole rung's runs at once and one re-read covers them all.
+  const inFlightKey = inProgress
+    .map((r) => r.runId)
+    .sort()
+    .join("|");
+  const seenInFlight = useRef(inFlightKey);
+  useEffect(() => {
+    if (seenInFlight.current === inFlightKey) return;
+    seenInFlight.current = inFlightKey;
+    const timer = setTimeout(() => void refresh(), 300);
+    return () => clearTimeout(timer);
+  }, [inFlightKey, refresh]);
 
   // Run the server-side top-up. `announce` is on for the button, which must always
   // answer, even to say "nothing to do"; a top-up run as a side effect of something
@@ -844,11 +1012,11 @@ export function LadderPage() {
     [backend, token, ladderId, refresh],
   );
 
-  // Opening the dashboard deliberately enqueues **nothing**. A ladder is only ever fed
-  // by a gesture that says so: enabling it, pressing "Top up now", or — once it is
-  // enabled — submitting a review. Reading a board is none of those, and a page that
-  // spent tokens because it was looked at is a page nobody can open to check on a run
-  // they have deliberately stopped.
+  // Opening the dashboard deliberately enqueues **nothing**. A ladder is fed by
+  // enabling it, by pressing "Top up now", and by the backend as its runs finish.
+  // Reading a board is none of those, and a page that spent tokens because it was
+  // looked at is a page nobody can open to check on a run they have deliberately
+  // stopped.
 
   // Enable or disable the ladder: the one switch that decides whether it may enqueue at
   // all. Takes the state rather than toggling, so the control cannot disagree with the
@@ -881,23 +1049,33 @@ export function LadderPage() {
     [backend, token, ladderId, topUp],
   );
 
-  // Turn "top up when I submit a review" on or off. Written through the schedule
+  // Turn "climb automatically as runs finish" on or off: whether the backend tops this
+  // ladder up itself each time one of its runs finishes. Written through the schedule
   // resource (not the ladder save), so it can never be clobbered by a climb edit saved
   // from another tab.
+  //
+  // The schedule is written whole, so the rest of it is read back at the moment of the
+  // write rather than taken from the page's load: a ladder disabled or halted in another
+  // tab since this page opened must not be re-enabled by flipping this switch, and the
+  // backend tops an enabled ladder up as soon as its schedule is written.
   const setAutoTopUp = useCallback(
     async (autoTopUp: boolean) => {
       if (!backend?.setLadderSchedule || !token || !ladder) return;
-      const schedule: LadderSchedule = {
-        outerAxis: ladder.outerAxis,
-        paused: ladder.paused,
-        autoTopUp,
-        ...(ladder.bufferTarget === undefined
-          ? {}
-          : { bufferTarget: ladder.bufferTarget }),
-      };
       setBusy(true);
       setError(null);
       try {
+        const current: LadderSchedule = (await backend.getLadderSchedule?.(
+          ladderId,
+          token,
+        )) ?? {
+          outerAxis: ladder.outerAxis,
+          paused: ladder.paused,
+          autoTopUp: ladder.autoTopUp,
+          ...(ladder.bufferTarget === undefined
+            ? {}
+            : { bufferTarget: ladder.bufferTarget }),
+        };
+        const schedule: LadderSchedule = { ...current, autoTopUp };
         const saved = await backend.setLadderSchedule(
           ladderId,
           schedule,
@@ -1092,14 +1270,17 @@ export function LadderPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a ladder. A rung is decided by <em>your</em> reviews,
-          so there is nothing to show without an account.
+          Sign in to view a ladder. Ladders are saved to your account, so there
+          is nothing to show without one.
         </p>
       </PageLayout>
     );
   }
 
-  const statusNote = progress ? ladderStatusNote(progress) : null;
+  const statusNote = progress
+    ? ladderStatusNote(progress, ladder?.paused === false)
+    : null;
+  const editTo = routes.accountLadderEdit(ladderId);
 
   return (
     <PageLayout>
@@ -1152,22 +1333,33 @@ export function LadderPage() {
             <span className={styles.summaryStat}>
               <strong>{progress.climbersToppedOut}</strong> topped out
             </span>
+            {/* Only when there are any: a blocked climber is the one state nothing
+                clears by itself, and a standing "0 blocked" would train the eye to
+                skip the figure on the day it is not zero. */}
+            {progress.climbersBlocked > 0 && (
+              <span
+                className={styles.summaryStat}
+                title="Climbers standing on an undecided rung that nothing the ladder does by itself will move. Each row says why, and what fixes it."
+              >
+                <strong>{progress.climbersBlocked}</strong> blocked
+              </span>
+            )}
             <span className={styles.summaryStat}>
               <strong>{progress.runsMissing}</strong> runs missing
             </span>
             <span
               className={styles.summaryStat}
-              title={bufferedStatTitle(progress.bufferTarget)}
+              title={inFlightStatTitle(progress.bufferTarget)}
             >
               <strong>
-                {progress.runsOutstanding}/
+                {progress.runsInFlight}/
                 {formatBufferTarget(progress.bufferTarget)}
               </strong>{" "}
-              buffered
+              in flight
             </span>
             <span
               className={styles.summaryStat}
-              title="Completed runs of this ladder you have not reviewed, on every rung its climbers have reached. A rung the gate has already decided keeps the runs nobody looked at. On a ladder your review is the verdict, so these are also what decides the undecided rungs."
+              title="Completed runs you have not reviewed. Reviews are optional labels (aesthetic rating, writeup) and never move the climb."
             >
               <strong>{progress.runsUnreviewed}</strong> to review
             </span>
@@ -1181,7 +1373,7 @@ export function LadderPage() {
             <label
               className={`${styles.controlToggle} ${styles.controlEnd}`}
               htmlFor={enabledId}
-              title="On: this ladder may enqueue runs, and is topped up as soon as you switch it on. Off: nothing more is enqueued; runs already queued carry on. A new ladder starts off."
+              title="On: this ladder may enqueue runs. Switching it on tops it up at once, and it climbs from there by itself as its runs finish. Off: nothing more is enqueued; runs already queued carry on. A new ladder starts off."
             >
               <Switch
                 id={enabledId}
@@ -1194,14 +1386,17 @@ export function LadderPage() {
               />
               Enabled
             </label>
-            <label className={styles.controlToggle}>
+            <label
+              className={styles.controlToggle}
+              title="On: whenever one of this ladder's runs finishes, the backend launches whatever the climb needs next, up to the runs-in-flight cap, with no console open. Off: the ladder is fed only by switching it on and by “Top up now”."
+            >
               <input
                 type="checkbox"
                 checked={ladder?.autoTopUp ?? false}
                 disabled={busy || !ladder || !backend?.setLadderSchedule}
                 onChange={(e) => void setAutoTopUp(e.target.checked)}
               />
-              Top up when I submit a review
+              Climb automatically as runs finish
             </label>
             <span className={styles.controlActions}>
               <button
@@ -1216,7 +1411,7 @@ export function LadderPage() {
                 title={
                   ladder?.paused
                     ? "This ladder is off, so it can enqueue nothing. Switch it on, which tops it up too."
-                    : "Enqueue the next runs this climb needs, up to the review buffer."
+                    : "Enqueue the next runs this climb needs, up to the runs-in-flight cap. Also relaunches a rung whose runs kept failing."
                 }
                 onClick={() => void topUp(true)}
               >
@@ -1251,6 +1446,8 @@ export function LadderPage() {
             <CoverageReviewQueue
               queue={queue}
               returnLabel="Back to the ladder"
+              title="Label runs (optional)"
+              intro="Completed runs of this ladder you have not reviewed, in the order it climbs them. A review adds an aesthetic rating and a writeup after the fact; it never moves the climb."
             />
           )}
 
@@ -1261,6 +1458,7 @@ export function LadderPage() {
                 climber={climber}
                 rungs={progress.rungs}
                 busy={busy}
+                editTo={editTo}
                 onSteer={(c, patch) => void steer(c, patch)}
                 onOverride={(c, rungId, outcome) =>
                   void override(c, rungId, outcome)

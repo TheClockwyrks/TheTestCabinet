@@ -8,14 +8,12 @@ import type {
 import type {
   LadderCell,
   LadderClimber,
-  LadderOut,
   LadderProgress,
   LadderProgressRung,
   LadderRungOutcome,
   RungTally,
 } from "@clockwyrks/run-record/ladders";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
-import type { BackendClient } from "../../../client/clients";
 import {
   sectionReturnTo,
   useRecordSectionIndex,
@@ -29,11 +27,11 @@ import {
   buildRungViews,
   climberCombo,
   climberStatusLabel,
+  describeClimberBlock,
   describeLadderHalt,
   describeLadderTopUp,
   describeTally,
   ladderStatusNote,
-  topUpLaddersAfterReview,
 } from "./LadderPage";
 
 // A run of one rung, carrying only the fields the run log reads.
@@ -99,6 +97,7 @@ function rung(
     variant: "base",
     latestVersion: "v1.0.0",
     stale: false,
+    supported: true,
     ...over,
   };
 }
@@ -106,8 +105,8 @@ function rung(
 function tally(over: Partial<RungTally> = {}): RungTally {
   return {
     completed: 3,
-    judged: 2,
-    unjudged: 1,
+    rated: 2,
+    unrated: 1,
     passing: 1,
     pending: 2,
     required: 2,
@@ -190,9 +189,10 @@ function progress(over: Partial<LadderProgress> = {}): LadderProgress {
     climbers: [climber()],
     climbersToppedOut: 0,
     climbersWalled: 0,
+    climbersBlocked: 0,
     runsMissing: 4,
     runsUnreviewed: 1,
-    runsOutstanding: 3,
+    runsInFlight: 3,
     bufferTarget: { kind: "bounded", runs: 10 },
     ...over,
   };
@@ -211,10 +211,41 @@ describe("climberStatusLabel", () => {
     ).toBe("Walled at rung 3");
   });
 
-  it("says a rung is waiting on the reviewer rather than merely stopped", () => {
-    expect(
-      climberStatusLabel(climber({ status: "awaitingReview" }), 3),
-    ).toMatch(/waiting on your review/i);
+  // A blocked climber is the one state nothing clears by itself, so its pill names the
+  // kind of fault as well as the rung — and never asks for a review, because no review
+  // moves a climb.
+  it("names the rung a blocked climber is stuck on, and the kind of fault", () => {
+    const blocked = (b: LadderClimber["blocked"]) =>
+      climberStatusLabel(climber({ status: "blocked", blocked: b }), 3);
+    expect(blocked({ kind: "unsupportedRung", rungId: "r1" })).toBe(
+      "Blocked at rung 2: not validator-rated",
+    );
+    expect(blocked({ kind: "unlaunchable", reason: "slot unbound" })).toBe(
+      "Blocked at rung 2: cannot launch",
+    );
+    expect(blocked({ kind: "failing", attempts: 3 })).toBe(
+      "Blocked at rung 2: runs keep failing",
+    );
+    expect(blocked({ kind: "unrated", runs: 2 })).toBe(
+      "Blocked at rung 2: 2 runs unrated",
+    );
+    expect(blocked({ kind: "unrated", runs: 1 })).toBe(
+      "Blocked at rung 2: 1 run unrated",
+    );
+  });
+
+  it("never says a climber is waiting on a review", () => {
+    for (const status of [
+      "climbing",
+      "blocked",
+      "walled",
+      "held",
+      "toppedOut",
+    ] as const) {
+      expect(climberStatusLabel(climber({ status }), 3) ?? "").not.toMatch(
+        /review/i,
+      );
+    }
   });
 
   it("distinguishes a hold from a wall", () => {
@@ -275,20 +306,61 @@ describe("buildRungViews", () => {
 });
 
 // The evidence sentence has to carry every number a disagreement could be about:
-// what is still to come is the ladder's problem, what is unjudged is the reviewer's.
+// what is still to come is the ladder's to launch, and a run with no validator rating
+// is a fault the gate cannot see past. Nothing in it waits on a reviewer.
 describe("describeTally", () => {
-  it("states the runs in, the bar, and who each shortfall belongs to", () => {
+  it("states the runs in, the bar, and what is still undecided", () => {
     const text = describeTally(tally());
     expect(text).toMatch(/3 runs in/);
-    expect(text).toMatch(/1 of 2 judged clear the bar \(2 needed\)/);
-    expect(text).toMatch(/1 waiting on your review/);
+    expect(text).toMatch(/1 of 2 rated clear the bar \(2 needed\)/);
+    expect(text).toMatch(/1 without a validator rating/);
     expect(text).toMatch(/2 still to run/);
+    expect(text).not.toMatch(/review/i);
   });
 
   it("leaves out the parts that are not happening", () => {
-    const text = describeTally(tally({ unjudged: 0, pending: 0 }));
-    expect(text).not.toMatch(/waiting on your review/);
+    const text = describeTally(tally({ unrated: 0, pending: 0 }));
+    expect(text).not.toMatch(/validator rating/);
     expect(text).not.toMatch(/still to run/);
+  });
+});
+
+// Every reason a climber is blocked names its fix, because it is the one state nothing
+// clears by itself.
+describe("describeClimberBlock", () => {
+  const name = (slug: string) => slug.toUpperCase();
+  const rungs = [rung(0), rung(1, { slug: "pong" })];
+
+  it("names the rung that is not validator-rated, and says to replace it", () => {
+    const text = describeClimberBlock(
+      { kind: "unsupportedRung", rungId: "r1" },
+      rungs,
+      name,
+    );
+    expect(text).toMatch(
+      /^Rung 2 \(PONG · base · v1\.0\.0\) is not validator-rated/,
+    );
+    expect(text).toMatch(/Replace it with a validator-rated version/);
+  });
+
+  it("says what to do about each of the other reasons", () => {
+    expect(
+      describeClimberBlock(
+        { kind: "unlaunchable", reason: "launch slot `critic` is unbound" },
+        rungs,
+        name,
+      ),
+    ).toMatch(
+      /launch slot `critic` is unbound\. Fix the combination or drop it/,
+    );
+    expect(
+      describeClimberBlock({ kind: "failing", attempts: 3 }, rungs, name),
+    ).toMatch(/last 3 runs on this rung failed.*Top up now/);
+    expect(
+      describeClimberBlock({ kind: "unrated", runs: 2 }, rungs, name),
+    ).toMatch(
+      /2 completed runs on this rung carry no validator rating.*Re-push/,
+    );
   });
 });
 
@@ -330,6 +402,7 @@ describe("describeLadderTopUp", () => {
       enqueued: 0,
       cells: [],
       unlaunchable: [],
+      earlyStopCanceled: 0,
       ...over,
     };
   }
@@ -358,22 +431,43 @@ describe("describeLadderTopUp", () => {
     expect(message).toMatch(/2 rungs/);
   });
 
-  it("tells a full buffer apart from a ladder that has finished climbing", () => {
-    expect(
-      describeLadderTopUp(
-        result({ outstanding: 5, bufferTarget: { kind: "bounded", runs: 5 } }),
-      ),
-    ).toMatch(/buffer is full/i);
+  // On a ladder the cap counts runs in flight only, so a full one is never a wait on a
+  // person: the climb carries on as those runs finish.
+  it("tells a full in-flight cap apart from a ladder that has finished climbing", () => {
+    const full = describeLadderTopUp(
+      result({ outstanding: 5, bufferTarget: { kind: "bounded", runs: 5 } }),
+    );
+    expect(full).toMatch(/5 of 5 runs are already in flight/);
+    expect(full).toMatch(/climbs on as they finish/);
+    expect(full).not.toMatch(/review/i);
     expect(
       describeLadderTopUp(
         result({ outstanding: 900, bufferTarget: { kind: "unbounded" } }),
       ),
-    ).not.toMatch(/buffer is full/i);
+    ).not.toMatch(/in flight/i);
     expect(
       describeLadderTopUp(
         result({ outstanding: 1, bufferTarget: { kind: "bounded", runs: 5 } }),
       ),
-    ).toMatch(/walled, held, or topped out/i);
+    ).toMatch(/walled, blocked, held, or topped out/i);
+  });
+
+  it("reports the waiting jobs an early stop cancelled", () => {
+    expect(
+      describeLadderTopUp(
+        result({
+          enqueued: 3,
+          cells: [{ runs: 3 }] as TopUpResult["cells"],
+          earlyStopCanceled: 2,
+        }),
+      ),
+    ).toMatch(/Cancelled 2 jobs that had not started/);
+    expect(
+      describeLadderTopUp(result({ outstanding: 0, earlyStopCanceled: 1 })),
+    ).toMatch(/Cancelled 1 job that had not started/);
+    expect(describeLadderTopUp(result({ outstanding: 0 }))).not.toMatch(
+      /Cancelled/,
+    );
   });
 
   it("reports the climbers it could not launch beside the ones it did", () => {
@@ -400,7 +494,7 @@ describe("describeLadderTopUp", () => {
         ] as TopUpBlocked[],
       }),
     );
-    expect(message).not.toMatch(/walled, held, or topped out/i);
+    expect(message).not.toMatch(/walled, blocked, held, or topped out/i);
     expect(message).toMatch(/unlaunchable/i);
   });
 });
@@ -424,8 +518,9 @@ describe("describeLadderHalt", () => {
   });
 });
 
-// An idle ladder is either waiting on the reviewer or finished — and the last of
-// those is a result, not a fault. Being disabled is the Enabled switch's to show,
+// A ladder climbs by itself, so its note never asks anyone to review anything. An idle
+// ladder is either held back by its in-flight cap, blocked, or finished — and the last
+// of those is a result, not a fault. Being disabled is the Enabled switch's to show,
 // and the note never repeats it.
 describe("ladderStatusNote", () => {
   it("reads a board with nobody climbing as an answer, not a stall", () => {
@@ -439,65 +534,145 @@ describe("ladderStatusNote", () => {
         climbersToppedOut: 1,
       }),
     );
-    expect(note).toMatch(/nobody is climbing/i);
+    expect(note).toMatch(/nobody is climbing: 1 walled and 1 topped out/i);
     expect(note).toMatch(/answered its question/i);
   });
 
-  it("explains a full review buffer as waiting on you", () => {
+  it("does not call a ladder finished while a climber is blocked", () => {
     const note = ladderStatusNote(
       progress({
-        runsOutstanding: 5,
+        climbers: [
+          climber({ status: "walled" }),
+          climber({
+            key: "codex|gpt",
+            status: "blocked",
+            blocked: { kind: "unsupportedRung", rungId: "r1" },
+          }),
+        ],
+        climbersWalled: 1,
+        climbersBlocked: 1,
+      }),
+    );
+    expect(note).toMatch(/1 walled, 0 topped out and 1 blocked/);
+    expect(note).not.toMatch(/answered its question/i);
+    expect(note).toMatch(/not validator-rated: replace that rung/);
+  });
+
+  it("says a full in-flight cap holds runs back, and that nobody needs to act", () => {
+    const note = ladderStatusNote(
+      progress({
+        runsInFlight: 5,
         bufferTarget: { kind: "bounded", runs: 5 },
       }),
     );
-    expect(note).toMatch(/5 of 5/);
-    expect(note).toMatch(/your review/i);
+    expect(note).toMatch(/5 of 5 runs are in flight/);
+    expect(note).toMatch(/by itself as these finish/);
+    expect(note).not.toMatch(/review|waiting on you/i);
   });
 
-  it("never says an unbounded ladder is waiting on you", () => {
+  it("never says an unbounded ladder is held back", () => {
     const note = ladderStatusNote(
-      progress({ runsOutstanding: 50, bufferTarget: { kind: "unbounded" } }),
+      progress({ runsInFlight: 50, bufferTarget: { kind: "unbounded" } }),
     );
-    expect(note ?? "").not.toMatch(/waiting on you/i);
+    expect(note).toBeNull();
   });
 
   it("stays quiet when the ladder is simply climbing", () => {
     expect(ladderStatusNote(progress())).toBeNull();
   });
 
-  // A climber whose configuration was deleted keeps its rung and its "climbing"
-  // status for as long as anybody leaves it there — nothing about the ladder's own
-  // counts ever changes — so the board is silent about the one arm that will never
-  // move again unless the note says so.
-  it("counts the climbers nothing can launch on an otherwise busy ladder", () => {
+  it("groups the blocked climbers by reason, each with its fix", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          climber(),
+          climber({
+            key: "a",
+            status: "blocked",
+            blocked: { kind: "failing", attempts: 3 },
+          }),
+          climber({
+            key: "b",
+            status: "blocked",
+            blocked: { kind: "unrated", runs: 1 },
+          }),
+          climber({
+            key: "c",
+            status: "blocked",
+            blocked: { kind: "unrated", runs: 2 },
+          }),
+        ],
+        climbersBlocked: 3,
+      }),
+    );
+    expect(note).toMatch(/3 climbers are blocked/);
+    expect(note).toMatch(
+      /1 stands on a rung whose runs keep failing: fix the cause/,
+    );
+    expect(note).toMatch(
+      /2 stand on a rung whose runs carry no validator rating/,
+    );
+    expect(note).not.toMatch(/review/i);
+  });
+
+  // The note's blocked count is the header's: only climbers whose status is blocked.
+  // A held climber nothing can launch keeps that reason on its own row.
+  it("counts only the blocked climbers nothing can launch", () => {
     const note = ladderStatusNote(
       progress({
         climbers: [
           climber(),
           ggClimber({
             key: "gg|saved:gone|primary=opus",
+            status: "blocked",
+            blocked: {
+              kind: "unlaunchable",
+              reason: "that gg configuration is no longer on your account",
+            },
             unlaunchable: "that gg configuration is no longer on your account",
           }),
-        ],
-      }),
-    );
-    expect(note).toMatch(/1 climber cannot be launched at all/);
-    expect(note).toMatch(/reason is on each row/i);
-  });
-
-  it("adds the blocked count to whatever else the ladder is doing, never instead of it", () => {
-    const note = ladderStatusNote(
-      progress({
-        climbers: [
-          ggClimber({ unlaunchable: "launch slot `critic` is unbound" }),
           ggClimber({
             key: "gg|saved:cfg-2|primary=opus",
+            status: "held",
             unlaunchable: "launch slot `critic` is unbound",
           }),
         ],
+        climbersBlocked: 1,
       }),
     );
-    expect(note).toMatch(/2 climbers cannot be launched at all/);
+    expect(note).toMatch(/1 climber is blocked/);
+    expect(note).toMatch(
+      /1 cannot be launched at all: fix or drop the combination/,
+    );
+  });
+
+  it("never calls a finished climber blocked", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          climber({
+            status: "toppedOut",
+            unlaunchable: "that model is no longer offered",
+          }),
+        ],
+        climbersToppedOut: 1,
+      }),
+    );
+    expect(note).toMatch(/answered its question/i);
+    expect(note).not.toMatch(/blocked/i);
+  });
+
+  // No finishing run feeds a ladder with nothing in flight, so the stall is named
+  // with its remedy rather than left to look like a climb in progress.
+  it("names an enabled ladder with runs to launch and none in flight", () => {
+    const idle = progress({ runsInFlight: 0, runsMissing: 2 });
+    expect(ladderStatusNote(idle, true)).toMatch(
+      /nothing is in flight.*“Top up now”/i,
+    );
+    expect(ladderStatusNote(idle, false)).toBeNull();
+    expect(
+      ladderStatusNote(progress({ runsInFlight: 0, runsMissing: 0 }), true),
+    ).toBeNull();
   });
 });
 
@@ -519,6 +694,7 @@ describe("ClimberRow", () => {
             climber={climber(over)}
             rungs={rungs}
             busy={false}
+            editTo="/account/ladders/l1/edit"
             onSteer={onSteer}
             onOverride={onOverride}
             onBump={onBump}
@@ -534,7 +710,7 @@ describe("ClimberRow", () => {
     expect(screen.getByText("Walled at rung 2")).toBeTruthy();
     expect(screen.getByText("1/3 rungs")).toBeTruthy();
     // The per-rung detail is what expanding adds.
-    expect(screen.queryByText(/1 of 2 judged/)).toBeNull();
+    expect(screen.queryByText(/1 of 2 rated/)).toBeNull();
   });
 
   it("heads a gg climber with its configuration and the models it binds", () => {
@@ -549,23 +725,56 @@ describe("ClimberRow", () => {
     ).toBeTruthy();
   });
 
-  // The state this row is worst at showing: a climber that cannot enqueue looks
-  // exactly like one waiting on capacity, and it will keep looking like one forever.
-  it("says why a blocked climber will never move, without being expanded", () => {
+  // The state this row is worst at showing: a climber that cannot move looks exactly
+  // like one waiting on its runs, and it will keep looking like one forever.
+  it("says why a blocked climber will not move, without being expanded", () => {
     renderRow(
       ggClimber({
+        status: "blocked",
+        blocked: {
+          kind: "unlaunchable",
+          reason: "that gg configuration is no longer on your account",
+        },
         unlaunchable: "that gg configuration is no longer on your account",
       }),
     );
-    // The status is still "climbing" — which is why the treatment is keyed off the
-    // reason and not off the status.
-    expect(screen.getByText("Blocked")).toBeTruthy();
-    expect(
-      screen.getByText("that gg configuration is no longer on your account"),
-    ).toBeTruthy();
+    expect(screen.getByText("Blocked at rung 2: cannot launch")).toBeTruthy();
+    // One reason line, not two: the block and the membership fault are the same one.
+    const lines = screen.getAllByText(
+      /that gg configuration is no longer on your account/,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.textContent).toMatch(/Fix the combination or drop it/);
   });
 
-  it("keeps the reason on a climber that has no current rung to hang it on", () => {
+  it("names the rung that is not validator-rated and links to replacing it", () => {
+    renderRow(
+      {
+        status: "blocked",
+        blocked: { kind: "unsupportedRung", rungId: "r1" },
+      },
+      [rung(0), rung(1, { supported: false }), rung(2)],
+    );
+    expect(
+      screen.getByText("Blocked at rung 2: not validator-rated"),
+    ).toBeTruthy();
+    const replace = screen.getByRole("link", { name: "Replace the rung" });
+    expect(replace.getAttribute("href")).toBe("/account/ladders/l1/edit");
+    // The fix sits in the sentence that names the rung it fixes.
+    expect(replace.closest("p")?.textContent).toMatch(
+      /^Rung 2 \(Case 1 · base · v1\.0\.0\) is not validator-rated/,
+    );
+  });
+
+  it("tells a failing rung's fix apart from a rung with unrated runs", () => {
+    renderRow({ status: "blocked", blocked: { kind: "failing", attempts: 3 } });
+    expect(
+      screen.getByText(/press “Top up now” to launch it again/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Replace the rung" })).toBeNull();
+  });
+
+  it("keeps a broken combination's reason on a climber that has no current rung", () => {
     renderRow(
       ggClimber({
         status: "toppedOut",
@@ -573,16 +782,27 @@ describe("ClimberRow", () => {
         unlaunchable: "launch slot `critic` is unbound",
       }),
     );
-    expect(screen.getByText("Blocked")).toBeTruthy();
-    expect(screen.getByText("launch slot `critic` is unbound")).toBeTruthy();
-    // And the state it is actually in is still said, because being blocked is a
-    // fault in the membership rather than a sixth thing the climb can be doing.
+    expect(screen.getByText("Cannot launch")).toBeTruthy();
+    expect(screen.getByText(/launch slot `critic` is unbound/)).toBeTruthy();
+    // And the state it is actually in is still said, because a broken membership is
+    // a fault beside the climb rather than a verdict of it.
     expect(screen.getByText(/Topped out/)).toBeTruthy();
   });
 
   it("says nothing about blocking on a climber that can launch", () => {
     renderRow();
-    expect(screen.queryByText("Blocked")).toBeNull();
+    expect(screen.queryByText(/Blocked|Cannot launch/)).toBeNull();
+  });
+
+  it("marks a rung the ladder cannot climb on every climber, with the way to replace it", () => {
+    renderRow({}, [rung(0), rung(1), rung(2, { supported: false })]);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(
+      screen.getByText("Not validator-rated: cannot be climbed"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Replace rung" }).getAttribute("href"),
+    ).toBe("/account/ladders/l1/edit");
   });
 
   it("expands to the per-rung verdicts and their evidence", () => {
@@ -590,7 +810,7 @@ describe("ClimberRow", () => {
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText("advanced")).toBeTruthy();
     expect(screen.getByText("not decided yet")).toBeTruthy();
-    expect(screen.getByText(/1 of 2 judged clear the bar/)).toBeTruthy();
+    expect(screen.getByText(/1 of 2 rated clear the bar/)).toBeTruthy();
     // A rung above the climber is still listed — the rungs ahead are what the climb
     // is for.
     expect(screen.getByText("not reached")).toBeTruthy();
@@ -815,81 +1035,5 @@ describe("the ladder's back-return", () => {
     fireEvent.click(row);
     expect(screen.getByText("the run")).toBeTruthy();
     expect(sectionReturnTo("runs", "/runs")).toBe("/account/ladders/l1");
-  });
-});
-
-// A submitted review is the moment that frees a buffer slot — and on a ladder it is
-// also the verdict itself, so it is the one thing most likely to have unblocked a
-// climber. Only ladders that asked are touched.
-describe("topUpLaddersAfterReview", () => {
-  function entry(over: Partial<LadderOut>): LadderOut {
-    return {
-      id: "l1",
-      name: "ladder",
-      runsPerCell: 3,
-      gate: {
-        floor: "scuffed",
-        threshold: { kind: "count", runs: 1 },
-        unloadedCountsAsBroken: true,
-        earlyStop: false,
-      },
-      comboGroupIds: [],
-      combos: [],
-      rungs: [],
-      updatedAt: "2026-08-15T00:00:00Z",
-      outerAxis: "rung",
-      paused: false,
-      autoTopUp: false,
-      ...over,
-    };
-  }
-
-  function backend(ladders: LadderOut[], topUp = vi.fn()) {
-    return {
-      listLadders: async () => ladders,
-      topUpLadder: async (id: string) => {
-        topUp(id);
-        return {
-          bufferTarget: { kind: "bounded", runs: 5 },
-          enqueued: 2,
-          cells: [],
-          unlaunchable: [],
-        } as TopUpResult;
-      },
-    } as unknown as BackendClient;
-  }
-
-  it("tops up only the ladders that opted in and are enabled", async () => {
-    const topUp = vi.fn();
-    const enqueued = await topUpLaddersAfterReview(
-      backend(
-        [
-          entry({ id: "on", autoTopUp: true }),
-          entry({ id: "off", autoTopUp: false }),
-          // Disabled is what every ladder is until its reviewer enables it, so this
-          // is also the check that a review of something else can never start one.
-          entry({ id: "disabled", autoTopUp: true, paused: true }),
-        ],
-        topUp,
-      ),
-      "token",
-    );
-    expect(topUp.mock.calls.map((c) => c[0])).toEqual(["on"]);
-    expect(enqueued).toBe(2);
-  });
-
-  it("stays silent when it cannot run, so a review never fails because of it", async () => {
-    await expect(topUpLaddersAfterReview(null, "token")).resolves.toBe(0);
-    await expect(
-      topUpLaddersAfterReview(
-        {
-          listLadders: async () => {
-            throw new Error("backend down");
-          },
-          topUpLadder: async () => ({}) as TopUpResult,
-        } as unknown as BackendClient,
-        "token",
-      ),
-    ).resolves.toBe(0);
   });
 });

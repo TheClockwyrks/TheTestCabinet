@@ -11,14 +11,27 @@ import { RunReviewEditor } from "./RunReviewEditor";
 // the editor reads so the test exercises only the form's own logic.
 const fixture = vi.hoisted(() => {
   const readReviewItems = vi.fn(async (): Promise<unknown[]> => []);
+  // Every ladder endpoint a review could reach for. A ladder's gate reads validator
+  // ratings and the backend feeds it as runs finish, so a review must touch none.
+  const ladderCall = vi.fn(async () => {
+    throw new Error("a review must not call a ladder endpoint");
+  });
   return {
+    ladderCall,
     submitReview: vi.fn(async () => {}),
     publish: vi.fn(async () => ({ published: true })),
     readReviewItems,
     // A stable backend identity: the editor's checklist-seeding effect keys on
     // it, so a fresh object per render would re-seed (and wipe an in-progress
     // override) after every interaction.
-    backend: { client: { readReviewItems } },
+    backend: {
+      client: {
+        readReviewItems,
+        listLadders: ladderCall,
+        topUpLadder: ladderCall,
+        getLadderProgress: ladderCall,
+      },
+    },
     // Stable identities, as the real hooks return state: the editor's seeding
     // effects key on the case's domain list, so a fresh object per render would
     // re-seed forever.
@@ -71,9 +84,6 @@ vi.mock("../../../data/useTestCase", () => ({
 }));
 vi.mock("../../account/coveragePlan", () => ({
   topUpAfterReview: async () => {},
-}));
-vi.mock("../../account/LadderPage", () => ({
-  topUpLaddersAfterReview: async () => {},
 }));
 vi.mock("../../../components/ConfirmDialog", () => ({
   useConfirm: () => ({ confirm: async () => true }),
@@ -284,6 +294,34 @@ describe("RunReviewEditor on a validator-rated run", () => {
     expect(review.checklist).toEqual([]);
     expect(review.aesthetic).toBe("amazing");
     expect(review.writeup).toBe("Looks lovely.");
+  });
+
+  it("submits a review without calling any ladder endpoint", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    fixture.submitReview.mockClear();
+    fixture.ladderCall.mockClear();
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+    fireEvent.change(
+      screen.getByPlaceholderText(/How does the build look, sound, and feel/),
+      { target: { value: "Looks lovely." } },
+    );
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "amazing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+    await waitFor(() => expect(fixture.submitReview).toHaveBeenCalledTimes(1));
+    // Give any fire-and-forget follow-up a chance to run before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fixture.ladderCall).not.toHaveBeenCalled();
   });
 
   it("submits an override as a delta and folds it into the live score", async () => {

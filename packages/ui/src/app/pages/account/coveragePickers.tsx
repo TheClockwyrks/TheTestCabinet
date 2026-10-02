@@ -35,6 +35,7 @@ import {
   UNBOUNDED_BUFFER,
   boundedBuffer,
   describeBufferTarget,
+  describeInFlightTarget,
 } from "./bufferTarget";
 import { CaseEngineField } from "./CaseEngineField";
 import { launchModelSlots } from "../runs/gg/ggConfigDraft";
@@ -159,10 +160,55 @@ export function AxisPicker({
   );
 }
 
+/** What the buffer-target row says, in the vocabulary of the thing it caps. */
+interface BufferCopy {
+  label: string;
+  fieldLabel: string;
+  help?: string;
+  description: (
+    value: BufferTarget | null,
+    accountDefault: BufferTarget,
+  ) => string;
+}
+
+/** A plan's buffer: runs in flight plus completed runs waiting on your review. */
+const planBufferCopy: BufferCopy = {
+  label: "Review buffer",
+  fieldLabel: "The review buffer",
+  description: (value, accountDefault) =>
+    value === null
+      ? `Empty inherits your account default of ${describeBufferTarget(accountDefault)}.`
+      : value.kind === "unbounded"
+        ? "No limit: a top-up enqueues every missing run of this plan at once, however many are already waiting on you. Only its per-cell targets and the harness caps hold it back."
+        : value.runs === 0
+          ? "0 stops this plan topping itself up at all, which is different from empty, where it inherits your account default."
+          : `This plan keeps ${value.runs} run${value.runs === 1 ? "" : "s"} outstanding before a top-up stops.`,
+};
+
 /**
- * The review-buffer override: how many runs this plan or ladder may leave outstanding
- * (in flight, or finished and unreviewed by you) before a top-up stops — or no limit
- * at all.
+ * A ladder's buffer: the runs in flight at once, and nothing else. A ladder's gate
+ * reads validator ratings, so a completed run is decided the moment it lands and never
+ * occupies the cap — calling this a review buffer would describe a wait that does not
+ * exist.
+ */
+const ladderBufferCopy: BufferCopy = {
+  label: "Runs in flight at once",
+  fieldLabel: "Runs in flight at once",
+  help: "Counts this ladder's jobs that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not, so the climb never waits on anyone. The account default is the one your coverage plans use as their review buffer.",
+  description: (value, accountDefault) =>
+    value === null
+      ? `Empty inherits your account default of ${describeInFlightTarget(accountDefault)}.`
+      : value.kind === "unbounded"
+        ? "No limit: every climber's current rung is launched as soon as it is earned, however many runs are already in flight. Only the harness caps hold it back."
+        : value.runs === 0
+          ? "0 stops this ladder launching runs at all, which is different from empty, where it inherits your account default."
+          : `This ladder keeps at most ${value.runs} run${value.runs === 1 ? "" : "s"} in flight, launching more as they finish.`,
+};
+
+/**
+ * The buffer-target override: on a plan, how many runs it may leave outstanding (in
+ * flight, or finished and unreviewed by you) before a top-up stops; on a ladder, how
+ * many runs it keeps in flight at once — or no limit at all.
  *
  * Empty is not zero, and the field is built around that distinction: empty means
  * "no opinion — use my account default", while `0` means "never top this one up",
@@ -197,21 +243,15 @@ export function BufferTargetField({
   const [lastBound, setLastBound] = useState<number | null>(
     value?.kind === "bounded" ? value.runs : null,
   );
-  const inherited = describeBufferTarget(accountDefault);
-  const description =
-    value === null
-      ? `Empty inherits your account default of ${inherited}.`
-      : value.kind === "unbounded"
-        ? `No limit: a top-up enqueues every missing run of this ${subject} at once, however many are already waiting on you. Only its per-cell targets and the harness caps hold it back.`
-        : value.runs === 0
-          ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
-          : `This ${subject} keeps ${value.runs} run${value.runs === 1 ? "" : "s"} outstanding before a top-up stops.`;
+  const copy = subject === "ladder" ? ladderBufferCopy : planBufferCopy;
+  const description = copy.description(value, accountDefault);
   const placeholder =
     accountDefault.kind === "bounded" ? String(accountDefault.runs) : "";
   return (
     <SettingRow
-      label="Review buffer"
+      label={copy.label}
       description={description}
+      help={copy.help}
       modified={value !== null}
       onReset={() => onChange(null)}
     >
@@ -226,7 +266,7 @@ export function BufferTargetField({
               id={id}
               className={exec.input}
               optional
-              label="The review buffer"
+              label={copy.fieldLabel}
               min={0}
               max={BUFFER_TARGET_CEILING}
               integer

@@ -32,6 +32,7 @@ import {
   rungInput,
 } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { isIneligible, useVersionEligibility } from "./rungEligibility";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -41,8 +42,13 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // The ladder editor (`/account/ladders/new` and `/account/ladders/:ladderId/edit`):
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
 // reusable combination groups a coverage plan references, plus one-offs), the single
-// gate every rung is judged by, and how the ladder is fed (climb order, review
-// buffer, auto-top-up).
+// gate every rung is decided by, and how the ladder is fed (climb order, runs in
+// flight at once, and whether it keeps climbing by itself as runs finish).
+//
+// A rung must pin a validator-rated case version, because the gate reads validator
+// ratings and nothing else: the rung picker never offers a legacy version, and a rung
+// the ladder already holds that is one is marked, with the save refused until it is
+// replaced (the backend refuses it too, and its message is shown as it comes).
 //
 // Rungs are reconciled on their stable ids by the save, so reordering the climb or
 // bumping a rung's version here keeps every climber's recorded verdicts attached to
@@ -155,6 +161,14 @@ export function LadderEditPage() {
     // `runsPerCellField.set` is referentially stable (see components/NumberField).
   }, [backend, token, editing, ladderId, runsPerCellField.set]);
 
+  // Which rungs of the climb a ladder cannot climb at all. Known only once each rung's
+  // version has resolved; one the backend does not hold is allowed, as the backend
+  // allows it.
+  const eligibilityOf = useVersionEligibility(rungs);
+  const unclimbable = rungs.filter((r) =>
+    isIneligible(eligibilityOf(r)),
+  ).length;
+
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
     [groups],
@@ -173,7 +187,10 @@ export function LadderEditPage() {
     (comboGroupIds.length > 0 || combos.length > 0) &&
     // A ladder with no run target has no climb to measure, so an emptied or
     // out-of-range field refuses the save rather than being corrected in place.
-    runsPerCellField.valid;
+    runsPerCellField.valid &&
+    // The backend refuses a rung that is not validator-rated, so the save is refused
+    // here first, with the rung marked in the climb above.
+    unclimbable === 0;
 
   async function onSave() {
     if (!token || !savable) return;
@@ -316,9 +333,9 @@ export function LadderEditPage() {
             subject="ladder"
           />
           <SettingRow
-            label="Top this ladder up when I submit a review"
-            description="Each review submitted enqueues more of the rung every climber is currently on, up to the review buffer."
-            help="On by default, and it only applies once the ladder is enabled: a review is the verdict that decides a rung, so it is the moment the next runs should be asked for. Turn it off to feed the ladder only with “Top up now”."
+            label="Keep climbing as runs finish"
+            description="Each run that finishes lets the backend launch whatever the climb needs next, up to the runs-in-flight cap."
+            help="On by default, and it only applies once the ladder is enabled. Turn it off to feed the ladder only with “Top up now”."
             modified={!autoTopUp}
             onReset={() => setAutoTopUp(true)}
           >
@@ -374,6 +391,18 @@ export function LadderEditPage() {
           {runsPerCellField.message && (
             <p className={`${exec.notice} ${exec.warn}`}>
               {runsPerCellField.message}
+            </p>
+          )}
+          {unclimbable > 0 && (
+            <p className={`${exec.notice} ${exec.warn}`}>
+              {unclimbable === 1
+                ? "One rung is not validator-rated"
+                : `${unclimbable} rungs are not validator-rated`}
+              , so this ladder cannot climb {unclimbable === 1 ? "it" : "them"}:
+              a ladder&rsquo;s gate reads validator ratings, and moves on
+              without anyone reviewing. Remove{" "}
+              {unclimbable === 1 ? "the marked rung" : "each marked rung"} and
+              add a validator-rated version of the case in its place to save.
             </p>
           )}
 

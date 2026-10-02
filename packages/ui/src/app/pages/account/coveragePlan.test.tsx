@@ -803,6 +803,7 @@ describe("describeTopUp", () => {
       enqueued: 0,
       cells: [],
       unlaunchable: [],
+      earlyStopCanceled: 0,
       ...over,
     };
   }
@@ -1080,6 +1081,7 @@ describe("topUpAfterReview", () => {
           enqueued: 2,
           cells: [],
           unlaunchable: [],
+          earlyStopCanceled: 0,
         } as TopUpResult;
       },
     } as unknown as BackendClient;
@@ -1211,6 +1213,7 @@ function backendValue(
           enqueued: 0,
           cells: [],
           unlaunchable: [],
+          earlyStopCanceled: 0,
         } as TopUpResult;
       },
     } as unknown as BackendClient,

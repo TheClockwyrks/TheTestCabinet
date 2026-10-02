@@ -608,19 +608,22 @@ export interface BackendClient {
   getLadderProgress?(id: string, token: string): Promise<LadderProgress>;
 
   /**
-   * Refill a ladder's review buffer (`POST /ladders/{id}/topup`, Bearer), the ladder
-   * analogue of {@link topUpCoveragePlan} and serialized the same way. It resolves
-   * where every climber stands first (recording any verdict that has become decidable)
-   * and then enqueues only the rung each one is *currently* on — which is what makes a
-   * ladder a climb rather than a sweep.
+   * Top a ladder up now (`POST /ladders/{id}/topup`, Bearer), the ladder analogue of
+   * {@link topUpCoveragePlan} and serialized the same way. It resolves where every
+   * climber stands first (recording any verdict the validators' ratings have made
+   * decidable, and cancelling a decided rung's unstarted jobs when the gate stops
+   * early), then enqueues only the rung each one is *currently* on, up to the ladder's
+   * runs-in-flight cap — which is what makes a ladder a climb rather than a sweep. The
+   * backend also runs this itself whenever one of the ladder's runs finishes, so the
+   * console calls it only for "Top up now" and on enabling the ladder.
    */
   topUpLadder?(id: string, token: string): Promise<TopUpResult>;
 
   /**
    * A ladder's unreviewed-by-me runs in the ladder's own order
-   * (`GET /ladders/{id}/queue`, Bearer). Order matters more here than anywhere: a
-   * rung's repeats arrive together to be judged against each other, and whether a
-   * climber is walled is decided by the very next review.
+   * (`GET /ladders/{id}/queue`, Bearer), for labelling after the fact: a rung's repeats
+   * arrive together, so they can be compared with each other. Information only — a
+   * ladder's gate reads validator ratings, so nothing here blocks or feeds the climb.
    */
   getLadderQueue?(id: string, token: string): Promise<CoverageQueue>;
 
