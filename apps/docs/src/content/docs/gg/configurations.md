@@ -486,8 +486,8 @@ mode:
 
 A configuration is also launched on a schedule rather than by hand. A
 [coverage plan or ladder](/components/backend/coverage/#combinations) takes a
-configuration and a model per launch slot as one of its members, and its top-up
-enqueues the same run this form does.
+configuration and a model per launch slot as one of its members, and the runs
+it launches are the same run this form enqueues.
 
 A launch from a configuration carries that configuration's id, which is what puts
 the run in the same [coverage

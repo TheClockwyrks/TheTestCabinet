@@ -43,11 +43,20 @@ The catalog is The Test Cabinet's full set of test cases.
 A climber is one [combination](#combination) enrolled on a [ladder](#ladder),
 the thing that actually does the climbing. Each climber's progress is tracked
 separately, so a model added to a standing ladder starts at [rung](#rung) one
-while the others carry on from wherever they had reached. A climber is climbing,
-blocked (it cannot progress until something is fixed), [walled](#wall), held
-(stopped by hand), or [topped out](#topped-out). Climber and combination name
-the same thing: the first is the role it plays on a ladder, the second is what
-it is.
+while the others carry on from wherever they had reached. A climber is in one
+of five states:
+
+- **Running**: working its current rung, which the ladder can still launch.
+- **Blocked**: its current rung is undecided and cannot progress until something
+  is fixed.
+- **Failed**: it failed a rung and stopped there, so "failed at rung four" is a
+  ladder's headline result for one model.
+- **Paused**: its owner stopped it where it stands.
+- **Completed**: it passed every rung, and the ladder has no further question to
+  ask of that [combination](#combination).
+
+Climber and combination name the same thing: the first is the role it plays on a
+ladder, the second is what it is.
 
 ## Combination
 
@@ -173,8 +182,8 @@ A ladder is an ordered series of test cases that [climbers](#climber) ascend one
 rung a model stops at is the result. Where a [coverage](#coverage) plan asks
 whether a cell has been run yet and treats its cells as an unordered set, a
 ladder asks how far a model gets and treats its steps as a sequence in which
-each is harder than the last. The climb is automated: whether a climber advances
-is decided by the ladder's gate, a single rule parameterised by a
+each is harder than the last. The climb is automated: whether a climber passes
+a rung is decided by the ladder's gate, a single rule parameterised by a
 [rating](#rating) floor and a threshold and applied to the ratings the
 validators decided for a rung's runs, and the backend launches the next rung as
 soon as the gate clears. Every rung is a [validator-rated](#validator-rated) case
@@ -338,6 +347,13 @@ reordered and re-pinned and every recorded verdict references that id. A
 positional identifier would silently reattribute a [climber](#climber)'s history
 to a different case.
 
+A climber passes or fails each rung it reaches. A failed rung is the result the
+gate computed from the validator ratings of that rung's runs, and the validators
+are assumed correct, so it stands as the climber's result for that version of
+the case. An infrastructure failure or a canceled run never fails a rung, because
+neither says anything about the model. A run that ended on the model's own
+failure, such as a timeout, counts as a broken run.
+
 ## Runners
 
 A runner is the component that actually executes a test case. There is exactly
@@ -374,15 +390,6 @@ from this snapshot, so the gallery keeps no live dependency on the backend.
 
 Test cases provide the scenarios used for testing. Each test case represents an
 isolated task that a harness and model must perform.
-
-## Topped out
-
-A [climber](#climber) has topped out when it has cleared every [rung](#rung) of
-its [ladder](#ladder): there is nothing left to climb, and the ladder has no
-further question to ask of that [combination](#combination). It is the only one
-of the five climber states that is nobody's move, the opposite end of the ladder
-from a [wall](#wall), and distinct from held, which is a stop the ladder's owner
-chose.
 
 ## User account
 
@@ -437,18 +444,6 @@ A voxel run's authoritative output is the data its voxel binary emits: the
 meshed geometry as a per-part `.glb`, and a rendered preview. The validator
 parses and validates that emitted data rather than regenerating it, and the
 frontend renders an interactive 3D model with three.js.
-
-## Wall
-
-A wall is the [rung](#rung) a [climber](#climber) failed and therefore stopped
-at, so "walled at rung four" is a ladder's headline result for one model. It is
-a verdict the gate computed from the validator ratings of that rung's runs, so
-it is an opinion rather than a fact about the model: the ladder's owner can
-promote a climber past a wall by hand, and the automatic verdict is kept underneath rather
-than overwritten, so clearing the override restores exactly what the gate said.
-An infrastructure failure or a canceled run is never a wall, because neither
-says anything about the model. A run that ended on the model's own failure, such
-as a timeout, counts as a broken run.
 
 ## Web console
 

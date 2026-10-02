@@ -210,10 +210,10 @@ Top-up is a server endpoint rather than a background daemon. A plan enqueues whe
 a top-up is requested and, with `autoTopUp` on, when it is opened and when a
 review is submitted.
 
-A [ladder](/components/backend/ladders/#feeding-a-ladder) is fed by the same
-algorithm at different moments: it is created disabled, opening it enqueues
-nothing, enabling it starts the climb, and from then on the backend tops it up
-itself whenever a run of one of its cells finishes.
+A [ladder](/components/backend/ladders/#launching-runs) launches its runs with
+the same algorithm at different moments: it is created disabled, opening it
+enqueues nothing, enabling it starts the climb, and from then on the backend runs
+a launch pass itself whenever a run of one of its cells finishes.
 
 The algorithm is the same for plans and ladders:
 
@@ -302,7 +302,8 @@ Three controls, distinct because "stop" carries three different costs:
 - **`pause`** stops topping up and leaves the queue completely alone. It is
   reversible. The [web console](/components/web/overview/#planning-and-steering-runs)
   exposes no control by that name: a plan's `paused` and `autoTopUp` are driven
-  together by one auto top-up setting, and a ladder's by its enabled setting.
+  together by one auto top-up setting, and a ladder's `paused` by its Enabled
+  switch.
 - **`halt`** pauses, then cancels this plan's `queued` and `pending` jobs. Those
   jobs have no driver and have spent nothing, so it needs no confirmation. This
   is the common case.

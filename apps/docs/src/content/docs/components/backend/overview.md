@@ -172,13 +172,13 @@ separate worklists. A ladder's gate reads no review: it reads the rating the
 validators decided for each run.
 
 Enqueueing is buffered and serialized. A plan holds a review buffer rather than
-firing its whole matrix, and a ladder caps its runs in flight. Refilling either
-is a top-up rather than a background daemon: a caller invokes a plan's, and the
-backend runs an enabled ladder's itself whenever one of its runs finishes. Each
-plan's or ladder's top-up claims its row first, so two concurrent callers cannot
-both enqueue for one shortfall. The buffer is bounded unless the plan's or
-ladder's buffer target is unbounded, in which case a top-up enqueues everything
-it is allowed to.
+firing its whole matrix, and a ladder caps its runs in flight. Neither refills
+from a background daemon: a caller requests a plan's top-up, and the backend runs
+an enabled ladder's launch pass itself whenever one of its runs finishes. Each
+plan's top-up and each ladder's launch pass claims its row first, so two
+concurrent callers cannot both enqueue for one shortfall. The buffer is bounded
+unless the plan's or ladder's buffer target is unbounded, in which case each
+enqueues everything it is allowed to.
 
 ## Public snapshot
 

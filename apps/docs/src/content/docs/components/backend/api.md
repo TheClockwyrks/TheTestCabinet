@@ -785,10 +785,10 @@ probe another's plan ids. The concepts live on
 
 Two conventions differ from the rest of this page. The collections return bare
 JSON arrays rather than the wrapped object [above](#conventions), and a plan's or
-ladder's declaration and its schedule (`outerAxis`, `paused`, `autoTopUp`,
-`bufferTarget`) are flattened into one object on the way out while being written
-separately. An absent `schedule` on a `PUT` leaves the schedule alone, so saving
-an edited model list can never un-pause a running plan.
+ladder's declaration and its schedule (`outerAxis`, `paused`, `bufferTarget`,
+and a plan's `autoTopUp`) are flattened into one object on the way out while
+being written separately. An absent `schedule` on a `PUT` leaves the schedule
+alone, so saving an edited model list can never un-pause a running plan.
 
 ### Pinned cases
 
@@ -926,16 +926,16 @@ A [ladder](/components/backend/ladders/) is a sibling of the coverage plan: an
 ordered list of rungs (one [pinned case](#pinned-cases) each, addressed by a
 stable opaque id) that climbers ascend automatically until a gate over their
 runs' validator ratings stops them. It reuses the plan's `kind: "combo"` groups,
-buffer target, top-up, queue, and halting, so only its own endpoints and
-differences are listed here.
+buffer target, launch algorithm, queue, and halting, so only its own endpoints
+and differences are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
-  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
-  takes the ladder default, `paused: true, autoTopUp: true`: a new ladder
-  enqueues nothing until it is enabled, and from then on the backend tops it up
-  each time one of its runs finishes
-  (see [Feeding a ladder](/components/backend/ladders/#feeding-a-ladder)).
+  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A ladder's schedule is
+  `outerAxis`, `paused`, and the optional `bufferTarget`. A create with no
+  `schedule` takes the ladder default, `paused: true`: a new ladder enqueues
+  nothing until it is enabled, and from then on the backend launches its climb
+  by itself; a create with `paused: false` starts the climb at once (see [Launching runs](/components/backend/ladders/#launching-runs)).
   Rungs are matched on their stable ids and reconciled rather than replaced, so a
   reorder, a version bump, or an engine re-pin keeps every climber's recorded
   verdicts. A rung whose case version is not
@@ -946,43 +946,47 @@ differences are listed here.
   would stall the climb.
   Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
 - `GET /ladders/{id}/progress` — the board: every climber's status
-  (`climbing` / `blocked` / `walled` / `held` / `toppedOut`), the rung it
-  stands on with the gate tally behind that answer, and its verdicts. A `blocked`
-  climber carries its reason in `blocked` (`unsupportedRung`, `unlaunchable`,
-  `failing`, or `unrated`), and every rung carries `supported`, false for a
-  stored rung whose case version is not validator-rated. It is a read: verdicts the gate
-  has resolved but nobody has recorded are computed live and flagged
-  `recorded: false`, then persisted by the next top-up, and a `GET` never
+  (`running` / `blocked` / `failed` / `paused` / `completed`), the rung it
+  stands on with the gate tally behind that answer, and its verdicts, each
+  `passed` or `failed`. The rung a climber stands on also reports the gate's
+  current answer as `passed`, `failed`, or `undecided`. A `blocked` climber
+  carries its reason in `blocked` (`unsupportedRung`, `unlaunchable`, `failing`,
+  or `unrated`), and every rung carries `supported`, false for a stored rung
+  whose case version is not validator-rated. It is a read: verdicts the gate has
+  resolved but nobody has recorded are computed live and flagged
+  `recorded: false`, then persisted by the next launch pass, and a `GET` never
   advances a climber. A climber whose combination cannot be launched carries the
-  reason in `unlaunchable`. `runsInFlight` is the occupancy the buffer target
-  caps, and `runsUnreviewed` counts the queue. Schema:
+  reason in `unlaunchable`. `climbersRunning`, `climbersCompleted`,
+  `climbersFailed`, `climbersBlocked`, and `climbersPaused` count the climbers in
+  each status, `runsInFlight` is the occupancy the buffer target caps, and
+  `runsUnreviewed` counts the queue. Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
 - `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
   a permutation of the ladder's current rungs; adding or dropping one is an edit and
   goes through `PUT /ladders/{id}`.
 - `POST /ladders/{id}/climbers` — one combination's steering, written whole:
-  `priority`, `focused`, and `held`. A hold stops a climber without pretending a
-  rung was decided, so clearing it resumes exactly where the climb left off.
-- `POST /ladders/{id}/outcomes` — apply or clear a manual override of one recorded
-  verdict: promote a climber past a rung its runs failed, or wall one they passed.
-  The override is stored beside the automatic verdict, so a recompute can never
-  silently undo it and `outcome: null` restores exactly what the gate says. `409`
-  when the rung has no verdict yet, since an undecided rung has nothing to promote
-  past and the control for "stop here regardless" is a hold.
-- `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
-  `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
-  `.../halt-all` — the plan endpoints above, with four differences. A top-up only
-  ever launches a climber's current rung, while the queue covers every rung a
-  climber has reached, so a rung the gate has decided keeps offering the runs
-  nobody reviewed. A ladder's buffer target caps its runs in flight, and the
-  top-up's `outstanding` reports that count
-  ([runs in flight](/components/backend/ladders/#runs-in-flight)). `autoTopUp`
-  means the backend tops the ladder up whenever one of its runs finishes, its
-  owner edits it, or the backend starts
-  ([feeding a ladder](/components/backend/ladders/#feeding-a-ladder)), and a
-  review never does. And `pause` is the ladder's enable/disable switch: a ladder
-  starts on its paused side, and `{ "paused": false }` only permits spending, so
-  the caller that enables follows with a `topup`.
+  `priority`, `focused`, and `paused`. A pause stops a climber without deciding a
+  rung, so resuming continues exactly where the climb left off.
+- `POST /ladders/{id}/climbers/retry` — retry a climber `blocked` as `failing`,
+  named by its `combination` in the body. The retry is recorded on the climber,
+  only jobs that ended after it count toward the failing streak, and the backend
+  runs a launch pass, which relaunches the climber's rung
+  ([a failing rung](/components/backend/ladders/#a-failing-rung)). Answers `204`;
+  `404` when the combination is not a climber of the ladder, and `409` when the
+  climber is not blocked as `failing`.
+- `GET|PUT /ladders/{id}/schedule`, `GET /ladders/{id}/queue`,
+  `POST /ladders/{id}/pause`, `.../halt`, `.../halt-all` — the plan endpoints
+  above, with three differences. The queue covers every rung a climber has
+  reached, so a rung the gate has decided keeps offering the runs nobody
+  reviewed. A ladder's buffer target caps its runs in flight
+  ([runs in flight](/components/backend/ladders/#runs-in-flight)). And `pause` is
+  the ladder's enable/disable switch: a ladder starts on its paused side, and
+  `{ "paused": false }` enables it and starts the climb.
+
+The backend runs every launch pass of a ladder itself, prompted by the ladder's
+own writes and its finishing runs
+([launching runs](/components/backend/ladders/#launching-runs)), so the ladder
+surface carries no counterpart of a plan's `topup`.
 
 ## Stopping runs in bulk
 

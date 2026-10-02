@@ -146,28 +146,52 @@ and how fast: [coverage plans](/components/backend/coverage/), which are cases
 against combinations with a target per cell, and
 [ladders](/components/backend/ladders/), an ordered climb each combination
 ascends automatically until it fails a rung. Both read the backend's derived
-board and offer the same actions: an auto top-up setting, top up now, halt, and
-halt all. Both serve the plan's or ladder's own unreviewed queue in its own order
-rather than newest-first. A ladder's queue is for labelling runs after the fact,
-and nothing on it moves the climb.
+board and offer halt and halt all. Both serve the plan's or ladder's own
+unreviewed queue in its own order rather than newest-first. A ladder's queue is
+for labelling runs after the fact, and nothing on it moves the climb.
 
-A plan's auto top-up setting drives the backend's
+A plan offers an auto top-up setting and top up now. Its auto top-up setting
+drives the backend's
 [`paused`](/components/backend/coverage/#pausing-and-halting) and `autoTopUp`
 together, because a halt sets `paused` and that blocks every top-up. A halt
 therefore turns auto top-up off, turning it back on clears the halt and tops up
 at once, and a top-up requested by hand on a halted plan clears the halt without
-turning auto top-up on. A ladder's setting is whether it is enabled, because a
-ladder [starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)
-and enabling it starts the climb; whether it keeps climbing as runs finish is a
-separate setting.
+turning auto top-up on.
+
+A ladder offers one Enabled switch. A ladder
+[starts disabled](/components/backend/ladders/#a-ladder-starts-disabled),
+enabling it starts the climb, and from then on the backend launches every run
+the climb needs. A ladder's dashboard and its editor speak of launching runs and
+of runs in flight.
+
+A ladder's dashboard summarizes its climbers as Climbers, Running, Completed,
+and Failed, then the runs in flight against their limit and the runs to review.
+Blocked and Paused follow only when a climber is in that state, last, so a figure
+appearing never moves the others. Each climber's card heads with its identity,
+its status, its rung track, and its controls in fixed slots, so a status
+changing during a climb never moves the track or the controls. A blocked
+climber's reason and its fix take a line of their own under the header, so that
+line appearing is the one thing a status change adds to a card. Every status
+names its rung: "Running rung 2", "Failed at rung 3", "Paused at rung 1",
+"Blocked at rung 4" with the reason, and "Completed".
+
+Expanded, a climber lists every rung with a badge: Passed, Failed, Running on a
+running climber's current rung, Blocked or Paused on the current rung of a
+climber in that state, and Not reached above it. Only a running
+climber's current rung is highlighted, and the highlight changes no row's
+layout. A rung's evidence reads as its tally, for example "2 of 3 runs passed
+(1 needed)". A climber's per-climber controls are its watch star, its priority,
+and Pause or Resume. A climber blocked as failing also offers Retry, which
+relaunches that climber's rung once its owner has fixed the cause.
 
 A control carries its own state, so nothing beside it restates that state. A
-ladder's status note explains only what no control shows: runs the queue is
-holding back, climbers that are blocked and the fix for each, an enabled ladder
-with runs to launch and none in flight, or a climb that is finished. A climber
+ladder's status note states only what the summary figures cannot: the blocked
+climbers and the fix for each, or a climb that cannot proceed because its
+runs-in-flight limit is zero. When every climber has completed or failed, the
+note reads "Finished.", as a plain notice rather than a warning. A climber
 blocked on a rung that is not validator-rated names that rung and offers to
-replace it. A plan carries no such note, because its
-Dashboard already states each of those as a count. A halt reports what it
+replace it. A plan carries no such note, because
+its Dashboard already states each of those as a count. A halt reports what it
 cancelled.
 
 A plan opens on three tabs, each its own URL so a reviewer can link and return
@@ -198,9 +222,9 @@ bought by hand counts against the cell it came from.
 Nothing here polls in the background. A plan's top-up happens when the console
 asks: opening a plan with auto top-up on, turning its auto top-up on, asking for
 one by hand, or, where the plan tops up on review, submitting a review, which is
-exactly when a buffer slot frees. A ladder's happens when the console turns it
-on or asks for one by hand, and otherwise the backend runs it as each run
-finishes, so a review never tops a ladder up.
+exactly when a buffer slot frees. A ladder's launches all happen in the backend,
+prompted by enabling it, by any other write to it, by a climber's Retry, and by
+each run that finishes, so a review never launches a ladder's runs.
 
 A plan and a ladder pin a case coordinate of test type, case, version, variant,
 and engine, held to what the resolved version declares. The engine is part of
@@ -210,9 +234,9 @@ slots, so two members of one configuration that bind different models are two
 cells the plan will run. A plan also sets runs per cell, the run order, the
 buffer-target override, and auto top-up. The buffer target may be set to no
 limit, as may the account-wide default it overrides, so a plan or ladder can run
-with no review buffer. A ladder's editor labels the same override as the runs in
-flight at once, which is what it bounds there, and offers only validator-rated
-case versions as rungs.
+with no review buffer. A ladder's editor sets runs per rung, the gate, the run
+order, and the same override labelled as the runs in flight at once, which is
+what it bounds there, and offers only validator-rated case versions as rungs.
 
 Launching a cell's runs by hand uses the cell's own engine, in both combination
 shapes, exactly as that plan's own top-up does. A run launched on another engine
