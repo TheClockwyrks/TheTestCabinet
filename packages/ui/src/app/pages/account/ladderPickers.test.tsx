@@ -592,6 +592,25 @@ describe("RungListEditor", () => {
       expect(onChange).not.toHaveBeenCalled();
     });
 
+    // A Run climbs whatever the rung pins, so the editor is where an aged pin is said.
+    it("flags a rung whose case has a newer version, and only that rung", async () => {
+      await renderVersions(
+        ["v1.0.0", "v2.0.0"],
+        [],
+        [
+          { id: "a", slug: "alpha", version: "v1.0.0", variant: "base" },
+          {
+            id: "b",
+            slug: "alpha",
+            version: "v2.0.0",
+            variant: "base",
+            engine: "simple-2d",
+          },
+        ],
+      );
+      expect(screen.getAllByText("v2.0.0 available")).toHaveLength(1);
+    });
+
     it("marks a legacy rung the climb already holds, with its fix", async () => {
       await renderVersions(
         ["v1.0.0", "v2.0.0"],

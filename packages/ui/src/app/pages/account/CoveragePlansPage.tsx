@@ -13,35 +13,41 @@ import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-/** One plan card's progress: run-level counts and the bar's filled fraction. */
+/** One plan card's progress: run-level counts, the bar's filled fraction, and the
+ *  bar's hover text. */
 export interface PlanProgress {
   runsDone: number;
   runsTotal: number;
   donePct: number;
+  /** The run detail the bar's hover text gives. */
+  title: string;
 }
 
-// A plan's progress measured in *runs*, not satisfied cells. A cell only counts as
-// satisfied once it has hit the target, so a cells-based bar collapses to empty the
+// A plan's progress measured in *runs*, not filled cells: a cell only counts as
+// filled once it has hit its target, so a cells-based bar would collapse to empty the
 // moment the target is raised (2 → 3 runs/cell on an already-covered plan) even
-// though two thirds of the wanted runs exist. `runsMissing` is the sum of the
-// per-cell shortfalls (each floored at zero), so the runs already accounted for —
-// completed plus in-flight, capped at the target — are the total minus that.
+// though two thirds of the wanted runs exist. `runsDone` is the runs that count,
+// capped at each cell's target, so the bar fills as runs finish and never overflows.
+// The text beside the bar is the cells filled; the run detail rides in the hover.
 export function planProgress(plan: CoveragePlanSummary): PlanProgress {
-  const runsTotal = plan.cellsTotal * plan.runsPerCell;
-  const runsDone = runsTotal - plan.runsMissing;
+  const { runsDone, runsTotal } = plan;
+  let title =
+    `${runsDone} of ${runsTotal} runs done · ${plan.runsInFlight} in flight · ` +
+    `${plan.runsMissing} to launch`;
+  if (plan.cellsBlocked > 0) title += ` · ${plan.cellsBlocked} blocked`;
   return {
     runsDone,
     runsTotal,
-    donePct: runsTotal > 0 ? (runsDone / runsTotal) * 100 : 0,
+    donePct: runsTotal > 0 ? Math.min(100, (runsDone / runsTotal) * 100) : 0,
+    title,
   };
 }
 
 // The Coverage tab (`/account/coverage`): the signed-in reviewer's coverage plans,
-// each a card with its roll-up (cells covered / runs missing / waiting on you) and
-// how it is being fed, linking to its own dashboard, plus create / edit / delete.
-// The account-wide review buffer every plan inherits is a property of the reviewer
-// rather than of this list, so it lives in Settings → Reviewing. Splitting the model
-// space across several smaller plans keeps each dashboard manageable.
+// each a card with its runs per cell, a bar of the runs done and the cells filled,
+// linking to its own dashboard, plus create / edit / delete. The account-wide
+// runs-in-flight limit every plan inherits lives in Settings → Runs. Splitting the
+// model space across several smaller plans keeps each dashboard manageable.
 // Console-only and gated on a signed-in account (plans are per-account).
 export function CoveragePlansPage() {
   const { token } = useAuth();
@@ -158,7 +164,7 @@ export function CoveragePlansPage() {
       ) : (
         <div className={styles.list}>
           {plans.map((plan) => {
-            const { runsDone, runsTotal, donePct } = planProgress(plan);
+            const { donePct, title } = planProgress(plan);
             return (
               <div key={plan.id} className={styles.rowCard}>
                 <div className={styles.rowMain}>
@@ -171,22 +177,11 @@ export function CoveragePlansPage() {
                     </Link>
                   </span>
                   <span className={styles.rowSub}>
-                    {plan.runsPerCell} runs/cell
-                    {/* Whether the plan feeds itself, as the dashboard's switch shows
-                        it: a halt leaves `paused` set, which blocks every top-up, so a
-                        halted plan is not "auto" whatever its flag says. A plan without
-                        this moves only when asked, which is why a missing-runs count
-                        beside it is not a stall. */}
-                    {plan.autoTopUp && !plan.paused && " · auto top-up"}
-                    {plan.runsUnreviewed > 0 &&
-                      ` · ${plan.runsUnreviewed} waiting on you`}
+                    {`${plan.runsPerCell} run${plan.runsPerCell === 1 ? "" : "s"}/cell`}
                   </span>
                 </div>
                 <div className={styles.rowRight}>
-                  <span
-                    className={styles.rowProgress}
-                    title={`${runsDone} of ${runsTotal} runs · ${plan.cellsSatisfied} of ${plan.cellsTotal} cells covered`}
-                  >
+                  <span className={styles.rowProgress} title={title}>
                     <span className={styles.groupBar} aria-hidden>
                       <span
                         className={styles.groupBarDone}
@@ -194,8 +189,7 @@ export function CoveragePlansPage() {
                       />
                     </span>
                     <span className={styles.groupCount}>
-                      {plan.cellsSatisfied}/{plan.cellsTotal} ·{" "}
-                      {plan.runsMissing} missing
+                      {plan.cellsFilled}/{plan.cellsTotal} cells
                     </span>
                   </span>
                   <span className={styles.rowActions}>

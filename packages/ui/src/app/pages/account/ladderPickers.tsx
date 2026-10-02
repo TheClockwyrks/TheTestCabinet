@@ -517,6 +517,7 @@ function SortableRung({
   label,
   runsPerCell,
   problem,
+  newerVersion,
   onMove,
   onRunsChange,
   onRemove,
@@ -525,6 +526,8 @@ function SortableRung({
   rung: LadderRungInput;
   /** Why a ladder cannot climb this rung, or null when it can. */
   problem: string | null;
+  /** A newer ingested version of the rung's case, or null when it pins the newest. */
+  newerVersion?: string | null;
   index: number;
   /** How many rungs the climb has, so the ends know not to offer a move off it. */
   total: number;
@@ -573,6 +576,14 @@ function SortableRung({
       {problem && (
         <span className={ladder.rungProblem} title={problem}>
           Not climbable
+        </span>
+      )}
+      {newerVersion && (
+        <span
+          className={styles.staleBadge}
+          title={`A newer version of this case (${newerVersion}) is ingested. A Run climbs the version pinned here; remove this rung and add ${newerVersion} to climb the newer one.`}
+        >
+          {newerVersion} available
         </span>
       )}
       <label className={ladder.rungEditRuns}>
@@ -736,6 +747,13 @@ export function RungListEditor({
   // supports.
   const engineChoice = useEngineChoice(sel.versionInfo?.engines);
 
+  // The newest ingested version of a rung's case when it is not the one the rung pins:
+  // the editor flags it, and a Run climbs whatever the rung pins.
+  const newerVersionOf = (rung: LadderRungInput): string | null => {
+    const latest = sel.cases.find((c) => c.slug === rung.slug)?.versions.at(-1);
+    return latest && latest !== rung.version ? latest : null;
+  };
+
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = useMemo(
     () =>
@@ -883,6 +901,7 @@ export function RungListEditor({
                   problem={ineligibleReason(
                     eligibilityOf({ slug: rung.slug, version: rung.version }),
                   )}
+                  newerVersion={newerVersionOf(rung)}
                   runsPerCell={runsPerCell}
                   onMove={(to) => move(index, to)}
                   onRunsChange={(runs) =>

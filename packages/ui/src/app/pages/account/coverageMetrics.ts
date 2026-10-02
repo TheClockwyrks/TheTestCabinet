@@ -242,8 +242,7 @@ export interface PlanRunCorpus {
  * The query is scoped to the plan's case slugs in one listing rather than one listing
  * per case, so a plan naming twenty cases costs the same round trips as a plan naming
  * one. It draws from the `any` slice, because a plan's corpus is what it has *run* —
- * an unpublished run occupies a cell and holds a review buffer slot exactly as a
- * published one does.
+ * an unpublished run fills a cell exactly as a published one does.
  *
  * Exact pinned versions are matched per cell afterwards, so the current-version
  * restriction stays off: a plan deliberately pinned to an older version has every one
@@ -308,7 +307,7 @@ export function useCoverageRunMetrics(
   const [corpus, setCorpus] = useState<PlanRunCorpus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // The scope as a stable string, so a matrix refreshed by a top-up (new counts, the
+  // The scope as a stable string, so a matrix refreshed by a launch (new counts, the
   // same cases) does not re-drain the corpus on every poll.
   const scope = useMemo(
     () => (coverage ? planCaseSlugs(coverage).sort().join(",") : ""),

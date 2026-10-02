@@ -1114,3 +1114,89 @@ describe("createHttpBackend ladder climber retry", () => {
     ).rejects.toThrow();
   });
 });
+
+// A ladder dispatch and a plan fill are started, stopped and retried by POSTs whose
+// bodies the backend reads exactly; the ids are escaped once, in the path.
+describe("createHttpBackend dispatch and fill controls", () => {
+  function stubJson(body: unknown, status = 200) {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(body === null ? null : JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("runs a ladder with an empty body", async () => {
+    const progress = {
+      ladderId: "l/1",
+      dispatch: null,
+      rungs: [],
+      climbers: [],
+      runsUnreviewed: 0,
+    };
+    const fetchMock = stubJson(progress);
+    await expect(
+      createHttpBackend(BACKEND).runLadder!("l/1", "tok"),
+    ).resolves.toEqual(progress);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BACKEND}/ladders/l%2F1/run`);
+    expect(init?.method).toBe("POST");
+  });
+
+  it("stops a ladder, saying whether running jobs are cancelled too", async () => {
+    const fetchMock = stubJson({ canceled: 2, includedActive: true });
+    await expect(
+      createHttpBackend(BACKEND).stopLadder!(
+        "l1",
+        { cancelRunning: true },
+        "tok",
+      ),
+    ).resolves.toEqual({ canceled: 2, includedActive: true });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BACKEND}/ladders/l1/stop`);
+    expect(JSON.parse(String(init?.body))).toEqual({ cancelRunning: true });
+  });
+
+  it("reads every ladder's summary in one request", async () => {
+    const fetchMock = stubJson([]);
+    await expect(
+      createHttpBackend(BACKEND).getLaddersSummary!("tok"),
+    ).resolves.toEqual([]);
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${BACKEND}/ladders/summary`);
+  });
+
+  it("starts filling a plan", async () => {
+    const result = {
+      inFlightLimit: { kind: "bounded", runs: 10 },
+      enqueued: 3,
+      cells: [],
+      unlaunchable: [],
+      earlyStopCanceled: 0,
+    };
+    const fetchMock = stubJson(result);
+    await expect(
+      createHttpBackend(BACKEND).fillCoveragePlan!("p/1", "tok"),
+    ).resolves.toEqual(result);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BACKEND}/coverage-plans/p%2F1/fill`);
+    expect(init?.method).toBe("POST");
+  });
+
+  it("retries a blocked plan cell with the cell in the body", async () => {
+    const fetchMock = stubJson(null, 204);
+    const input = {
+      case: { slug: "pong", version: "1.0.0", variant: "default" },
+      combination: { harness: "claude", model: "anthropic/opus" },
+    } as const;
+    await expect(
+      createHttpBackend(BACKEND).retryCoveragePlanCell!("p1", input, "tok"),
+    ).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BACKEND}/coverage-plans/p1/cells/retry`);
+    expect(JSON.parse(String(init?.body))).toEqual(input);
+  });
+});

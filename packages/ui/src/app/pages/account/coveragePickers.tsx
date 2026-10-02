@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import type {
-  BufferTarget,
+  InFlightLimit,
   CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
@@ -31,12 +31,11 @@ import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import {
-  BUFFER_TARGET_CEILING,
-  UNBOUNDED_BUFFER,
-  boundedBuffer,
-  describeBufferTarget,
-  describeInFlightTarget,
-} from "./bufferTarget";
+  IN_FLIGHT_LIMIT_CEILING,
+  UNBOUNDED_LIMIT,
+  boundedLimit,
+  describeInFlightLimit,
+} from "./inFlightLimit";
 import { CaseEngineField } from "./CaseEngineField";
 import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
@@ -114,10 +113,10 @@ export const DEFAULT_COVERAGE_AXIS: CoverageAxis = "case";
  *
  * A dropdown rather than a pair of pills, for the reason `LadderAxisPicker` gives:
  * this is one setting with one answer sitting in a column of other settings, so its
- * control column should read as a value ("One case at a time") the way the review
- * buffer's reads as a number, not as two buttons of which one happens to be lit.
+ * control column should read as a value ("One case at a time") the way the
+ * runs-in-flight limit's reads as a number, not as two buttons of which one happens to be lit.
  *
- * The choice is real and not cosmetic — a top-up emits whole cells in this order,
+ * The choice is real and not cosmetic — a launch pass emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
  * order shown here *is* the order the runs execute and therefore the order they
  * become reviewable in.
@@ -160,79 +159,51 @@ export function AxisPicker({
   );
 }
 
-/** What the buffer-target row says, in the vocabulary of the thing it caps. */
-interface BufferCopy {
-  label: string;
-  fieldLabel: string;
-  help?: string;
-  description: (
-    value: BufferTarget | null,
-    accountDefault: BufferTarget,
-  ) => string;
+/** What the runs-in-flight row says, naming the thing it caps. */
+function limitDescription(
+  subject: "plan" | "ladder",
+  value: InFlightLimit | null,
+  accountDefault: InFlightLimit,
+): string {
+  if (value === null)
+    return `Empty inherits your account default of ${describeInFlightLimit(accountDefault)}.`;
+  if (value.kind === "unbounded")
+    return subject === "plan"
+      ? "No limit: filling launches every missing run of this plan at once. Only the harness caps hold it back."
+      : "No limit: a dispatch launches every climber's current rung as soon as it is reached. Only the harness caps hold it back.";
+  if (value.runs === 0)
+    return `0 stops this ${subject} launching runs at all, which is different from empty, where it inherits your account default.`;
+  return `This ${subject} keeps at most ${value.runs} run${value.runs === 1 ? "" : "s"} queued or running, launching more as they finish.`;
 }
 
-/** A plan's buffer: runs in flight plus completed runs waiting on your review. */
-const planBufferCopy: BufferCopy = {
-  label: "Review buffer",
-  fieldLabel: "The review buffer",
-  description: (value, accountDefault) =>
-    value === null
-      ? `Empty inherits your account default of ${describeBufferTarget(accountDefault)}.`
-      : value.kind === "unbounded"
-        ? "No limit: a top-up enqueues every missing run of this plan at once, however many are already waiting on you. Only its per-cell targets and the harness caps hold it back."
-        : value.runs === 0
-          ? "0 stops this plan topping itself up at all, which is different from empty, where it inherits your account default."
-          : `This plan keeps ${value.runs} run${value.runs === 1 ? "" : "s"} outstanding before a top-up stops.`,
-};
+const LIMIT_HELP =
+  "Counts the runs it launched that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not. The limit keeps one plan or ladder from taking over the shared queue.";
 
 /**
- * A ladder's buffer: the runs in flight at once, and nothing else. A ladder's gate
- * reads validator ratings, so a completed run is decided the moment it lands and never
- * occupies the cap — calling this a review buffer would describe a wait that does not
- * exist.
- */
-const ladderBufferCopy: BufferCopy = {
-  label: "Runs in flight at once",
-  fieldLabel: "Runs in flight at once",
-  help: "Counts this ladder's jobs that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not, so the climb never waits on anyone. The account default is the one your coverage plans use as their review buffer.",
-  description: (value, accountDefault) =>
-    value === null
-      ? `Empty inherits your account default of ${describeInFlightTarget(accountDefault)}.`
-      : value.kind === "unbounded"
-        ? "No limit: every climber's current rung is launched as soon as it is earned, however many runs are already in flight. Only the harness caps hold it back."
-        : value.runs === 0
-          ? "0 stops this ladder launching runs at all, which is different from empty, where it inherits your account default."
-          : `This ladder keeps at most ${value.runs} run${value.runs === 1 ? "" : "s"} in flight, launching more as they finish.`,
-};
-
-/**
- * The buffer-target override: on a plan, how many runs it may leave outstanding (in
- * flight, or finished and unreviewed by you) before a top-up stops; on a ladder, how
- * many runs it keeps in flight at once — or no limit at all.
+ * The runs-in-flight override: how many of this plan's or ladder dispatch's runs may
+ * be queued or running at once — or no limit at all.
  *
  * Empty is not zero, and the field is built around that distinction: empty means
- * "no opinion — use my account default", while `0` means "never top this one up",
- * which is a different instruction the reviewer is entitled to give. So the value is
- * a nullable target, the placeholder shows the account default that an empty field
- * inherits, and the row's reset control drops the override rather than making the
- * reviewer delete digits until the input happens to be blank.
+ * "no opinion — use my account default", while `0` means "launch nothing", which is a
+ * different instruction the owner is entitled to give. So the value is a nullable
+ * limit, the placeholder shows the account default that an empty field inherits, and
+ * the row's reset control drops the override rather than making the owner delete
+ * digits until the input happens to be blank.
  *
  * "No limit" is a third instruction with a switch of its own rather than a large
- * number typed into the field: it tells the backend to run through every missing
- * cell whatever is outstanding, and it reads back as what it is instead of as a
- * figure that merely exceeds the plan today.
+ * number typed into the field, so it reads back as what it is.
  */
-export function BufferTargetField({
+export function InFlightLimitField({
   value,
   accountDefault,
   onChange,
   subject = "plan",
 }: {
   /** The override, or null to inherit the account default. */
-  value: BufferTarget | null;
+  value: InFlightLimit | null;
   /** The account-wide default an empty field falls back to. */
-  accountDefault: BufferTarget;
-  onChange: (next: BufferTarget | null) => void;
+  accountDefault: InFlightLimit;
+  onChange: (next: InFlightLimit | null) => void;
   /** What the override belongs to, so the row names it. */
   subject?: "plan" | "ladder";
 }) {
@@ -243,20 +214,19 @@ export function BufferTargetField({
   const [lastBound, setLastBound] = useState<number | null>(
     value?.kind === "bounded" ? value.runs : null,
   );
-  const copy = subject === "ladder" ? ladderBufferCopy : planBufferCopy;
-  const description = copy.description(value, accountDefault);
+  const description = limitDescription(subject, value, accountDefault);
   const placeholder =
     accountDefault.kind === "bounded" ? String(accountDefault.runs) : "";
   return (
     <SettingRow
-      label={copy.label}
+      label="Runs in flight at once"
       description={description}
-      help={copy.help}
+      help={LIMIT_HELP}
       modified={value !== null}
       onReset={() => onChange(null)}
     >
       {(id) => (
-        <span className={styles.settingBuffer}>
+        <span className={styles.settingLimit}>
           <span className={styles.settingNumber}>
             {/* Optional: empty is the answer "inherit my account default", so
                 clearing it drops the override rather than being read as a zero.
@@ -266,17 +236,17 @@ export function BufferTargetField({
               id={id}
               className={exec.input}
               optional
-              label={copy.fieldLabel}
+              label="Runs in flight at once"
               min={0}
-              max={BUFFER_TARGET_CEILING}
+              max={IN_FLIGHT_LIMIT_CEILING}
               integer
               showProblem={false}
-              title={`Between 0 and ${BUFFER_TARGET_CEILING} runs, or empty to inherit your account default.`}
+              title={`Between 0 and ${IN_FLIGHT_LIMIT_CEILING} runs, or empty to inherit your account default.`}
               value={unbounded || value === null ? undefined : value.runs}
               placeholder={unbounded ? "" : placeholder}
               disabled={unbounded}
               onCommit={(n) => {
-                const next = boundedBuffer(n);
+                const next = boundedLimit(n);
                 setLastBound(next.kind === "bounded" ? next.runs : null);
                 onChange(next);
               }}
@@ -290,10 +260,10 @@ export function BufferTargetField({
               onChange={(next) =>
                 onChange(
                   next
-                    ? UNBOUNDED_BUFFER
+                    ? UNBOUNDED_LIMIT
                     : lastBound === null
                       ? null
-                      : boundedBuffer(lastBound),
+                      : boundedLimit(lastBound),
                 )
               }
             />

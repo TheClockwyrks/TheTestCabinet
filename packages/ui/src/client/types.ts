@@ -1217,18 +1217,21 @@ export interface LaunchConfig {
 }
 
 // What a run is being launched *on behalf of*, recorded on the enqueued job as its
-// origin. It is deliberately structured rather than the `plan:<id>` / `ladder:<id>`
-// string the backend stores: the transport formats it, so a caller cannot mistype an
-// origin into a `400` (or, worse on an older backend, into a run that no halt would
-// ever reach). Absent means a hand-launch — the run form's own submit — which no
-// plan's or ladder's scoped halt should ever sweep up.
+// origin. It is deliberately structured rather than the `plan:<id>` string the backend
+// stores: the transport formats it, so a caller cannot mistype an origin into a `400`.
+// Absent means a hand-launch — the run form's own submit — which no plan's scoped halt
+// should ever sweep up.
 //
-// Attribution is bookkeeping only. Coverage counting stays global: a run counts toward
-// its cell's target whoever launched it and whatever launched it, so tagging a run's
-// origin never changes what a plan considers still missing.
+// Only a plan's hand launches (its Tests tab) carry one from the console: a plan's
+// fill passes and a ladder dispatch's launches are minted by the backend, which
+// refuses any other origin from a client.
+//
+// Attribution is bookkeeping only. Plan coverage counting stays global: a run counts
+// toward its cell's target whoever launched it, so tagging a run's origin never
+// changes what a plan considers still missing.
 export interface LaunchOrigin {
-  kind: "plan" | "ladder";
-  // The plan's or ladder's opaque id.
+  kind: "plan";
+  // The plan's opaque id.
   id: string;
 }
 

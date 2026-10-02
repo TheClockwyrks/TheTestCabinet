@@ -3,6 +3,7 @@ import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   LadderClimber,
   LadderProgressRung,
+  LadderSlot,
 } from "@clockwyrks/run-record/ladders";
 import { canonicalModelId } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
@@ -16,7 +17,10 @@ import { useRunsRuntime } from "../../runtime/runsRuntime";
 import ladderStyles from "./Ladder.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The runs behind one rung's verdict, for one climber, listed under the rung itself.
+// The runs behind one rung slot's verdict, for one climber, listed under the rung
+// itself — only the runs the latest dispatch launched for that slot, because only
+// those count for it: a run of the same case and model from a plan, a hand launch or
+// an earlier dispatch is not this dispatch's evidence.
 //
 // The board says a climber passed or failed a rung, and the way to see why is to look
 // at the runs the gate counted. Listing them here rather than
@@ -28,17 +32,19 @@ import styles from "./Coverage.module.scss";
 // same live spinner rows as every other listing of runs in the console.
 
 // How many of a rung's runs to hold. A rung is one case × one climber, so its runs are
-// counted in single figures — a ladder asks for `runsPerCell` of them, plus whatever a
-// re-pin or a hand-launched run added — and a window this size is a ceiling nothing
-// real reaches rather than a page.
+// counted in single figures, and a window this size over the cell's runs is a ceiling
+// the dispatch's own runs never reach in practice.
 const RUN_LIMIT = 100;
 
 export function RungRuns({
   rung,
   climber,
+  slot,
 }: {
   rung: LadderProgressRung;
   climber: LadderClimber;
+  /** The dispatch's slot: its counted runs and its jobs still in flight. */
+  slot: LadderSlot;
 }) {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
   const { inProgress, refreshToken } = useRunsRuntime();
@@ -58,6 +64,19 @@ export function RungRuns({
   // `gg` harness. The rung's verdict counts by the configuration's id, so the listing
   // behind it narrows by the same id.
   const ggConfigId = ggConfigKey(climber.ggConfigId);
+  // The dispatch's own runs of this slot: its counted runs (records) and its jobs still
+  // in flight. Keyed by their joined ids so a re-read board with the same runs does not
+  // re-query.
+  const runIdsKey = slot.runIds.join("|");
+  const jobIdsKey = slot.jobIds.join("|");
+  const runIds = useMemo(
+    () => new Set(runIdsKey ? runIdsKey.split("|") : []),
+    [runIdsKey],
+  );
+  const jobIds = useMemo(
+    () => new Set(jobIdsKey ? jobIdsKey.split("|") : []),
+    [jobIdsKey],
+  );
 
   // Re-queried on `refreshToken` as well as on the rung's identity: that token is
   // bumped by the console stream's `finished` run events, so a run that completes while
@@ -84,7 +103,7 @@ export function RungRuns({
     })
       .then((result) => {
         if (!active) return;
-        setSummaries(result.summaries);
+        setSummaries(result.summaries.filter((run) => runIds.has(run.id)));
         setLoading(false);
       })
       .catch(() => {
@@ -104,17 +123,19 @@ export function RungRuns({
     harness,
     model,
     ggConfigId,
+    runIds,
     refreshToken,
   ]);
 
-  // The runs of this cell that are still executing. They have no record to query yet,
-  // so they are matched out of the runtime's in-flight list by the same identity the
-  // query filters on — the model ids are canonicalized because a launch may name a
-  // model in a form the catalog spells differently.
+  // The slot's runs that are still executing. They have no record to query yet, so
+  // they are matched out of the runtime's in-flight list by the dispatch's job ids, and
+  // by the same identity the query filters on — the model ids are canonicalized because
+  // a launch may name a model in a form the catalog spells differently.
   const active = useMemo(
     () =>
       inProgress.filter(
         (run) =>
+          jobIds.has(run.runId) &&
           run.testCaseSlug === slug &&
           run.testCaseVersion === version &&
           run.variant === variant &&
@@ -125,7 +146,7 @@ export function RungRuns({
           run.harnessSlug === harness &&
           canonicalModelId(run.modelId) === canonicalModelId(model),
       ),
-    [inProgress, slug, version, variant, engine, harness, model],
+    [inProgress, jobIds, slug, version, variant, engine, harness, model],
   );
 
   // The case, its version, variant and engine, the harness and the model are all fixed
@@ -153,8 +174,8 @@ export function RungRuns({
         <LoadingState size="section" label="Loading this rung's runs…" />
       ) : empty ? (
         <p className={styles.empty}>
-          No runs of this rung yet for {climber.model}. Topping the ladder up is
-          what asks for them.
+          No runs of this rung yet for {climber.model} in this dispatch. The
+          ladder launches them as the climber reaches the rung.
         </p>
       ) : (
         <RunLog rows={table.rows} active={active} controls={table.controls} />

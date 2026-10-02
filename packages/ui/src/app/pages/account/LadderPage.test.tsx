@@ -1,15 +1,23 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  LadderCell,
+  Ladder,
   LadderClimber,
+  LadderDispatch,
   LadderProgress,
   LadderProgressRung,
-  LadderRungOutcome,
+  LadderSlot,
   RungTally,
+  SlotCounts,
 } from "@clockwyrks/run-record/ladders";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { BackendClient } from "../../../client/clients";
+import {
+  BackendProvider,
+  type BackendContextValue,
+} from "../../../client/context";
 import {
   sectionReturnTo,
   useRecordSectionIndex,
@@ -20,14 +28,33 @@ import {
 } from "../../data/galleryContext";
 import {
   ClimberRow,
-  buildRungViews,
+  LadderPage,
   climberCombo,
   climberStatusLabel,
   describeClimberBlock,
-  describeLadderHalt,
+  describeLadderStop,
   describeTally,
+  dispatchStatusLabel,
   ladderStatusNote,
 } from "./LadderPage";
+
+vi.mock("../../components/PageLayout", () => ({
+  PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("../../../client/auth", () => ({
+  useAuth: () => ({ token: "t0" }),
+}));
+let confirmAnswer = true;
+const confirmSpy = vi.fn();
+vi.mock("../../components/ConfirmDialog", () => ({
+  useConfirm: () => ({
+    confirm: async (opts: unknown) => {
+      confirmSpy(opts);
+      return confirmAnswer;
+    },
+    alert: async () => {},
+  }),
+}));
 
 // A run of one rung, carrying only the fields the run log reads.
 function runSummary(id: string, slug: string): RunSummary {
@@ -92,77 +119,57 @@ function rung(
     variant: "base",
     latestVersion: "v1.0.0",
     stale: false,
-    supported: true,
     ...over,
   };
 }
 
 function tally(over: Partial<RungTally> = {}): RungTally {
   return {
-    completed: 3,
+    counted: 3,
     rated: 2,
     unrated: 1,
     passing: 1,
     pending: 2,
+    inFlight: 1,
     required: 2,
     ...over,
   };
 }
 
-function cell(over: Partial<LadderCell> = {}): LadderCell {
+function slot(position: number, over: Partial<LadderSlot> = {}): LadderSlot {
   return {
-    rungId: "r1",
-    position: 1,
-    tally: tally(),
-    outcome: "undecided",
-    slug: "case-1",
-    version: "v1.0.0",
-    variant: "base",
-    harness: "claude",
-    model: "opus",
-    desired: 5,
-    completed: 3,
-    inFlight: 2,
-    pending: 1,
-    unreviewed: 1,
-    remaining: 0,
-    latestVersion: "v1.0.0",
-    stale: false,
-    ...over,
-  } as LadderCell;
-}
-
-function outcome(over: Partial<LadderRungOutcome> = {}): LadderRungOutcome {
-  return {
-    rungId: "r0",
-    decidedVersion: "v1.0.0",
-    outcome: "passed",
-    decidedAt: "2026-08-15T00:00:00Z",
-    stale: false,
-    recorded: true,
+    rungId: `r${position}`,
+    position,
+    status: "pending",
+    runIds: [],
+    jobIds: [],
     ...over,
   };
 }
 
+// A climber that passed rung 1 and is running rung 2 of 3.
 function climber(over: Partial<LadderClimber> = {}): LadderClimber {
   return {
     key: "claude|opus",
     harness: "claude",
     model: "opus",
-    priority: 0,
-    focused: false,
-    paused: false,
     status: "running",
-    currentRung: cell(),
-    outcomes: [outcome()],
+    currentRung: 1,
+    slots: [
+      slot(0, {
+        status: "passed",
+        tally: tally({ inFlight: 0, pending: 0, passing: 2 }),
+        runIds: ["run-1"],
+      }),
+      slot(1, { status: "running", tally: tally(), jobIds: ["job-2"] }),
+      slot(2),
+    ],
     ...over,
   } as LadderClimber;
 }
 
 // A gg climber: the same ladder, climbed by a saved configuration with a model bound
-// to each launch slot rather than by a harness and a model id. Its key names both,
-// because two climbers of one configuration on different models are the two arms a
-// ladder exists to separate.
+// to each launch slot rather than by a harness and a model id.
 function ggClimber(over: Partial<LadderClimber> = {}): LadderClimber {
   return climber({
     key: "gg|saved:cfg-1|critic=haiku,primary=opus",
@@ -175,20 +182,49 @@ function ggClimber(over: Partial<LadderClimber> = {}): LadderClimber {
   });
 }
 
+function slotCounts(over: Partial<SlotCounts> = {}): SlotCounts {
+  return {
+    total: 3,
+    running: 1,
+    blocked: 0,
+    passed: 1,
+    failed: 0,
+    pending: 1,
+    skipped: 0,
+    ...over,
+  };
+}
+
+function dispatch(over: Partial<LadderDispatch> = {}): LadderDispatch {
+  return {
+    id: "d1",
+    status: "running",
+    startedAt: "2026-10-02T10:00:00Z",
+    gate: {
+      floor: "playable",
+      threshold: { kind: "count", runs: 1 },
+      unloadedCountsAsBroken: true,
+      earlyStop: false,
+    },
+    outerAxis: "rung",
+    inFlightLimit: { kind: "bounded", runs: 10 },
+    slots: slotCounts(),
+    runs: { total: 9, done: 4, inFlight: 1 },
+    climbersRunning: 1,
+    climbersBlocked: 0,
+    climbersFailed: 0,
+    climbersCompleted: 0,
+    ...over,
+  } as LadderDispatch;
+}
+
 function progress(over: Partial<LadderProgress> = {}): LadderProgress {
   return {
     ladderId: "l1",
-    outerAxis: "rung",
+    dispatch: dispatch(),
     rungs: [rung(0), rung(1), rung(2)],
     climbers: [climber()],
-    climbersRunning: 1,
-    climbersCompleted: 0,
-    climbersFailed: 0,
-    climbersBlocked: 0,
-    climbersPaused: 0,
     runsUnreviewed: 1,
-    runsInFlight: 3,
-    bufferTarget: { kind: "bounded", runs: 10 },
     ...over,
   };
 }
@@ -198,6 +234,18 @@ function progress(over: Partial<LadderProgress> = {}): LadderProgress {
 describe("climberStatusLabel", () => {
   it("says each state in plain words, naming the rung from one", () => {
     expect(climberStatusLabel(climber(), 3)).toBe("Running rung 2");
+    expect(climberStatusLabel(climber({ status: "failed" }), 3)).toBe(
+      "Failed at rung 2",
+    );
+    expect(
+      climberStatusLabel(
+        climber({ status: "completed", currentRung: undefined }),
+        3,
+      ),
+    ).toBe("Completed");
+  });
+
+  it("names the rung a blocked climber is stuck on, and the kind of fault", () => {
     expect(
       climberStatusLabel(
         climber({
@@ -209,232 +257,84 @@ describe("climberStatusLabel", () => {
     ).toBe("Blocked at rung 2: runs keep failing");
     expect(
       climberStatusLabel(
-        climber({ status: "failed", currentRung: cell({ position: 2 }) }),
+        climber({ status: "blocked", blocked: { kind: "unrated", runs: 1 } }),
         3,
       ),
-    ).toBe("Failed at rung 3");
-    expect(climberStatusLabel(climber({ status: "paused" }), 3)).toBe(
-      "Paused at rung 2",
+    ).toBe("Blocked at rung 2: 1 run unrated");
+  });
+
+  it("reads a climber of a stopped dispatch as stopped where it stood", () => {
+    expect(climberStatusLabel(climber(), 3, "stopped")).toBe(
+      "Stopped at rung 2",
     );
+    // A verdict is a verdict whatever ended the dispatch.
     expect(
-      climberStatusLabel(
-        climber({ status: "completed", currentRung: undefined }),
-        3,
-      ),
-    ).toBe("Completed");
+      climberStatusLabel(climber({ status: "failed" }), 3, "stopped"),
+    ).toBe("Failed at rung 2");
   });
 
-  it("names the rung a blocked climber is stuck on, and the kind of fault", () => {
-    const blocked = (b: LadderClimber["blocked"]) =>
-      climberStatusLabel(climber({ status: "blocked", blocked: b }), 3);
-    expect(blocked({ kind: "unsupportedRung", rungId: "r1" })).toBe(
-      "Blocked at rung 2: not validator-rated",
-    );
-    expect(blocked({ kind: "unlaunchable", reason: "slot unbound" })).toBe(
-      "Blocked at rung 2: cannot launch",
-    );
-    expect(blocked({ kind: "unrated", runs: 2 })).toBe(
-      "Blocked at rung 2: 2 runs unrated",
-    );
-    expect(blocked({ kind: "unrated", runs: 1 })).toBe(
-      "Blocked at rung 2: 1 run unrated",
-    );
-  });
-
-  it("says a paused climber with no rung is paused", () => {
-    expect(
-      climberStatusLabel(
-        climber({ status: "paused", currentRung: undefined }),
-        3,
-      ),
-    ).toBe("Paused");
-  });
-
-  it("never says a climber is waiting on a review", () => {
+  it("never says a climber is waiting on a review or paused", () => {
     for (const status of [
       "running",
       "blocked",
       "failed",
-      "paused",
       "completed",
     ] as const) {
-      expect(climberStatusLabel(climber({ status }), 3)).not.toMatch(/review/i);
+      expect(climberStatusLabel(climber({ status }), 3)).not.toMatch(
+        /review|paused/i,
+      );
     }
   });
 });
 
-// The wire delivers verdicts as a flat list with superseded ones trailing; the page
-// reads them per rung, so the pairing happens once and in one place.
-describe("buildRungViews", () => {
-  it("attaches each verdict to its rung and flags a running climber's current one", () => {
-    const views = buildRungViews(climber(), [rung(0), rung(1), rung(2)]);
-    expect(views.map((v) => v.outcome?.outcome ?? null)).toEqual([
-      "passed",
-      null,
-      null,
-    ]);
-    expect(views.map((v) => v.current)).toEqual([false, true, false]);
-    expect(views.map((v) => v.badge)).toEqual([
-      "passed",
-      "running",
-      "notReached",
-    ]);
-    expect(views[1]!.tally).not.toBeNull();
-  });
-
-  // A failed climber is finished: the rung it failed is its result, carried by the
-  // Failed badge, and highlighting it as "current" is what made that row shift.
-  it("never marks a failed climber's rung as current", () => {
-    const views = buildRungViews(
-      climber({
-        status: "failed",
-        currentRung: cell({ rungId: "r1", position: 1, outcome: "failed" }),
-        outcomes: [outcome(), outcome({ rungId: "r1", outcome: "failed" })],
-      }),
-      [rung(0), rung(1), rung(2)],
-    );
-    expect(views.map((v) => v.current)).toEqual([false, false, false]);
-    expect(views.map((v) => v.badge)).toEqual([
-      "passed",
-      "failed",
-      "notReached",
-    ]);
-  });
-
-  it("badges a blocked or paused climber's rung by its state, without a highlight", () => {
-    for (const status of ["blocked", "paused"] as const) {
-      const views = buildRungViews(climber({ status }), [
-        rung(0),
-        rung(1),
-        rung(2),
-      ]);
-      expect(views[1]!.badge).toBe(status);
-      expect(views.some((v) => v.current)).toBe(false);
-    }
-  });
-
-  it("badges every rung of a completed climber as passed", () => {
-    const views = buildRungViews(
-      climber({ status: "completed", currentRung: undefined }),
-      [rung(0), rung(1), rung(2)],
-    );
-    expect(views.map((v) => v.badge)).toEqual(["passed", "passed", "passed"]);
-    expect(views.some((v) => v.current)).toBe(false);
-  });
-
-  it("keeps verdicts decided against a superseded version as history only", () => {
-    const views = buildRungViews(
-      climber({
-        outcomes: [
-          outcome({ rungId: "r0", decidedVersion: "v0.9.0", stale: true }),
-        ],
-      }),
-      [rung(0), rung(1), rung(2)],
-    );
-    // Nothing governs rung 0: the only verdict on it was earned against a version it
-    // no longer pins.
-    expect(views[0]!.outcome).toBeNull();
-    expect(views[0]!.history).toHaveLength(1);
-  });
-
-  it("marks the rungs above the climber as not reached", () => {
-    const views = buildRungViews(climber(), [rung(0), rung(1), rung(2)]);
-    expect(views.map((v) => v.reached)).toEqual([true, true, false]);
+describe("dispatchStatusLabel", () => {
+  it("reads a ladder never run as Not run yet", () => {
+    expect(dispatchStatusLabel(null)).toBe("Not run yet");
+    expect(dispatchStatusLabel("running")).toBe("Running");
+    expect(dispatchStatusLabel("finished")).toBe("Finished");
+    expect(dispatchStatusLabel("stopped")).toBe("Stopped");
   });
 });
 
-// The evidence sentence has to carry every number a disagreement could be about:
-// what is still to come is the ladder's to launch, and a run with no validator rating
-// is a fault the gate cannot see past. Nothing in it waits on a reviewer.
 describe("describeTally", () => {
   it("states how many runs passed, against how many, and how many are needed", () => {
-    expect(
-      describeTally(
-        tally({
-          completed: 3,
-          passing: 2,
-          required: 1,
-          unrated: 0,
-          pending: 0,
-        }),
-      ),
-    ).toBe("2 of 3 runs passed (1 needed)");
+    expect(describeTally(tally({ unrated: 0, inFlight: 0, pending: 0 }))).toBe(
+      "1 of 3 runs passed (2 needed)",
+    );
   });
 
-  it("adds the runs the gate cannot read yet and the runs still to come", () => {
-    const text = describeTally(tally());
-    expect(text).toBe(
-      "1 of 3 runs passed (2 needed) · 1 without a validator rating · 2 still to run",
+  it("adds the unrated runs, the runs in flight and the runs still to launch", () => {
+    expect(describeTally(tally({ pending: 3, inFlight: 1 }))).toBe(
+      "1 of 3 runs passed (2 needed) · 1 without a validator rating · 1 in flight · 2 still to launch",
     );
-    expect(text).not.toMatch(/review/i);
   });
 
   it("says one run in the singular", () => {
     expect(
-      describeTally(
-        tally({
-          completed: 1,
-          passing: 1,
-          required: 1,
-          unrated: 0,
-          pending: 0,
-        }),
-      ),
-    ).toBe("1 of 1 run passed (1 needed)");
+      describeTally(tally({ counted: 1, unrated: 0, inFlight: 0, pending: 0 })),
+    ).toBe("1 of 1 run passed (2 needed)");
   });
 });
 
-// Every reason a climber is blocked names its fix, because it is the one state nothing
-// clears by itself.
 describe("describeClimberBlock", () => {
-  const name = (slug: string) => slug.toUpperCase();
-  const rungs = [rung(0), rung(1, { slug: "pong" })];
-
-  it("names the rung that is not validator-rated, and says to replace it", () => {
-    const text = describeClimberBlock(
-      { kind: "unsupportedRung", rungId: "r1" },
-      rungs,
-      name,
-    );
-    expect(text).toMatch(
-      /^Rung 2 \(PONG · base · v1\.0\.0\) is not validator-rated/,
-    );
-    expect(text).toMatch(/Replace it with a validator-rated version/);
-  });
-
-  it("says what to do about each of the other reasons", () => {
-    expect(
-      describeClimberBlock(
-        { kind: "unlaunchable", reason: "launch slot `critic` is unbound" },
-        rungs,
-        name,
-      ),
-    ).toMatch(
-      /launch slot `critic` is unbound\. Fix the combination or drop it/,
+  it("names the fix for each reason", () => {
+    expect(describeClimberBlock({ kind: "failing", attempts: 3 })).toMatch(
+      /last 3 runs on this rung failed on infrastructure.*retry/,
     );
     expect(
-      describeClimberBlock({ kind: "failing", attempts: 3 }, rungs, name),
-    ).toMatch(/last 3 runs on this rung failed.*retry this climber/);
-    expect(
-      describeClimberBlock({ kind: "failing", attempts: 3 }, rungs, name),
-    ).not.toMatch(/top up/i);
-    expect(
-      describeClimberBlock({ kind: "unrated", runs: 2 }, rungs, name),
-    ).toMatch(
-      /2 completed runs on this rung carry no validator rating.*Re-push/,
+      describeClimberBlock({ kind: "unlaunchable", reason: "slot unbound" }),
+    ).toMatch(/cannot be launched: slot unbound.*retry/);
+    expect(describeClimberBlock({ kind: "unrated", runs: 2 })).toMatch(
+      /2 completed runs .* carry no validator rating/,
     );
   });
 });
 
-// Steering and retries address a climber by the combination itself, so the fields
-// that make a gg climber a gg climber have to survive the round trip — otherwise a
-// pause lands on whichever climber happened to share the root model, or on none.
 describe("climberCombo", () => {
-  it("keeps a harness climber's combination to the three fields it has", () => {
-    expect(climberCombo(climber({ provider: "openrouter" }))).toEqual({
+  it("keeps a harness climber's combination to the fields it has", () => {
+    expect(climberCombo(climber())).toEqual({
       harness: "claude",
       model: "opus",
-      provider: "openrouter",
     });
   });
 
@@ -447,170 +347,49 @@ describe("climberCombo", () => {
       ggSlotModels: { primary: "opus", critic: "haiku" },
     });
   });
-
-  it("leaves the gg fields off a harness climber entirely", () => {
-    expect(climberCombo(climber())).not.toHaveProperty("ggConfigId");
-    expect(climberCombo(climber())).not.toHaveProperty("ggSlotModels");
-  });
 });
 
-// A halt that only reports success cannot be told apart from a halt whose scope was
-// wrong, so the count — including zero — is always stated.
-describe("describeLadderHalt", () => {
+// A stop that only reports success cannot be told apart from one that found nothing.
+describe("describeLadderStop", () => {
   it("reports the count and the scope", () => {
-    expect(describeLadderHalt({ canceled: 4, includedActive: false })).toMatch(
-      /canceled 4 jobs that had not started/i,
+    expect(describeLadderStop({ canceled: 4, includedActive: false })).toBe(
+      "Stopped. Canceled 4 runs that had not started.",
     );
-    expect(describeLadderHalt({ canceled: 1, includedActive: true })).toMatch(
-      /canceled 1 job including runs already executing/i,
+    expect(describeLadderStop({ canceled: 1, includedActive: true })).toBe(
+      "Stopped. Canceled 1 run including runs already executing.",
     );
   });
 
-  it("says explicitly that nothing was found rather than succeeding silently", () => {
-    expect(describeLadderHalt({ canceled: 0, includedActive: false })).toMatch(
-      /no jobs of this ladder were waiting/i,
+  it("says explicitly that nothing was found", () => {
+    expect(describeLadderStop({ canceled: 0, includedActive: false })).toMatch(
+      /No runs of this dispatch were waiting/,
     );
   });
 });
 
-// The note says only what the summary figures cannot: "Finished." once every climber
-// has completed or failed, the blocked climbers with each fix, and a climb that cannot
-// proceed at all. A ladder that is simply running gets no note, and nothing narrates.
 describe("ladderStatusNote", () => {
-  const LEGACY = /top up|promote|wall|topped out|answered its question|nobody/i;
-
-  it("says Finished. when every climber completed or failed", () => {
-    const note = ladderStatusNote(
-      progress({
-        climbers: [
-          climber({ status: "failed" }),
-          climber({
-            key: "codex|gpt",
-            status: "completed",
-            currentRung: undefined,
-            unlaunchable: "that model is no longer offered",
-          }),
-        ],
-        climbersRunning: 0,
-        climbersFailed: 1,
-        climbersCompleted: 1,
-      }),
-      true,
+  it("says nothing for a ladder never run, or one simply running", () => {
+    expect(ladderStatusNote(progress({ dispatch: null, climbers: [] }))).toBe(
+      null,
     );
-    expect(note).toBe("Finished.");
+    expect(ladderStatusNote(progress())).toBe(null);
   });
 
-  it("is not Finished. while a climber is blocked, paused, or running", () => {
-    for (const status of ["blocked", "paused", "running"] as const) {
-      const note = ladderStatusNote(
-        progress({
-          climbers: [
-            climber({ status: "failed" }),
-            climber({
-              key: "codex|gpt",
-              status,
-              ...(status === "blocked"
-                ? { blocked: { kind: "unsupportedRung", rungId: "r1" } }
-                : {}),
-            }),
-          ],
-        }),
-        true,
-      );
-      expect(note).not.toBe("Finished.");
-    }
+  it("says Finished. and Stopped. at the ends of a dispatch", () => {
+    expect(
+      ladderStatusNote(
+        progress({ dispatch: dispatch({ status: "finished" }) }),
+      ),
+    ).toBe("Finished.");
+    expect(
+      ladderStatusNote(progress({ dispatch: dispatch({ status: "stopped" }) })),
+    ).toBe("Stopped.");
   });
 
   it("groups blocked climbers by reason, each with its fix", () => {
     const note = ladderStatusNote(
       progress({
         climbers: [
-          climber(),
-          climber({
-            key: "a",
-            status: "blocked",
-            blocked: { kind: "failing", attempts: 3 },
-          }),
-          climber({
-            key: "b",
-            status: "blocked",
-            blocked: { kind: "unrated", runs: 1 },
-          }),
-          climber({
-            key: "c",
-            status: "blocked",
-            blocked: { kind: "unrated", runs: 2 },
-          }),
-        ],
-        climbersBlocked: 3,
-      }),
-    );
-    // The blocked total is the summary's figure; the note gives only the reasons.
-    expect(note).toBe(
-      "1 blocked climber stands on a rung whose runs keep failing: fix the cause, then retry it. " +
-        "2 blocked climbers stand on a rung whose runs carry no validator rating: re-push those runs, or replace the rung.",
-    );
-  });
-
-  // The note's blocked count is the header's: only climbers whose status is blocked.
-  // A paused climber nothing can launch keeps that reason on its own row.
-  it("counts only the climbers whose status is blocked", () => {
-    const note = ladderStatusNote(
-      progress({
-        climbers: [
-          climber(),
-          ggClimber({
-            key: "gg|saved:gone|primary=opus",
-            status: "blocked",
-            blocked: {
-              kind: "unlaunchable",
-              reason: "that gg configuration is no longer on your account",
-            },
-            unlaunchable: "that gg configuration is no longer on your account",
-          }),
-          ggClimber({
-            key: "gg|saved:cfg-2|primary=opus",
-            status: "paused",
-            unlaunchable: "launch slot `critic` is unbound",
-          }),
-        ],
-        climbersBlocked: 1,
-      }),
-    );
-    expect(note).toBe(
-      "1 blocked climber cannot be launched at all: fix or drop the combination named on its row.",
-    );
-  });
-
-  it("names a zero runs-in-flight limit on an enabled ladder", () => {
-    const stuck = progress({ bufferTarget: { kind: "bounded", runs: 0 } });
-    expect(ladderStatusNote(stuck, true)).toBe(
-      "The runs-in-flight limit is 0, so this ladder launches nothing.",
-    );
-    // A disabled ladder launches nothing anyway; its switch says so.
-    expect(ladderStatusNote(stuck, false)).toBeNull();
-  });
-
-  it("stays quiet while the ladder is simply running", () => {
-    expect(ladderStatusNote(progress(), true)).toBeNull();
-    expect(
-      ladderStatusNote(
-        progress({
-          runsInFlight: 10,
-          bufferTarget: { kind: "bounded", runs: 10 },
-        }),
-        true,
-      ),
-    ).toBeNull();
-    expect(ladderStatusNote(progress({ runsInFlight: 0 }), true)).toBeNull();
-  });
-
-  it("never mentions Top up now, promote, wall, or topped out", () => {
-    const boards = [
-      progress(),
-      progress({ climbers: [climber({ status: "failed" })] }),
-      progress({
-        climbers: [
           climber({
             status: "blocked",
             blocked: { kind: "failing", attempts: 3 },
@@ -618,64 +397,65 @@ describe("ladderStatusNote", () => {
           climber({
             key: "b",
             status: "blocked",
-            blocked: { kind: "unsupportedRung", rungId: "r1" },
+            blocked: { kind: "failing", attempts: 3 },
           }),
           climber({
             key: "c",
             status: "blocked",
             blocked: { kind: "unlaunchable", reason: "x" },
           }),
-          climber({
-            key: "d",
-            status: "blocked",
-            blocked: { kind: "unrated", runs: 1 },
-          }),
         ],
-        bufferTarget: { kind: "bounded", runs: 0 },
       }),
-    ];
-    for (const board of boards) {
-      for (const enabled of [true, false]) {
-        expect(ladderStatusNote(board, enabled) ?? "").not.toMatch(LEGACY);
-      }
-    }
+    );
+    expect(note).toMatch(/1 blocked climber cannot be launched/);
+    expect(note).toMatch(
+      /2 blocked climbers stand on a rung whose runs keep failing/,
+    );
+  });
+
+  it("names a zero runs-in-flight limit", () => {
+    expect(
+      ladderStatusNote(
+        progress({
+          dispatch: dispatch({ inFlightLimit: { kind: "bounded", runs: 0 } }),
+        }),
+      ),
+    ).toMatch(/runs-in-flight limit is 0/);
   });
 });
 
-// The board's row is the feature: collapsed it must already answer "how far did this
+// The board's card is the feature: collapsed it must already answer "how far did this
 // model get", and expanded it must show the evidence behind each rung.
 describe("ClimberRow", () => {
   function renderRow(
     over: Partial<LadderClimber> = {},
-    rungs: LadderProgressRung[] = [rung(0), rung(1), rung(2)],
-    query?: GalleryDataInput["queryRunSummaries"],
+    opts: {
+      rungs?: LadderProgressRung[];
+      query?: GalleryDataInput["queryRunSummaries"];
+      dispatch?: "running" | "finished" | "stopped";
+    } = {},
   ) {
-    const onSteer = vi.fn();
     const onRetry = vi.fn();
-    const onBump = vi.fn();
     render(
       <MemoryRouter>
-        <GalleryDataProvider value={galleryValue(query)}>
+        <GalleryDataProvider value={galleryValue(opts.query)}>
           <ClimberRow
             climber={climber(over)}
-            rungs={rungs}
+            rungs={opts.rungs ?? [rung(0), rung(1), rung(2)]}
             busy={false}
-            editTo="/account/ladders/l1/edit"
-            onSteer={onSteer}
+            dispatch={opts.dispatch ?? "running"}
             onRetry={onRetry}
-            onBump={onBump}
           />
         </GalleryDataProvider>
       </MemoryRouter>,
     );
-    return { onSteer, onRetry, onBump };
+    return { onRetry };
   }
 
-  it("answers where the climber stopped without being expanded", () => {
-    renderRow({ status: "failed", currentRung: cell({ position: 1 }) });
-    expect(screen.getByText("Failed at rung 2")).toBeTruthy();
+  it("answers where the climber stands without being expanded", () => {
+    renderRow();
+    expect(screen.getByText("Running rung 2")).toBeTruthy();
     expect(screen.getByText("1/3 rungs")).toBeTruthy();
-    // The per-rung detail is what expanding adds.
     expect(screen.queryByText(/runs passed/)).toBeNull();
   });
 
@@ -688,7 +468,7 @@ describe("ClimberRow", () => {
       {
         status: "blocked" as const,
         blocked: { kind: "unrated" as const, runs: 3 },
-        currentRung: cell({ position: 11 }),
+        currentRung: 11,
       },
     ]) {
       const { unmount } = render(
@@ -698,8 +478,6 @@ describe("ClimberRow", () => {
               climber={climber(over)}
               rungs={Array.from({ length: 12 }, (_, i) => rung(i))}
               busy={false}
-              onSteer={vi.fn()}
-              onBump={vi.fn()}
             />
           </GalleryDataProvider>
         </MemoryRouter>,
@@ -709,12 +487,12 @@ describe("ClimberRow", () => {
           ? "Blocked at rung 12: 3 runs unrated"
           : "Running rung 2";
       const pill = screen.getByText(label);
-      const slot = pill.parentElement!;
-      expect(slot.className).toMatch(/climberStatusSlot/);
-      // The whole status is the pill's tooltip, for when the slot cuts it short.
+      const statusSlot = pill.parentElement!;
+      expect(statusSlot.className).toMatch(/climberStatusSlot/);
       expect(pill.getAttribute("title")).toBeTruthy();
-      const line = slot.parentElement!;
-      const slots = [...line.children].map((c) => c.className);
+      const slots = [...statusSlot.parentElement!.children].map(
+        (c) => c.className,
+      );
       expect(slots).toHaveLength(3);
       expect(slots[1]).toMatch(/rungTrack/);
       expect(slots[2]).toMatch(/rungCount/);
@@ -724,201 +502,120 @@ describe("ClimberRow", () => {
 
   it("heads a gg climber with its configuration and the models it binds", () => {
     renderRow(ggClimber());
-    // Not "gg · opus": two climbers of two configurations can share a root model, and
-    // the board exists to tell them apart at a glance.
     expect(screen.getByText("reviewer · haiku, opus")).toBeTruthy();
-    // The steering controls name the same thing, so a screen reader is never offered
-    // two identical buttons.
+  });
+
+  it("offers no steering: no watch, priority, or pause", () => {
+    renderRow();
     expect(
-      screen.getByRole("button", { name: /^Watch reviewer · haiku, opus$/ }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: /watch|pause|resume/i }),
+    ).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
-  // The state this row is worst at showing: a climber that cannot move looks exactly
-  // like one waiting on its runs, and it will keep looking like one forever.
-  it("says why a blocked climber will not move, without being expanded", () => {
-    renderRow(
-      ggClimber({
-        status: "blocked",
-        blocked: {
-          kind: "unlaunchable",
-          reason: "that gg configuration is no longer on your account",
-        },
-        unlaunchable: "that gg configuration is no longer on your account",
-      }),
-    );
-    expect(screen.getByText("Blocked at rung 2: cannot launch")).toBeTruthy();
-    // One reason line, not two: the block and the membership fault are the same one.
-    const lines = screen.getAllByText(
-      /that gg configuration is no longer on your account/,
-    );
-    expect(lines).toHaveLength(1);
-    expect(lines[0]!.textContent).toMatch(/Fix the combination or drop it/);
-  });
-
-  it("names the rung that is not validator-rated and links to replacing it", () => {
-    renderRow(
-      {
-        status: "blocked",
-        blocked: { kind: "unsupportedRung", rungId: "r1" },
-      },
-      [rung(0), rung(1, { supported: false }), rung(2)],
-    );
-    expect(
-      screen.getByText("Blocked at rung 2: not validator-rated"),
-    ).toBeTruthy();
-    const replace = screen.getByRole("link", { name: "Replace the rung" });
-    expect(replace.getAttribute("href")).toBe("/account/ladders/l1/edit");
-    // The fix sits in the sentence that names the rung it fixes.
-    expect(replace.closest("p")?.textContent).toMatch(
-      /^Rung 2 \(Case 1 · base · v1\.0\.0\) is not validator-rated/,
-    );
-  });
-
-  it("offers Retry only on a climber blocked as failing, and retries that climber", () => {
-    const failing = climber({
+  it("says why a blocked climber will not move and offers Retry", () => {
+    const { onRetry } = renderRow({
       status: "blocked",
       blocked: { kind: "failing", attempts: 3 },
     });
-    const { onRetry } = renderRow(failing);
-    const retry = screen.getByRole("button", { name: "Retry" });
-    // The fix sits at the end of the sentence that names the fault.
-    expect(retry.closest("p")?.textContent).toMatch(
-      /Fix the cause, then retry this climber/,
+    expect(
+      screen.getByText("Blocked at rung 2: runs keep failing"),
+    ).toBeTruthy();
+    expect(screen.getByText(/failed on infrastructure/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry claude · opus" }),
     );
-    fireEvent.click(retry);
-    expect(onRetry).toHaveBeenCalledWith(failing);
-    expect(screen.queryByRole("link", { name: "Replace the rung" })).toBeNull();
-    expect(screen.queryByText(/top up/i)).toBeNull();
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("offers no Retry for any other state or block", () => {
-    for (const over of [
-      {},
-      { status: "failed" as const },
-      { status: "paused" as const, paused: true },
-      {
-        status: "blocked" as const,
-        blocked: { kind: "unrated" as const, runs: 2 },
-      },
-    ]) {
-      const { unmount } = render(
-        <MemoryRouter>
-          <GalleryDataProvider value={galleryValue()}>
-            <ClimberRow
-              climber={climber(over)}
-              rungs={[rung(0), rung(1), rung(2)]}
-              busy={false}
-              onSteer={vi.fn()}
-              onRetry={vi.fn()}
-              onBump={vi.fn()}
-            />
-          </GalleryDataProvider>
-        </MemoryRouter>,
-      );
-      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-      unmount();
-    }
-  });
-
-  it("keeps a broken combination's reason on a climber that has no current rung", () => {
+  it("offers Retry on an unlaunchable climber, once, with one reason line", () => {
     renderRow(
       ggClimber({
-        status: "completed",
-        currentRung: undefined,
-        unlaunchable: "launch slot `critic` is unbound",
+        status: "blocked",
+        blocked: { kind: "unlaunchable", reason: "configuration deleted" },
+        unlaunchable: "configuration deleted",
       }),
     );
-    expect(screen.getByText("Cannot launch")).toBeTruthy();
-    expect(screen.getByText(/launch slot `critic` is unbound/)).toBeTruthy();
-    // And the state it is actually in is still said, because a broken membership is
-    // a fault beside the climb rather than a verdict of it.
-    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.getAllByText(/configuration deleted/)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /^Retry / })).toBeTruthy();
   });
 
-  it("says nothing about blocking on a climber that can launch", () => {
-    renderRow();
-    expect(screen.queryByText(/Blocked|Cannot launch/)).toBeNull();
+  it("offers no Retry for an unrated block", () => {
+    renderRow({ status: "blocked", blocked: { kind: "unrated", runs: 2 } });
+    expect(screen.queryByRole("button", { name: /^Retry / })).toBeNull();
   });
 
-  it("marks a rung the ladder cannot climb on every climber, with the way to replace it", () => {
-    renderRow({}, [rung(0), rung(1), rung(2, { supported: false })]);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(
-      screen.getByText("Not validator-rated: cannot be climbed"),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: "Replace rung" }).getAttribute("href"),
-    ).toBe("/account/ladders/l1/edit");
+  it("offers no Retry once the dispatch is no longer running", () => {
+    renderRow(
+      { status: "blocked", blocked: { kind: "failing", attempts: 3 } },
+      { dispatch: "stopped" },
+    );
+    expect(screen.getByText("Stopped at rung 2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Retry / })).toBeNull();
   });
 
-  it("expands to the per-rung badges and their evidence", () => {
+  it("expands to each rung's slot status and its evidence", () => {
     renderRow();
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText("Passed")).toBeTruthy();
-    // "Running" is the current rung's badge; the header pill says "Running rung 2".
     expect(screen.getByText("Running")).toBeTruthy();
-    expect(screen.getByText(/1 of 3 runs passed \(2 needed\)/)).toBeTruthy();
-    // A rung above the climber is still listed — the rungs ahead are what the climb
-    // is for.
-    expect(screen.getByText("Not reached")).toBeTruthy();
+    expect(screen.getByText("Pending")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1 of 3 runs passed (2 needed) · 1 without a validator rating · 1 in flight · 1 still to launch",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("badges the slots after a failed rung as skipped", () => {
+    renderRow({
+      status: "failed",
+      currentRung: 0,
+      slots: [
+        slot(0, { status: "failed", tally: tally(), runIds: ["run-1"] }),
+        slot(1, { status: "skipped" }),
+        slot(2, { status: "skipped" }),
+      ],
+    });
+    expect(screen.getByText("Failed at rung 1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getAllByText("Skipped")).toHaveLength(2);
   });
 
   it("highlights only a running climber's current rung", () => {
     renderRow();
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     const rows = screen.getAllByRole("listitem");
-    expect(rows.map((r) => /rungRowCurrent/.test(r.className))).toEqual([
-      false,
-      true,
-      false,
-    ]);
-  });
-
-  it("highlights no rung of a failed climber, and badges the rung it failed", () => {
-    renderRow({
-      status: "failed",
-      currentRung: cell({ rungId: "r1", position: 1, outcome: "failed" }),
-      outcomes: [outcome(), outcome({ rungId: "r1", outcome: "failed" })],
-    });
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    const rows = screen.getAllByRole("listitem");
-    expect(rows.some((r) => /rungRowCurrent/.test(r.className))).toBe(false);
-    expect(screen.getByText("Failed")).toBeTruthy();
-  });
-
-  it("offers no way to override a verdict", () => {
-    renderRow({
-      status: "failed",
-      currentRung: cell({ rungId: "r1", position: 1, outcome: "failed" }),
-      outcomes: [outcome(), outcome({ rungId: "r1", outcome: "failed" })],
-    });
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(
-      screen.queryByText(/promote|wall here|override|by hand/i),
-    ).toBeNull();
+    const current = rows.filter((r) => /rungRowCurrent/.test(r.className));
+    expect(current).toHaveLength(1);
+    expect(current[0]!.textContent).toMatch(/Running/);
   });
 
   it("names a rung's engine, so one case climbed on two is two rows", () => {
-    renderRow({}, [
-      rung(0, { engine: "simple-2d" }),
-      rung(1, { slug: "case-0" }),
-    ]);
+    renderRow(
+      {},
+      {
+        rungs: [
+          rung(0, { engine: "simple-2d" }),
+          rung(1, { slug: "case-0" }),
+          rung(2),
+        ],
+      },
+    );
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText("Case 0 · base · v1.0.0 · Simple 2D")).toBeTruthy();
-    // The engineless rung reads exactly as it always did: every pin has an engine, so
-    // naming `none` would add a word to every rung and distinguish nothing.
     expect(screen.getByText("Case 0 · base · v1.0.0")).toBeTruthy();
   });
 
-  it("lists a reached rung's own runs inline, for that combination at the pinned version", async () => {
+  // A rung's runs are the dispatch's own: the gate counts nothing else, so the list
+  // under a rung shows nothing else either.
+  it("lists only the dispatch's own runs of a rung", async () => {
     const query = vi.fn(async () => ({
-      summaries: [runSummary("run-1", "case-0")],
-      total: 1,
+      summaries: [runSummary("run-1", "case-0"), runSummary("other", "case-0")],
+      total: 2,
     }));
-    renderRow({}, undefined, query);
+    renderRow({}, { query });
     fireEvent.click(screen.getByRole("button", { expanded: false }));
-    // Nothing is fetched until the rung's runs are actually asked for.
     expect(query).not.toHaveBeenCalled();
     fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
     expect(query).toHaveBeenCalledWith(
@@ -929,126 +626,32 @@ describe("ClimberRow", () => {
         variant: "base",
         harness: "claude",
         model: "opus",
-        // A rung pins an exact version, which the listing's "current versions
-        // only" default would otherwise filter away.
+        engine: "none",
         latestVersions: false,
       }),
     );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("link", { name: /run-1|Case 0|opus/i }),
-      ).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getAllByRole("link")).toHaveLength(1));
+  });
+
+  it("offers no runs list on a rung the dispatch has not reached", () => {
+    renderRow();
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    // Rung 1 has a counted run and rung 2 a job in flight; rung 3 has neither.
+    expect(screen.getAllByRole("button", { name: /Runs$/ })).toHaveLength(2);
   });
 
   it("narrows a gg climber's rung runs to its configuration", () => {
-    // Harness and model alone say nothing here: every gg climber on this model runs
-    // the `gg` harness, so a rung listing without the configuration would show the
-    // runs of every arm and disagree with the verdict printed above it.
     const query = vi.fn(async () => ({ summaries: [], total: 0 }));
-    renderRow(ggClimber(), undefined, query);
+    renderRow(ggClimber(), { query });
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
     expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        harness: "gg",
-        // The bare id the run records, not the picker's `saved:` spelling.
-        ggConfigId: "cfg-1",
-      }),
+      expect.objectContaining({ harness: "gg", ggConfigId: "cfg-1" }),
     );
-  });
-
-  it("narrows a rung's runs to the rung's own engine", () => {
-    // Two rungs of one case on two engines are two cells, and the gate counts its
-    // evidence through the engine segment. A listing without it shows the other
-    // rung's runs as the argument behind this rung's verdict.
-    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
-    renderRow({}, [rung(0, { engine: "simple-2d" }), rung(1)], query);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
-    expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: "simple-2d" }),
-    );
-  });
-
-  it("asks for the engineless runs of a rung that pins no engine", () => {
-    // Absent and `none` are one pin, so the listing names the engineless run rather
-    // than leaving the filter off and picking up every engine's runs.
-    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
-    renderRow({}, undefined, query);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
-    expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: "none" }),
-    );
-  });
-
-  it("flags a live verdict as not yet written down, because a read never writes", () => {
-    renderRow({ outcomes: [outcome({ recorded: false })] });
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText(/not written down yet/)).toBeTruthy();
-  });
-
-  it("offers a bump only where the rung's pin has actually aged", () => {
-    const stale = rung(0, { latestVersion: "v1.1.0", stale: true });
-    const { onBump } = renderRow({}, [stale, rung(1), rung(2)]);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    const bump = screen.getByRole("button", { name: /v1\.0\.0 → v1\.1\.0/ });
-    fireEvent.click(bump);
-    expect(onBump).toHaveBeenCalledWith(stale);
-    // The rungs whose pins are current offer nothing to bump.
-    expect(screen.getAllByRole("button", { name: /→/ })).toHaveLength(1);
-  });
-
-  it("carries a climber's other steering when one field is changed", () => {
-    const { onSteer } = renderRow({ priority: 3, focused: true });
-    fireEvent.click(screen.getByRole("button", { name: /^Pause$/ }));
-    expect(onSteer).toHaveBeenCalledWith(
-      expect.objectContaining({ priority: 3, focused: true }),
-      { paused: true },
-    );
-  });
-
-  // Typing "12" passes through "1", and a write per keystroke re-read the board and
-  // re-rendered the field from the server's answer mid-edit — which is what made the
-  // field appear to change itself.
-  it("writes a typed priority once the field is done with, not per keystroke", () => {
-    const { onSteer } = renderRow({ priority: 0 });
-    const field = screen.getByRole("spinbutton", { name: /Climb priority/ });
-    fireEvent.change(field, { target: { value: "1" } });
-    fireEvent.change(field, { target: { value: "12" } });
-    expect(onSteer).not.toHaveBeenCalled();
-    fireEvent.blur(field);
-    expect(onSteer).toHaveBeenCalledTimes(1);
-    expect(onSteer).toHaveBeenCalledWith(expect.anything(), { priority: 12 });
-  });
-
-  it("treats an emptied priority as an abandoned edit, not as zero", () => {
-    const { onSteer } = renderRow({ priority: 4 });
-    const field = screen.getByRole("spinbutton", { name: /Climb priority/ });
-    fireEvent.change(field, { target: { value: "" } });
-    fireEvent.blur(field);
-    expect(onSteer).not.toHaveBeenCalled();
-    expect((field as HTMLInputElement).value).toBe("4");
-  });
-
-  it("toggles the focus flag from the star", () => {
-    const { onSteer } = renderRow();
-    fireEvent.click(
-      screen.getByRole("button", { name: /^Watch claude · opus$/ }),
-    );
-    expect(onSteer).toHaveBeenCalledWith(expect.anything(), { focused: true });
-  });
-
-  it("resumes a paused climber rather than offering to pause it again", () => {
-    const { onSteer } = renderRow({ paused: true, status: "paused" });
-    fireEvent.click(screen.getByRole("button", { name: /^Resume$/ }));
-    expect(onSteer).toHaveBeenCalledWith(expect.anything(), { paused: false });
   });
 });
 
-// The review loop: a rung's runs must open with a return to the ladder behind them, or
-// reviewing walks away from the board it was launched from.
+// The review loop: a rung's runs must open with a return to the ladder behind them.
 describe("the ladder's back-return", () => {
   function Dashboard() {
     useRecordSectionIndex("coverage");
@@ -1057,8 +660,6 @@ describe("the ladder's back-return", () => {
         climber={climber()}
         rungs={[rung(0), rung(1), rung(2)]}
         busy={false}
-        onSteer={vi.fn()}
-        onBump={vi.fn()}
       />
     );
   }
@@ -1086,5 +687,145 @@ describe("the ladder's back-return", () => {
     fireEvent.click(row);
     expect(screen.getByText("the run")).toBeTruthy();
     expect(sectionReturnTo("runs", "/runs")).toBe("/account/ladders/l1");
+  });
+});
+
+// The dashboard mounted for real: Run ladder starts a dispatch, Stop ends it, and the
+// controls a dispatch replaced (Enabled, Halt, Pause) are gone.
+describe("LadderPage", () => {
+  const ladder: Ladder = {
+    id: "l1",
+    name: "Easy to hard",
+    runsPerCell: 3,
+    gate: dispatch().gate,
+    comboGroupIds: [],
+    combos: [{ harness: "claude", model: "opus" }],
+    rungs: [
+      { id: "r0", slug: "case-0", version: "v1.0.0", variant: "base" },
+      { id: "r1", slug: "case-1", version: "v1.0.0", variant: "base" },
+    ],
+    outerAxis: "rung",
+    inFlightLimit: null,
+    updatedAt: "2026-10-02T00:00:00Z",
+  };
+
+  let board: LadderProgress;
+  let calls: string[];
+
+  beforeEach(() => {
+    calls = [];
+    confirmAnswer = true;
+    confirmSpy.mockClear();
+  });
+
+  function renderPage(initial: LadderProgress) {
+    board = initial;
+    const client = {
+      getLadder: async () => ladder,
+      getLadderProgress: async () => board,
+      getLadderQueue: async () => ({ runs: [], truncated: false }),
+      runLadder: async () => {
+        calls.push("run");
+        board = progress();
+        return board;
+      },
+      stopLadder: async (_id: string, input: { cancelRunning: boolean }) => {
+        calls.push(`stop:${input.cancelRunning}`);
+        board = progress({ dispatch: dispatch({ status: "stopped" }) });
+        return { canceled: 2, includedActive: input.cancelRunning };
+      },
+      retryLadderClimber: async () => {
+        calls.push("retry");
+      },
+    } as unknown as BackendClient;
+    const value = {
+      client,
+      identity: null,
+      status: "ready",
+      error: null,
+      url: null,
+      setUrl: () => {},
+    } as unknown as BackendContextValue;
+    return render(
+      <MemoryRouter initialEntries={["/account/ladders/l1"]}>
+        <BackendProvider value={value}>
+          <GalleryDataProvider value={galleryValue()}>
+            <Routes>
+              <Route
+                path="/account/ladders/:ladderId"
+                element={<LadderPage />}
+              />
+            </Routes>
+          </GalleryDataProvider>
+        </BackendProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("says how to start a ladder never run, and runs it", async () => {
+    renderPage(progress({ dispatch: null, climbers: [], runsUnreviewed: 0 }));
+    expect(await screen.findByText("Not run yet")).toBeTruthy();
+    expect(
+      screen.getByText(/Press Run ladder to start a dispatch/),
+    ).toBeTruthy();
+    // The configured rungs, so the reader sees what a Run would climb.
+    expect(screen.getByText("Case 0 · base · v1.0.0")).toBeTruthy();
+    const stop = screen.getByRole("button", { name: "Stop" });
+    expect((stop as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "▶ Run ladder" }));
+    await screen.findByText(/rung 1 is launching for every climber/);
+    expect(calls).toEqual(["run"]);
+    // A first Run replaces nothing, so it is not confirmed.
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByText("Running")).toBeTruthy();
+  });
+
+  it("shows the summary with the skipped count, and offers no removed controls", async () => {
+    renderPage(
+      progress({ dispatch: dispatch({ slots: slotCounts({ skipped: 4 }) }) }),
+    );
+    await screen.findByText("rungs skipped");
+    expect(screen.getByText("rungs skipped").textContent).toBe(
+      "4 rungs skipped",
+    );
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Halt/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Pause|Resume/ })).toBeNull();
+    expect(screen.queryByText(/↑/)).toBeNull();
+    const run = screen.getByRole("button", { name: "▶ Run ladder" });
+    expect((run as HTMLButtonElement).disabled).toBe(true);
+    expect(run.getAttribute("title")).toMatch(/Stop it to run again/);
+  });
+
+  it("stops the dispatch and says what it cancelled", async () => {
+    renderPage(progress());
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    await screen.findByText("Stopped. Canceled 2 runs that had not started.");
+    expect(calls).toEqual(["stop:false"]);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("confirms before cancelling running runs too", async () => {
+    renderPage(progress());
+    confirmAnswer = false;
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop and cancel running" }),
+    );
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    expect(calls).toEqual([]);
+    confirmAnswer = true;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop and cancel running" }),
+    );
+    await screen.findByText(/including runs already executing/);
+    expect(calls).toEqual(["stop:true"]);
+  });
+
+  it("confirms running again over a finished dispatch", async () => {
+    renderPage(progress({ dispatch: dispatch({ status: "finished" }) }));
+    expect(await screen.findByText("Finished")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "▶ Run ladder" }));
+    await waitFor(() => expect(calls).toEqual(["run"]));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 });

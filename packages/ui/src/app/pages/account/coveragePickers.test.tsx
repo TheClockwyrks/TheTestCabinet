@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type {
-  BufferTarget,
+  InFlightLimit,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@clockwyrks/run-record/coverage";
@@ -18,7 +18,7 @@ import {
 } from "../../data/galleryContext";
 import {
   AxisPicker,
-  BufferTargetField,
+  InFlightLimitField,
   CasePicker,
   ComboPicker,
   axisLabel,
@@ -126,19 +126,19 @@ describe("AxisPicker", () => {
   });
 });
 
-// Empty and `0` are different instructions — "use my account default" versus "never
-// top this plan up" — so the field must never collapse one into the other.
-describe("BufferTargetField", () => {
-  const bounded = (runs: number): BufferTarget => ({ kind: "bounded", runs });
-  const unbounded: BufferTarget = { kind: "unbounded" };
+// Empty and `0` are different instructions — "use my account default" versus "launch
+// nothing" — so the field must never collapse one into the other.
+describe("InFlightLimitField", () => {
+  const bounded = (runs: number): InFlightLimit => ({ kind: "bounded", runs });
+  const unbounded: InFlightLimit = { kind: "unbounded" };
 
   function renderField(
-    value: BufferTarget | null,
+    value: InFlightLimit | null,
     onChange = vi.fn(),
-    accountDefault: BufferTarget = bounded(7),
+    accountDefault: InFlightLimit = bounded(7),
   ) {
     render(
-      <BufferTargetField
+      <InFlightLimitField
         value={value}
         accountDefault={accountDefault}
         onChange={onChange}
@@ -158,7 +158,7 @@ describe("BufferTargetField", () => {
     expect(input.value).toBe("");
     expect(input.getAttribute("placeholder")).toBe("7");
     expect(
-      screen.getByText(/inherits your account default of 7 outstanding runs/),
+      screen.getByText(/inherits your account default of 7 runs in flight/),
     ).toBeTruthy();
   });
 
@@ -184,14 +184,16 @@ describe("BufferTargetField", () => {
 
   it("spells out what zero means, since it looks like an empty field", () => {
     renderField(bounded(0));
-    expect(screen.getByText(/stops this plan topping itself up/i)).toBeTruthy();
+    expect(
+      screen.getByText(/stops this plan launching runs at all/i),
+    ).toBeTruthy();
     expect(screen.getByText(/different from empty/i)).toBeTruthy();
   });
 
   it("offers dropping the override without deleting digits", () => {
     const { onChange } = renderField(bounded(4));
     fireEvent.click(
-      screen.getByRole("button", { name: "Reset Review buffer" }),
+      screen.getByRole("button", { name: "Reset Runs in flight at once" }),
     );
     expect(onChange).toHaveBeenCalledWith(null);
   });
@@ -222,7 +224,7 @@ describe("BufferTargetField", () => {
   it("restores the bound that no limit replaced when it is switched back off", () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <BufferTargetField
+      <InFlightLimitField
         value={bounded(4)}
         accountDefault={bounded(7)}
         onChange={onChange}
@@ -231,7 +233,7 @@ describe("BufferTargetField", () => {
     fireEvent.click(screen.getByRole("switch", { name: "No limit" }));
     expect(onChange).toHaveBeenLastCalledWith(unbounded);
     rerender(
-      <BufferTargetField
+      <InFlightLimitField
         value={unbounded}
         accountDefault={bounded(7)}
         onChange={onChange}

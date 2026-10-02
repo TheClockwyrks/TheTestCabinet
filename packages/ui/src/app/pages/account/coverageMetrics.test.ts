@@ -23,7 +23,9 @@ function cell(over: Partial<CoverageCell> = {}): CoverageCell {
     harness: "claude",
     model: "claude-sonnet-4-5",
     desired: 3,
-    completed: 1,
+    counted: 1,
+    filled: false,
+    blocked: false,
     inFlight: 0,
     pending: 0,
     unreviewed: 0,
@@ -38,13 +40,17 @@ function matrix(cells: CoverageCell[]): CoverageMatrix {
   return {
     cells,
     outerAxis: "case",
-    cellsSatisfied: 0,
+    cellsFilled: 0,
     cellsTotal: cells.length,
+    cellsBlocked: 0,
+    runsDone: 0,
+    runsTotal: 0,
+    runsInFlight: 0,
     runsMissing: 0,
     runsPending: 0,
     runsUnreviewed: 0,
-    runsOutstanding: 0,
-    bufferTarget: { kind: "bounded", runs: 10 },
+    inFlightLimit: { kind: "bounded", runs: 10 },
+    filling: false,
   };
 }
 

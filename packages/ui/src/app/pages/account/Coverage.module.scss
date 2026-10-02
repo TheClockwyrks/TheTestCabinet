@@ -95,9 +95,8 @@
   }
 }
 
-// The plan's feeding controls, between the roll-up stats and the matrix: what order
-// its runs arrive in and whether a review tops it up on the left, the actions
-// (top up / pause / halt) pushed to the right. Wraps rather than scrolls, so a
+// The plan's and the ladder's control strip: a statement of what the controls do on
+// the left, the actions (All missing / halt, Run / stop) pushed to the right. Wraps rather than scrolls, so a
 // narrow viewport stacks the actions under the state they act on instead of
 // pushing the page sideways.
 .controls {
@@ -124,26 +123,9 @@
   }
 }
 
-// A checkbox + label pair (auto-top-up), laid out inline so the label reads as one
-// sentence with its box rather than as a stray caption. Only the plan and ladder
-// dashboards carry it, inside their control strip: an editor's settings are rows, and
-// a strip's are a line of controls beside the statement they act on, which is why the
-// alignment below is a separate class.
-.controlToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: t.$space-xs;
-  color: t.$color-text-muted;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  cursor: pointer;
-}
-
 // Starts the control strip's right-hand cluster: this item and everything after it are
 // pushed to the strip's trailing edge, leaving only the "runs in this order" statement
-// on the left. Carried by the auto-top-up toggle, so the setting sits with the buttons
-// that act on the same thing rather than trailing the statement it has nothing to do
-// with. Exactly one item in a strip may carry it — two auto margins split the free
+// on the left. Carried by the actions cluster. Exactly one item in a strip may carry it — two auto margins split the free
 // space between them instead of collecting it at one end, which is why `.controlActions`
 // no longer sets its own.
 .controlEnd {
@@ -159,21 +141,7 @@
   gap: t.$space-sm;
 }
 
-// The "paused" pill beside a plan's title, in the same warning colour the
-// stale-version pill uses for "you may want to look at this".
-.pausedBadge {
-  flex: none;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-bg;
-  background: t.$color-warning;
-  border-radius: t.$radius-sm;
-  padding: t.$space-2xs t.$space-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-// A plan card's title beside its paused pill.
+// A plan card's title row.
 .rowTitleRow {
   display: flex;
   align-items: center;
@@ -181,8 +149,8 @@
   min-width: 0;
 }
 
-// The "N to review" pill on a block header: runs that are done and counted, but
-// still sitting in the reviewer's buffer.
+// The "N to review" pill on a block header: runs that are done and counted, and not
+// reviewed yet. Informational.
 .waitingBadge {
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -231,7 +199,7 @@
 }
 
 // The row's left half: the case name followed by the qualifiers that tell it apart
-// from its siblings in the buffer.
+// from its siblings in the queue.
 .queueIdentity {
   display: flex;
   flex-wrap: wrap;
@@ -286,8 +254,8 @@
   width: 6rem;
 }
 
-// The buffer field's number beside its no-limit switch, wrapping on narrow viewports.
-.settingBuffer {
+// The runs-in-flight limit's number beside its no-limit switch, wrapping on narrow viewports.
+.settingLimit {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -542,6 +510,26 @@
   color: t.$color-negative;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
+}
+
+// A blocked cell's reason beside its Retry, on the row of its own.
+.cellRetry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+}
+
+// The "N blocked" pill on a block header, so a blocked cell is found without
+// expanding every block.
+.blockedBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-negative;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
 }
 
 // The cell's "Runs" link: a quiet text control into the runs listing narrowed to

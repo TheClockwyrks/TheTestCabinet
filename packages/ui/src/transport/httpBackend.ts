@@ -112,26 +112,25 @@ import type {
   CoveragePlanOut,
   CoveragePlanSummary,
   CoverageQueue,
-  CoverageSchedule,
   CoverageSettings,
   CoverageSettingsInput,
   HaltResult,
-  TopUpResult,
+  LaunchPassResult,
+  PlanCellRetryInput,
 } from "@clockwyrks/run-record/coverage";
 import type {
   Comparison,
   ComparisonInput,
 } from "@clockwyrks/run-record/comparison";
 import type {
-  LadderClimberInput,
+  Ladder,
   LadderInput,
-  LadderOut,
   LadderProgress,
   LadderRung,
   LadderRetryInput,
   LadderRungOrderInput,
-  LadderSchedule,
-  StoredClimberOut,
+  LadderStopInput,
+  LadderSummary,
 } from "@clockwyrks/run-record/ladders";
 import {
   delJson,
@@ -469,7 +468,7 @@ interface MyReviewsResponseBody {
 }
 
 // The path of one coverage plan's resource, or of a sub-resource beneath it
-// (`/schedule`, `/topup`, …). Every plan-scoped call routes through here so the id is
+// (`/fill`, `/halt`, …). Every plan-scoped call routes through here so the id is
 // escaped exactly once, in one place — a plan id is opaque and must survive the URL
 // intact for the scoped controls (halt above all) to address the right plan.
 function planPath(id: string, suffix = ""): string {
@@ -860,8 +859,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listCoveragePlans(token: string): Promise<CoveragePlanOut[]> {
-      // Each plan arrives with its schedule flattened in (`CoveragePlanOut`), so the
-      // plans list can show paused/axis/buffer state without a call per plan.
+      // Each plan arrives with whether it is filling (`CoveragePlanOut`), so a
+      // listing needs no call per plan.
       return getJson<CoveragePlanOut[]>(baseUrl, "/coverage-plans", token);
     },
 
@@ -924,35 +923,27 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getCoveragePlanSchedule(
+    async fillCoveragePlan(
       id: string,
       token: string,
-    ): Promise<CoverageSchedule> {
-      return getJson<CoverageSchedule>(
+    ): Promise<LaunchPassResult> {
+      // No body: every input (the plan, its limit, what is in flight) is server-side
+      // state the pass recomputes, which is what makes repeating the call harmless.
+      return postJson<LaunchPassResult>(
         baseUrl,
-        planPath(id, "/schedule"),
+        planPath(id, "/fill"),
+        {},
         token,
       );
     },
 
-    async setCoveragePlanSchedule(
+    async retryCoveragePlanCell(
       id: string,
-      schedule: CoverageSchedule,
+      input: PlanCellRetryInput,
       token: string,
-    ): Promise<CoverageSchedule> {
-      return putJson<CoverageSchedule>(
-        baseUrl,
-        planPath(id, "/schedule"),
-        schedule,
-        token,
-      );
-    },
-
-    async topUpCoveragePlan(id: string, token: string): Promise<TopUpResult> {
-      // The top-up takes no body — every input (the plan, its schedule, the account's
-      // buffer target, what is already outstanding) is server-side state it recomputes
-      // per call, which is exactly what makes repeating the call harmless.
-      return postJson<TopUpResult>(baseUrl, planPath(id, "/topup"), {}, token);
+    ): Promise<void> {
+      // The cell travels in the body, not the path: a model id contains slashes.
+      await postVoid(baseUrl, planPath(id, "/cells/retry"), input, token);
     },
 
     async getCoveragePlanQueue(
@@ -960,21 +951,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       token: string,
     ): Promise<CoverageQueue> {
       return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"), token);
-    },
-
-    async pauseCoveragePlan(
-      id: string,
-      paused: boolean,
-      token: string,
-    ): Promise<CoverageSchedule> {
-      // The desired state travels in the body, so the control is idempotent and a
-      // console can drive a switch without tracking which way it is going.
-      return postJson<CoverageSchedule>(
-        baseUrl,
-        planPath(id, "/pause"),
-        { paused },
-        token,
-      );
     },
 
     async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {
@@ -990,27 +966,31 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async listLadders(token: string): Promise<LadderOut[]> {
-      return getJson<LadderOut[]>(baseUrl, "/ladders", token);
+    async listLadders(token: string): Promise<Ladder[]> {
+      return getJson<Ladder[]>(baseUrl, "/ladders", token);
     },
 
-    async getLadder(id: string, token: string): Promise<LadderOut> {
-      return getJson<LadderOut>(baseUrl, ladderPath(id), token);
+    async getLaddersSummary(token: string): Promise<LadderSummary[]> {
+      return getJson<LadderSummary[]>(baseUrl, "/ladders/summary", token);
     },
 
-    async createLadder(input: LadderInput, token: string): Promise<LadderOut> {
-      // The response carries every rung's minted id — the stable handle a reorder, a
-      // version bump, and every recorded verdict key off — so the caller must adopt
-      // the returned ladder rather than the one it submitted.
-      return postJson<LadderOut>(baseUrl, "/ladders", input, token);
+    async getLadder(id: string, token: string): Promise<Ladder> {
+      return getJson<Ladder>(baseUrl, ladderPath(id), token);
+    },
+
+    async createLadder(input: LadderInput, token: string): Promise<Ladder> {
+      // The response carries every rung's minted id — the stable handle a reorder and
+      // a dispatch's slots key off — so the caller must adopt the returned ladder
+      // rather than the one it submitted.
+      return postJson<Ladder>(baseUrl, "/ladders", input, token);
     },
 
     async updateLadder(
       id: string,
       input: LadderInput,
       token: string,
-    ): Promise<LadderOut> {
-      return putJson<LadderOut>(baseUrl, ladderPath(id), input, token);
+    ): Promise<Ladder> {
+      return putJson<Ladder>(baseUrl, ladderPath(id), input, token);
     },
 
     async deleteLadder(id: string, token: string): Promise<void> {
@@ -1030,26 +1010,24 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getLadderSchedule(
-      id: string,
-      token: string,
-    ): Promise<LadderSchedule> {
-      return getJson<LadderSchedule>(
+    async runLadder(id: string, token: string): Promise<LadderProgress> {
+      return postJson<LadderProgress>(
         baseUrl,
-        ladderPath(id, "/schedule"),
+        ladderPath(id, "/run"),
+        {},
         token,
       );
     },
 
-    async setLadderSchedule(
+    async stopLadder(
       id: string,
-      schedule: LadderSchedule,
+      input: LadderStopInput,
       token: string,
-    ): Promise<LadderSchedule> {
-      return putJson<LadderSchedule>(
+    ): Promise<HaltResult> {
+      return postJson<HaltResult>(
         baseUrl,
-        ladderPath(id, "/schedule"),
-        schedule,
+        ladderPath(id, "/stop"),
+        input,
         token,
       );
     },
@@ -1069,54 +1047,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"), token);
     },
 
-    async pauseLadder(
-      id: string,
-      paused: boolean,
-      token: string,
-    ): Promise<LadderSchedule> {
-      return postJson<LadderSchedule>(
-        baseUrl,
-        ladderPath(id, "/pause"),
-        { paused },
-        token,
-      );
-    },
-
-    async haltLadder(id: string, token: string): Promise<HaltResult> {
-      return postJson<HaltResult>(baseUrl, ladderPath(id, "/halt"), {}, token);
-    },
-
-    async haltAllLadder(id: string, token: string): Promise<HaltResult> {
-      return postJson<HaltResult>(
-        baseUrl,
-        ladderPath(id, "/halt-all"),
-        {},
-        token,
-      );
-    },
-
-    async setLadderClimber(
-      id: string,
-      input: LadderClimberInput,
-      token: string,
-    ): Promise<StoredClimberOut> {
-      // The combination travels in the body, not the path: a model id contains
-      // slashes and has no business being a path segment.
-      return postJson<StoredClimberOut>(
-        baseUrl,
-        ladderPath(id, "/climbers"),
-        input,
-        token,
-      );
-    },
-
     async retryLadderClimber(
       id: string,
       input: LadderRetryInput,
       token: string,
     ): Promise<void> {
       // Acknowledged with an empty 204: the retry only resets the climber's failing
-      // streak and asks for a launch pass, and the board is re-read for the result.
+      // streak and runs a launch pass, and the board is re-read for the result.
       await postVoid(baseUrl, ladderPath(id, "/climbers/retry"), input, token);
     },
 
@@ -1604,7 +1541,7 @@ function launchBodyOf(config: LaunchConfig): LaunchBody {
   };
 }
 
-// The query string attributing an enqueue to the plan or ladder that asked for it,
+// The query string attributing an enqueue to the plan that asked for it,
 // or "" for a hand-launch (which no scoped halt should ever sweep up).
 //
 // The origin rides in the **query**, not in `LaunchBody`: the body is stored verbatim
@@ -1891,8 +1828,8 @@ export function createBackendExec(
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
       // enqueue is rejected `401`. The account is recorded on the job; `origin`,
-      // when given, additionally records which plan or ladder asked for the run,
-      // which is what puts it inside that plan's or ladder's halt scope.
+      // when given, additionally records which plan asked for the run,
+      // which is what puts it inside that plan's halt scope.
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         `/jobs${originQuery(origin)}`,
@@ -1913,7 +1850,7 @@ export function createBackendExec(
       // empty set needs no round-trip. The ack returns one entry per run, aligned
       // by index, each an enqueued job id or a per-run rejection reason.
       // One `origin` attributes the whole batch — a batch is one decision by one
-      // plan, ladder, or person; two origins mean two batches.
+      // plan or person; two origins mean two batches.
       if (configs.length === 0) return [];
       const ack = await postJson<LaunchBatchAckResponse>(
         backendUrl,

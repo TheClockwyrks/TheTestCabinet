@@ -14,7 +14,6 @@ import type {
   CoverageMatrix,
   CoveragePlanOut,
   CoverageQueue,
-  CoverageSchedule,
   HaltResult,
 } from "@clockwyrks/run-record/coverage";
 import { LoadingState } from "../../components/LoadingState";
@@ -27,6 +26,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
+import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
 import { launchBatch } from "../runs/launchBatch";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
@@ -34,7 +34,7 @@ import { comboLabel } from "./comboLabels";
 import {
   buildGroups,
   describeHalt,
-  describeTopUp,
+  describeFill,
   ggTriggerReadiness,
   itemsForCells,
   launchGgCells,
@@ -50,10 +50,10 @@ export type CoveragePlanTab = "dashboard" | "reviews" | "tests";
 
 /**
  * Everything a plan's tabs render from: the board the backend derived, the plan's own
- * schedule, and the actions that move both.
+ * configuration, and the actions that move both.
  *
  * The tabs share one fetch and one set of actions because they describe one plan: a
- * top-up pressed on the dashboard changes what the Tests tab draws and what the Reviews
+ * fill started on the dashboard changes what the Tests tab draws and what the Reviews
  * tab lists, and three surfaces each holding their own copy would disagree the moment
  * any control was pressed.
  */
@@ -78,17 +78,15 @@ export interface CoveragePlanState {
   hasWorker: boolean;
   /** Re-read the board and the queue. */
   refresh: () => Promise<void>;
-  /** Whether this plan feeds itself: `autoTopUp` on and no halt standing. */
-  autoTopUp: boolean;
-  /** Run the server-side top-up. `announce` makes it answer even when it did nothing. */
-  topUp: (announce: boolean) => Promise<void>;
-  /** Top up by hand, clearing a halt first so auto top-up being off never blocks it. */
-  topUpNow: () => Promise<void>;
+  /** Whether the plan is filling: the backend launches its missing runs as runs finish. */
+  filling: boolean;
+  /** Start filling the plan (All missing): one launch pass now, the rest as runs finish. */
+  fill: () => Promise<void>;
   /** Launch a set of cells by hand, `remaining` runs each. */
   triggerCells: (cells: CoverageCell[]) => Promise<void>;
-  /** Turn whether this plan feeds itself on or off; on clears a halt and tops up. */
-  setAutoTopUp: (on: boolean) => Promise<void>;
-  /** Switch auto top-up off and cancel this plan's jobs; `all` sweeps running ones. */
+  /** Retry a cell blocked by repeated infrastructure failures. */
+  retryCell: (cell: CoverageCell) => Promise<void>;
+  /** Stop filling and cancel this plan's jobs; `all` sweeps running ones too. */
   halt: (all: boolean) => Promise<void>;
 }
 
@@ -108,9 +106,8 @@ export function useCoveragePlan(): CoveragePlanState {
  *
  * The layout is the tabs' parent route rather than a component each of them renders, so
  * the active tab is read off the URL here instead of being passed in. That parenthood
- * is what keeps one layout mounted across a tab press: the tabs share a single fetch,
- * a single set of controls, and a single on-open top-up, and pressing a tab moves only
- * the body beneath them.
+ * is what keeps one layout mounted across a tab press: the tabs share a single fetch
+ * and a single set of controls, and pressing a tab moves only the body beneath them.
  */
 export function planTabOf(pathname: string): CoveragePlanTab {
   if (pathname.endsWith("/reviews")) return "reviews";
@@ -120,8 +117,8 @@ export function planTabOf(pathname: string): CoveragePlanTab {
 
 // The tab strip across a plan's surfaces. Each tab is its own route, so a surface is
 // linkable and a reviewer can sit on the one they are working from, mirroring the test
-// case and runs strips. Reviews carries its outstanding count, because how much is
-// waiting on the reviewer is the single number that decides whether they open it.
+// case and runs strips. Reviews carries its count of runs to review, which is
+// informational: reviews never launch or hold back a run.
 function PlanTabs({
   tab,
   planId,
@@ -178,9 +175,11 @@ function PlanTabs({
  *
  * It resolves the plan, its derived board, and its review queue; owns every control
  * that changes them; and publishes all of it to the active tab through
- * {@link useCoveragePlan}. Resolving lives here so the tabs stay thin, can never
- * disagree about what the plan is doing, and never re-run the plan's on-open top-up
- * just because a reviewer pressed a tab.
+ * {@link useCoveragePlan}. Resolving lives here so the tabs stay thin and can never
+ * disagree about what the plan is doing.
+ *
+ * Opening the page is a read and only a read: a plan's runs are launched by its
+ * owner's controls and, while it is filling, by the backend as runs finish.
  *
  * Console-only, and gated on a signed-in account: plans are saved per account.
  */
@@ -209,13 +208,19 @@ export function CoveragePlanLayout() {
   // from the review queue returns to the tab it was opened from (see `backReturn`).
   useRecordSectionIndex("coverage");
 
+  // The board's counts move as the plan's runs finish and as the backend launches the
+  // next ones, so the page holds the console stream's run-lifecycle topic open for as
+  // long as it is on screen.
+  useLiveRunUpdates();
+  const { refreshToken, inProgress } = runtime;
+
   const [coverage, setCoverage] = useState<CoverageMatrix | null>(null);
   const [plan, setPlan] = useState<CoveragePlanOut | null>(null);
   const [queue, setQueue] = useState<CoverageQueue | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The last thing a control did (topped up, halted), reported verbatim: these
+  // The last thing a control did (filled, halted, retried), reported verbatim: these
   // actions are only trustworthy if they say what they changed.
   const [note, setNote] = useState<string | null>(null);
 
@@ -228,7 +233,7 @@ export function CoveragePlanLayout() {
   const canTrigger = hasWorker && ggTrigger.ready;
 
   // Re-read everything the controls can move: the matrix's counts, and the review
-  // queue the buffer has filled.
+  // queue.
   const refresh = useCallback(async () => {
     if (!backend || !token) return;
     const [cov, q] = await Promise.all([
@@ -269,19 +274,78 @@ export function CoveragePlanLayout() {
     };
   }, [backend, token, planId]);
 
-  // Run the server-side top-up. `announce` distinguishes the reviewer pressing the
-  // button (which must always answer, even to say "nothing to do") from the
-  // on-open call, which speaks only when it actually enqueued something rather than
-  // greeting every visit with a status line the page already shows.
-  const topUp = useCallback(
-    async (announce: boolean) => {
-      if (!backend?.topUpCoveragePlan || !token) return;
+  // A run finishing moves the board without anyone touching it (a cell gains a counted
+  // run), and while the plan is filling the backend launches the next runs a moment
+  // later, which arrive on the same stream as newly queued runs. So re-read on each
+  // finished event and whenever the set of runs in flight changes — skipping the
+  // mount, which the load above has just done. Debounced, because a launch pass
+  // enqueues whole cells at once and one re-read covers them all.
+  const seenRefresh = useRef(refreshToken);
+  useEffect(() => {
+    if (seenRefresh.current === refreshToken) return;
+    seenRefresh.current = refreshToken;
+    void refresh().catch(() => {});
+  }, [refreshToken, refresh]);
+  const inFlightKey = inProgress
+    .map((r) => r.runId)
+    .sort()
+    .join("|");
+  const seenInFlight = useRef(inFlightKey);
+  useEffect(() => {
+    if (seenInFlight.current === inFlightKey) return;
+    seenInFlight.current = inFlightKey;
+    const timer = setTimeout(() => void refresh().catch(() => {}), 300);
+    return () => clearTimeout(timer);
+  }, [inFlightKey, refresh]);
+
+  // Start filling the plan: the backend runs one launch pass now — whole missing cells
+  // in the plan's order, up to its runs-in-flight limit — and launches the rest itself
+  // as the plan's runs finish. Always answers, even to say nothing was launched.
+  const fill = useCallback(async () => {
+    if (!backend?.fillCoveragePlan || !token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await backend.fillCoveragePlan(planId, token);
+      setNote(describeFill(result));
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [backend, token, planId, refresh]);
+
+  // Retry a cell blocked by repeated infrastructure failures, once its owner has fixed
+  // the cause: the backend forgets the failures so far and launches the cell's
+  // shortfall (under the limit while filling, at once otherwise).
+  const retryCell = useCallback(
+    async (cell: CoverageCell) => {
+      if (!backend?.retryCoveragePlanCell || !token) return;
       setBusy(true);
       setError(null);
       try {
-        const result = await backend.topUpCoveragePlan(planId, token);
-        if (announce || result.enqueued > 0) setNote(describeTopUp(result));
-        if (result.enqueued > 0) await refresh();
+        await backend.retryCoveragePlanCell(
+          planId,
+          {
+            case: {
+              slug: cell.slug,
+              version: cell.version,
+              variant: cell.variant,
+              engine: cell.engine === "none" ? undefined : cell.engine,
+            },
+            combination: {
+              harness: cell.harness,
+              model: cell.model,
+              provider: cell.provider,
+              ggConfigId: cell.ggConfigId,
+              ggSlotModels: cell.ggSlotModels,
+            },
+          },
+          token,
+        );
+        setNote(`Retrying ${comboLabel(cell)}: its runs are launching again.`);
+        await refresh();
       } catch (e) {
         setError(String(e));
       } finally {
@@ -290,27 +354,6 @@ export function CoveragePlanLayout() {
     },
     [backend, token, planId, refresh],
   );
-
-  // Whether this plan feeds itself, as one bit. `paused` is what a halt sets and it
-  // blocks every top-up server-side, so a plan with `autoTopUp` on but halted is not
-  // topping itself up and must not read as though it were.
-  const autoTopUp = Boolean(plan && plan.autoTopUp && !plan.paused);
-
-  // Top up once when the plan is opened, if it feeds itself. There is no background
-  // scheduler, so this call *is* the scheduler's other half (a submitted review being
-  // the first): a reviewer arriving at a plan that has room in its buffer should find
-  // it filling, not waiting to be asked. With auto top-up off, opening the page is a
-  // read — only "Top up now" enqueues. Idempotent and serialized server-side, so a
-  // second tab doing the same thing enqueues nothing twice.
-  //
-  // Owned by the layout rather than the Dashboard tab, so pressing a tab does not
-  // re-run it: the layout stays mounted across the three surfaces.
-  const toppedUpFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (loading || !plan || toppedUpFor.current === planId) return;
-    toppedUpFor.current = planId;
-    if (autoTopUp) void topUp(false);
-  }, [loading, plan, planId, autoTopUp, topUp]);
 
   // Launch a set of cells by hand. The two shapes a combination takes go out on two
   // different endpoints — harness cells in one batch, gg cells one gg run each — so the
@@ -385,80 +428,8 @@ export function CoveragePlanLayout() {
     ],
   );
 
-  // Write the schedule through its own resource (not the plan save), so it can never
-  // be clobbered by a member-list edit saved from another tab. What the server now
-  // holds is what the switch and the on-open gate read.
-  const writeSchedule = useCallback(
-    async (patch: { paused: boolean; autoTopUp: boolean }) => {
-      if (!backend?.setCoveragePlanSchedule || !token || !plan) return;
-      const schedule: CoverageSchedule = {
-        outerAxis: plan.outerAxis,
-        bufferTarget: plan.bufferTarget,
-        ...patch,
-      };
-      const saved = await backend.setCoveragePlanSchedule(
-        planId,
-        schedule,
-        token,
-      );
-      setPlan((p) => (p ? { ...p, ...saved } : p));
-    },
-    [backend, token, planId, plan],
-  );
-
-  // The one switch that decides whether this plan feeds itself: on, it tops up when
-  // opened and each time a review lands; off, only "Top up now" enqueues and the
-  // queue is left alone. Switching on clears a halt too, because a halted plan refuses
-  // every top-up and a switch reading "on" above one would be lying. Switching off
-  // leaves a halt standing: it is already off, and a halt is the louder thing.
-  //
-  // Switching on tops up at once — a reviewer who flipped it wants runs now, not after
-  // their next review — but the top-up speaks only if it enqueued something: the
-  // switch moving is the answer to the press, and "nothing to do" is already on the
-  // page as the plan's own figures.
-  const setAutoTopUp = useCallback(
-    async (on: boolean) => {
-      setBusy(true);
-      setError(null);
-      try {
-        await writeSchedule({
-          paused: on ? false : (plan?.paused ?? false),
-          autoTopUp: on,
-        });
-      } catch (e) {
-        setError(String(e));
-        return;
-      } finally {
-        setBusy(false);
-      }
-      if (on) await topUp(false);
-    },
-    [writeSchedule, plan, topUp],
-  );
-
-  // The button. A halted plan refuses every top-up server-side while its switch reads
-  // "off", so a press has to clear the halt first — otherwise auto top-up being off
-  // would appear to block topping up by hand, which is the one thing it must never
-  // mean. The switch stays off: the press asked for runs now, not for the plan to
-  // start feeding itself again.
-  const topUpNow = useCallback(async () => {
-    if (plan?.paused) {
-      setBusy(true);
-      setError(null);
-      try {
-        await writeSchedule({ paused: false, autoTopUp: false });
-      } catch (e) {
-        setError(String(e));
-        return;
-      } finally {
-        setBusy(false);
-      }
-    }
-    await topUp(true);
-  }, [plan, writeSchedule, topUp]);
-
-  // Switch auto top-up off and cancel this plan's jobs. `all` extends the sweep to jobs
-  // already executing, which are partly or wholly paid for — so it is confirmed, and
+  // Stop filling and cancel this plan's jobs. `all` extends the sweep to jobs already
+  // executing, which are partly or wholly paid for — so it is confirmed, and
   // never the control the reviewer reaches by accident.
   const halt = useCallback(
     async (all: boolean) => {
@@ -474,7 +445,7 @@ export function CoveragePlanLayout() {
         !(await confirm({
           title: "Halt everything",
           message:
-            "Cancel every job this plan launched, including runs already executing? " +
+            "Stop filling, and cancel every run this plan launched, including runs already executing? " +
             "Their work so far is lost and their cost is already spent. Use “Halt” " +
             "to cancel only what has not started.",
           confirmLabel: "Halt everything",
@@ -489,9 +460,8 @@ export function CoveragePlanLayout() {
           ? await backend.haltAllCoveragePlan?.(planId, token)
           : await backend.haltCoveragePlan?.(planId, token);
         if (result) setNote(describeHalt(result));
-        // A halt always leaves the plan halted — its switch reads off — whatever it
-        // found to cancel.
-        setPlan((p) => (p ? { ...p, paused: true } : p));
+        // A halt always ends filling, whatever it found to cancel.
+        setPlan((p) => (p ? { ...p, filling: false } : p));
         await refresh();
       } catch (e) {
         setError(String(e));
@@ -508,14 +478,20 @@ export function CoveragePlanLayout() {
     [coverage, testCaseName],
   );
 
-  // What a "launch everything missing" press would actually launch. A cell nothing can
-  // launch is excluded, so the control disables itself on a plan whose whole shortfall
-  // is broken members rather than offering a press that could only fail.
+  // What filling could actually launch. A cell nothing can launch, or one blocked on
+  // infrastructure failures, is excluded, so All missing disables itself on a plan
+  // whose whole shortfall is broken rather than offering a press that could only fail.
   const deficientCells = useMemo(
     () =>
-      coverage?.cells.filter((c) => c.remaining > 0 && !c.unlaunchable) ?? [],
+      coverage?.cells.filter(
+        (c) => c.remaining > 0 && !c.unlaunchable && !c.blocked,
+      ) ?? [],
     [coverage],
   );
+
+  // The matrix is the fresher read (it is re-read on every run event); the plan's own
+  // flag covers the moment before the first matrix lands.
+  const filling = coverage?.filling ?? plan?.filling ?? false;
 
   const state = useMemo<CoveragePlanState | null>(
     () =>
@@ -530,12 +506,11 @@ export function CoveragePlanLayout() {
             busy,
             canTrigger,
             hasWorker,
-            autoTopUp,
+            filling,
             refresh,
-            topUp,
-            topUpNow,
+            fill,
             triggerCells,
-            setAutoTopUp,
+            retryCell,
             halt,
           }
         : null,
@@ -549,12 +524,11 @@ export function CoveragePlanLayout() {
       busy,
       canTrigger,
       hasWorker,
-      autoTopUp,
+      filling,
       refresh,
-      topUp,
-      topUpNow,
+      fill,
       triggerCells,
-      setAutoTopUp,
+      retryCell,
       halt,
     ],
   );
@@ -597,15 +571,14 @@ export function CoveragePlanLayout() {
       />
 
       <SubmitNotice message={error} />
-      {/* The note stays a plain notice: a top-up runs on open with no press behind
-        it, and a note that revealed itself would pull a reader who had already
-        scrolled down back to the top of the page. */}
+      {/* The note stays a plain notice: a note that revealed itself would pull a
+        reader who had scrolled down to a cell's Retry back to the top of the page. */}
       {note && <p className={`${exec.notice} ${exec.ok}`}>{note}</p>}
       {!hasWorker && (
         <p className={`${exec.notice} ${exec.warn}`}>
           No worker connected. Open the connections drawer (the gear in the top
-          bar) to add a worker before triggering runs by hand. Topping up needs
-          no worker; the backend enqueues those itself.
+          bar) to add a worker before launching a cell by hand. All missing
+          needs no worker; the backend launches those itself.
         </p>
       )}
       {ggTrigger.notice && (

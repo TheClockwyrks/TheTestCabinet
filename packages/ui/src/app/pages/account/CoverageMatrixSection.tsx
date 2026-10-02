@@ -33,7 +33,7 @@ function triggerBlockedReason(
 ): string | null {
   if (cell.unlaunchable) return cell.unlaunchable;
   if (cell.remaining === 0) {
-    return "Covered: this cell is already at its target.";
+    return "Nothing missing: this cell's runs are counted or in flight.";
   }
   if (!canTrigger) {
     return "Connect a worker to launch runs by hand.";
@@ -55,12 +55,15 @@ export function MatrixSection({
   busy,
   canTrigger,
   onTrigger,
+  onRetry,
 }: {
   group: MatrixGroup;
   axis: CoverageAxis;
   busy: boolean;
   canTrigger: boolean;
   onTrigger: (cells: CoverageCell[]) => void;
+  /** Retry a cell blocked by repeated infrastructure failures. */
+  onRetry: (cell: CoverageCell) => void;
 }) {
   const [open, setOpen] = useState(false);
   const testCaseName = useTestCaseName();
@@ -94,10 +97,18 @@ export function MatrixSection({
           </span>
         </button>
         <span className={styles.groupRight}>
+          {group.blocked > 0 && (
+            <span
+              className={styles.blockedBadge}
+              title="Cells whose last 3 runs failed on infrastructure. Expand the block to retry them."
+            >
+              {group.blocked} blocked
+            </span>
+          )}
           {group.unreviewed > 0 && (
             <span
               className={styles.waitingBadge}
-              title="Completed runs here that you have not reviewed. They count toward the plan's target and occupy your review buffer."
+              title="Completed runs here that you have not reviewed. Informational: reviews never launch or hold back runs."
             >
               {group.unreviewed} to review
             </span>
@@ -133,9 +144,9 @@ export function MatrixSection({
       {open && (
         <ul className={styles.cellList}>
           {cells.map((cell) => {
-            const cellDone = cell.completed + cell.inFlight;
+            const cellDone = cell.counted + cell.inFlight;
             const satisfied = cell.remaining === 0;
-            const blocked = cell.unlaunchable;
+            const unlaunchable = cell.unlaunchable;
             const refused = triggerBlockedReason(cell, canTrigger);
             // What this row is, on whichever axis it varies: the block has already
             // said the other one. Both the visible label and the two accessible names
@@ -146,7 +157,7 @@ export function MatrixSection({
                 ? comboLabel(cell)
                 : caseLabel(testCaseName(cell.slug), cell);
             const { donePct: cellDonePct, flightPct: cellFlightPct } =
-              barWidths(cell.completed, cell.inFlight, cell.desired);
+              barWidths(cell.counted, cell.inFlight, cell.desired);
             return (
               <li
                 key={cellKey(cell)}
@@ -186,7 +197,7 @@ export function MatrixSection({
                   {cell.unreviewed > 0 && (
                     <span
                       className={styles.cellNote}
-                      title="Completed runs you have not reviewed. They count toward the target and occupy your review buffer."
+                      title="Completed runs you have not reviewed. Informational: reviews never launch or hold back runs."
                     >
                       {cell.unreviewed} to review
                     </span>
@@ -195,12 +206,12 @@ export function MatrixSection({
                       browser suppresses a tooltip on a disabled control, so a cell
                       that has nothing left to buy would otherwise look identical to
                       one nothing can launch. */}
-                  {satisfied && !blocked && (
+                  {cell.filled && !unlaunchable && (
                     <span
                       className={styles.cellCovered}
-                      title="This cell is at its target, so there is nothing left to launch."
+                      title="This cell holds its target of runs that count, so there is nothing left to launch."
                     >
-                      covered
+                      filled
                     </span>
                   )}
                 </span>
@@ -248,8 +259,29 @@ export function MatrixSection({
                 {/* The reason gets the full width of a row of its own: it is a
                     sentence naming a configuration and a slot, not a badge, and a
                     reviewer cannot act on it truncated. */}
-                {blocked && (
-                  <span className={styles.cellBlocked}>{blocked}</span>
+                {unlaunchable && (
+                  <span className={styles.cellBlocked}>{unlaunchable}</span>
+                )}
+                {/* A cell whose last runs all failed on infrastructure is not
+                    relaunched by filling until its owner has fixed the cause and
+                    says so; the reason and the fix share the row of their own. */}
+                {cell.blocked && !unlaunchable && (
+                  <span className={`${styles.cellBlocked} ${styles.cellRetry}`}>
+                    <span>
+                      Blocked: its last 3 runs failed on infrastructure. Fix the
+                      cause, then retry.
+                    </span>
+                    <button
+                      type="button"
+                      className={`${exec.secondary} ${styles.cellButton}`}
+                      disabled={busy}
+                      aria-label={`Retry ${rowName}`}
+                      title="Forget the failures so far and launch this cell's missing runs again."
+                      onClick={() => onRetry(cell)}
+                    >
+                      Retry
+                    </button>
+                  </span>
                 )}
               </li>
             );

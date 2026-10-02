@@ -1,38 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { Panel } from "@clockwyrks/ui";
 import type {
-  BufferTarget,
   CoverageSettings,
+  InFlightLimit,
 } from "@clockwyrks/run-record/coverage";
 import { Switch } from "../../components/Switch";
 import {
-  BUFFER_TARGET_CEILING,
-  UNBOUNDED_BUFFER,
-  boundedBuffer,
-  bufferBound,
-  sameBufferTarget,
-} from "../account/bufferTarget";
+  IN_FLIGHT_LIMIT_CEILING,
+  UNBOUNDED_LIMIT,
+  boundedLimit,
+  limitBound,
+  sameInFlightLimit,
+} from "../account/inFlightLimit";
 import { LoadingState } from "../../components/LoadingState";
 import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
-import styles from "./ReviewingPage.module.scss";
+import styles from "./RunsPage.module.scss";
 
-// The Reviewing settings tab (`/settings/reviewing`, web console only): the
-// account-wide preferences that govern how much reviewing work the cabinet puts in
-// front of you. Today that is the review buffer — how many runs the reviewer is
-// willing to have outstanding (in flight, or finished and waiting on their review)
-// before every plan of theirs stops enqueueing more. A ladder reads the same figure
-// as the most runs it keeps in flight at once: its gate reads validator ratings, so
-// its completed runs never wait on a review and never occupy it.
+// The Runs settings tab (`/settings/runs`, web console only): the account-wide
+// runs-in-flight limit — how many of one plan's or one ladder's runs may be queued or
+// running at once. It keeps any one plan or ladder from taking over the shared queue;
+// completed runs never count against it, reviewed or not, because reviews never pace
+// execution.
 //
-// It is a property of the *reviewer* rather than of any one plan, which is why it
-// sits in Settings rather than on the Coverage tab; a plan or ladder that wants a
-// different depth overrides it in its own editor. `0` is a legitimate value meaning
-// "never top me up automatically", and "No limit" is a third instruction of its
-// own: every plan and ladder runs through everything unless it says otherwise.
-export function ReviewingPage() {
+// It is a property of the account rather than of any one plan, which is why it sits
+// in Settings; a plan or ladder that needs a different limit overrides it in its own
+// editor. `0` is a legitimate value meaning "launch nothing", and "No limit" is a
+// third instruction of its own: every plan and ladder launches everything it can at
+// once unless it says otherwise.
+export function RunsPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
 
@@ -67,13 +65,15 @@ export function ReviewingPage() {
     };
   }, [backend, token]);
 
-  const saveBuffer = useCallback(
-    async (bufferTarget: BufferTarget) => {
+  const saveLimit = useCallback(
+    async (inFlightLimit: InFlightLimit) => {
       if (!backend?.setCoverageSettings || !token) return;
       setBusy(true);
       setError(null);
       try {
-        setSettings(await backend.setCoverageSettings({ bufferTarget }, token));
+        setSettings(
+          await backend.setCoverageSettings({ inFlightLimit }, token),
+        );
       } catch (e) {
         setError(String(e));
       } finally {
@@ -85,12 +85,11 @@ export function ReviewingPage() {
 
   if (!token) {
     return (
-      <SettingsLayout tab="reviewing">
+      <SettingsLayout tab="runs">
         <Panel>
           <p className={styles.muted}>
-            Sign in to change your reviewing settings. They are saved to your
-            account. Use the account control in the top bar to register or log
-            in.
+            Sign in to change your run settings. They are saved to your account.
+            Use the account control in the top bar to register or log in.
           </p>
         </Panel>
       </SettingsLayout>
@@ -98,7 +97,7 @@ export function ReviewingPage() {
   }
 
   return (
-    <SettingsLayout tab="reviewing">
+    <SettingsLayout tab="runs">
       {error && (
         <Panel className={styles.errorPanel}>
           <p ref={errorRef} className={styles.error} role="alert">
@@ -111,14 +110,14 @@ export function ReviewingPage() {
         {loading ? (
           <LoadingState size="section" label="Loading settings…" />
         ) : settings ? (
-          <BufferSetting
+          <InFlightSetting
             settings={settings}
             busy={busy}
-            onSave={(target) => void saveBuffer(target)}
+            onSave={(limit) => void saveLimit(limit)}
           />
         ) : (
           <p className={styles.muted}>
-            Reviewing settings aren&rsquo;t available on this host.
+            Run settings aren&rsquo;t available on this host.
           </p>
         )}
       </Panel>
@@ -126,45 +125,45 @@ export function ReviewingPage() {
   );
 }
 
-// The review-buffer control: a number field and a no-limit switch with Save,
+// The runs-in-flight control: a number field and a no-limit switch with Save,
 // disabled until the draft is both valid and different from what is saved.
-function BufferSetting({
+function InFlightSetting({
   settings,
   busy,
   onSave,
 }: {
   settings: CoverageSettings;
   busy: boolean;
-  onSave: (bufferTarget: BufferTarget) => void;
+  onSave: (inFlightLimit: InFlightLimit) => void;
 }) {
-  const [draft, setDraft] = useState(() => draftOf(settings.bufferTarget));
+  const [draft, setDraft] = useState(() => draftOf(settings.inFlightLimit));
   // Re-sync when the saved value changes underneath (a save returns the stored
   // settings, which may have been clamped).
   useEffect(() => {
-    setDraft(draftOf(settings.bufferTarget));
-  }, [settings.bufferTarget]);
+    setDraft(draftOf(settings.inFlightLimit));
+  }, [settings.inFlightLimit]);
 
   const parsed = Math.floor(Number(draft.runs));
   const valid =
     draft.unbounded ||
     (draft.runs.trim() !== "" && Number.isFinite(parsed) && parsed >= 0);
-  const target: BufferTarget | null = !valid
+  const target: InFlightLimit | null = !valid
     ? null
     : draft.unbounded
-      ? UNBOUNDED_BUFFER
-      : boundedBuffer(parsed);
+      ? UNBOUNDED_LIMIT
+      : boundedLimit(parsed);
   const dirty =
-    target !== null && !sameBufferTarget(target, settings.bufferTarget);
+    target !== null && !sameInFlightLimit(target, settings.inFlightLimit);
 
   return (
     <section className={styles.setting}>
       <div className={styles.label}>
-        <h2 className={styles.title}>Review buffer</h2>
+        <h2 className={styles.title}>Runs in flight</h2>
         <p className={styles.description}>
-          Runs your plans may leave outstanding before a top-up stops, and the
-          most runs a ladder keeps in flight at once. With no limit, plans
-          enqueue every missing run at once and ladders launch every earned rung
-          at once.
+          How many of one plan&rsquo;s or one ladder&rsquo;s runs may be queued
+          or running at once. Keeps one plan or ladder from taking over the
+          queue; each launches more as its runs finish. Completed runs never
+          count. A plan or ladder can override this in its editor.
         </p>
       </div>
       <form
@@ -179,10 +178,10 @@ function BufferSetting({
           className={styles.input}
           type="number"
           min={0}
-          max={BUFFER_TARGET_CEILING}
+          max={IN_FLIGHT_LIMIT_CEILING}
           step={1}
           inputMode="numeric"
-          aria-label="Review buffer"
+          aria-label="Runs in flight"
           value={draft.runs}
           disabled={busy || draft.unbounded}
           onChange={(e) => setDraft({ ...draft, runs: e.target.value })}
@@ -201,19 +200,19 @@ function BufferSetting({
           type="submit"
           disabled={busy || !dirty}
         >
-          {dirty || !valid ? "Save buffer" : "Saved"}
+          {dirty || !valid ? "Save limit" : "Saved"}
         </button>
       </form>
     </section>
   );
 }
 
-/** The form's two fields, as the saved target fills them in. A saved bound stays in
+/** The form's two fields, as the saved limit fills them in. A saved bound stays in
  *  the number while no-limit is switched on, so switching it back off restores it;
  *  a saved no-limit has no bound to show, so switching it off leaves the number to
  *  be typed. */
-function draftOf(target: BufferTarget): { runs: string; unbounded: boolean } {
-  const bound = bufferBound(target);
+function draftOf(limit: InFlightLimit): { runs: string; unbounded: boolean } {
+  const bound = limitBound(limit);
   return {
     runs: bound === null ? "" : String(bound),
     unbounded: bound === null,

@@ -82,9 +82,6 @@ vi.mock("../../../data/galleryContext", () => ({
 vi.mock("../../../data/useTestCase", () => ({
   useTestCase: () => ({ testCase: fixture.testCase }),
 }));
-vi.mock("../../account/coveragePlan", () => ({
-  topUpAfterReview: async () => {},
-}));
 vi.mock("../../../components/ConfirmDialog", () => ({
   useConfirm: () => ({ confirm: async () => true }),
 }));

@@ -2,7 +2,11 @@ import { act, render, screen, fireEvent } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LadderInput, LadderOut } from "@clockwyrks/run-record/ladders";
+import type {
+  Ladder,
+  LadderInput,
+  LadderProgress,
+} from "@clockwyrks/run-record/ladders";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {
@@ -53,7 +57,7 @@ function galleryValue(): GalleryDataInput {
 }
 
 /** A stored ladder that is already savable: a climb, and one climber pinned on it. */
-function ladder(over: Partial<LadderOut> = {}): LadderOut {
+function ladder(over: Partial<Ladder> = {}): Ladder {
   return {
     id: "l1",
     name: "E2E climb",
@@ -79,9 +83,9 @@ function ladder(over: Partial<LadderOut> = {}): LadderOut {
     ],
     updatedAt: "2026-01-01T00:00:00Z",
     outerAxis: "rung",
-    paused: true,
+    inFlightLimit: null,
     ...over,
-  } as unknown as LadderOut;
+  } as unknown as Ladder;
 }
 
 let saved: LadderInput | null = null;
@@ -89,20 +93,28 @@ let saved: LadderInput | null = null;
 // `legacy` names the case versions on the legacy manifest format, which a ladder cannot
 // climb; `refuse` is a message the save is rejected with, as the backend's 400 is.
 function backendValue(
-  existing: LadderOut,
-  { legacy = [] as string[], refuse = null as string | null } = {},
+  existing: Ladder,
+  {
+    legacy = [] as string[],
+    refuse = null as string | null,
+    running = false,
+  } = {},
 ) {
   return {
     client: {
       listCoverageGroups: async () => [],
       getLadder: async () => existing,
-      getLadderSchedule: async () => ({
-        outerAxis: existing.outerAxis,
-        paused: existing.paused,
-      }),
+      getLadderProgress: async () =>
+        ({
+          ladderId: existing.id,
+          dispatch: running ? { status: "running" } : null,
+          rungs: [],
+          climbers: [],
+          runsUnreviewed: 0,
+        }) as unknown as LadderProgress,
       listModels: async () => [],
       getCoverageSettings: async () => ({
-        bufferTarget: { kind: "bounded", runs: 10 },
+        inFlightLimit: { kind: "bounded", runs: 10 },
       }),
       updateLadder: async (_id: string, input: LadderInput) => {
         if (refuse) throw new Error(refuse);
@@ -130,7 +142,7 @@ function backendValue(
 // The ladder, its groups, and the account's buffer default all resolve
 // asynchronously, so every render flushes them before asserting.
 async function renderEditor(
-  existing: LadderOut = ladder(),
+  existing: Ladder = ladder(),
   options: Parameters<typeof backendValue>[1] = {},
 ) {
   render(
@@ -216,7 +228,7 @@ describe("LadderEditPage round trip", () => {
     expect(saved).toBeNull();
   });
 
-  it("keeps every rung's stable id, so recorded verdicts stay attached", async () => {
+  it("keeps every rung's stable id, so a reorder never mints new rungs", async () => {
     await renderEditor();
     await save();
     expect(saved?.rungs.map((r) => r.id)).toEqual(["r1", "r2"]);
@@ -230,41 +242,43 @@ describe("LadderEditPage round trip", () => {
     expect(screen.getByText("Alpha · base · v1.0.0 · Simple 2D")).toBeTruthy();
   });
 
-  it("does not resume a ladder its reviewer has since disabled", async () => {
-    await renderEditor();
+  it("saves the climb order and the limit override on the configuration", async () => {
+    await renderEditor(ladder({ inFlightLimit: { kind: "bounded", runs: 4 } }));
     await save();
-    expect(saved?.schedule?.paused).toBe(true);
+    expect(saved?.outerAxis).toBe("rung");
+    expect(saved?.inFlightLimit).toEqual({ kind: "bounded", runs: 4 });
+    expect(saved).not.toHaveProperty("schedule");
   });
 });
 
-// A ladder climbs by itself once it is enabled: launching is not a setting, so the
-// editor offers none and saves no flag for it. Nothing on it may say a review feeds it.
+// A ladder is a configuration: saving it launches nothing, and an edit applies to the
+// next Run. Nothing on it may say a review feeds it, or offer to enable it.
 describe("LadderEditPage launching", () => {
-  it("saves a schedule with no autoTopUp", async () => {
-    await renderEditor();
-    await save();
-    const keys = Object.keys(saved?.schedule ?? {}).sort();
-    expect(["outerAxis", "paused"].every((k) => keys.includes(k))).toBe(true);
-    expect(
-      keys.every((k) => ["outerAxis", "paused", "bufferTarget"].includes(k)),
-    ).toBe(true);
-  });
-
-  it("never shows Top up now, or a setting for climbing automatically", async () => {
+  it("offers no enabled or top-up setting", async () => {
     await renderEditor();
     expect(screen.getByText("Launching runs")).toBeTruthy();
-    expect(screen.queryByText(/top up|top-up/i)).toBeNull();
     expect(
-      screen.queryByText(/keep climbing|climbs automatically/i),
+      screen.queryByRole("switch", { name: /enabled|top.up/i }),
     ).toBeNull();
+    expect(screen.queryByText(/top up|top-up/i)).toBeNull();
     expect(screen.queryByText(/submit a review/i)).toBeNull();
   });
 
-  it("calls the buffer what it caps on a ladder: runs in flight", async () => {
+  it("calls the limit what it caps: runs in flight", async () => {
     await renderEditor();
     expect(screen.getByText("Runs in flight at once")).toBeTruthy();
     expect(screen.queryByText("Review buffer")).toBeNull();
     expect(screen.getByText(/10 runs in flight/)).toBeTruthy();
+  });
+
+  it("says an edit applies to the next Run while a dispatch is running", async () => {
+    await renderEditor(ladder(), { running: true });
+    expect(screen.getByText(/Edits apply to the next Run/)).toBeTruthy();
+  });
+
+  it("says nothing of a dispatch when none is running", async () => {
+    await renderEditor();
+    expect(screen.queryByText(/Edits apply to the next Run/)).toBeNull();
   });
 });
 
