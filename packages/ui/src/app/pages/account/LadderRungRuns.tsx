@@ -18,8 +18,8 @@ import styles from "./Coverage.module.scss";
 
 // The runs behind one rung's verdict, for one climber, listed under the rung itself.
 //
-// The board says a climber walled or advanced, and the only way to agree or disagree
-// with that is to look at the runs the gate counted. Listing them here rather than
+// The board says a climber passed or failed a rung, and the way to see why is to look
+// at the runs the gate counted. Listing them here rather than
 // linking to a pre-filtered Runs page keeps the reader on the board they were reading —
 // they open a run, label it if they like, and come back to the same expanded rung.
 //

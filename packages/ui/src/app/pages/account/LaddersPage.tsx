@@ -12,21 +12,28 @@ import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
+import ladderStyles from "./Ladder.module.scss";
 
-/** One ladder card's roll-up: how much of the climb is done, and where it stopped. */
+/** One ladder card's roll-up: how much of the climb is done, and where it stands. */
 export interface LadderSummary {
-  /** Rungs cleared, summed across every climber. */
+  /** Rungs passed, summed across every climber. */
   rungsCleared: number;
   /** Rungs on offer: every climber's whole climb. */
   rungsTotal: number;
   /** The bar's filled fraction. */
   donePct: number;
-  /** Climbers the gate has stopped. */
-  walled: number;
-  /** Climbers that cleared every rung. */
-  toppedOut: number;
+  /** Every climber on the ladder. */
+  climbers: number;
+  /** Climbers working a rung. */
+  running: number;
+  /** Climbers that passed every rung. */
+  completed: number;
+  /** Climbers that failed a rung. */
+  failed: number;
   /** Climbers standing on a rung nothing the ladder does by itself will move. */
   blocked: number;
+  /** Climbers their owner paused. */
+  paused: number;
   /** Completed runs across the board the signed-in account has not reviewed —
    *  information only: reviews are labels and never move a climb. */
   unreviewed: number;
@@ -35,13 +42,12 @@ export interface LadderSummary {
 /**
  * Roll one ladder's board up into the numbers a card shows.
  *
- * Progress is measured in **rungs cleared across every climber**, not in climbers
+ * Progress is measured in **rungs passed across every climber**, not in climbers
  * finished, because a ladder's whole purpose is to find out where each model stops:
- * a board where four of five models are walled halfway is two thirds climbed and
- * nearly finished, while "0 of 5 topped out" describes it as if nothing had happened.
- * A climber that has topped out has cleared every rung; one still on the ladder has
- * cleared exactly the rungs below the one it stands on, which is what `position`
- * (counted from zero) already is.
+ * a board where four of five models failed halfway is two thirds climbed and nearly
+ * finished, while "0 of 5 completed" describes it as if nothing had happened. A
+ * completed climber has passed every rung; any other has passed exactly the rungs
+ * below the one it stands on, which is what `position` (counted from zero) already is.
  */
 export function ladderSummary(progress: LadderProgress): LadderSummary {
   const rungsTotal = progress.rungs.length * progress.climbers.length;
@@ -54,18 +60,36 @@ export function ladderSummary(progress: LadderProgress): LadderSummary {
     rungsCleared,
     rungsTotal,
     donePct: rungsTotal > 0 ? (rungsCleared / rungsTotal) * 100 : 0,
-    walled: progress.climbersWalled,
-    toppedOut: progress.climbersToppedOut,
+    climbers: progress.climbers.length,
+    running: progress.climbersRunning,
+    completed: progress.climbersCompleted,
+    failed: progress.climbersFailed,
     blocked: progress.climbersBlocked,
+    paused: progress.climbersPaused,
     unreviewed: progress.runsUnreviewed,
   };
+}
+
+/**
+ * A card's climber counts as one line: Climbers, Running, Completed, and Failed always,
+ * then Blocked and Paused only while a climber is in that state.
+ */
+export function ladderSummaryLine(summary: LadderSummary): string {
+  const parts = [
+    `${summary.climbers} climber${summary.climbers === 1 ? "" : "s"}`,
+    `${summary.running} running`,
+    `${summary.completed} completed`,
+    `${summary.failed} failed`,
+  ];
+  if (summary.blocked > 0) parts.push(`${summary.blocked} blocked`);
+  if (summary.paused > 0) parts.push(`${summary.paused} paused`);
+  return parts.join(" · ");
 }
 
 // The Ladders tab (`/account/ladders`): the signed-in reviewer's ladders, each a card
 // with how far its climbers got, linking to its own dashboard, plus create / edit /
 // delete. A sibling of the Coverage tab, not a mode of it — a plan fills a matrix,
-// a ladder walks an ordered climb and stops each model where its runs stop clearing
-// the bar. Console-only and gated on a signed-in account (ladders are per-account).
+// a ladder walks an ordered climb and stops each model at the first rung it fails. Console-only and gated on a signed-in account (ladders are per-account).
 //
 // Each card's progress needs the ladder's board, which is a request per ladder. The
 // list therefore renders from the (single) declaration listing first and fills the
@@ -187,9 +211,8 @@ export function LaddersPage() {
           <p className={styles.empty}>
             You have no ladders yet. A ladder is an ordered climb: pin the cases
             you want attempted easiest-first, point a set of models at it, and
-            each model climbs on its own until its runs stop clearing the bar
-            you set, so you find out where each one&rsquo;s wall is instead of
-            paying for a full matrix.
+            each model climbs on its own until it fails a rung, so you find out
+            how far each one gets instead of paying for a full matrix.
           </p>
           <Link className={exec.primary} to={routes.accountLadderNew()}>
             Create your first ladder
@@ -210,9 +233,9 @@ export function LaddersPage() {
                     >
                       {entry.name}
                     </Link>
-                    {/* A disabled ladder that is not climbing — which every ladder is
-                        until it is enabled — is otherwise indistinguishable from one
-                        whose climbers are all walled. */}
+                    {/* A disabled ladder — which every ladder is until it is enabled —
+                        is otherwise indistinguishable from one whose climbers have all
+                        finished. */}
                     {entry.paused && (
                       <span className={styles.pausedBadge}>disabled</span>
                     )}
@@ -221,7 +244,6 @@ export function LaddersPage() {
                     {entry.rungs.length} rung
                     {entry.rungs.length === 1 ? "" : "s"} · {entry.runsPerCell}{" "}
                     runs/rung
-                    {entry.autoTopUp && " · climbs automatically"}
                     {summary != null &&
                       summary.unreviewed > 0 &&
                       ` · ${summary.unreviewed} unreviewed`}
@@ -230,8 +252,10 @@ export function LaddersPage() {
                 <div className={styles.rowRight}>
                   {summary && (
                     <span
-                      className={styles.rowProgress}
-                      title={`${summary.rungsCleared} of ${summary.rungsTotal} rungs cleared across every climber`}
+                      // The bar over the counts, both right-aligned, so the counts
+                      // changing length as climbers move never moves the bar.
+                      className={`${styles.rowProgress} ${ladderStyles.ladderProgress}`}
+                      title={`${summary.rungsCleared} of ${summary.rungsTotal} rungs passed across every climber`}
                     >
                       <span className={styles.groupBar} aria-hidden>
                         <span
@@ -240,8 +264,7 @@ export function LaddersPage() {
                         />
                       </span>
                       <span className={styles.groupCount}>
-                        {summary.walled} walled · {summary.toppedOut} topped out
-                        {summary.blocked > 0 && ` · ${summary.blocked} blocked`}
+                        {ladderSummaryLine(summary)}
                       </span>
                     </span>
                   )}

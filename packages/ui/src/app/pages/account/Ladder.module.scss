@@ -1,6 +1,7 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/halo" as h;
 @use "../../styles/surfaces" as s;
+@use "../../styles/breakpoints" as bp;
 
 // Styles specific to the ladder surfaces (the list, the editor, and the climb
 // dashboard). Everything a ladder page shares with the coverage plan pages — the
@@ -10,13 +11,25 @@
 // two must not drift into looking like separate applications; this file therefore
 // holds only what a ladder has and a plan does not: rungs, climbers, and the gate.
 
+// ---- The ladders list ------------------------------------------------------
+
+// A ladder card's roll-up: the bar over its climber counts, both aligned right, so the
+// counts growing or shrinking as climbers move never shifts the bar.
+.ladderProgress {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: t.$space-xs;
+}
+
 // ---- The climb dashboard ---------------------------------------------------
 
-// The board: one card per climber, stacked in the order the ladder feeds them.
+// The board: one card per climber, stacked in the order the ladder feeds them, set
+// apart from the review queue above it.
 .climbers {
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
+  margin-top: t.$space-xl;
   margin-bottom: t.$space-xl;
 }
 
@@ -27,26 +40,28 @@
   padding: t.$space-md t.$space-lg;
 }
 
-// A climber's header row: the expander (identity + status + how far it got) on the
-// left, the steering controls on the right. Wraps rather than scrolls, so a narrow
-// viewport stacks the controls under the row they steer.
+// A climber's header, as a grid of fixed slots: the identity and the controls on the
+// first line, and where the climber stands on the second. Every slot keeps its size
+// whatever the climber's status says, so a status changing during a climb never moves
+// the track, the count, or the controls.
 .climberHead {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "toggle actions"
+    "line line";
   align-items: center;
-  justify-content: space-between;
   gap: t.$space-sm t.$space-md;
 }
 
-// The clickable left region: a reset button that grows to fill the row, so a click
-// anywhere on the identity toggles the per-rung detail. A sibling of the steering
-// buttons, never their parent — no button is nested inside another.
+// The clickable identity: a reset button, so a click anywhere on the name toggles the
+// per-rung detail. A sibling of the steering buttons, never their parent — no button
+// is nested inside another.
 .climberToggle {
+  grid-area: toggle;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: t.$space-sm t.$space-md;
-  flex: 1 1 20rem;
+  gap: t.$space-sm;
   min-width: 0;
   background: none;
   border: 0;
@@ -61,6 +76,15 @@
   }
 }
 
+// The combination's name, its provider, and a "Cannot launch" pill when it applies.
+// Shrinks by cutting the name short, never by pushing the controls.
+.climberIdentity {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
 // The combination's name — the row's subject, in the accent like every other title.
 .climberTitle {
   color: t.$color-accent;
@@ -72,19 +96,48 @@
 }
 
 .climberMeta {
+  flex: none;
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   white-space: nowrap;
 }
 
-// The steering controls (focus, priority, hold), pushed to the far right.
+// The steering controls (watch, priority, pause), on the identity's line.
 .climberActions {
+  grid-area: actions;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: t.$space-sm;
-  margin-left: auto;
+  justify-self: end;
+}
+
+// Pause and Resume share one width, so switching between them moves nothing.
+.pauseButton {
+  min-width: 7rem;
+}
+
+// Where the climber stands: the status slot, the rung track, and the rung count, in
+// columns whose widths depend on the card's width alone, never on what the status says
+// (the count's holds "50/50 rungs"). At desktop widths the status slot is its full
+// 23rem, which holds the longest status, "Blocked at rung 12: not validator-rated",
+// uncut; on a card too narrow for every column at full width it gives way before the
+// track does, so the row never overflows. Indented under the name, past the twisty.
+.climberLine {
+  grid-area: line;
+  display: grid;
+  grid-template-columns: minmax(0, 23rem) minmax(6rem, 21rem) 6.5rem;
+  justify-content: start;
+  align-items: center;
+  gap: t.$space-md;
+  padding-left: 1.25rem;
+  cursor: pointer;
+}
+
+// The status slot: one width for every status, the pill cut short inside it.
+.climberStatusSlot {
+  display: flex;
+  min-width: 0;
 }
 
 // The "watch this one" star: a bare glyph control that fills in the accent once set,
@@ -128,40 +181,43 @@
   }
 }
 
-// Where a climber stands, as a pill. Five states with five colours, because the
-// whole point of the board is that "stopped" has several different causes and the
-// operator's next move differs for each.
+// Where a climber stands, as a pill. One colour per state, because the next move
+// differs for each. Cut short within its slot; the whole status is its tooltip. Every
+// pill carries a hairline border (transparent unless a state colours it), so the
+// outlined blocked pill is exactly as tall as a filled one and a climber becoming
+// blocked never nudges the track.
 .statusPill {
   flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   color: t.$color-bg;
+  border: t.$border-hairline solid transparent;
   border-radius: t.$radius-sm;
   padding: t.$space-2xs t.$space-sm;
   white-space: nowrap;
 }
 
-// Working a rung: runs are still to come. Not drawn today — the board says nothing
-// about a climber that is simply climbing, because the track and the rung count
-// already do — but kept beside its siblings so the pill has a colour for every state
-// the wire can report.
-.statusClimbing {
+// Working a rung: runs are still to come.
+.statusRunning {
   background: t.$color-accent;
 }
 
-// Stopped by the gate.
-.statusWalled {
+// Failed a rung: the ladder's answer for this model.
+.statusFailed {
   background: t.$color-negative;
 }
 
-// Stopped by hand: muted, because it is not a result — it is a decision that can be
-// taken back.
-.statusHeld {
+// Paused by its owner: muted, because it is not a result — it is a decision that can
+// be taken back.
+.statusPaused {
   background: t.$color-text-muted;
 }
 
-// Cleared every rung.
-.statusTopped {
+// Passed every rung.
+.statusCompleted {
   background: t.$color-positive;
 }
 
@@ -170,7 +226,7 @@
 // keep failing, runs with no rating). Also the "cannot launch" pill a climber in
 // another state carries when its combination is broken. Outlined rather than filled
 // so it cannot be mistaken for a verdict of the gate: the fault is in the ladder or
-// its membership, not in the model's runs, and the fix is the operator's.
+// its membership, not in the model's runs, and the fix is the owner's.
 .statusBlocked {
   background: none;
   color: t.$color-negative;
@@ -178,9 +234,15 @@
 }
 
 // Why a blocked climber is not moving and what fixes it, on a line of its own beneath
-// the header —
-// the ladder's counterpart of the plan matrix's `.cellBlocked`, and shown whether or
-// not the climber is expanded.
+// the header — the ladder's counterpart of the plan matrix's `.cellBlocked`, and shown
+// whether or not the climber is expanded.
+//
+// The one deliberate exception to "a status change moves nothing": this line appears
+// when a climber becomes blocked (and goes when it is unblocked), so its card grows by
+// it and the cards below move down. Nothing inside the header moves. Reserving the
+// line on every card would leave an empty line under every running climber for a
+// state that is rare and that stops the climber until its owner acts, and the fix
+// cannot be squeezed into the header, where it would be cut short.
 .climberBlocked {
   margin: t.$space-sm 0 0;
   color: t.$color-negative;
@@ -188,15 +250,21 @@
   font-size: t.$font-sm;
 }
 
-// The climb itself, drawn as one segment per rung so "how far did this model get,
-// and where is the wall" is answered without reading a number. Fixed-height blocks
-// laid in a row; the segments shrink as rungs are added rather than wrapping.
+// The Retry at the end of a failing climber's reason: a real button, sized to the
+// sentence it ends.
+.retryButton {
+  margin-left: t.$space-xs;
+  padding: t.$space-2xs t.$space-md;
+  font-size: t.$font-sm;
+}
+
+// The climb itself, drawn as one segment per rung so how far the model got is answered
+// without reading a number. Fills its column of the header line; the segments shrink
+// as rungs are added rather than wrapping.
 .rungTrack {
   display: flex;
   gap: t.$space-2xs;
-  flex: 1 1 8rem;
-  min-width: 6rem;
-  max-width: 16rem;
+  min-width: 0;
 }
 
 .rungStep {
@@ -206,28 +274,27 @@
   border-radius: t.$radius-sm;
 }
 
-// A rung this climber cleared.
+// A rung this climber passed.
 .rungStepDone {
   background: t.$color-positive;
 }
 
-// The rung it is working now: outlined in the accent rather than filled with it. A
-// filled segment is how a *cleared* rung reads, so filling this one made a climber that
-// had cleared nothing look finished — most starkly on a one-rung ladder, where the
-// whole track was a single solid bar over the words "0 of 1 rungs cleared".
+// The rung a running climber is working now: outlined in the accent rather than filled
+// with it. A filled segment is how a *passed* rung reads, so filling this one made a
+// climber that had passed nothing look finished.
 .rungStepCurrent {
   background: t.$color-bg-2;
   box-shadow: inset 0 0 0 t.$border-hairline t.$color-accent;
 }
 
-// The rung that stopped it. Reading the track left to right, the first non-green
-// segment is the wall — which is the question the dashboard exists to answer.
-.rungStepWall {
+// The rung the climber failed: reading the track left to right, the first red segment
+// is where this model stopped.
+.rungStepFailed {
   background: t.$color-negative;
 }
 
 // The rung a blocked climber stands on: outlined in the negative colour, dashed, so it
-// reads as "stuck here" without being mistaken for the filled segment of a wall.
+// reads as "stuck here" without being mistaken for the filled segment of a failure.
 .rungStepBlocked {
   background: t.$color-bg-2;
   outline: t.$border-hairline dashed t.$color-negative;
@@ -252,7 +319,47 @@
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   white-space: nowrap;
+}
+
+// A narrow viewport stacks the header: the identity, then where the climber stands
+// (the status and the count on one line, the track on a full line of its own), then
+// the controls. Every element still keeps its own area, so nothing moves when the
+// status changes.
+@include bp.below(t.$bp-sm) {
+  .climberHead {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "toggle"
+      "line"
+      "actions";
+  }
+
+  .climberActions {
+    justify-self: start;
+  }
+
+  .climberLine {
+    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    grid-template-areas:
+      "status count"
+      "track track";
+    gap: t.$space-sm t.$space-md;
+  }
+
+  .climberStatusSlot {
+    grid-area: status;
+  }
+
+  .rungTrack {
+    grid-area: track;
+  }
+
+  .rungCount {
+    grid-area: count;
+  }
 }
 
 // The per-rung detail revealed when a climber is expanded.
@@ -267,23 +374,23 @@
   padding-top: t.$space-md;
 }
 
-// One rung's line: its position and case, the verdict, the evidence, and the
-// controls that override it. Wraps on a narrow viewport instead of truncating —
-// the verdict and the evidence behind it are the row's whole content.
+// One rung's line: its position and case, its badge, the evidence, and the runs.
+// Wraps on a narrow viewport instead of truncating. Every row has the same padding
+// and box, so marking one as current never moves its content.
 .rungRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: t.$space-sm t.$space-md;
-  padding: t.$space-2xs 0;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
 }
 
-// The rung a climber currently stands on, marked so the eye lands on it first when
-// a long climb is expanded.
+// The rung a running climber is working now, marked by a background and an inset edge
+// alone (neither takes space), so the eye lands on it first in a long climb.
 .rungRowCurrent {
   background: t.$color-bg-2;
-  border-radius: t.$radius-sm;
-  padding: t.$space-xs t.$space-sm;
+  box-shadow: inset 2px 0 0 t.$color-accent;
 }
 
 .rungIndex {
@@ -300,7 +407,7 @@
   min-width: 0;
 }
 
-// The verdict pill: what the gate (or the reviewer) decided about this rung.
+// The rung's badge: the gate's verdict, or what the climber is doing on the rung.
 .verdict {
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -310,33 +417,25 @@
   white-space: nowrap;
 }
 
-.verdictAdvanced {
+.verdictPassed {
   background: t.$color-positive;
 }
 
-.verdictWalled {
+.verdictFailed {
   background: t.$color-negative;
 }
 
-// A verdict that is nobody's decision yet.
+// A rung with no verdict yet: running, blocked, paused, or not reached.
 .verdictUndecided {
   background: t.$color-bg-2;
   color: t.$color-text-muted;
 }
 
-// The trailing qualifiers on a verdict: that it was overridden by hand, that it was
-// decided against a version the rung no longer pins, or that it has not been written
-// down yet. Muted so they read as footnotes to the verdict, not as verdicts.
+// The trailing qualifiers on a verdict: that it was decided against a version the
+// rung no longer pins, or that it has not been written down yet. Muted so they read
+// as footnotes to the verdict, not as verdicts.
 .verdictNote {
   color: t.$color-text-muted;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-}
-
-// An override is the one qualifier that changes what governs the climb, so it takes
-// the accent rather than the muted note colour.
-.overrideNote {
-  color: t.$color-accent-2;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
 }
@@ -350,8 +449,8 @@
   font-size: t.$font-sm;
 }
 
-// The row's trailing controls (runs link, promote, clear override, bump the pin),
-// pushed right so every rung's controls line up down the column.
+// The row's trailing controls (replace the rung, bump the pin, open the runs), pushed
+// right so every rung's controls line up down the column.
 .rungActions {
   display: flex;
   flex-wrap: wrap;
@@ -360,7 +459,7 @@
   margin-left: auto;
 }
 
-// A quiet text control inside a rung row (the runs link, the override actions).
+// A quiet text control inside a rung row (the runs link, the replace link).
 .rungLink {
   color: t.$color-text-muted;
   font-family: var(--ttc-font);

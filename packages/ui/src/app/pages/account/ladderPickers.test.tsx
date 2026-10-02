@@ -243,7 +243,7 @@ describe("requiredRuns", () => {
 describe("describeGate / gateExample", () => {
   it("states an absolute threshold in runs", () => {
     expect(describeGate(gate())).toMatch(
-      /advances past a rung once 1 of its runs is rated Scuffed or better/i,
+      /passes a rung once 1 of its runs is rated Scuffed or better/i,
     );
   });
 
@@ -258,9 +258,9 @@ describe("describeGate / gateExample", () => {
   it("expresses “stop when all are broken” as floor scuffed, 1 run", () => {
     const text = gateExample(gate(), 5);
     expect(text).toMatch(
-      /advances once 1 of its 5 runs is rated Scuffed or better/i,
+      /passes once 1 of its 5 runs is rated Scuffed or better/i,
     );
-    expect(text).toMatch(/walled when 5 or more come back worse/i);
+    expect(text).toMatch(/fails when 5 or more come back worse/i);
   });
 
   it("expresses “stop when over half are broken” as floor scuffed, 50%", () => {
@@ -268,8 +268,8 @@ describe("describeGate / gateExample", () => {
       gate({ threshold: { kind: "fraction", fraction: 0.5 } }),
       5,
     );
-    expect(text).toMatch(/advances once 3 of its 5 runs/i);
-    expect(text).toMatch(/walled when 3 or more come back worse/i);
+    expect(text).toMatch(/passes once 3 of its 5 runs/i);
+    expect(text).toMatch(/fails when 3 or more come back worse/i);
   });
 
   it("expresses “pass if any run is passable or better” as floor passable, 1 run", () => {

@@ -80,7 +80,6 @@ function ladder(over: Partial<LadderOut> = {}): LadderOut {
     updatedAt: "2026-01-01T00:00:00Z",
     outerAxis: "rung",
     paused: true,
-    autoTopUp: true,
     ...over,
   } as unknown as LadderOut;
 }
@@ -100,7 +99,6 @@ function backendValue(
       getLadderSchedule: async () => ({
         outerAxis: existing.outerAxis,
         paused: existing.paused,
-        autoTopUp: existing.autoTopUp,
       }),
       listModels: async () => [],
       getCoverageSettings: async () => ({
@@ -239,20 +237,27 @@ describe("LadderEditPage round trip", () => {
   });
 });
 
-// A ladder climbs by itself: the validators rate every run, and the backend tops the
-// ladder up as each one finishes. Nothing on the editor may say a review feeds it.
-describe("LadderEditPage feeding copy", () => {
-  it("describes auto top-up as climbing as runs finish, on by default", async () => {
+// A ladder climbs by itself once it is enabled: launching is not a setting, so the
+// editor offers none and saves no flag for it. Nothing on it may say a review feeds it.
+describe("LadderEditPage launching", () => {
+  it("saves a schedule with no autoTopUp", async () => {
     await renderEditor();
-    const toggle = screen.getByLabelText("Keep climbing as runs finish");
-    expect(toggle).toBeChecked();
-    expect(
-      screen.getByText(/Each run that finishes lets the backend launch/),
-    ).toBeTruthy();
-    expect(screen.queryByText(/submit a review/i)).toBeNull();
-    fireEvent.click(toggle);
     await save();
-    expect(saved?.schedule?.autoTopUp).toBe(false);
+    const keys = Object.keys(saved?.schedule ?? {}).sort();
+    expect(["outerAxis", "paused"].every((k) => keys.includes(k))).toBe(true);
+    expect(
+      keys.every((k) => ["outerAxis", "paused", "bufferTarget"].includes(k)),
+    ).toBe(true);
+  });
+
+  it("never shows Top up now, or a setting for climbing automatically", async () => {
+    await renderEditor();
+    expect(screen.getByText("Launching runs")).toBeTruthy();
+    expect(screen.queryByText(/top up|top-up/i)).toBeNull();
+    expect(
+      screen.queryByText(/keep climbing|climbs automatically/i),
+    ).toBeNull();
+    expect(screen.queryByText(/submit a review/i)).toBeNull();
   });
 
   it("calls the buffer what it caps on a ladder: runs in flight", async () => {

@@ -126,11 +126,10 @@ import type {
   LadderClimberInput,
   LadderInput,
   LadderOut,
-  LadderOverrideInput,
   LadderProgress,
   LadderRung,
+  LadderRetryInput,
   LadderRungOrderInput,
-  LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
 } from "@clockwyrks/run-record/ladders";
@@ -141,6 +140,7 @@ import {
   getJsonStreamed,
   joinUrl,
   postJson,
+  postVoid,
   putBytes,
   putJson,
   putVoid,
@@ -1065,15 +1065,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async topUpLadder(id: string, token: string): Promise<TopUpResult> {
-      return postJson<TopUpResult>(
-        baseUrl,
-        ladderPath(id, "/topup"),
-        {},
-        token,
-      );
-    },
-
     async getLadderQueue(id: string, token: string): Promise<CoverageQueue> {
       return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"), token);
     },
@@ -1119,20 +1110,14 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async setLadderOutcome(
+    async retryLadderClimber(
       id: string,
-      input: LadderOverrideInput,
+      input: LadderRetryInput,
       token: string,
-    ): Promise<LadderRungOutcome> {
-      // The response is the verdict as it now stands — the override applied over (or
-      // cleared back to) whatever the gate itself computed, which is not necessarily
-      // what was submitted.
-      return postJson<LadderRungOutcome>(
-        baseUrl,
-        ladderPath(id, "/outcomes"),
-        input,
-        token,
-      );
+    ): Promise<void> {
+      // Acknowledged with an empty 204: the retry only resets the climber's failing
+      // streak and asks for a launch pass, and the board is re-read for the result.
+      await postVoid(baseUrl, ladderPath(id, "/climbers/retry"), input, token);
     },
 
     // The operator's saved gg configurations — named capability sets the account

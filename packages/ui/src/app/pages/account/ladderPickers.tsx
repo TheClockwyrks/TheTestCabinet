@@ -69,8 +69,8 @@ import ladder from "./Ladder.module.scss";
 /**
  * The gate a new ladder starts with, mirroring the Rust `Gate::default`.
  *
- * The gentlest rule that still stops a hopeless climb: a climber advances as long as
- * one run was playable at all, and is walled only when the whole rung came back
+ * The gentlest rule that still stops a hopeless climb: a climber passes a rung as long
+ * as one run was playable at all, and fails it only when the whole rung came back
  * broken. It is also the value every gate control resets to, which is how the editor
  * shows where the defaults are without captioning each control with its own.
  */
@@ -129,7 +129,7 @@ export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
  * value ("Rung by rung") the same way the gate's floor does, not as two buttons of
  * which one happens to be lit.
  *
- * The choice is real and not cosmetic — a top-up emits whole cells in this order,
+ * The choice is real and not cosmetic — a launch pass emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
  * order shown here *is* the order the runs execute and therefore finish in.
  */
@@ -206,7 +206,7 @@ function ratingLabel(rating: Rating): string {
 /**
  * The gate stated as its one rule, independent of any particular rung's target.
  *
- * There is exactly one rule — `advance when count(my runs rated FLOOR or better) >=
+ * There is exactly one rule — `pass when count(my runs rated FLOOR or better) >=
  * THRESHOLD` — so this reads it back rather than naming a mode. Naming modes is what
  * the whole design avoids: "stop when all are broken" and "pass if any run is
  * passable" are the *same* rule with different numbers, and a console that presented
@@ -217,12 +217,12 @@ export function describeGate(gate: Gate): string {
   const floor = `rated ${ratingLabel(gate.floor)} or better`;
   if (gate.threshold.kind === "count") {
     const runs = gate.threshold.runs;
-    return `A climber advances past a rung once ${runs} of its runs ${
+    return `A climber passes a rung once ${runs} of its runs ${
       runs === 1 ? "is" : "are"
     } ${floor}.`;
   }
   const percent = Math.round(gate.threshold.fraction * 100);
-  return `A climber advances past a rung once ${percent}% of its completed runs are ${floor}.`;
+  return `A climber passes a rung once ${percent}% of its completed runs are ${floor}.`;
 }
 
 /**
@@ -230,8 +230,8 @@ export function describeGate(gate: Gate): string {
  * knobs legible together.
  *
  * The floor and the threshold interact, and neither alone says what will happen: at
- * five runs a rung, "Scuffed or better, 1 run" walls a model only when every run is
- * broken, while "Scuffed or better, 50%" walls it as soon as over half are. Showing
+ * five runs a rung, "Scuffed or better, 1 run" fails a model only when every run is
+ * broken, while "Scuffed or better, 50%" fails it as soon as over half are. Showing
  * the arithmetic is the difference between a setting a reviewer can check and one
  * they have to guess at.
  */
@@ -240,14 +240,14 @@ export function gateExample(gate: Gate, runsPerCell: number): string {
   const need = Math.min(requiredRuns(gate.threshold, total), total);
   const floor = `rated ${ratingLabel(gate.floor)} or better`;
   if (need <= 0) {
-    return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to let the ladder stop anyone.`;
+    return `At ${total} runs a rung, this gate demands nothing: every climber passes every rung. Raise the threshold to let the ladder stop anyone.`;
   }
   const decides = gate.earlyStop
     ? "Its runs that have not started are cancelled once the validators' ratings make the outcome certain."
     : "The rung still finishes all of its runs either way.";
   return (
-    `At ${total} runs a rung: a climber advances once ${need} of its ${total} runs ` +
-    `${need === 1 ? "is" : "are"} ${floor}, and is walled when ` +
+    `At ${total} runs a rung: a climber passes once ${need} of its ${total} runs ` +
+    `${need === 1 ? "is" : "are"} ${floor}, and fails when ` +
     `${total - need + 1} or more come back worse. ${decides}`
   );
 }

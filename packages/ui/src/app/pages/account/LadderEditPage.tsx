@@ -20,7 +20,6 @@ import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { SettingRow } from "../../components/SettingRow";
-import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
 import { BufferTargetField, ComboPicker } from "./coveragePickers";
@@ -42,8 +41,8 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // The ladder editor (`/account/ladders/new` and `/account/ladders/:ladderId/edit`):
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
 // reusable combination groups a coverage plan references, plus one-offs), the single
-// gate every rung is decided by, and how the ladder is fed (climb order, runs in
-// flight at once, and whether it keeps climbing by itself as runs finish).
+// gate every rung is decided by, and how the ladder launches its runs (climb order and
+// runs in flight at once).
 //
 // A rung must pin a validator-rated case version, because the gate reads validator
 // ratings and nothing else: the rung picker never offers a legacy version, and a rung
@@ -54,8 +53,8 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // bumping a rung's version here keeps every climber's recorded verdicts attached to
 // the case that earned them. Enabling and halting — the two controls that decide
 // whether the ladder spends anything — are deliberately not here: they belong beside
-// the board that shows what would be started or cancelled. Saving here never enqueues,
-// and a ladder created here is created disabled.
+// the board that shows what would be started or cancelled. A ladder created here is
+// created disabled and launches nothing until it is enabled.
 // Console-only; gated on a signed-in account.
 export function LadderEditPage() {
   const { ladderId } = useParams();
@@ -84,10 +83,9 @@ export function LadderEditPage() {
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [rungs, setRungs] = useState<LadderRungInput[]>([]);
-  // How the ladder is fed. The defaults match the wire's, so a ladder created here is
-  // fed exactly as one created by any other client.
+  // How the ladder launches its runs. The defaults match the wire's, so a ladder
+  // created here launches exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
-  const [autoTopUp, setAutoTopUp] = useState(true);
   const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
   const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
     DEFAULT_BUFFER_TARGET,
@@ -129,7 +127,6 @@ export function LadderEditPage() {
           // from being a field the ladder loses on the next save.
           setRungs(existing.rungs.map(rungInput));
           setOuterAxis(existing.outerAxis);
-          setAutoTopUp(existing.autoTopUp);
           setBufferTarget(existing.bufferTarget ?? null);
           loadedPaused.current = existing.paused;
         }
@@ -219,10 +216,9 @@ export function LadderEditPage() {
         schedule: {
           outerAxis,
           paused,
-          autoTopUp,
           // Omitted when there is no override — null means "inherit my account
-          // default", a bound of 0 means "never top this ladder up", and no limit
-          // means "everything".
+          // default", a bound of 0 means "launch nothing", and no limit means "launch
+          // every rung as soon as it is earned".
           ...(bufferTarget === null ? {} : { bufferTarget }),
         },
       };
@@ -323,7 +319,7 @@ export function LadderEditPage() {
           />
 
           <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
-            Feeding the ladder
+            Launching runs
           </p>
           <LadderAxisPicker value={outerAxis} onChange={setOuterAxis} />
           <BufferTargetField
@@ -332,20 +328,9 @@ export function LadderEditPage() {
             onChange={setBufferTarget}
             subject="ladder"
           />
-          <SettingRow
-            label="Keep climbing as runs finish"
-            description="Each run that finishes lets the backend launch whatever the climb needs next, up to the runs-in-flight cap."
-            help="On by default, and it only applies once the ladder is enabled. Turn it off to feed the ladder only with “Top up now”."
-            modified={!autoTopUp}
-            onReset={() => setAutoTopUp(true)}
-          >
-            {(id) => (
-              <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
-            )}
-          </SettingRow>
           {!editing && (
             <p className={styles.empty}>
-              A new ladder starts disabled and enqueues nothing. Enable it from
+              A new ladder starts disabled and launches nothing. Enable it from
               its dashboard when you want the climb to start.
             </p>
           )}

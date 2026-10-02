@@ -28,7 +28,7 @@ const fixture = vi.hoisted(() => {
       client: {
         readReviewItems,
         listLadders: ladderCall,
-        topUpLadder: ladderCall,
+        retryLadderClimber: ladderCall,
         getLadderProgress: ladderCall,
       },
     },

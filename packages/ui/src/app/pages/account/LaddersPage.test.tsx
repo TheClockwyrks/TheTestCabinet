@@ -3,7 +3,7 @@ import type {
   LadderClimber,
   LadderProgress,
 } from "@clockwyrks/run-record/ladders";
-import { ladderSummary } from "./LaddersPage";
+import { ladderSummary, ladderSummaryLine } from "./LaddersPage";
 
 function climber(over: Partial<LadderClimber> = {}): LadderClimber {
   return {
@@ -12,15 +12,15 @@ function climber(over: Partial<LadderClimber> = {}): LadderClimber {
     model: "opus",
     priority: 0,
     focused: false,
-    held: false,
-    status: "climbing",
+    paused: false,
+    status: "running",
     outcomes: [],
     ...over,
   } as LadderClimber;
 }
 
-// A climber standing on rung `position` has cleared exactly the rungs below it; one
-// with no current rung has topped out and cleared them all.
+// A climber standing on rung `position` has passed exactly the rungs below it; one
+// with no current rung has completed and passed them all.
 function at(
   position: number,
   over: Partial<LadderClimber> = {},
@@ -46,19 +46,20 @@ function progress(climbers: LadderClimber[]): LadderProgress {
       supported: true,
     })),
     climbers,
-    climbersToppedOut: climbers.filter((c) => c.status === "toppedOut").length,
-    climbersWalled: climbers.filter((c) => c.status === "walled").length,
+    climbersRunning: climbers.filter((c) => c.status === "running").length,
+    climbersCompleted: climbers.filter((c) => c.status === "completed").length,
+    climbersFailed: climbers.filter((c) => c.status === "failed").length,
     climbersBlocked: climbers.filter((c) => c.status === "blocked").length,
-    runsMissing: 0,
+    climbersPaused: climbers.filter((c) => c.status === "paused").length,
     runsUnreviewed: 2,
     runsInFlight: 0,
     bufferTarget: { kind: "bounded", runs: 10 },
   };
 }
 
-// A card's bar measures rungs cleared across every climber, not climbers finished: a
-// board where four of five models are walled halfway is most of the way through the
-// work, and "0 topped out" would describe it as if nothing had happened.
+// A card's bar measures rungs passed across every climber, not climbers finished: a
+// board where four of five models failed halfway is most of the way through the work,
+// and "0 completed" would describe it as if nothing had happened.
 describe("ladderSummary", () => {
   it("counts the rungs below each climber as cleared", () => {
     const summary = ladderSummary(progress([at(2), at(1)]));
@@ -67,19 +68,20 @@ describe("ladderSummary", () => {
     expect(summary.donePct).toBeCloseTo(37.5);
   });
 
-  it("credits a topped-out climber with the whole climb", () => {
+  it("credits a completed climber with the whole climb", () => {
     const summary = ladderSummary(
-      progress([climber({ status: "toppedOut" }), at(0)]),
+      progress([climber({ status: "completed" }), at(0)]),
     );
     expect(summary.rungsCleared).toBe(4);
-    expect(summary.toppedOut).toBe(1);
+    expect(summary.completed).toBe(1);
+    expect(summary.running).toBe(1);
   });
 
-  it("reports walled climbers, which is the answer a ladder produces", () => {
+  it("reports failed climbers, which is the answer a ladder produces", () => {
     const summary = ladderSummary(
-      progress([at(1, { status: "walled" }), at(3)]),
+      progress([at(1, { status: "failed" }), at(3)]),
     );
-    expect(summary.walled).toBe(1);
+    expect(summary.failed).toBe(1);
     expect(summary.unreviewed).toBe(2);
   });
 
@@ -98,5 +100,35 @@ describe("ladderSummary", () => {
 
   it("does not divide by zero on a ladder nobody is climbing", () => {
     expect(ladderSummary(progress([])).donePct).toBe(0);
+  });
+});
+
+describe("ladderSummaryLine", () => {
+  it("says Climbers, Running, Completed, and Failed in plain words", () => {
+    const line = ladderSummaryLine(
+      ladderSummary(
+        progress([
+          at(1),
+          at(2, { status: "failed" }),
+          climber({ status: "completed" }),
+        ]),
+      ),
+    );
+    expect(line).toBe("3 climbers · 1 running · 1 completed · 1 failed");
+    expect(line).not.toMatch(/walled|topped out|climbs automatically/i);
+  });
+
+  it("adds Blocked and Paused last, and only while a climber is in that state", () => {
+    const line = ladderSummaryLine(
+      ladderSummary(
+        progress([
+          at(1, { status: "blocked", blocked: { kind: "unrated", runs: 1 } }),
+          at(0, { status: "paused", paused: true }),
+        ]),
+      ),
+    );
+    expect(line).toBe(
+      "2 climbers · 0 running · 0 completed · 0 failed · 1 blocked · 1 paused",
+    );
   });
 });

@@ -102,11 +102,10 @@ import type {
   LadderClimberInput,
   LadderInput,
   LadderOut,
-  LadderOverrideInput,
   LadderProgress,
   LadderRung,
+  LadderRetryInput,
   LadderRungOrderInput,
-  LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
 } from "@clockwyrks/run-record/ladders";
@@ -602,22 +601,10 @@ export interface BackendClient {
    * ladder starts at rung 1 while the others carry on.
    *
    * A pure read: a verdict the gate has resolved but nobody has written down yet is
-   * computed live and flagged not-recorded. It is persisted by the next top-up, so
-   * refreshing a dashboard is never itself part of the climb.
+   * computed live and flagged not-recorded. It is persisted by the next launch pass,
+   * so refreshing a dashboard is never itself part of the climb.
    */
   getLadderProgress?(id: string, token: string): Promise<LadderProgress>;
-
-  /**
-   * Top a ladder up now (`POST /ladders/{id}/topup`, Bearer), the ladder analogue of
-   * {@link topUpCoveragePlan} and serialized the same way. It resolves where every
-   * climber stands first (recording any verdict the validators' ratings have made
-   * decidable, and cancelling a decided rung's unstarted jobs when the gate stops
-   * early), then enqueues only the rung each one is *currently* on, up to the ladder's
-   * runs-in-flight cap — which is what makes a ladder a climb rather than a sweep. The
-   * backend also runs this itself whenever one of the ladder's runs finishes, so the
-   * console calls it only for "Top up now" and on enabling the ladder.
-   */
-  topUpLadder?(id: string, token: string): Promise<TopUpResult>;
 
   /**
    * A ladder's unreviewed-by-me runs in the ladder's own order
@@ -627,8 +614,12 @@ export interface BackendClient {
    */
   getLadderQueue?(id: string, token: string): Promise<CoverageQueue>;
 
-  /** Suspend or resume topping a ladder up (`POST /ladders/{id}/pause`, Bearer);
-   * the ladder analogue of {@link pauseCoveragePlan}. */
+  /**
+   * Disable or enable a ladder (`POST /ladders/{id}/pause`, Bearer); the ladder
+   * analogue of {@link pauseCoveragePlan}. `paused: false` enables it, and the backend
+   * starts the climb itself: no second call follows. `paused: true` stops new launches
+   * only; runs already queued carry on.
+   */
   pauseLadder?(
     id: string,
     paused: boolean,
@@ -643,13 +634,12 @@ export interface BackendClient {
 
   /**
    * Set one combination's steering (`POST /ladders/{id}/climbers`, Bearer): its climb
-   * priority, its focus flag, and whether it is held. Written whole because it is one
+   * priority, its focus flag, and whether it is paused. Written whole because it is one
    * decision ("climb this one first and watch it"), and a partial update can leave a
    * combination focused but forgotten.
    *
-   * This is the **downward** half of manual control: a hold stops the climber where it
-   * stands without pretending a rung was decided, so clearing it resumes from exactly
-   * where the climb left off.
+   * A pause stops the climber where it stands without deciding any rung, so resuming
+   * continues from exactly where the climb left off.
    */
   setLadderClimber?(
     id: string,
@@ -658,19 +648,18 @@ export interface BackendClient {
   ): Promise<StoredClimberOut>;
 
   /**
-   * Apply or clear a manual override of one recorded verdict
-   * (`POST /ladders/{id}/outcomes`, Bearer) — promote a climber past a rung its runs
-   * failed, wall one its runs passed, or take either back by sending a null outcome.
-   *
-   * The **upward** half of manual control, and deliberately an override stored *beside*
-   * the automatic verdict rather than a rewrite of it: a later recompute can never
-   * silently undo it, and clearing it restores exactly what the gate says.
+   * Retry a climber blocked because its rung's runs keep failing
+   * (`POST /ladders/{id}/climbers/retry`, Bearer), once its owner has fixed the cause.
+   * The backend forgets the failures so far and relaunches that climber's rung under
+   * the ladder's runs-in-flight limit. Resolves on `204`; rejects with `404` for a
+   * combination that is not a climber of the ladder and `409` for a climber that is
+   * not blocked as failing.
    */
-  setLadderOutcome?(
+  retryLadderClimber?(
     id: string,
-    input: LadderOverrideInput,
+    input: LadderRetryInput,
     token: string,
-  ): Promise<LadderRungOutcome>;
+  ): Promise<void>;
 
   // The operator's saved gg configurations (console-only, Bearer). gg is its own
   // run mode — a named capability set stands where a third-party run's harness

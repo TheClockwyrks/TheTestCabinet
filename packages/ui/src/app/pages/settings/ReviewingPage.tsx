@@ -162,8 +162,9 @@ function BufferSetting({
         <h2 className={styles.title}>Review buffer</h2>
         <p className={styles.description}>
           Runs your plans may leave outstanding before a top-up stops, and the
-          most runs a ladder keeps in flight at once. With no limit, a top-up
-          enqueues every missing run at once.
+          most runs a ladder keeps in flight at once. With no limit, plans
+          enqueue every missing run at once and ladders launch every earned rung
+          at once.
         </p>
       </div>
       <form

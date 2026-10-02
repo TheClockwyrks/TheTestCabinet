@@ -1068,3 +1068,49 @@ describe("publish stream failures", () => {
     );
   });
 });
+
+// A retry is acknowledged with an empty 204, so the call must not try to parse a body,
+// and the climber travels in the body rather than the path (a model id has slashes).
+describe("createHttpBackend ladder climber retry", () => {
+  it("posts the combination to the ladder's retry route and accepts an empty 204", async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const combination = { harness: "claude", model: "anthropic/opus" } as const;
+    await expect(
+      createHttpBackend(BACKEND).retryLadderClimber!(
+        "l/1",
+        { combination },
+        "tok",
+      ),
+    ).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BACKEND}/ladders/l%2F1/climbers/retry`);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ combination });
+    expect((init?.headers as Record<string, string>).authorization).toBe(
+      "Bearer tok",
+    );
+  });
+
+  it("rejects a climber that is not blocked as failing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("this climber is running, not blocked by failing runs", {
+            status: 409,
+          }),
+      ),
+    );
+    await expect(
+      createHttpBackend(BACKEND).retryLadderClimber!(
+        "l1",
+        { combination: { harness: "claude", model: "opus" } },
+        "tok",
+      ),
+    ).rejects.toThrow();
+  });
+});
