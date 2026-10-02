@@ -1,6 +1,6 @@
 //! The automated climb, end to end against a real store and database: validators rate
-//! the runs, the gate reads those ratings, and a finished run tops the ladder up with no
-//! console and no review in the loop.
+//! the runs, the gate reads those ratings, and a finished run makes the backend run a
+//! launch pass of the ladder with no console and no review in the loop.
 //!
 //! Every test here drives the same functions the routes call — [`top_up_ladder`],
 //! [`feed_ladders`], [`load_board`] — over an in-memory database and a definition store
@@ -24,7 +24,7 @@ use crate::db::tests::{
 /// The account every ladder here belongs to.
 const OWNER: &str = "owner-1";
 
-/// The model every climber here runs, priced in the catalog so a top-up can launch it
+/// The model every climber here runs, priced in the catalog so a launch pass can launch it
 /// without reaching OpenRouter.
 const SONNET: &str = "claude-sonnet-4-5";
 
@@ -149,19 +149,13 @@ async fn create_ladder(state: &AppState, input: LadderInput) -> Result<LadderOut
         .map(|Json(out)| out)
 }
 
-/// Write a ladder's schedule: enabled or not, climbing as runs finish or not, and its
-/// buffer target.
-async fn schedule(
-    state: &AppState,
-    id: &str,
-    enabled: bool,
-    auto_top_up: bool,
-    buffer_target: Option<BufferTarget>,
-) {
+/// Write a ladder's schedule straight to the store: enabled or not, and its buffer
+/// target. Unlike the `pause` endpoint it runs no launch pass, so a test decides when
+/// one runs.
+async fn schedule(state: &AppState, id: &str, enabled: bool, buffer_target: Option<BufferTarget>) {
     let schedule = LadderSchedule {
         outer_axis: LadderAxis::Rung,
         paused: !enabled,
-        auto_top_up,
         buffer_target,
     };
     assert!(
@@ -281,45 +275,42 @@ async fn validator_rated_runs_carry_a_climber_up_the_ladder_with_no_review() {
         .await
         .unwrap();
     let id = ladder.ladder.id.clone();
-    // A new ladder is disabled and climbs as runs finish once enabled.
+    // A new ladder is disabled, and climbs by itself once enabled.
     assert!(ladder.schedule.paused);
-    assert!(ladder.schedule.auto_top_up);
-    schedule(&state, &id, true, true, None).await;
+    schedule(&state, &id, true, None).await;
 
-    // Enabling is followed by a top-up, which launches the first rung.
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    // The first launch pass launches the first rung.
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(first.enqueued, 2);
     assert!(first.cells.iter().all(|cell| cell.slug == "pong"));
     let pong_jobs = job_ids(&first);
 
     // One run finishes broken: the rung still has a run to complete, so nothing new is
-    // launched and the climber is climbing.
+    // launched and the climber is running.
     finish_and_feed(&state, &pong_jobs[0], "pong", BROKEN).await;
     let board = progress_of(&state, &id).await;
-    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Climbing);
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Running);
     assert!(in_flight(&state, "carom").await.is_empty());
 
-    // The second finishes great. Nobody reviews anything: the finished run itself tops
-    // the ladder up, the gate advances the climber, and the next rung is launched.
+    // The second finishes great. Nobody reviews anything: the finished run itself runs a
+    // launch pass, the gate passes the climber, and the next rung is launched.
     finish_and_feed(&state, &pong_jobs[1], "pong", GREAT).await;
     assert_eq!(in_flight(&state, "carom").await.len(), 2);
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Climbing);
+    assert_eq!(standing.status, ClimberStatus::Running);
     assert_eq!(standing.current_rung.as_ref().unwrap().position, 1);
-    assert_eq!(standing.outcomes[0].effective, LadderOutcome::Advanced);
+    assert_eq!(standing.outcomes[0].outcome, LadderOutcome::Passed);
     assert!(
         standing.outcomes[0].recorded,
-        "the top-up wrote the verdict down"
+        "the launch pass wrote the verdict down"
     );
     assert_eq!(
         board.runs_unreviewed, 2,
         "reviews are optional labels, never a gate"
     );
 
-    // Both of the second rung's runs come back broken: walled there.
+    // Both of the second rung's runs come back broken: it fails there.
     let carom: Vec<String> = in_flight(&state, "carom")
         .await
         .into_iter()
@@ -329,31 +320,29 @@ async fn validator_rated_runs_carry_a_climber_up_the_ladder_with_no_review() {
     finish_and_feed(&state, &carom[1], "carom", BROKEN).await;
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Walled);
-    assert_eq!(board.climbers_walled, 1);
+    assert_eq!(standing.status, ClimberStatus::Failed);
+    assert_eq!(board.climbers_failed, 1);
     assert_eq!(board.runs_in_flight, 0);
 }
 
 #[tokio::test]
-async fn a_climber_that_clears_every_rung_tops_out() {
+async fn a_climber_that_passes_every_rung_completes() {
     let (_dir, state) = test_state().await;
     let id = create_ladder(&state, ladder_input(&["pong", "carom"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     finish_and_feed(&state, &job_ids(&first)[0], "pong", GREAT).await;
     let carom = in_flight(&state, "carom").await;
     assert_eq!(carom.len(), 1);
     finish_and_feed(&state, &carom[0].id, "carom", GREAT).await;
 
     let board = progress_of(&state, &id).await;
-    assert_eq!(climber(&board, SONNET).status, ClimberStatus::ToppedOut);
-    assert_eq!(board.climbers_topped_out, 1);
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Completed);
+    assert_eq!(board.climbers_completed, 1);
     assert!(
         jobs(&state)
             .await
@@ -370,10 +359,8 @@ async fn a_run_whose_build_never_loaded_counts_as_broken() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     // Its validators passed every point, but the build never loaded.
     let mut record = run_of("run-unloaded", "pong", &[("serve", true), ("hud", true)]);
     record.validation.loaded = false;
@@ -381,7 +368,7 @@ async fn a_run_whose_build_never_loaded_counts_as_broken() {
     feed_ladders(&state, &job).await;
 
     let board = progress_of(&state, &id).await;
-    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Walled);
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Failed);
     assert!(in_flight(&state, "carom").await.is_empty());
 }
 
@@ -393,16 +380,14 @@ async fn reviews_and_their_overrides_never_move_the_gate() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     let pong_job = job_ids(&first)[0].clone();
     finish_and_feed(&state, &pong_job, "pong", BROKEN).await;
     let run_id = format!("run-{pong_job}");
     assert_eq!(
         climber(&progress_of(&state, &id).await, SONNET).status,
-        ClimberStatus::Walled
+        ClimberStatus::Failed
     );
 
     // The owner overrides the failing point to a pass. The run's stored rating follows
@@ -419,14 +404,12 @@ async fn reviews_and_their_overrides_never_move_the_gate() {
         .unwrap();
     let stored = state.db.get_run(&run_id).await.unwrap().unwrap();
     assert_eq!(stored.rating, Some(Rating::Flawless));
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 0);
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Walled);
-    assert_eq!(standing.outcomes[0].outcome, LadderOutcome::Walled);
+    assert_eq!(standing.status, ClimberStatus::Failed);
+    assert_eq!(standing.outcomes[0].outcome, LadderOutcome::Failed);
     assert_eq!(standing.current_rung.as_ref().unwrap().tally.passing, 0);
 }
 
@@ -435,17 +418,13 @@ async fn reviews_and_their_overrides_never_move_the_gate() {
 /// A ladder on `pong` then `carom` for the shared climber, with its first rung's single
 /// run already enqueued by hand (no origin), so only the trigger under test can launch
 /// the second rung.
-async fn climb_with_a_hand_launched_run(
-    state: &AppState,
-    enabled: bool,
-    auto_top_up: bool,
-) -> (String, job::Model) {
+async fn climb_with_a_hand_launched_run(state: &AppState, enabled: bool) -> (String, job::Model) {
     let id = create_ladder(state, ladder_input(&["pong", "carom"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(state, &id, enabled, auto_top_up, None).await;
+    schedule(state, &id, enabled, None).await;
     state
         .db
         .enqueue_job(crate::db::NewJob {
@@ -461,7 +440,7 @@ async fn climb_with_a_hand_launched_run(
 #[tokio::test]
 async fn a_finished_run_feeds_a_ladder_that_pins_its_case_even_when_another_launch_made_it() {
     let (_dir, state) = test_state().await;
-    let (id, job) = climb_with_a_hand_launched_run(&state, true, true).await;
+    let (id, job) = climb_with_a_hand_launched_run(&state, true).await;
     feed_ladders(&state, &job).await;
     let carom = in_flight(&state, "carom").await;
     assert_eq!(carom.len(), 1, "the next rung was launched server-side");
@@ -475,7 +454,7 @@ async fn a_finished_run_feeds_a_ladder_that_pins_its_case_even_when_another_laun
 #[tokio::test]
 async fn a_finished_run_does_not_feed_a_disabled_ladder() {
     let (_dir, state) = test_state().await;
-    let (id, job) = climb_with_a_hand_launched_run(&state, false, true).await;
+    let (id, job) = climb_with_a_hand_launched_run(&state, false).await;
     feed_ladders(&state, &job).await;
     assert!(in_flight(&state, "carom").await.is_empty());
     // Nor does it record anything: a disabled ladder is not touched at all.
@@ -483,23 +462,9 @@ async fn a_finished_run_does_not_feed_a_disabled_ladder() {
 }
 
 #[tokio::test]
-async fn a_finished_run_does_not_feed_a_ladder_with_auto_top_up_off() {
-    let (_dir, state) = test_state().await;
-    let (id, job) = climb_with_a_hand_launched_run(&state, true, false).await;
-    feed_ladders(&state, &job).await;
-    assert!(in_flight(&state, "carom").await.is_empty());
-    // "Top up now" still feeds it.
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
-    assert_eq!(result.enqueued, 1);
-    assert_eq!(in_flight(&state, "carom").await.len(), 1);
-}
-
-#[tokio::test]
 async fn a_finished_run_of_another_case_feeds_nothing() {
     let (_dir, state) = test_state().await;
-    let (_id, mut job) = climb_with_a_hand_launched_run(&state, true, true).await;
+    let (_id, mut job) = climb_with_a_hand_launched_run(&state, true).await;
     // The same job, but of a case no rung pins and with no ladder origin.
     job.test_case_slug = "volley".to_string();
     feed_ladders(&state, &job).await;
@@ -514,10 +479,8 @@ async fn the_driver_reporting_a_finished_run_climbs_the_ladder_with_no_console_o
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     let job_id = job_ids(&first)[0].clone();
     let token = state.db.get_job(&job_id).await.unwrap().unwrap().job_token;
 
@@ -540,7 +503,7 @@ async fn the_driver_reporting_a_finished_run_climbs_the_ladder_with_no_console_o
     .unwrap();
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // The top-up runs on a task of its own after the report is stored, so wait for it.
+    // The launch pass runs on a task of its own after the report is stored, so wait for it.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
     loop {
         if in_flight(&state, "carom").await.len() == 1 {
@@ -554,8 +517,8 @@ async fn the_driver_reporting_a_finished_run_climbs_the_ladder_with_no_console_o
     }
     let board = progress_of(&state, &id).await;
     assert_eq!(
-        climber(&board, SONNET).outcomes[0].effective,
-        LadderOutcome::Advanced
+        climber(&board, SONNET).outcomes[0].outcome,
+        LadderOutcome::Passed
     );
 }
 
@@ -581,13 +544,13 @@ async fn concurrent_top_ups_never_enqueue_one_shortfall_twice() {
         ))
         .await
         .unwrap();
-    schedule(&state, &id, true, true, Some(BufferTarget::Unbounded)).await;
+    schedule(&state, &id, true, Some(BufferTarget::Unbounded)).await;
 
     let (a, b, c, d) = tokio::join!(
-        top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic),
-        top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic),
-        top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested),
-        top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic),
+        top_up_ladder(&state, OWNER, &id),
+        top_up_ladder(&state, OWNER, &id),
+        top_up_ladder(&state, OWNER, &id),
+        top_up_ladder(&state, OWNER, &id),
     );
     let enqueued: u32 = [a, b, c, d].into_iter().map(|r| r.unwrap().enqueued).sum();
     assert_eq!(enqueued, 6, "two climbers × three runs, each enqueued once");
@@ -603,12 +566,10 @@ async fn a_run_that_finishes_while_the_claim_is_held_is_served_by_another_pass()
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
 
-    // Another top-up is mid-pass when the rung's run finishes.
+    // Another launch pass is mid-pass when the rung's run finishes.
     assert!(
         state
             .db
@@ -617,9 +578,7 @@ async fn a_run_that_finishes_while_the_claim_is_held_is_served_by_another_pass()
             .unwrap()
     );
     let job = finish(&state, &job_ids(&first)[0], run_of("run-1", "pong", GREAT)).await;
-    let busy = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let busy = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(busy.skipped, Some(TopUpSkipped::Busy));
     assert!(
         state.db.ladder_top_up_requested(&id).await.unwrap(),
@@ -635,7 +594,6 @@ async fn a_run_that_finishes_while_the_claim_is_held_is_served_by_another_pass()
         OWNER,
         &id,
         BufferTarget::Bounded { runs: 10 },
-        TopUpTrigger::Automatic,
         &mut passes,
         &mut merged,
     )
@@ -658,13 +616,11 @@ async fn a_request_left_after_the_release_is_served_by_the_caller_that_released(
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    // A request that is already standing when a top-up starts is taken by its first
+    schedule(&state, &id, true, None).await;
+    // A request that is already standing when a launch pass starts is taken by its first
     // pass, and nothing is left behind for nobody to serve.
-    state.db.request_ladder_top_up(&id, false).await.unwrap();
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    state.db.request_ladder_top_up(&id).await.unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 1);
     assert!(!state.db.ladder_top_up_requested(&id).await.unwrap());
 }
@@ -679,14 +635,7 @@ async fn a_ladders_buffer_caps_runs_in_flight_and_completed_runs_never_occupy_it
         .unwrap()
         .ladder
         .id;
-    schedule(
-        &state,
-        &id,
-        true,
-        true,
-        Some(BufferTarget::Bounded { runs: 2 }),
-    )
-    .await;
+    schedule(&state, &id, true, Some(BufferTarget::Bounded { runs: 2 })).await;
     // Two of the rung's three runs completed, and nobody has reviewed either.
     for n in 0..2 {
         let job_id = format!("done-{n}");
@@ -705,9 +654,7 @@ async fn a_ladders_buffer_caps_runs_in_flight_and_completed_runs_never_occupy_it
     assert_eq!(board.runs_in_flight, 0);
     // Under a plan's semantics those two would fill a buffer of two. A ladder's buffer
     // counts only what is in flight, so the third run is launched.
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.outstanding, Some(0));
     assert_eq!(result.enqueued, 1);
 }
@@ -732,22 +679,11 @@ async fn a_full_in_flight_cap_launches_nothing_more() {
     let mut input = ladder_input(&["pong"], 2, &[SONNET, "claude-opus-4-8"]);
     input.name = "two".to_string();
     let two = create_ladder(&state, input).await.unwrap().ladder.id;
-    schedule(
-        &state,
-        &two,
-        true,
-        true,
-        Some(BufferTarget::Bounded { runs: 2 }),
-    )
-    .await;
+    schedule(&state, &two, true, Some(BufferTarget::Bounded { runs: 2 })).await;
     // The first climber's whole cell fills the cap; the second waits for it to drain.
-    let first = top_up_ladder(&state, OWNER, &two, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let first = top_up_ladder(&state, OWNER, &two).await.unwrap();
     assert_eq!(first.enqueued, 2);
-    let again = top_up_ladder(&state, OWNER, &two, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let again = top_up_ladder(&state, OWNER, &two).await.unwrap();
     assert_eq!(again.outstanding, Some(2));
     assert_eq!(again.enqueued, 0);
     assert_eq!(progress_of(&state, &two).await.runs_in_flight, 2);
@@ -824,10 +760,8 @@ async fn early_stop_cancels_only_the_decided_cells_waiting_jobs() {
         ..Gate::default()
     });
     let id = create_ladder(&state, input).await.unwrap().ladder.id;
-    schedule(&state, &id, true, true, Some(BufferTarget::Unbounded)).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, Some(BufferTarget::Unbounded)).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(first.enqueued, 6);
     let mine: Vec<job::Model> = jobs(&state)
         .await
@@ -852,9 +786,7 @@ async fn early_stop_cancels_only_the_decided_cells_waiting_jobs() {
     let job = finish(&state, &mine[0].id, run_of("run-0", "pong", GREAT)).await;
 
     // The finished run decides the rung early (one great run clears the default gate).
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.early_stop_canceled, 1);
     let state_of = |all: &[job::Model], id: &str| {
         all.iter()
@@ -880,7 +812,7 @@ async fn early_stop_cancels_only_the_decided_cells_waiting_jobs() {
             .all(|job| job.state == "queued"),
         "another climber's undecided cell is untouched"
     );
-    // The climber moved on: its next rung was launched by the same top-up, and the run
+    // The climber moved on: its next rung was launched by the same launch pass, and the run
     // still executing on the decided rung counts against the in-flight cap.
     assert_eq!(in_flight(&state, "carom").await.len(), 3);
     let board = progress_of(&state, &id).await;
@@ -894,9 +826,7 @@ async fn early_stop_cancels_only_the_decided_cells_waiting_jobs() {
     );
     // A cancelled job feeds nothing, and a repeat report cancels nothing more.
     feed_ladders(&state, &job).await;
-    let again = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let again = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(again.early_stop_canceled, 0);
 }
 
@@ -908,10 +838,8 @@ async fn without_early_stop_a_rung_runs_everything_it_started() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, Some(BufferTarget::Unbounded)).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, Some(BufferTarget::Unbounded)).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     finish_and_feed(&state, &job_ids(&first)[0], "pong", GREAT).await;
     assert_eq!(in_flight(&state, "pong").await.len(), 2);
     assert!(in_flight(&state, "carom").await.is_empty());
@@ -990,13 +918,11 @@ async fn ladder_with_a_legacy_rung(state: &AppState) -> StoredLadder {
 }
 
 #[tokio::test]
-async fn a_stored_legacy_rung_is_reported_unsupported_and_blocks_without_walling() {
+async fn a_stored_legacy_rung_is_reported_unsupported_and_blocks_without_failing() {
     let (_dir, state) = test_state().await;
     let stored = ladder_with_a_legacy_rung(&state).await;
     let id = stored.id.clone();
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(first.enqueued, 1);
     finish_and_feed(&state, &job_ids(&first)[0], "pong", GREAT).await;
 
@@ -1013,11 +939,9 @@ async fn a_stored_legacy_rung_is_reported_unsupported_and_blocks_without_walling
     );
     assert_eq!(standing.current_rung.as_ref().unwrap().position, 1);
     assert_eq!(board.climbers_blocked, 1);
-    assert_eq!(board.climbers_walled, 0, "an unsupported rung walls nobody");
+    assert_eq!(board.climbers_failed, 0, "an unsupported rung fails nobody");
     // Nothing is ever launched for it, and no verdict is recorded on it.
-    let again = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let again = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(again.enqueued, 0);
     assert!(in_flight(&state, "breakout").await.is_empty());
     let outcomes = state.db.list_ladder_outcomes(&id).await.unwrap();
@@ -1036,19 +960,17 @@ async fn a_stored_legacy_rung_is_reported_unsupported_and_blocks_without_walling
             &stored.rungs[1].id,
             &climber_key(&harness_combo(SONNET)),
             "v1.0.0",
-            LadderOutcomeKind::Advanced,
+            LadderOutcomeKind::Passed,
             "2026-10-01T00:00:00Z",
         )
         .await
         .unwrap();
-    let past = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let past = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(past.enqueued, 1);
     assert_eq!(in_flight(&state, "carom").await.len(), 1);
     assert_eq!(
         climber(&progress_of(&state, &id).await, SONNET).status,
-        ClimberStatus::Climbing
+        ClimberStatus::Running
     );
 }
 
@@ -1062,7 +984,7 @@ async fn a_rung_left_with_unrated_runs_short_of_its_bar_is_blocked_as_unrated() 
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
+    schedule(&state, &id, true, None).await;
     // One run is rated broken; the other was pushed while the backend did not hold the
     // version, so nothing rated it.
     let broken = run_of("run-broken", "pong", BROKEN);
@@ -1088,10 +1010,8 @@ async fn a_rung_left_with_unrated_runs_short_of_its_bar_is_blocked_as_unrated() 
     assert_eq!(standing.blocked, Some(ClimberBlock::Unrated { runs: 1 }));
     let tally = standing.current_rung.as_ref().unwrap().tally;
     assert_eq!((tally.rated, tally.unrated, tally.pending), (1, 1, 0));
-    // Nothing a top-up launches can decide it.
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    // Nothing a launch pass launches can decide it.
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 0);
 }
 
@@ -1103,7 +1023,7 @@ async fn a_validator_rated_run_stored_before_the_column_is_rated_when_the_gate_r
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
+    schedule(&state, &id, true, None).await;
     let manifest = state.store.read_manifest("pong", "v1.0.0").unwrap();
     state
         .db
@@ -1125,31 +1045,23 @@ async fn a_validator_rated_run_stored_before_the_column_is_rated_when_the_gate_r
         .await
         .unwrap();
 
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 1);
     assert_eq!(in_flight(&state, "carom").await.len(), 1);
     assert_eq!(
-        climber(&progress_of(&state, &id).await, SONNET).outcomes[0].effective,
-        LadderOutcome::Advanced
+        climber(&progress_of(&state, &id).await, SONNET).outcomes[0].outcome,
+        LadderOutcome::Passed
     );
 }
 
 // ---- A rung whose runs keep failing ------------------------------------------
 
-#[tokio::test]
-async fn a_failing_rung_stops_relaunching_itself_until_its_owner_tops_it_up() {
-    let (_dir, state) = test_state().await;
-    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
-        .await
-        .unwrap()
-        .ladder
-        .id;
-    schedule(&state, &id, true, true, None).await;
+/// Enqueue and fail three jobs of the shared climber on `pong`, each with no run, ended
+/// at `{prefix}:0{n}:00Z`, returning the last one.
+async fn fail_three_on_infrastructure(state: &AppState, tag: &str, prefix: &str) -> job::Model {
     let mut last = None;
     for n in 0..3 {
-        let job_id = format!("failed-{n}");
+        let job_id = format!("{tag}-{n}");
         state
             .db
             .enqueue_job(crate::db::NewJob {
@@ -1163,25 +1075,51 @@ async fn a_failing_rung_stops_relaunching_itself_until_its_owner_tops_it_up() {
             .set_job_state(
                 &job_id,
                 "failed",
-                &format!("2026-10-01T00:0{n}:00Z"),
+                &format!("{prefix}:0{n}:00Z"),
                 Some("harness unavailable"),
                 None,
             )
             .await
             .unwrap();
     }
+    last.unwrap()
+}
+
+/// Retry the shared climber through the endpoint, as the console does.
+async fn retry(state: &AppState, id: &str, model: &str) -> Result<StatusCode, ApiError> {
+    retry_climber(
+        State(state.clone()),
+        owner(),
+        Path(id.to_string()),
+        Json(LadderRetryInput {
+            combination: harness_combo(model),
+        }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_failing_rung_stops_relaunching_itself_until_its_climber_is_retried() {
+    let (_dir, state) = test_state().await;
+    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
+        .await
+        .unwrap()
+        .ladder
+        .id;
+    schedule(&state, &id, true, None).await;
+    let last = fail_three_on_infrastructure(&state, "failed", "2026-10-01T00").await;
 
     // The third failure finishing does not relaunch the rung, and says why.
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 0);
     assert!(
-        result.unlaunchable[0].reason.contains("last 3 runs failed"),
+        result.unlaunchable[0]
+            .reason
+            .contains("last 3 runs failed; retry the climber"),
         "{:?}",
         result.unlaunchable
     );
-    feed_ladders(&state, &last.unwrap()).await;
+    feed_ladders(&state, &last).await;
     assert!(in_flight(&state, "pong").await.is_empty());
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
@@ -1192,17 +1130,191 @@ async fn a_failing_rung_stops_relaunching_itself_until_its_owner_tops_it_up() {
             attempts: FAILING_STREAK
         })
     );
+    assert_eq!(board.climbers_blocked, 1);
+    assert_eq!(board.climbers_running, 0);
 
-    // "Top up now" relaunches it.
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
-    assert_eq!(result.enqueued, 1);
+    // Retrying the climber starts its streak afresh, and the launch pass the retry runs
+    // relaunches the rung.
     assert_eq!(
-        climber(&progress_of(&state, &id).await, SONNET).status,
-        ClimberStatus::Climbing,
+        retry(&state, &id, SONNET).await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    let board = progress_of(&state, &id).await;
+    assert_eq!(
+        climber(&board, SONNET).status,
+        ClimberStatus::Running,
         "a run in flight may yet complete"
     );
+    assert_eq!(climber(&board, SONNET).blocked, None);
+
+    // Three more failures after the retry block it again.
+    let relaunched = in_flight(&state, "pong").await;
+    state
+        .db
+        .set_job_state(
+            &relaunched[0].id,
+            "canceled",
+            "2099-01-01T00:00:00Z",
+            Some("cleared for the test"),
+            None,
+        )
+        .await
+        .unwrap();
+    let last = fail_three_on_infrastructure(&state, "again", "2099-01-01T01").await;
+    feed_ladders(&state, &last).await;
+    assert!(in_flight(&state, "pong").await.is_empty());
+    let board = progress_of(&state, &id).await;
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Blocked);
+    assert_eq!(
+        climber(&board, SONNET).blocked,
+        Some(ClimberBlock::Failing {
+            attempts: FAILING_STREAK
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_retry_relaunches_only_the_retried_climbers_rung() {
+    let (_dir, state) = test_state().await;
+    state
+        .db
+        .upsert_model_config(priced_model_write(
+            "opus",
+            "Claude Opus 4.8",
+            &["claude-opus-4-8"],
+        ))
+        .await
+        .unwrap();
+    const OPUS: &str = "claude-opus-4-8";
+    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET, OPUS]))
+        .await
+        .unwrap()
+        .ladder
+        .id;
+    schedule(&state, &id, true, None).await;
+    // Both climbers' rungs keep failing.
+    fail_three_on_infrastructure(&state, "sonnet", "2026-10-01T00").await;
+    for n in 0..3 {
+        let job_id = format!("opus-{n}");
+        state
+            .db
+            .enqueue_job(crate::db::NewJob {
+                model_id: OPUS.to_string(),
+                ..crate::db::tests::new_job(&job_id, "2026-10-01T00:00:00Z")
+            })
+            .await
+            .unwrap();
+        state
+            .db
+            .set_job_state(
+                &job_id,
+                "failed",
+                &format!("2026-10-01T01:0{n}:00Z"),
+                Some("harness unavailable"),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+    let board = progress_of(&state, &id).await;
+    assert_eq!(board.climbers_blocked, 2);
+
+    assert_eq!(
+        retry(&state, &id, OPUS).await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    let launched = in_flight(&state, "pong").await;
+    assert_eq!(
+        launched[0].model_id, OPUS,
+        "only the retried climber relaunched"
+    );
+    let board = progress_of(&state, &id).await;
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Blocked);
+    assert_eq!(climber(&board, OPUS).status, ClimberStatus::Running);
+}
+
+#[tokio::test]
+async fn retrying_a_climber_that_is_not_failing_is_a_conflict() {
+    let (_dir, state) = test_state().await;
+    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
+        .await
+        .unwrap()
+        .ladder
+        .id;
+    // A running climber has nothing to retry.
+    let err = retry(&state, &id, SONNET).await.unwrap_err();
+    assert_eq!(err.status, StatusCode::CONFLICT);
+    assert!(err.message.contains("running"), "{}", err.message);
+    // A combination that is not on the ladder is not one of its climbers.
+    let err = retry(&state, &id, "claude-opus-4-8").await.unwrap_err();
+    assert_eq!(err.status, StatusCode::NOT_FOUND);
+    // Nor is anything recorded for either.
+    assert!(state.db.list_ladder_climbers(&id).await.unwrap().is_empty());
+    // A ladder that is not the caller's is not found at all.
+    let err = retry(&state, "no-such-ladder", SONNET).await.unwrap_err();
+    assert_eq!(err.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_retry_survives_a_full_in_flight_cap() {
+    let (_dir, state) = test_state().await;
+    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
+        .await
+        .unwrap()
+        .ladder
+        .id;
+    // A cap of zero: the retry's own launch pass can launch nothing.
+    schedule(&state, &id, true, Some(BufferTarget::Bounded { runs: 0 })).await;
+    fail_three_on_infrastructure(&state, "failed", "2026-10-01T00").await;
+    assert_eq!(
+        retry(&state, &id, SONNET).await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
+    assert_eq!(result.enqueued, 0);
+    // The retry is recorded rather than spent, so the climber stays running, and the next
+    // pass with room launches the rung.
+    assert_eq!(
+        climber(&progress_of(&state, &id).await, SONNET).status,
+        ClimberStatus::Running
+    );
+    schedule(&state, &id, true, None).await;
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
+    assert_eq!(result.enqueued, 1);
+}
+
+#[tokio::test]
+async fn enabling_a_ladder_starts_its_climb_with_no_second_call() {
+    let (_dir, state) = test_state().await;
+    let ladder = create_ladder(&state, ladder_input(&["pong", "carom"], 2, &[SONNET]))
+        .await
+        .unwrap();
+    let id = ladder.ladder.id;
+    assert!(ladder.schedule.paused, "a new ladder starts disabled");
+    assert!(jobs(&state).await.is_empty());
+    let Json(enabled) = pause(
+        State(state.clone()),
+        owner(),
+        Path(id.clone()),
+        Json(PauseInput { paused: false }),
+    )
+    .await
+    .unwrap();
+    assert!(!enabled.paused);
+    wait_for_in_flight(&state, "pong", 2).await;
+    // Disabling launches nothing more and leaves the queue alone.
+    let Json(disabled) = pause(
+        State(state.clone()),
+        owner(),
+        Path(id.clone()),
+        Json(PauseInput { paused: true }),
+    )
+    .await
+    .unwrap();
+    assert!(disabled.paused);
+    assert_eq!(in_flight(&state, "pong").await.len(), 2);
 }
 
 #[tokio::test]
@@ -1213,7 +1325,7 @@ async fn two_failures_are_not_yet_a_failing_rung() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
+    schedule(&state, &id, true, None).await;
     for n in 0..2 {
         let job_id = format!("failed-{n}");
         state
@@ -1230,9 +1342,7 @@ async fn two_failures_are_not_yet_a_failing_rung() {
             .await
             .unwrap();
     }
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 1);
 }
 
@@ -1258,7 +1368,7 @@ async fn fail_and_feed(
 }
 
 #[tokio::test]
-async fn a_rung_whose_every_run_times_out_walls_the_climber_instead_of_relaunching() {
+async fn a_rung_whose_every_run_times_out_fails_the_climber_instead_of_relaunching() {
     use test_cabinet_core::run_record::RunState;
     let (_dir, state) = test_state().await;
     let id = create_ladder(&state, ladder_input(&["pong", "carom"], 2, &[SONNET]))
@@ -1266,10 +1376,8 @@ async fn a_rung_whose_every_run_times_out_walls_the_climber_instead_of_relaunchi
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     let pong = job_ids(&first);
     assert_eq!(pong.len(), 2);
 
@@ -1281,11 +1389,11 @@ async fn a_rung_whose_every_run_times_out_walls_the_climber_instead_of_relaunchi
     assert_eq!(tally.completed, 1);
     assert_eq!(tally.rated, 1, "a run that never completed is rated broken");
 
-    // The second one ends the rung: walled, and nothing more is ever launched.
+    // The second one ends the rung: failed, and nothing more is ever launched.
     fail_and_feed(&state, &pong[1], "pong", RunState::LimitExceeded).await;
     let board = progress_of(&state, &id).await;
-    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Walled);
-    assert_eq!(board.runs_missing, 0);
+    assert_eq!(climber(&board, SONNET).status, ClimberStatus::Failed);
+    assert_eq!(board.climbers_failed, 1);
     assert!(in_flight(&state, "pong").await.is_empty());
     assert!(in_flight(&state, "carom").await.is_empty());
     assert_eq!(jobs(&state).await.len(), 2, "the rung was never relaunched");
@@ -1301,16 +1409,14 @@ async fn a_catastrophic_run_is_broken_even_when_unloaded_builds_are_not() {
         ..Gate::default()
     });
     let id = create_ladder(&state, input).await.unwrap().ladder.id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     fail_and_feed(&state, &job_ids(&first)[0], "pong", RunState::Catastrophic).await;
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
     assert_eq!(
         standing.status,
-        ClimberStatus::Walled,
+        ClimberStatus::Failed,
         "not blocked as unrated"
     );
     assert!(in_flight(&state, "pong").await.is_empty());
@@ -1330,10 +1436,8 @@ async fn early_stop_never_cancels_the_runs_of_a_later_rung_sharing_a_decided_cel
         early_stop: true,
     });
     let id = create_ladder(&state, input).await.unwrap().ladder.id;
-    schedule(&state, &id, true, true, Some(BufferTarget::Unbounded)).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, Some(BufferTarget::Unbounded)).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     finish_and_feed(&state, &job_ids(&first)[0], "pong", GREAT).await;
     let carom = in_flight(&state, "carom").await;
     assert_eq!(carom.len(), 1);
@@ -1355,9 +1459,7 @@ async fn early_stop_never_cancels_the_runs_of_a_later_rung_sharing_a_decided_cel
 
     // Passes the first rung's recorded verdict on every walk; its cell's waiting jobs are
     // the third rung's runs, and stay.
-    let again = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let again = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(again.early_stop_canceled, 0);
     assert_eq!(in_flight(&state, "pong").await.len(), 2);
 }
@@ -1380,15 +1482,15 @@ async fn wait_for_in_flight(state: &AppState, slug: &str, count: usize) {
 }
 
 #[tokio::test]
-async fn releasing_a_hold_resumes_a_climb_with_nothing_in_flight() {
+async fn resuming_a_paused_climber_resumes_a_climb_with_nothing_in_flight() {
     let (_dir, state) = test_state().await;
     let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    // Enabled, with its only climber held and so nothing in flight.
-    schedule(&state, &id, true, true, None).await;
+    // Enabled, with its only climber paused and so nothing in flight.
+    schedule(&state, &id, true, None).await;
     state
         .db
         .set_ladder_climber(
@@ -1397,14 +1499,15 @@ async fn releasing_a_hold_resumes_a_climb_with_nothing_in_flight() {
                 combination_key: climber_key(&harness_combo(SONNET)),
                 priority: 0,
                 focused: false,
-                held: true,
+                paused: true,
                 updated_at: "2026-10-01T00:00:00Z".to_string(),
+                retried_at: None,
             },
         )
         .await
         .unwrap();
     assert!(
-        top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
+        top_up_ladder(&state, OWNER, &id)
             .await
             .unwrap()
             .cells
@@ -1418,7 +1521,7 @@ async fn releasing_a_hold_resumes_a_climb_with_nothing_in_flight() {
             combination: harness_combo(SONNET),
             priority: 0,
             focused: false,
-            held: false,
+            paused: false,
         }),
     )
     .await
@@ -1427,39 +1530,52 @@ async fn releasing_a_hold_resumes_a_climb_with_nothing_in_flight() {
 }
 
 #[tokio::test]
-async fn an_edit_feeds_nothing_when_the_ladder_does_not_climb_by_itself() {
+async fn creating_an_enabled_ladder_starts_its_climb() {
+    let (_dir, state) = test_state().await;
+    let mut input = ladder_input(&["pong", "carom"], 2, &[SONNET]);
+    input.schedule = Some(LadderSchedule {
+        outer_axis: LadderAxis::Rung,
+        paused: false,
+        buffer_target: None,
+    });
+    let ladder = create_ladder(&state, input).await.unwrap();
+    assert!(!ladder.schedule.paused);
+    wait_for_in_flight(&state, "pong", 2).await;
+    assert!(in_flight(&state, "carom").await.is_empty());
+}
+
+#[tokio::test]
+async fn an_edit_feeds_an_enabled_ladder_and_never_a_disabled_one() {
     let (_dir, state) = test_state().await;
     let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, false, None).await;
+    // A new ladder is disabled: an edit launches nothing.
     refeed(&state, OWNER, &id, "a test").await;
     assert!(in_flight(&state, "pong").await.is_empty());
-    schedule(&state, &id, false, true, None).await;
-    refeed(&state, OWNER, &id, "a test").await;
-    assert!(in_flight(&state, "pong").await.is_empty());
-    schedule(&state, &id, true, true, None).await;
+    // Enabled, it feeds itself: there is no second switch to turn on.
+    schedule(&state, &id, true, None).await;
     refeed(&state, OWNER, &id, "a test").await;
     assert_eq!(in_flight(&state, "pong").await.len(), 1);
 }
 
 #[tokio::test]
-async fn the_backend_feeds_every_self_feeding_ladder_at_startup() {
+async fn the_backend_feeds_every_enabled_ladder_at_startup() {
     let (_dir, state) = test_state().await;
     let fed = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &fed, true, true, None).await;
+    schedule(&state, &fed, true, None).await;
     let disabled = create_ladder(&state, ladder_input(&["carom"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &disabled, false, true, None).await;
+    schedule(&state, &disabled, false, None).await;
     spawn_startup_feed(state.clone());
     wait_for_in_flight(&state, "pong", 1).await;
     assert!(in_flight(&state, "carom").await.is_empty());
@@ -1474,16 +1590,10 @@ async fn a_pass_that_finds_the_ladder_halted_enqueues_nothing() {
         .ladder
         .id;
     // Disabled after the pass took its claim, as a halt landing mid-pass does.
-    schedule(&state, &id, false, true, None).await;
-    let result = top_up_locked(
-        &state,
-        OWNER,
-        &id,
-        BufferTarget::Unbounded,
-        TopUpTrigger::Automatic,
-    )
-    .await
-    .unwrap();
+    schedule(&state, &id, false, None).await;
+    let result = top_up_locked(&state, OWNER, &id, BufferTarget::Unbounded)
+        .await
+        .unwrap();
     assert_eq!(result.skipped, Some(TopUpSkipped::Paused));
     assert!(jobs(&state).await.is_empty());
 }
@@ -1491,59 +1601,15 @@ async fn a_pass_that_finds_the_ladder_halted_enqueues_nothing() {
 // ---- Requests the claim holder cannot serve -----------------------------------
 
 #[tokio::test]
-async fn an_owners_request_left_with_an_automatic_holder_relaunches_a_failing_rung() {
+async fn a_request_handed_off_by_a_holder_is_served_by_a_launch_pass_of_its_own() {
     let (_dir, state) = test_state().await;
     let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
         .await
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    fail_three_jobs(&state, None, None).await;
-
-    // An automatic top-up holds the claim when the owner presses "Top up now".
-    assert!(
-        state
-            .db
-            .claim_ladder_top_up(OWNER, &id, &now().unwrap())
-            .await
-            .unwrap()
-    );
-    let busy = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
-    assert_eq!(busy.skipped, Some(TopUpSkipped::Busy));
-
-    // The holder's pass for that request runs as the owner's, so the failing rung is
-    // relaunched rather than skipped.
-    let mut passes = 0;
-    let mut merged = None;
-    top_up_passes(
-        &state,
-        OWNER,
-        &id,
-        BufferTarget::Unbounded,
-        TopUpTrigger::Automatic,
-        &mut passes,
-        &mut merged,
-    )
-    .await
-    .unwrap();
-    state.db.release_ladder_top_up(&id).await.unwrap();
-    assert_eq!(merged.unwrap().enqueued, 1);
-    assert_eq!(in_flight(&state, "pong").await.len(), 1);
-}
-
-#[tokio::test]
-async fn a_request_handed_off_by_a_holder_is_served_by_a_top_up_of_its_own() {
-    let (_dir, state) = test_state().await;
-    let id = create_ladder(&state, ladder_input(&["pong"], 1, &[SONNET]))
-        .await
-        .unwrap()
-        .ladder
-        .id;
-    schedule(&state, &id, true, true, None).await;
-    state.db.request_ladder_top_up(&id, false).await.unwrap();
+    schedule(&state, &id, true, None).await;
+    state.db.request_ladder_top_up(&id).await.unwrap();
     spawn_pending_top_up(&state, OWNER, &id);
     wait_for_in_flight(&state, "pong", 1).await;
     assert!(!state.db.ladder_top_up_requested(&id).await.unwrap());
@@ -1557,8 +1623,8 @@ async fn a_claim_left_by_a_dead_process_does_not_turn_the_startup_feed_away() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
-    // The previous process died mid-top-up, inside the claim's lease.
+    schedule(&state, &id, true, None).await;
+    // The previous process died mid-pass, inside the claim's lease.
     assert!(
         state
             .db
@@ -1622,11 +1688,9 @@ async fn jobs_a_restart_reaped_never_make_a_rung_failing() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, None).await;
+    schedule(&state, &id, true, None).await;
     fail_three_jobs(&state, Some(crate::db::REAPED_DETAIL), None).await;
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 1, "{:?}", result.unlaunchable);
     assert!(result.unlaunchable.is_empty());
 }
@@ -1640,18 +1704,16 @@ async fn model_failures_are_evidence_and_never_a_failing_rung() {
         .unwrap()
         .ladder
         .id;
-    schedule(&state, &id, true, true, Some(BufferTarget::Unbounded)).await;
+    schedule(&state, &id, true, Some(BufferTarget::Unbounded)).await;
     // Three timeouts land as failed jobs carrying the model's run.
     fail_three_jobs(&state, Some("run failed"), Some(RunState::TimedOut)).await;
 
-    let result = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let result = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(result.enqueued, 2, "the rung's last two runs are launched");
     assert!(result.unlaunchable.is_empty(), "{:?}", result.unlaunchable);
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Climbing);
+    assert_eq!(standing.status, ClimberStatus::Running);
     assert_eq!(standing.current_rung.as_ref().unwrap().tally.completed, 3);
 }
 
@@ -1690,10 +1752,8 @@ async fn a_retried_model_failure_waits_for_its_retry_and_counts_once() {
         ..Gate::default()
     });
     let id = create_ladder(&state, input).await.unwrap().ladder.id;
-    schedule(&state, &id, true, true, None).await;
-    let first = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Requested)
-        .await
-        .unwrap();
+    schedule(&state, &id, true, None).await;
+    let first = top_up_ladder(&state, OWNER, &id).await.unwrap();
     let attempt = job_ids(&first)[0].clone();
 
     // The attempt ends catastrophic, and the backend retries it.
@@ -1712,14 +1772,12 @@ async fn a_retried_model_failure_waits_for_its_retry_and_counts_once() {
 
     // The retry takes the attempt's place: the rung is undecided, nothing early-stops it,
     // and nothing else is launched.
-    let again = top_up_ladder(&state, OWNER, &id, TopUpTrigger::Automatic)
-        .await
-        .unwrap();
+    let again = top_up_ladder(&state, OWNER, &id).await.unwrap();
     assert_eq!(again.enqueued, 0);
     assert_eq!(again.early_stop_canceled, 0);
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Climbing);
+    assert_eq!(standing.status, ClimberStatus::Running);
     let tally = standing.current_rung.as_ref().unwrap().tally;
     assert_eq!((tally.completed, tally.pending), (0, 1));
     let pong = in_flight(&state, "pong").await;
@@ -1731,7 +1789,7 @@ async fn a_retried_model_failure_waits_for_its_retry_and_counts_once() {
     feed_ladders(&state, &job).await;
     let board = progress_of(&state, &id).await;
     let standing = climber(&board, SONNET);
-    assert_eq!(standing.outcomes[0].effective, LadderOutcome::Advanced);
+    assert_eq!(standing.outcomes[0].outcome, LadderOutcome::Passed);
     let counted: u32 = state
         .db
         .count_model_runs_by_cell(&["pong".to_string()])

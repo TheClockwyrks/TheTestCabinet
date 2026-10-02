@@ -878,7 +878,8 @@ export type CoverageQueue = {
  */
 export type PauseInput = {
   /**
-   * Whether topping up should be suspended.
+   * Whether the plan or ladder stops launching runs: a plan stops topping up, and a
+   * ladder is disabled.
    */
   paused: boolean;
 };

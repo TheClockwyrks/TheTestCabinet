@@ -1433,9 +1433,9 @@ fn feeds_ladders(already_terminal: bool, retried: bool) -> bool {
     !already_terminal && !retried
 }
 
-/// Top up the ladders a finished job feeds, on a task of its own.
+/// Run a launch pass of the ladders a finished job feeds, on a task of its own.
 ///
-/// Spawned rather than awaited, after the job's terminal state is stored: a top-up
+/// Spawned rather than awaited, after the job's terminal state is stored: a launch pass
 /// resolves a whole ladder and may reach the model catalog, and the driver's status
 /// report must neither wait on that nor ever fail because of it.
 fn spawn_ladder_feed(state: &AppState, job: &job::Model) {

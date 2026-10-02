@@ -927,7 +927,8 @@ pub struct CoverageQueue {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PauseInput {
-    /// Whether topping up should be suspended.
+    /// Whether the plan or ladder stops launching runs: a plan stops topping up, and a
+    /// ladder is disabled.
     pub paused: bool,
 }
 

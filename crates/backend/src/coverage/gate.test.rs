@@ -60,31 +60,31 @@ fn any_passable() -> Gate {
 }
 
 #[test]
-fn the_default_gate_walls_only_a_wholly_broken_rung() {
+fn the_default_gate_fails_only_a_wholly_broken_rung() {
     // The gentlest useful rule: one playable run out of five is enough.
     let gate = all_broken();
     let mut runs = many(rated(Rating::Broken), 4);
     runs.push(rated(Rating::Scuffed));
-    assert_eq!(evaluate(&runs, 5, &gate), GateOutcome::Advance);
+    assert_eq!(evaluate(&runs, 5, &gate), GateOutcome::Passed);
 
     assert_eq!(
         evaluate(&many(rated(Rating::Broken), 5), 5, &gate),
-        GateOutcome::Wall
+        GateOutcome::Failed
     );
 }
 
 #[test]
-fn over_half_broken_walls_at_three_of_five() {
+fn over_half_broken_fails_at_three_of_five() {
     // 0.5 of five is 2.5, so three passing runs clear it and two do not — which is
     // "over half are broken" stated from the other side.
     let gate = over_half_broken();
     let mut passing_three = many(rated(Rating::Scuffed), 3);
     passing_three.extend(many(rated(Rating::Broken), 2));
-    assert_eq!(evaluate(&passing_three, 5, &gate), GateOutcome::Advance);
+    assert_eq!(evaluate(&passing_three, 5, &gate), GateOutcome::Passed);
 
     let mut passing_two = many(rated(Rating::Scuffed), 2);
     passing_two.extend(many(rated(Rating::Broken), 3));
-    assert_eq!(evaluate(&passing_two, 5, &gate), GateOutcome::Wall);
+    assert_eq!(evaluate(&passing_two, 5, &gate), GateOutcome::Failed);
 }
 
 #[test]
@@ -92,12 +92,12 @@ fn any_passable_run_clears_a_passable_floor() {
     let gate = any_passable();
     let mut runs = many(rated(Rating::Scuffed), 4);
     runs.push(rated(Rating::Passable));
-    assert_eq!(evaluate(&runs, 5, &gate), GateOutcome::Advance);
+    assert_eq!(evaluate(&runs, 5, &gate), GateOutcome::Passed);
 
     // Scuffed is below the floor however many times it happens.
     assert_eq!(
         evaluate(&many(rated(Rating::Scuffed), 5), 5, &gate),
-        GateOutcome::Wall
+        GateOutcome::Failed
     );
 }
 
@@ -109,23 +109,23 @@ fn a_rating_better_than_the_floor_passes_it() {
     for rating in [Rating::Flawless, Rating::Great, Rating::Passable] {
         assert_eq!(
             evaluate(&[rated(rating)], 1, &gate),
-            GateOutcome::Advance,
+            GateOutcome::Passed,
             "{rating:?} should clear a passable floor"
         );
     }
     for rating in [Rating::Scuffed, Rating::Broken] {
         assert_eq!(
             evaluate(&[rated(rating)], 1, &gate),
-            GateOutcome::Wall,
+            GateOutcome::Failed,
             "{rating:?} should not clear a passable floor"
         );
     }
 }
 
 #[test]
-fn an_unrated_run_leaves_the_rung_undecided_rather_than_walling_it() {
+fn an_unrated_run_leaves_the_rung_undecided_rather_than_failing_it() {
     // No validator rated these, which is not the same as rating them badly — the
-    // climber holds instead of being walled on absent evidence.
+    // climber stays on the rung instead of failing it on absent evidence.
     let gate = all_broken();
     assert_eq!(
         evaluate(&many(unrated(), 5), 5, &gate),
@@ -142,7 +142,10 @@ fn an_unloaded_run_is_counted_broken_outright() {
     // Nothing loaded, so there was nothing to play: the gate decides immediately
     // rather than stalling the climb.
     let gate = all_broken();
-    assert_eq!(evaluate(&many(unloaded(), 5), 5, &gate), GateOutcome::Wall);
+    assert_eq!(
+        evaluate(&many(unloaded(), 5), 5, &gate),
+        GateOutcome::Failed
+    );
 
     let counts = tally(&many(unloaded(), 5), 5, &gate);
     assert_eq!(counts.rated, 5);
@@ -173,13 +176,13 @@ fn an_unloaded_run_outranks_a_validator_rating_that_contradicts_it() {
         rating: Some(Rating::Flawless),
         loaded: false,
     };
-    assert_eq!(evaluate(&[contradicted], 1, &gate), GateOutcome::Wall);
+    assert_eq!(evaluate(&[contradicted], 1, &gate), GateOutcome::Failed);
 }
 
 #[test]
 fn a_rung_with_runs_still_to_complete_is_undecided_by_default() {
     // early_stop off: the rung finishes what it started, however certain the
-    // outcome already is. Five broken runs out of five would wall — four out of a
+    // outcome already is. Five broken runs out of five would fail — four out of a
     // target of five does not.
     let gate = Gate::default();
     assert_eq!(
@@ -195,7 +198,7 @@ fn a_rung_with_runs_still_to_complete_is_undecided_by_default() {
     // And decides the moment the last run lands.
     assert_eq!(
         evaluate(&many(rated(Rating::Broken), 5), 5, &gate),
-        GateOutcome::Wall
+        GateOutcome::Failed
     );
 }
 
@@ -205,9 +208,9 @@ fn early_stop_decides_on_partial_results() {
     // One playable run is all this gate ever needed; the remaining four are moot.
     assert_eq!(
         evaluate(&[rated(Rating::Scuffed)], 5, &gate),
-        GateOutcome::Advance
+        GateOutcome::Passed
     );
-    // And a wall lands as soon as the best remaining case cannot clear the bar.
+    // And a failure lands as soon as the best remaining case cannot clear the bar.
     let gate = Gate {
         threshold: GateThreshold::Count { runs: 3 },
         ..over_half_broken()
@@ -216,7 +219,7 @@ fn early_stop_decides_on_partial_results() {
     // required, so the answer is already fixed.
     assert_eq!(
         evaluate(&many(rated(Rating::Broken), 3), 5, &gate),
-        GateOutcome::Wall
+        GateOutcome::Failed
     );
     // With a target of six, three remain and the rung could still clear it.
     assert_eq!(
@@ -257,7 +260,7 @@ fn a_fraction_that_is_exact_in_decimal_is_not_demanded_twice_over() {
     };
     let mut runs = many(rated(Rating::Scuffed), 15);
     runs.extend(many(rated(Rating::Broken), 70));
-    assert_eq!(evaluate(&runs, 85, &gate), GateOutcome::Advance);
+    assert_eq!(evaluate(&runs, 85, &gate), GateOutcome::Passed);
     assert_eq!(tally(&runs, 85, &gate).required_runs(), 15);
 }
 
@@ -265,7 +268,7 @@ fn a_fraction_that_is_exact_in_decimal_is_not_demanded_twice_over() {
 fn a_nonsense_fraction_is_clamped_rather_than_propagated() {
     // A corrupt row must not put a bar on the rung that no evidence can describe.
     // Below the range — and a non-finite value, which valid JSON cannot produce but
-    // a damaged row can — degrades to "always advance", the harmless direction.
+    // a damaged row can — degrades to "always pass", the harmless direction.
     for fraction in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let gate = Gate {
             floor: Rating::Flawless,
@@ -275,8 +278,8 @@ fn a_nonsense_fraction_is_clamped_rather_than_propagated() {
         };
         assert_eq!(
             evaluate(&many(rated(Rating::Broken), 5), 5, &gate),
-            GateOutcome::Advance,
-            "fraction {fraction} should not wall"
+            GateOutcome::Passed,
+            "fraction {fraction} should not fail"
         );
     }
     // Above the range clamps to "every run must pass" — a real bar, and the
@@ -290,17 +293,17 @@ fn a_nonsense_fraction_is_clamped_rather_than_propagated() {
     assert_eq!(tally(&[], 5, &gate).required, 5.0);
     assert_eq!(
         evaluate(&many(rated(Rating::Scuffed), 5), 5, &gate),
-        GateOutcome::Advance
+        GateOutcome::Passed
     );
 }
 
 #[test]
-fn an_empty_rung_advances_only_when_nothing_is_required() {
+fn an_empty_rung_passes_only_when_nothing_is_required() {
     // A fractional bar over zero runs is zero, which no evidence clears trivially;
-    // an absolute count is not, so a rung with no runs at all is walled by it.
+    // an absolute count is not, so a rung with no runs at all fails it.
     let fractional = over_half_broken();
-    assert_eq!(evaluate(&[], 0, &fractional), GateOutcome::Advance);
-    assert_eq!(evaluate(&[], 0, &all_broken()), GateOutcome::Wall);
+    assert_eq!(evaluate(&[], 0, &fractional), GateOutcome::Passed);
+    assert_eq!(evaluate(&[], 0, &all_broken()), GateOutcome::Failed);
 }
 
 #[test]
@@ -359,8 +362,8 @@ fn a_gate_round_trips_through_its_wire_form() {
 #[test]
 fn an_unrated_run_is_a_possible_pass_in_both_directions() {
     // One run carries no validator rating and the bar wants two passes. The rated
-    // runs alone fall one short, so the rung cannot advance yet — and because the
-    // unrated run could still turn out a pass, it cannot be walled either.
+    // runs alone fall one short, so the rung cannot pass yet — and because the
+    // unrated run could still turn out a pass, it cannot fail either.
     let gate = Gate {
         floor: Rating::Passable,
         threshold: GateThreshold::Count { runs: 2 },
@@ -374,9 +377,9 @@ fn an_unrated_run_is_a_possible_pass_in_both_directions() {
 
     // Once the rated runs alone clear the bar, the unrated one cannot change it.
     let cleared = [rated(Rating::Great), rated(Rating::Passable), unrated()];
-    assert_eq!(evaluate(&cleared, 3, &gate), GateOutcome::Advance);
+    assert_eq!(evaluate(&cleared, 3, &gate), GateOutcome::Passed);
 
-    // And once even an unrated pass could not reach it, the rung walls.
+    // And once even an unrated pass could not reach it, the rung fails.
     let hopeless = [rated(Rating::Broken), rated(Rating::Broken), unrated()];
-    assert_eq!(evaluate(&hopeless, 3, &gate), GateOutcome::Wall);
+    assert_eq!(evaluate(&hopeless, 3, &gate), GateOutcome::Failed);
 }

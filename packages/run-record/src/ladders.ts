@@ -13,7 +13,7 @@ import type { Rating } from "./review";
 
 /**
  * How many of a rung's runs must clear the [floor](Gate::floor) for the climber to
- * advance.
+ * pass the rung.
  */
 export type GateThreshold =
   | {
@@ -65,7 +65,7 @@ export type Gate = {
 /**
  * What a rung's evidence says about one climber.
  */
-export type GateOutcome = "advance" | "wall" | "undecided";
+export type GateOutcome = "passed" | "failed" | "undecided";
 
 /**
  * Which axis a ladder's emission loop nests on — and therefore the order its runs
@@ -86,32 +86,21 @@ export type LadderSchedule = {
    */
   outerAxis: LadderAxis;
   /**
-   * Whether topping up is suspended — the console calls this ladder **disabled**.
+   * Whether the ladder is **disabled**. Enabled is the ladder's one on/off control: an
+   * enabled ladder always launches its own climb, and a disabled one launches nothing.
    *
-   * A ladder is created suspended and enqueues nothing at all until the reviewer
-   * enables it: a climb is declared long before it is meant to start spending, and a
-   * ladder that launched runs the moment it was saved would have spent a buffer's
-   * worth of tokens before its author had finished reading it back.
+   * A ladder is created disabled and enqueues nothing at all until its owner enables
+   * it: a climb is declared long before it is meant to start spending, and a ladder
+   * that launched runs the moment it was saved would have spent a buffer's worth of
+   * tokens before its author had finished reading it back.
    */
   paused: boolean;
-  /**
-   * Whether the backend tops this ladder up itself whenever a job of one of its
-   * cells finishes — "keep climbing as runs finish".
-   *
-   * **On** by default, because it is what moves an enabled ladder along without
-   * anyone watching: the run that finishes is the evidence that may decide a rung,
-   * and the moment it lands is exactly the moment the next rung's runs should be
-   * asked for. Off means the ladder is fed only by enabling it and by an explicit
-   * top-up. Enqueueing is already gated on the ladder being enabled at all, so this
-   * cannot make an untouched ladder start spending.
-   */
-  autoTopUp: boolean;
   /**
    * This ladder's override of the account's buffer target, or null to inherit it.
    * On a ladder the target caps the runs **in flight** at once (queued through
    * running); completed runs never occupy it, reviewed or not. Null, a bound of `0`,
-   * and `unbounded` are three different instructions — "no opinion", "never launch
-   * automatically", and "launch every rung as soon as it is earned". On a ladder the
+   * and `unbounded` are three different instructions — "no opinion", "launch
+   * nothing", and "launch every rung as soon as it is earned". On a ladder the
    * last is the natural choice more often than on a plan: the gate is already what
    * stops a hopeless climb.
    */
@@ -286,32 +275,21 @@ export type LadderOut = {
    */
   outerAxis: LadderAxis;
   /**
-   * Whether topping up is suspended — the console calls this ladder **disabled**.
+   * Whether the ladder is **disabled**. Enabled is the ladder's one on/off control: an
+   * enabled ladder always launches its own climb, and a disabled one launches nothing.
    *
-   * A ladder is created suspended and enqueues nothing at all until the reviewer
-   * enables it: a climb is declared long before it is meant to start spending, and a
-   * ladder that launched runs the moment it was saved would have spent a buffer's
-   * worth of tokens before its author had finished reading it back.
+   * A ladder is created disabled and enqueues nothing at all until its owner enables
+   * it: a climb is declared long before it is meant to start spending, and a ladder
+   * that launched runs the moment it was saved would have spent a buffer's worth of
+   * tokens before its author had finished reading it back.
    */
   paused: boolean;
-  /**
-   * Whether the backend tops this ladder up itself whenever a job of one of its
-   * cells finishes — "keep climbing as runs finish".
-   *
-   * **On** by default, because it is what moves an enabled ladder along without
-   * anyone watching: the run that finishes is the evidence that may decide a rung,
-   * and the moment it lands is exactly the moment the next rung's runs should be
-   * asked for. Off means the ladder is fed only by enabling it and by an explicit
-   * top-up. Enqueueing is already gated on the ladder being enabled at all, so this
-   * cannot make an untouched ladder start spending.
-   */
-  autoTopUp: boolean;
   /**
    * This ladder's override of the account's buffer target, or null to inherit it.
    * On a ladder the target caps the runs **in flight** at once (queued through
    * running); completed runs never occupy it, reviewed or not. Null, a bound of `0`,
-   * and `unbounded` are three different instructions — "no opinion", "never launch
-   * automatically", and "launch every rung as soon as it is earned". On a ladder the
+   * and `unbounded` are three different instructions — "no opinion", "launch
+   * nothing", and "launch every rung as soon as it is earned". On a ladder the
    * last is the natural choice more often than on a plan: the gate is already what
    * stops a hopeless climb.
    */
@@ -332,8 +310,8 @@ export type LadderInput = {
   runsPerCell: number;
   /**
    * The rule every rung is decided by, or null for [`Gate::default`] — the gentlest
-   * gate that still stops a hopeless climb (advance as long as one run was playable
-   * at all).
+   * gate that still stops a hopeless climb (pass as long as one run was playable at
+   * all).
    */
   gate?: Gate;
   /**
@@ -362,22 +340,22 @@ export type LadderInput = {
  * "not decided yet", is deliberately absent: an unresolved rung has *no* verdict,
  * and is reported as the absence of one rather than as a verdict of nothing.
  */
-export type LadderOutcome = "advanced" | "walled";
+export type LadderOutcome = "passed" | "failed";
 
 /**
  * Where one climber stands. Five states, because "stopped" has several genuinely
  * different causes and conflating them makes a ladder impossible to act on.
  *
  * There is no "waiting on a review" state: the validators rate every completed run, so
- * a rung the ladder can still feed is `climbing`, and one nothing the ladder does can
+ * a rung the ladder can still feed is `running`, and one nothing the ladder does can
  * move is `blocked`, with the reason in [`LadderClimber::blocked`].
  */
 export type ClimberStatus =
-  | "climbing"
+  | "running"
   | "blocked"
-  | "walled"
-  | "held"
-  | "toppedOut";
+  | "failed"
+  | "paused"
+  | "completed";
 
 /**
  * Why a climber is [`blocked`](ClimberStatus::Blocked), each reason naming its fix.
@@ -393,7 +371,7 @@ export type ClimberBlock =
   | {
       kind: "unlaunchable";
       /**
-       * Why, in the words the top-up reports it with.
+       * Why, in the words the launch pass reports it with.
        */
       reason: string;
     }
@@ -414,7 +392,7 @@ export type ClimberBlock =
 
 /**
  * The counts one gate decision was made from, so a dashboard can say *why* a climber
- * is walled or still climbing without re-deriving the floor and unloaded-run rules a
+ * failed or is still running without re-deriving the floor and unloaded-run rules a
  * second time and getting them subtly different.
  *
  * The wire mirror of [`GateTally`], which is an internal type of the pure core.
@@ -588,29 +566,14 @@ export type LadderRungOutcome = {
    */
   decidedVersion: string;
   /**
-   * What the gate computed. Recomputable at any time from the rung's validator
+   * What the gate decided. Recomputable at any time from the rung's validator
    * ratings.
    */
   outcome: LadderOutcome;
   /**
-   * Your manual override of that result, or null for none. Kept beside the
-   * automatic verdict rather than replacing it, so a recompute can never silently
-   * undo it and clearing it reverses the override exactly.
-   */
-  overrideOutcome?: LadderOutcome;
-  /**
-   * The verdict that actually governs the climb: the override when there is one,
-   * else the automatic outcome.
-   */
-  effective: LadderOutcome;
-  /**
-   * RFC 3339 of when the automatic outcome was computed.
+   * RFC 3339 of when the verdict was computed.
    */
   decidedAt: string;
-  /**
-   * RFC 3339 of when the override was applied, or null when there is none.
-   */
-  overrideAt?: string;
   /**
    * Whether this verdict was decided against a version the rung no longer pins —
    * history kept honest across a bump, and never allowed to govern the climb.
@@ -618,7 +581,7 @@ export type LadderRungOutcome = {
   stale: boolean;
   /**
    * Whether the verdict is stored, or was computed live for this response and will
-   * be written down by the next top-up. A read never writes.
+   * be written down by the next launch pass. A read never writes.
    */
   recorded: boolean;
 };
@@ -675,22 +638,21 @@ export type LadderClimber = {
    */
   priority: number;
   /**
-   * The reviewer's "watch this one" flag, and the tiebreak between equal
-   * priorities.
+   * The owner's "watch this one" flag, and the tiebreak between equal priorities.
    */
   focused: boolean;
   /**
-   * Whether the climber is stopped by hand.
+   * Whether the climber is paused by its owner.
    */
-  held: boolean;
+  paused: boolean;
   /**
    * Why this climber cannot be launched at all, or null when it can.
    *
    * A ladder is where an unlaunchable member is hardest to see: a climber that cannot
    * launch simply stops moving, and a rung it is stuck on looks exactly like one still
    * waiting on its runs — for as long as anyone leaves it there. So the reason is carried on
-   * the climber itself rather than only on the rung it happens to stand on, which a topped
-   * out or walled climber does not have at all.
+   * the climber itself rather than only on the rung it happens to stand on, which a
+   * completed climber does not have at all.
    */
   unlaunchable?: string;
   /**
@@ -699,11 +661,11 @@ export type LadderClimber = {
   status: ClimberStatus;
   /**
    * Why the climber is blocked, naming the fix, or null when it is not. Kept under a
-   * hold too, so the reason stays visible while the climber is stopped by hand.
+   * pause too, so the fix stays visible while the climber is paused.
    */
   blocked?: ClimberBlock;
   /**
-   * The rung it stands on, or null once it has topped out.
+   * The rung it stands on, or null once it has completed.
    */
   currentRung?: LadderCell;
   /**
@@ -800,21 +762,25 @@ export type LadderProgress = {
    */
   climbers: Array<LadderClimber>;
   /**
-   * How many climbers have cleared every rung.
+   * How many climbers are running.
    */
-  climbersToppedOut: number;
+  climbersRunning: number;
   /**
-   * How many climbers are walled.
+   * How many climbers have passed every rung.
    */
-  climbersWalled: number;
+  climbersCompleted: number;
   /**
-   * How many climbers are blocked (not counting a held one).
+   * How many climbers failed a rung.
+   */
+  climbersFailed: number;
+  /**
+   * How many climbers are blocked, not counting a paused one.
    */
   climbersBlocked: number;
   /**
-   * The runs still to trigger across every climber's current rung.
+   * How many climbers their owner paused.
    */
-  runsMissing: number;
+  climbersPaused: number;
   /**
    * The completed runs the requester has not reviewed, across every rung every
    * climber has **reached** — exactly what `GET /ladders/{id}/queue` offers, so the
@@ -825,14 +791,14 @@ export type LadderProgress = {
   /**
    * The runs in flight (jobs `queued` through `running`) across every rung every
    * climber has reached — the occupancy `bufferTarget` caps. When this has reached
-   * it, a top-up deliberately enqueues nothing, and the climb moves on as those runs
-   * finish. Completed runs never count, reviewed or not.
+   * it, a launch pass deliberately enqueues nothing, and the climb moves on as those
+   * runs finish. Completed runs never count, reviewed or not.
    */
   runsInFlight: number;
   /**
    * The buffer target in force (the ladder's override, else the account's setting,
    * else the backend default): the most runs the ladder keeps in flight at once.
-   * When it is `unbounded`, `runsInFlight` never stops a top-up.
+   * When it is `unbounded`, `runsInFlight` never stops a launch pass.
    */
   bufferTarget: BufferTarget;
 };
@@ -854,9 +820,9 @@ export type StoredClimberOut = {
    */
   focused: boolean;
   /**
-   * Whether the climber is stopped by hand.
+   * Whether the climber is paused by its owner.
    */
-  held: boolean;
+  paused: boolean;
   /**
    * RFC 3339 of when the steering was written.
    */
@@ -888,32 +854,21 @@ export type LadderClimberInput = {
    */
   focused: boolean;
   /**
-   * Whether to stop this climber where it stands — the downward half of manual
-   * control. Reversible: the automatic outcomes underneath are never touched, so
-   * clearing it resumes exactly where the climb left off.
+   * Whether to pause this climber where it stands. A pause decides no rung and
+   * cancels nothing, so resuming continues exactly where the climb left off.
    */
-  held: boolean;
+  paused: boolean;
 };
 
 /**
- * The `POST /ladders/{id}/outcomes` body: apply (or clear) a manual override of one
- * recorded verdict — the upward half of manual control.
+ * The `POST /ladders/{id}/climbers/retry` body: the climber to retry.
  */
-export type LadderOverrideInput = {
+export type LadderRetryInput = {
   /**
-   * Which combination, in either shape and either — stored or read — form; the same
-   * normalization [`LadderClimberInput::combination`] describes applies.
+   * Which climber, in either shape and either — stored or read — form; normalized
+   * exactly as [`LadderClimberInput::combination`] is.
    */
   combination: ReviewPlanCombo;
-  /**
-   * Which rung, by its stable id.
-   */
-  rungId: string;
-  /**
-   * The verdict to impose, or null to clear the override and restore exactly what
-   * the gate itself says.
-   */
-  outcome?: LadderOutcome;
 };
 
 /**

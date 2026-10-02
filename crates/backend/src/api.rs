@@ -57,7 +57,6 @@ pub use comparisons::ComparisonInput;
 // public snapshot with the exact computation the internal `/comparisons` API uses.
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
-// The backend's boot feeds every self-feeding ladder once, so a restart never strands one.
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
     CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
@@ -78,10 +77,12 @@ pub use jobs::{
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
     StreamResync, StreamTopicsBody,
 };
+// The backend's boot runs a launch pass of every enabled ladder, so a restart never strands
+// one.
 pub(crate) use ladders::spawn_startup_feed as spawn_ladder_startup_feed;
 pub use ladders::{
     ClimberBlock, ClimberStatus, Ladder, LadderAxis, LadderCell, LadderClimber, LadderClimberInput,
-    LadderInput, LadderOut, LadderOutcome, LadderOverrideInput, LadderProgress, LadderProgressRung,
+    LadderInput, LadderOut, LadderOutcome, LadderProgress, LadderProgressRung, LadderRetryInput,
     LadderRung, LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule,
     RungTally, StoredClimberOut,
 };
@@ -647,7 +648,7 @@ pub fn router(state: AppState) -> Router {
         .route("/coverage-plans/{id}/halt-all", post(coverage::halt_all_plan))
         // Ladders: the plan's sibling, an **ordered, gated** climb. Same groups, same
         // resolver, same counts, same buffer, same halting controls; the difference is
-        // that a combination only reaches the next rung by clearing the current one,
+        // that a combination only reaches the next rung by passing the current one,
         // and progress is stored per combination rather than as one ladder-wide
         // pointer. Auth-gated and console-only, like the rest of the coverage surface.
         .route("/ladders", get(ladders::list).post(ladders::create))
@@ -661,22 +662,20 @@ pub fn router(state: AppState) -> Router {
         )
         // The board: every climber's position, the tally behind each gate verdict, and
         // the rung each is stuck on. A pure read — a verdict the gate has resolved but
-        // nobody has recorded is computed live and flagged as unrecorded; the top-up is
-        // what persists it.
+        // nobody has recorded is computed live and flagged as unrecorded; the next launch
+        // pass persists it. There is no ladder `topup`: the backend runs every launch
+        // pass itself, prompted by the ladder's writes and its finishing runs.
         .route("/ladders/{id}/progress", get(ladders::progress))
-        .route("/ladders/{id}/topup", post(ladders::top_up))
         .route("/ladders/{id}/queue", get(ladders::queue))
         .route("/ladders/{id}/pause", post(ladders::pause))
         .route("/ladders/{id}/halt", post(ladders::halt))
         .route("/ladders/{id}/halt-all", post(ladders::halt_all))
-        // Steering one climber (hold it here, climb it first, focus it) — never its
+        // Steering one climber (pause it here, climb it first, focus it) — never its
         // progress, which is derived from its outcomes and has exactly one source.
         .route("/ladders/{id}/climbers", post(ladders::set_climber))
-        // A reviewer's manual verdict override in either direction — `promote` past a
-        // gate a combination failed, or wall it early. Recorded beside the automatic
-        // outcome rather than replacing it, so a recompute can never quietly undo it
-        // and clearing the override (`outcome: null`) reverses exactly.
-        .route("/ladders/{id}/outcomes", post(ladders::set_outcome))
+        // Retry a climber blocked because its rung's runs keep failing, once the cause
+        // is fixed: the failing streak counts afresh from the retry.
+        .route("/ladders/{id}/climbers/retry", post(ladders::retry_climber))
         // Reorder the rungs. Rungs carry stable opaque ids, so a reorder moves
         // positions without disturbing any climber's recorded progress.
         .route("/ladders/{id}/rungs/order", post(ladders::reorder_rungs))

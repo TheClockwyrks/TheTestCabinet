@@ -14,8 +14,8 @@
 //!   launch and how many runs each, keeping a bounded number of runs outstanding
 //!   rather than firing every missing run at once.
 //! - [`gate`] — the single parameterised rung gate. Given the validators' ratings
-//!   of a rung's completed runs, it answers whether the climber advances, is
-//!   walled, or is not decided yet.
+//!   of a rung's completed runs, it answers whether the climber passed the rung,
+//!   failed it, or is not decided yet.
 //!
 //! ## The scope seam
 //!

@@ -638,3 +638,34 @@ async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
         test_cabinet_core::pricing::CandidateRefusal::AllBanned.to_string()
     );
 }
+
+#[tokio::test]
+async fn a_ladder_has_no_override_or_top_up_route_and_does_have_a_retry_route() {
+    // A ladder's verdicts are the gate's alone and every launch pass is the backend's
+    // own, so neither the hand override nor a ladder `topup` is served. The retry is.
+    let harness = harness().await;
+    let post = |uri: &str| {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(
+                axum::http::header::AUTHORIZATION,
+                format!("Bearer {USER_TOKEN}"),
+            )
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                r#"{"combination":{"harness":"claude","model":"m"},"rungId":"r","outcome":"passed"}"#,
+            ))
+            .unwrap()
+    };
+    for gone in ["/ladders/l1/outcomes", "/ladders/l1/topup"] {
+        let (status, body) = call(&harness.router, post(gone)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{gone}");
+        assert_eq!(body, serde_json::Value::Null, "{gone} matched no route");
+    }
+    // The retry route exists: it answers the handler's own 404 for a ladder the caller
+    // does not have, with a message, rather than the router's empty one.
+    let (status, body) = call(&harness.router, post("/ladders/l1/climbers/retry")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_ne!(body, serde_json::Value::Null, "the retry route is served");
+}

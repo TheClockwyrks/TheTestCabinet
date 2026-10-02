@@ -6,8 +6,8 @@
 //! an ordered list of **rungs** ([`ladder_rung`](crate::ladder_rung)) that each
 //! harness+model combination climbs one at a time, carrying on past a rung only when
 //! that rung's runs clear a quality **gate**. It answers "how far up my difficulty
-//! ordering does this model get before it falls over?" without paying for the runs
-//! above the wall.
+//! ordering does this model get before it fails a rung?" without paying for the runs
+//! above the rung it failed.
 //!
 //! Membership works exactly as it does on a plan — `coverage_group` ids
 //! (`kind = "combo"`) plus one-off combinations, resolved and de-duped by the
@@ -17,7 +17,7 @@
 //! Deliberately absent: any "current rung" pointer. Progress is per combination,
 //! stored as [`ladder_outcome`](crate::ladder_outcome) rows, so a model added to a
 //! standing ladder later starts at rung 1 while the models already halfway up carry
-//! on. Per-combination steering (priority, focus, hold) lives in
+//! on. Per-combination steering (priority, focus, pause) lives in
 //! [`ladder_climber`](crate::ladder_climber).
 
 use sea_orm::entity::prelude::*;
@@ -50,12 +50,10 @@ pub struct Model {
     /// The gate's quality floor as a `Rating` token (`flawless`, `great`,
     /// `passable`, `scuffed`, `broken`) — see `test_cabinet_core::review::Rating`.
     ///
-    /// The gate is a single parameterised rule, not a menu of modes: **advance when
-    /// `count(my runs on this rung rated <gate_floor> or better) >= <threshold>`**.
-    /// The floor must be read from *this account's* `review` row and taken as the
-    /// worst domain within that one review — never from `run.rating`, which is the
-    /// worst domain across **all** reviewers and would let someone else's harsher
-    /// review wall this reviewer's climb.
+    /// The gate is a single parameterised rule, not a menu of modes: **pass when
+    /// `count(runs on this rung rated <gate_floor> or better) >= <threshold>`**.
+    /// The rating read is each run's validator rating (`run.validator_rating`), never
+    /// `run.rating`, which folds in reviewers' checklist overrides.
     pub gate_floor: String,
     /// How [`gate_threshold_value`](Self::gate_threshold_value) is interpreted:
     /// `"count"` (an absolute number of runs) or `"fraction"` (a share of the rung's
@@ -74,41 +72,30 @@ pub struct Model {
     /// runs. Off by default: the extra runs are evidence the reviewer asked for, and
     /// a rung normally completes all of them even once the outcome is determined.
     pub early_stop: bool,
-    /// Whether a run with `loaded == false` counts as `broken` for the gate without
-    /// needing a review. On by default, because otherwise a rung full of dead builds
-    /// both blocks the climb and occupies buffer slots waiting for reviews that could
-    /// only ever say the same thing.
+    /// Whether a run with `loaded == false` counts as `broken` for the gate whatever its
+    /// validator rating says. On by default.
     pub count_unloaded_as_broken: bool,
-    /// Whether topping up is suspended. The mildest of the three halting controls:
-    /// it stops new runs being emitted and leaves the queue untouched (`halt` is what
+    /// Whether the ladder is disabled. An enabled ladder launches its own climb; a
+    /// disabled one launches nothing and leaves the queue untouched (`halt` is what
     /// additionally cancels).
     pub paused: bool,
-    /// Whether the backend tops this ladder up itself whenever a run of one of its cells
-    /// finishes. The column defaults to off; the API creates a ladder with it on, and it
-    /// only ever feeds a ladder that is enabled.
-    pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `NULL` to inherit
     /// `coverage_settings.buffer_target`. Nullable rather than defaulted because "no
     /// opinion" and "explicitly zero" are different instructions. Encoded exactly as
     /// `coverage_plan.buffer_target` is: a non-negative bound, or a negative value for
-    /// "no bound — top up everything".
+    /// "no bound — launch everything".
     #[sea_orm(nullable)]
     pub buffer_target: Option<i32>,
-    /// RFC 3339 of when a top-up claimed this ladder, or `NULL` when none is running.
-    /// Serializes top-up exactly as `coverage_plan.topping_up_at` does: a timestamp
-    /// rather than a flag so a request that dies mid-top-up expires out of the claim
-    /// instead of wedging the ladder.
+    /// RFC 3339 of when a launch pass claimed this ladder, or `NULL` when none is
+    /// running. Serializes launch passes exactly as `coverage_plan.topping_up_at`
+    /// serializes a plan's top-ups: a timestamp rather than a flag so a pass that dies
+    /// midway expires out of the claim instead of wedging the ladder.
     #[sea_orm(nullable)]
     pub topping_up_at: Option<String>,
-    /// Whether a finished run asked for another top-up pass while the claim in
+    /// Whether another launch pass was asked for while the claim in
     /// [`Self::topping_up_at`] was held. The holder runs that pass before it lets go, so a
-    /// run that lands mid-top-up is never left unseen.
+    /// run that lands mid-pass is never left unseen.
     pub top_up_pending: bool,
-    /// Whether the pending request in [`Self::top_up_pending`] came from the ladder's
-    /// owner ("Top up now") rather than from the backend feeding the ladder by itself.
-    /// The holder runs the pass for such a request as the owner's top-up, which
-    /// relaunches a rung whose runs keep failing where an automatic one does not.
-    pub top_up_requested: bool,
     /// The referenced combination groups' ids as a JSON array of strings — the same
     /// `coverage_group` pointers a plan uses, so editing a group reshapes both.
     #[sea_orm(column_type = "Text")]

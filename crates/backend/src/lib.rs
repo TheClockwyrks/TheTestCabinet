@@ -261,7 +261,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         }
     }
 
-    // A ladder's top-up claim still held at startup was held by a top-up that died with
+    // A ladder's launch-pass claim still held at startup was held by a pass that died with
     // the previous process: the backend is the single coordinator, so nothing else can
     // hold one. Left in place it would turn the startup feed below away as busy until its
     // lease ran out, with no holder left to serve the request that leaves behind.
@@ -269,7 +269,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if released > 0 {
         tracing::info!(
             released,
-            "released ladder top-up claims left by the previous process"
+            "released ladder launch-pass claims left by the previous process"
         );
     }
 
@@ -393,7 +393,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     };
     // A ladder is fed when something happens to it, and a restart loses some of those
     // moments (the reconciliation above fails orphaned jobs without feeding anyone).
-    // Feed every self-feeding ladder once, as soon as the store can be served.
+    // Run a launch pass of every enabled ladder once, as soon as the store can be served.
     api::spawn_ladder_startup_feed(state.clone());
     let router = api::router(state);
 

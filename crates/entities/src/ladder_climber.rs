@@ -7,7 +7,7 @@
 //! truth for how far a climber has got.
 //!
 //! A row is optional. A combination with no row is un-steered (default priority, not
-//! focused, not held), which is why adding a model to a standing ladder writes
+//! focused, not paused), which is why adding a model to a standing ladder writes
 //! nothing here and simply starts it at rung 1.
 //!
 //! The combination is identified by the canonical `harness|model|provider` key
@@ -36,11 +36,15 @@ pub struct Model {
     /// The reviewer's "watch this one" flag, surfaced by the dashboard and used to
     /// break ties between equal priorities.
     pub focused: bool,
-    /// The manual downward override: stop this combination where it stands whatever
-    /// its gates say. Reversible by clearing the flag; the automatic outcomes it
-    /// overrides are untouched, so releasing a hold resumes the climb from exactly
-    /// where it was.
-    pub held: bool,
+    /// Whether the owner paused this combination where it stands. A pause decides no
+    /// rung and cancels nothing, so resuming continues the climb from exactly where it
+    /// was.
+    pub paused: bool,
+    /// RFC 3339 of when the owner last retried this climber after its rung kept failing
+    /// on infrastructure, or `NULL` for never. Only jobs that ended after it count
+    /// toward the failing streak.
+    #[sea_orm(nullable)]
+    pub retried_at: Option<String>,
     /// RFC 3339 of when this steering was last changed.
     pub updated_at: String,
 }

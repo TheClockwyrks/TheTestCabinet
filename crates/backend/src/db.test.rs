@@ -6840,7 +6840,6 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     let steered = LadderSchedule {
         outer_axis: "combination".to_string(),
         paused: true,
-        auto_top_up: false,
         buffer_target: Some(BufferTarget::Unbounded),
     };
     assert!(db.set_ladder_schedule("u1", "l1", &steered).await.unwrap());
@@ -6870,7 +6869,7 @@ async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
         "r1",
         &combo,
         "v1.0.0",
-        LadderOutcomeKind::Advanced,
+        LadderOutcomeKind::Passed,
         "2026-08-15T01:00:00Z",
     )
     .await
@@ -6899,7 +6898,7 @@ async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
     let outcomes = db.list_ladder_outcomes("l1").await.unwrap();
     assert_eq!(outcomes.len(), 1, "the verdict survived the reorder");
     assert_eq!(outcomes[0].rung_id, "r1");
-    assert_eq!(outcomes[0].outcome, LadderOutcomeKind::Advanced);
+    assert_eq!(outcomes[0].outcome, LadderOutcomeKind::Passed);
 
     // Dropping a rung from the climb does take its verdicts with it — that is what
     // removing it means.
@@ -6910,86 +6909,139 @@ async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
 }
 
 #[tokio::test]
-async fn a_recomputed_outcome_never_overwrites_a_reviewers_override() {
+async fn the_plain_flow_migration_renames_verdicts_and_drops_overrides_both_ways() {
+    // A ladder as a deployment holds it before the migration: verdicts spelled
+    // `advanced`/`walled`, a hand override on one of them, a held climber, and the
+    // `auto_top_up` switch. After it, the verdicts read in the plain words, the override is
+    // gone and never read, and the hold is a pause.
+    use sea_orm::{ConnectionTrait, Statement};
+    use test_cabinet_migration::MigratorTrait;
+
     let db = Db::connect_in_memory().await.unwrap();
     db.insert_ladder(
         "u1",
-        &test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]),
+        &test_ladder(
+            "l1",
+            "Climb",
+            vec![rung("r1", "pong", "v1.0.0"), rung("r2", "carom", "v1.0.0")],
+        ),
         &LadderSchedule::default(),
     )
     .await
     .unwrap();
     let combo = combination_key(&sample_combo());
-
     db.record_ladder_outcome(
         "l1",
         "r1",
         &combo,
         "v1.0.0",
-        LadderOutcomeKind::Walled,
-        "2026-08-15T01:00:00Z",
+        LadderOutcomeKind::Passed,
+        "t1",
     )
     .await
     .unwrap();
-    // The reviewer disagrees and promotes past the wall.
-    assert!(
-        db.set_ladder_outcome_override(
-            "l1",
-            "r1",
-            &combo,
-            "v1.0.0",
-            Some(LadderOutcomeKind::Advanced),
-            "2026-08-15T02:00:00Z",
-        )
-        .await
-        .unwrap()
-    );
-
-    // A later recompute re-states the automatic verdict and must leave the human
-    // decision — and therefore the effective one — exactly as it was.
     db.record_ladder_outcome(
         "l1",
-        "r1",
+        "r2",
         &combo,
         "v1.0.0",
-        LadderOutcomeKind::Walled,
-        "2026-08-15T03:00:00Z",
+        LadderOutcomeKind::Failed,
+        "t2",
     )
     .await
     .unwrap();
-    let outcome = &db.list_ladder_outcomes("l1").await.unwrap()[0];
-    assert_eq!(outcome.outcome, LadderOutcomeKind::Walled);
-    assert_eq!(
-        outcome.override_outcome,
-        Some(LadderOutcomeKind::Advanced),
-        "the override survives a recompute",
-    );
-    assert_eq!(outcome.effective(), LadderOutcomeKind::Advanced);
-    assert_eq!(outcome.decided_at, "2026-08-15T03:00:00Z");
+    db.set_ladder_climber(
+        "l1",
+        &StoredLadderClimber {
+            combination_key: combo.clone(),
+            priority: 2,
+            focused: true,
+            paused: true,
+            updated_at: "t3".to_string(),
+            retried_at: None,
+        },
+    )
+    .await
+    .unwrap();
 
-    // Clearing it reverses the override exactly, restoring the gate's own verdict.
-    assert!(
-        db.set_ladder_outcome_override("l1", "r1", &combo, "v1.0.0", None, "2026-08-15T04:00:00Z")
+    let conn = db.connection();
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261002_000054_ladder_plain_flow")
+        .expect("the plain-flow migration is registered");
+    let steps = (migrations.len() - index) as u32;
+    let rows = async |sql: &str| {
+        conn.query_all(Statement::from_string(conn.get_database_backend(), sql))
             .await
             .unwrap()
-    );
-    let outcome = &db.list_ladder_outcomes("l1").await.unwrap()[0];
-    assert_eq!(outcome.override_outcome, None);
-    assert_eq!(outcome.override_at, None);
-    assert_eq!(outcome.effective(), LadderOutcomeKind::Walled);
+    };
 
-    // There is nothing to promote past on a rung the gate has not resolved.
-    assert!(
-        !db.set_ladder_outcome_override(
-            "l1",
-            "r1",
-            &combo,
-            "v9.9.9",
-            Some(LadderOutcomeKind::Advanced),
-            "2026-08-15T05:00:00Z",
-        )
+    // Down: the old spellings and columns come back.
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
         .await
-        .unwrap()
+        .unwrap();
+    let outcomes: Vec<String> = rows("SELECT outcome FROM ladder_outcome ORDER BY rung_id")
+        .await
+        .iter()
+        .map(|row| row.try_get("", "outcome").unwrap())
+        .collect();
+    assert_eq!(outcomes, vec!["advanced", "walled"]);
+    let held: bool = rows("SELECT held FROM ladder_climber").await[0]
+        .try_get("", "held")
+        .unwrap();
+    assert!(held, "a pause rolls back to a hold");
+    let auto: bool = rows("SELECT auto_top_up FROM ladder").await[0]
+        .try_get("", "auto_top_up")
+        .unwrap();
+    assert!(
+        auto,
+        "an enabled ladder climbed by itself, so the switch comes back on"
+    );
+    // A stored override, as an owner's "promote" left one.
+    conn.execute_unprepared(
+        "UPDATE ladder_outcome SET override_outcome = 'advanced', override_at = 't4' \
+         WHERE rung_id = 'r2'",
+    )
+    .await
+    .unwrap();
+
+    // Up: the plain words, no override, and the hold kept as a pause.
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
+        .await
+        .unwrap();
+    let outcomes = db.list_ladder_outcomes("l1").await.unwrap();
+    assert_eq!(
+        outcomes
+            .iter()
+            .map(|outcome| (outcome.rung_id.as_str(), outcome.outcome))
+            .collect::<Vec<_>>(),
+        vec![
+            ("r1", LadderOutcomeKind::Passed),
+            ("r2", LadderOutcomeKind::Failed),
+        ],
+        "the gate's verdict governs; the override is gone"
+    );
+    let columns: Vec<String> = rows("SELECT name FROM pragma_table_info('ladder_outcome')")
+        .await
+        .iter()
+        .map(|row| row.try_get("", "name").unwrap())
+        .collect();
+    assert!(!columns.iter().any(|name| name.starts_with("override")));
+    let columns: Vec<String> = rows("SELECT name FROM pragma_table_info('ladder')")
+        .await
+        .iter()
+        .map(|row| row.try_get("", "name").unwrap())
+        .collect();
+    assert!(!columns.contains(&"auto_top_up".to_string()));
+    assert!(!columns.contains(&"top_up_requested".to_string()));
+    let climbers = db.list_ladder_climbers("l1").await.unwrap();
+    assert!(climbers[0].paused);
+    assert_eq!(climbers[0].priority, 2);
+    assert_eq!(climbers[0].retried_at, None);
+    assert_eq!(
+        db.ladder_schedule("u1", "l1").await.unwrap(),
+        Some(LadderSchedule::default())
     );
 }
 
@@ -7006,7 +7058,7 @@ async fn bumping_a_rungs_version_neither_erases_nor_inherits_the_old_verdict() {
         "r1",
         &combo,
         "v1.0.0",
-        LadderOutcomeKind::Advanced,
+        LadderOutcomeKind::Passed,
         "2026-08-15T01:00:00Z",
     )
     .await
@@ -7036,7 +7088,7 @@ async fn bumping_a_rungs_version_neither_erases_nor_inherits_the_old_verdict() {
         "r1",
         &combo,
         "v2.0.0",
-        LadderOutcomeKind::Walled,
+        LadderOutcomeKind::Failed,
         "2026-08-15T02:00:00Z",
     )
     .await
@@ -7045,7 +7097,7 @@ async fn bumping_a_rungs_version_neither_erases_nor_inherits_the_old_verdict() {
 }
 
 #[tokio::test]
-async fn ladder_climbers_hold_steering_only_and_are_optional() {
+async fn ladder_climbers_carry_steering_only_and_are_optional() {
     let db = Db::connect_in_memory().await.unwrap();
     db.insert_ladder(
         "u1",
@@ -7065,21 +7117,35 @@ async fn ladder_climbers_hold_steering_only_and_are_optional() {
             combination_key: combo.clone(),
             priority: 5,
             focused: true,
-            held: false,
+            paused: false,
             updated_at: "2026-08-15T01:00:00Z".to_string(),
+            retried_at: None,
         },
     )
     .await
     .unwrap();
-    // Re-steering the same combination updates it rather than adding a second row.
+    // A retry is recorded on the climber's row and touches none of its steering.
+    db.record_ladder_climber_retry("l1", &combo, "2026-08-15T01:30:00Z")
+        .await
+        .unwrap();
+    let climbers = db.list_ladder_climbers("l1").await.unwrap();
+    assert_eq!(climbers[0].priority, 5);
+    assert!(climbers[0].focused);
+    assert_eq!(
+        climbers[0].retried_at.as_deref(),
+        Some("2026-08-15T01:30:00Z")
+    );
+    // Re-steering the same combination updates it rather than adding a second row, and
+    // keeps the retry, which is not steering.
     db.set_ladder_climber(
         "l1",
         &StoredLadderClimber {
             combination_key: combo.clone(),
             priority: 5,
             focused: true,
-            held: true,
+            paused: true,
             updated_at: "2026-08-15T02:00:00Z".to_string(),
+            retried_at: None,
         },
     )
     .await
@@ -7087,8 +7153,83 @@ async fn ladder_climbers_hold_steering_only_and_are_optional() {
 
     let climbers = db.list_ladder_climbers("l1").await.unwrap();
     assert_eq!(climbers.len(), 1);
-    assert!(climbers[0].held);
+    assert!(climbers[0].paused);
     assert_eq!(climbers[0].updated_at, "2026-08-15T02:00:00Z");
+    assert_eq!(
+        climbers[0].retried_at.as_deref(),
+        Some("2026-08-15T01:30:00Z")
+    );
+
+    // A retry of a climber nobody has steered creates its row un-steered.
+    db.record_ladder_climber_retry("l1", "claude|opus|", "2026-08-15T03:00:00Z")
+        .await
+        .unwrap();
+    let opus = db
+        .list_ladder_climbers("l1")
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|climber| climber.combination_key == "claude|opus|")
+        .unwrap();
+    assert_eq!(
+        (opus.priority, opus.focused, opus.paused),
+        (0, false, false)
+    );
+    assert_eq!(opus.retried_at.as_deref(), Some("2026-08-15T03:00:00Z"));
+}
+
+#[tokio::test]
+async fn recent_terminal_jobs_since_reads_only_jobs_that_ended_after_it() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let cell: CellKey = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "none".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+        String::new(),
+        String::new(),
+    );
+    // Ended at a whole second, at a fraction past it, and later still: text and time
+    // disagree on how the first two sort, and `since` compares them as time.
+    for (id, ended) in [
+        ("a", "2026-10-01T00:00:00Z"),
+        ("b", "2026-10-01T00:00:00.5Z"),
+        ("c", "2026-10-01T00:00:02Z"),
+    ] {
+        db.enqueue_job(new_job(id, "2026-09-30T00:00:00Z"))
+            .await
+            .unwrap();
+        db.set_job_state(id, "failed", ended, Some("harness unavailable"), None)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        db.recent_terminal_jobs(&cell, 3, None).await.unwrap().len(),
+        3
+    );
+    // A job that ended exactly at `since` is not after it.
+    assert_eq!(
+        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:00.5Z"))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:00.25Z"))
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:02Z"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A gg cell key for the `record` case: pong v1.0.0 base on the gg harness, with the

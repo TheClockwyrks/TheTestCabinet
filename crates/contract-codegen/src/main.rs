@@ -747,7 +747,7 @@ fn main() -> Result<()> {
                 bapi::RungTally, bapi::LadderCell, bapi::LadderRungOutcome,
                 bapi::LadderClimber, bapi::LadderProgressRung, bapi::LadderProgress,
                 bapi::StoredClimberOut,
-                bapi::LadderClimberInput, bapi::LadderOverrideInput, bapi::LadderRungOrderInput,
+                bapi::LadderClimberInput, bapi::LadderRetryInput, bapi::LadderRungOrderInput,
             ],
         },
     ];

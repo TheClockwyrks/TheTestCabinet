@@ -3724,17 +3724,22 @@ impl Db {
     ///
     /// A job the backend failed because it restarted while the job was executing
     /// ([`REAPED_DETAIL`]) is left out altogether. The restart is not the cell's fault,
-    /// and a top-up launches whole cells, so counting it would mark every cell that had
-    /// a few runs executing at the restart as failing.
+    /// and a launch pass launches whole cells, so counting it would mark every cell that
+    /// had a few runs executing at the restart as failing.
+    ///
+    /// With `since`, only jobs that ended strictly after that RFC 3339 instant are read:
+    /// what a retried climber's streak counts from.
     pub async fn recent_terminal_jobs(
         &self,
         cell: &CellKey,
         limit: u64,
+        since: Option<&str>,
     ) -> Result<Vec<TerminalJob>> {
-        let rows: Vec<(String, Option<String>)> = cell_job_query(cell)
+        let rows: Vec<(String, Option<String>, String)> = cell_job_query(cell)
             .select_only()
             .column(job::Column::State)
             .column(job::Column::RecordId)
+            .column(job::Column::UpdatedAt)
             .filter(job::Column::State.is_in(["succeeded", "failed", "canceled"]))
             .filter(
                 Condition::any()
@@ -3747,6 +3752,23 @@ impl Db {
             .into_tuple()
             .all(&self.conn())
             .await?;
+        // Compared as instants rather than as text, since RFC 3339 text with and without
+        // a fractional second does not sort as time. The rows are newest first, so the
+        // ones that ended after `since` are a prefix of the newest `limit`, and cutting
+        // after the limit reads the same jobs as cutting before it.
+        let since = since
+            .map(|since| time::OffsetDateTime::parse(since, &Rfc3339))
+            .transpose()
+            .map_err(|e| BackendError::Internal(format!("parsing a retry time: {e}")))?;
+        let rows: Vec<(String, Option<String>)> = rows
+            .into_iter()
+            .filter(|(_, _, ended)| {
+                since.is_none_or(|since| {
+                    time::OffsetDateTime::parse(ended, &Rfc3339).is_ok_and(|ended| ended > since)
+                })
+            })
+            .map(|(state, record, _)| (state, record))
+            .collect();
         let record_ids: Vec<&str> = rows
             .iter()
             .filter_map(|(_, record)| record.as_deref())
@@ -4371,9 +4393,8 @@ pub struct StoredLadderRung {
     pub runs_override: Option<u32>,
 }
 
-/// How a ladder is **fed**: the order it emits its cells in, whether it is suspended,
-/// whether the backend tops it up as its runs finish, and its override of the account's
-/// buffer target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
+/// How a ladder is **fed**: the order it emits its cells in, whether it is enabled, and
+/// its override of the account's buffer target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
 /// declaration for the same reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LadderSchedule {
@@ -4382,11 +4403,8 @@ pub struct LadderSchedule {
     /// as it gets before starting the next). The transport owns and validates this
     /// vocabulary; the store round-trips what it was handed.
     pub outer_axis: String,
-    /// Whether topping up is suspended.
+    /// Whether the ladder is disabled. An enabled ladder launches its own climb.
     pub paused: bool,
-    /// Whether the backend tops this ladder up itself whenever a job of one of its
-    /// cells finishes.
-    pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `None` to inherit
     /// [`Db::coverage_buffer_target`]; the same three instructions as
     /// [`CoveragePlanSchedule::buffer_target`], though on a ladder the bound caps the
@@ -4395,14 +4413,12 @@ pub struct LadderSchedule {
 }
 
 impl Default for LadderSchedule {
-    /// A new ladder climbs a rung at a time, is not paused, never tops itself up
-    /// unasked, and has no opinion on the buffer target. These match the columns'
-    /// database defaults.
+    /// A ladder climbs a rung at a time, is not paused, and has no opinion on the buffer
+    /// target. These match the columns' database defaults.
     fn default() -> Self {
         Self {
             outer_axis: "rung".to_string(),
             paused: false,
-            auto_top_up: false,
             buffer_target: None,
         }
     }
@@ -4422,34 +4438,37 @@ pub struct StoredLadderClimber {
     /// The reviewer's "watch this one" flag, and the tiebreak between equal
     /// priorities.
     pub focused: bool,
-    /// The manual downward override: stop this combination where it stands whatever
-    /// its gates say. Clearing it resumes the climb from exactly where it was, because
-    /// the automatic outcomes underneath were never touched.
-    pub held: bool,
+    /// Whether the owner paused this combination where it stands. A pause decides no
+    /// rung, so resuming continues the climb from exactly where it was.
+    pub paused: bool,
     /// RFC 3339 of when this steering was last changed.
     pub updated_at: String,
+    /// RFC 3339 of when the owner last retried this climber after its rung kept failing,
+    /// or `None` for never. Only jobs that ended after it count toward the failing
+    /// streak. Written by [`Db::record_ladder_climber_retry`] alone: a steering write
+    /// leaves it as it is.
+    pub retried_at: Option<String>,
 }
 
 /// A resolved gate verdict as stored in `ladder_outcome`.
 ///
 /// [`GateOutcome::Undecided`] has no token because it has no row: a rung still
-/// climbing, or still waiting on this account's reviews, is *unrecorded* rather than
-/// recorded as undecided, so "no verdict yet" can never be confused with "a verdict of
+/// running is *unrecorded* rather than recorded as undecided, so "no verdict yet" can never be confused with "a verdict of
 /// nothing".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LadderOutcomeKind {
-    /// The rung was cleared; the climber moved up.
-    Advanced,
-    /// The rung was failed; the climber stopped there.
-    Walled,
+    /// The climber passed the rung and moved up.
+    Passed,
+    /// The climber failed the rung and stopped there.
+    Failed,
 }
 
 impl LadderOutcomeKind {
     /// The stored token.
     pub fn as_str(self) -> &'static str {
         match self {
-            LadderOutcomeKind::Advanced => "advanced",
-            LadderOutcomeKind::Walled => "walled",
+            LadderOutcomeKind::Passed => "passed",
+            LadderOutcomeKind::Failed => "failed",
         }
     }
 
@@ -4458,8 +4477,8 @@ impl LadderOutcomeKind {
     /// reasons nobody could reconstruct.
     pub fn parse(token: &str) -> Result<Self> {
         match token {
-            "advanced" => Ok(LadderOutcomeKind::Advanced),
-            "walled" => Ok(LadderOutcomeKind::Walled),
+            "passed" => Ok(LadderOutcomeKind::Passed),
+            "failed" => Ok(LadderOutcomeKind::Failed),
             other => Err(BackendError::Internal(format!(
                 "unknown ladder outcome: {other}"
             ))),
@@ -4470,8 +4489,8 @@ impl LadderOutcomeKind {
     /// [`GateOutcome::Undecided`] — which is recorded by writing no row at all.
     pub fn from_gate(outcome: GateOutcome) -> Option<Self> {
         match outcome {
-            GateOutcome::Advance => Some(LadderOutcomeKind::Advanced),
-            GateOutcome::Wall => Some(LadderOutcomeKind::Walled),
+            GateOutcome::Passed => Some(LadderOutcomeKind::Passed),
+            GateOutcome::Failed => Some(LadderOutcomeKind::Failed),
             GateOutcome::Undecided => None,
         }
     }
@@ -4490,26 +4509,11 @@ pub struct StoredLadderOutcome {
     /// it. A rung's *current* verdict is the row whose version matches its present
     /// pin.
     pub decided_version: String,
-    /// What the gate computed. Recomputable at any time from this account's reviews.
+    /// What the gate decided. Recomputable at any time from the rung's validator
+    /// ratings.
     pub outcome: LadderOutcomeKind,
-    /// The reviewer's manual override of that result, or `None` for none.
-    ///
-    /// Kept beside the automatic outcome rather than replacing it so a recompute can
-    /// never silently undo a human decision, and so clearing it reverses the override
-    /// exactly — see [`Self::effective`].
-    pub override_outcome: Option<LadderOutcomeKind>,
-    /// RFC 3339 of when the override was applied, or `None` when there is none.
-    pub override_at: Option<String>,
-    /// RFC 3339 of when the automatic outcome was last computed.
+    /// RFC 3339 of when the verdict was last computed.
     pub decided_at: String,
-}
-
-impl StoredLadderOutcome {
-    /// The verdict that actually governs the climb: the reviewer's override when they
-    /// made one, else what the gate computed.
-    pub fn effective(&self) -> LadderOutcomeKind {
-        self.override_outcome.unwrap_or(self.outcome)
-    }
 }
 
 /// Ladders: the ordered, gated sibling of a coverage plan.
@@ -4609,12 +4613,10 @@ impl Db {
             early_stop: Set(stored.gate.early_stop),
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
             paused: Set(schedule.paused),
-            auto_top_up: Set(schedule.auto_top_up),
             buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
-            // A fresh ladder is nobody's claim; only a top-up ever sets this.
+            // A fresh ladder is nobody's claim; only a launch pass ever sets this.
             topping_up_at: Set(None),
             top_up_pending: Set(false),
-            top_up_requested: Set(false),
             combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
             combos_json: Set(serde_json::to_string(&stored.combos)?),
             updated_at: Set(stored.updated_at.clone()),
@@ -4728,7 +4730,6 @@ impl Db {
             .map(|row| LadderSchedule {
                 outer_axis: row.outer_axis,
                 paused: row.paused,
-                auto_top_up: row.auto_top_up,
                 buffer_target: row.buffer_target.map(buffer_target_from_column),
             }))
     }
@@ -4748,7 +4749,6 @@ impl Db {
                 Expr::value(schedule.outer_axis.clone()),
             )
             .col_expr(ladder::Column::Paused, Expr::value(schedule.paused))
-            .col_expr(ladder::Column::AutoTopUp, Expr::value(schedule.auto_top_up))
             .col_expr(
                 ladder::Column::BufferTarget,
                 Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
@@ -4801,56 +4801,33 @@ impl Db {
         Ok(())
     }
 
-    /// Ask for another top-up pass of a ladder whose claim somebody else holds: set its
-    /// `top_up_pending` flag, which the holder checks before letting go, and with
-    /// `by_owner` its `top_up_requested` flag too, so the pass runs as the owner's
-    /// top-up. A request never lowers the flag another left: an owner's request and an
-    /// automatic one that land together are served as the owner's. Not scoped to an
+    /// Ask for another launch pass of a ladder whose claim somebody else holds: set its
+    /// `top_up_pending` flag, which the holder checks before letting go. Not scoped to an
     /// account — it is only ever reached from a ladder the caller already resolved.
-    pub async fn request_ladder_top_up(&self, id: &str, by_owner: bool) -> Result<()> {
-        let mut update =
-            ladder::Entity::update_many().col_expr(ladder::Column::TopUpPending, Expr::value(true));
-        if by_owner {
-            update = update.col_expr(ladder::Column::TopUpRequested, Expr::value(true));
-        }
-        update
+    pub async fn request_ladder_top_up(&self, id: &str) -> Result<()> {
+        ladder::Entity::update_many()
+            .col_expr(ladder::Column::TopUpPending, Expr::value(true))
             .filter(ladder::Column::Id.eq(id))
             .exec(&self.conn())
             .await?;
         Ok(())
     }
 
-    /// Take a ladder's pending top-up request, clearing it: `None` when there was none,
-    /// otherwise whether its owner made (or joined) it. A compare-and-swap on both
-    /// flags, retried when another write moved them in between, so two callers can
-    /// never both take one request and an owner's request is never taken as automatic.
-    pub async fn take_ladder_top_up_request(&self, id: &str) -> Result<Option<bool>> {
-        loop {
-            let Some(row) = ladder::Entity::find_by_id(id.to_string())
-                .one(&self.conn())
-                .await?
-            else {
-                return Ok(None);
-            };
-            if !row.top_up_pending {
-                return Ok(None);
-            }
-            let res = ladder::Entity::update_many()
-                .col_expr(ladder::Column::TopUpPending, Expr::value(false))
-                .col_expr(ladder::Column::TopUpRequested, Expr::value(false))
-                .filter(ladder::Column::Id.eq(id))
-                .filter(ladder::Column::TopUpPending.eq(true))
-                .filter(ladder::Column::TopUpRequested.eq(row.top_up_requested))
-                .exec(&self.conn())
-                .await?;
-            if res.rows_affected > 0 {
-                return Ok(Some(row.top_up_requested));
-            }
-        }
+    /// Take a ladder's pending launch-pass request, clearing it, and answer whether there
+    /// was one. A compare-and-clear on the flag, so two callers can never both take one
+    /// request.
+    pub async fn take_ladder_top_up_request(&self, id: &str) -> Result<bool> {
+        let res = ladder::Entity::update_many()
+            .col_expr(ladder::Column::TopUpPending, Expr::value(false))
+            .filter(ladder::Column::Id.eq(id))
+            .filter(ladder::Column::TopUpPending.eq(true))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
     }
 
-    /// Release every ladder's top-up claim. Run once at startup, before anything is
-    /// served: the backend is a single coordinator, so no top-up can be running
+    /// Release every ladder's launch-pass claim. Run once at startup, before anything is
+    /// served: the backend is a single coordinator, so no launch pass can be running
     /// anywhere at that moment, and a claim still held was held by a process that died
     /// with it. Left in place, the claim would turn the startup feed of that ladder
     /// away as busy until its lease ran out, with nobody left to serve the request it
@@ -4864,7 +4841,7 @@ impl Db {
         Ok(res.rows_affected)
     }
 
-    /// Whether a ladder has a top-up pass requested and not yet taken.
+    /// Whether a ladder has a launch pass requested and not yet taken.
     pub async fn ladder_top_up_requested(&self, id: &str) -> Result<bool> {
         Ok(ladder::Entity::find_by_id(id.to_string())
             .one(&self.conn())
@@ -4875,7 +4852,7 @@ impl Db {
     /// The ladders a finished job of one case pin feeds, as `(ladder id, owner)` pairs:
     /// every ladder holding a rung that pins `slug`, `version`, `variant` and `engine`
     /// (an absent rung engine meaning `none`), plus the ladder `origin` names, kept only
-    /// when the ladder is enabled and has `auto_top_up` on.
+    /// when the ladder is enabled.
     ///
     /// The combination is deliberately not matched here. Which climbers a ladder has,
     /// gg ones included, is the board's to resolve, and a ladder whose climbers do not
@@ -4912,7 +4889,6 @@ impl Db {
         Ok(ladder::Entity::find()
             .filter(ladder::Column::Id.is_in(ids))
             .filter(ladder::Column::Paused.eq(false))
-            .filter(ladder::Column::AutoTopUp.eq(true))
             .order_by_asc(ladder::Column::Id)
             .all(&self.conn())
             .await?
@@ -4921,13 +4897,12 @@ impl Db {
             .collect())
     }
 
-    /// Every ladder the backend feeds by itself — enabled, with `auto_top_up` on — as
-    /// `(ladder id, owning account)`, ordered by id. What the backend tops up once at
-    /// startup, so a ladder a restart left with nothing in flight climbs on.
-    pub async fn ladders_fed_automatically(&self) -> Result<Vec<(String, String)>> {
+    /// Every enabled ladder, as `(ladder id, owning account)`, ordered by id. What the
+    /// backend runs a launch pass of once at startup, so a ladder a restart left with
+    /// nothing in flight climbs on.
+    pub async fn enabled_ladders(&self) -> Result<Vec<(String, String)>> {
         Ok(ladder::Entity::find()
             .filter(ladder::Column::Paused.eq(false))
-            .filter(ladder::Column::AutoTopUp.eq(true))
             .order_by_asc(ladder::Column::Id)
             .all(&self.conn())
             .await?
@@ -4955,8 +4930,9 @@ impl Db {
                 combination_key: row.combination_key,
                 priority: row.priority,
                 focused: row.focused,
-                held: row.held,
+                paused: row.paused,
                 updated_at: row.updated_at,
+                retried_at: row.retried_at,
             })
             .collect())
     }
@@ -4965,7 +4941,9 @@ impl Db {
     ///
     /// Steering is written whole because it is one small decision — "climb this one
     /// first and watch it" — rather than three independent settings, and a whole write
-    /// cannot leave a combination focused-but-forgotten by a partial update.
+    /// cannot leave a combination focused-but-forgotten by a partial update. The
+    /// climber's [`StoredLadderClimber::retried_at`] is not steering and is left as it
+    /// is.
     pub async fn set_ladder_climber(
         &self,
         ladder_id: &str,
@@ -4976,8 +4954,9 @@ impl Db {
             combination_key: Set(climber.combination_key.clone()),
             priority: Set(climber.priority),
             focused: Set(climber.focused),
-            held: Set(climber.held),
+            paused: Set(climber.paused),
             updated_at: Set(climber.updated_at.clone()),
+            retried_at: Set(None),
         })
         .on_conflict(
             OnConflict::columns([
@@ -4987,7 +4966,41 @@ impl Db {
             .update_columns([
                 ladder_climber::Column::Priority,
                 ladder_climber::Column::Focused,
-                ladder_climber::Column::Held,
+                ladder_climber::Column::Paused,
+                ladder_climber::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Record that the owner retried one climber at `now`, creating its steering row
+    /// un-steered when it has none. Only jobs that ended after `now` count toward its
+    /// failing streak from here on. Its steering is left as it is.
+    pub async fn record_ladder_climber_retry(
+        &self,
+        ladder_id: &str,
+        combination_key: &str,
+        now: &str,
+    ) -> Result<()> {
+        ladder_climber::Entity::insert(ladder_climber::ActiveModel {
+            ladder_id: Set(ladder_id.to_string()),
+            combination_key: Set(combination_key.to_string()),
+            priority: Set(0),
+            focused: Set(false),
+            paused: Set(false),
+            updated_at: Set(now.to_string()),
+            retried_at: Set(Some(now.to_string())),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                ladder_climber::Column::LadderId,
+                ladder_climber::Column::CombinationKey,
+            ])
+            .update_columns([
+                ladder_climber::Column::RetriedAt,
                 ladder_climber::Column::UpdatedAt,
             ])
             .to_owned(),
@@ -5000,8 +5013,7 @@ impl Db {
     /// Every recorded verdict on one ladder — one climber's whole progress and the
     /// board's at once — ordered by combination then rung for a stable read.
     ///
-    /// A rung with no row for a combination is *undecided*: still climbing, or still
-    /// waiting on this account's reviews.
+    /// A rung with no row for a combination is *undecided*.
     pub async fn list_ladder_outcomes(&self, ladder_id: &str) -> Result<Vec<StoredLadderOutcome>> {
         ladder_outcome::Entity::find()
             .filter(ladder_outcome::Column::LadderId.eq(ladder_id))
@@ -5016,26 +5028,16 @@ impl Db {
                     combination_key: row.combination_key,
                     decided_version: row.decided_version,
                     outcome: LadderOutcomeKind::parse(&row.outcome)?,
-                    override_outcome: row
-                        .override_outcome
-                        .as_deref()
-                        .map(LadderOutcomeKind::parse)
-                        .transpose()?,
-                    override_at: row.override_at,
                     decided_at: row.decided_at,
                 })
             })
             .collect()
     }
 
-    /// Record the gate's automatic verdict for one combination on one rung, at the
-    /// case version it was decided against.
+    /// Record the gate's verdict for one combination on one rung, at the case version it
+    /// was decided against.
     ///
-    /// Idempotent: re-deciding the same rung updates the verdict and its timestamp. It
-    /// writes **only** the automatic columns — a reviewer's
-    /// [override](Self::set_ladder_outcome_override) on the same row survives a
-    /// recompute untouched, which is the whole reason the two live in separate
-    /// columns.
+    /// Idempotent: re-deciding the same rung updates the verdict and its timestamp.
     ///
     /// `decided_version` is part of the row's identity, so bumping a rung's pin later
     /// leaves this verdict recorded against the version that actually earned it rather
@@ -5055,10 +5057,6 @@ impl Db {
             combination_key: Set(combination_key.to_string()),
             decided_version: Set(decided_version.to_string()),
             outcome: Set(outcome.as_str().to_string()),
-            // Only ever applied on a first insert: the conflict path below updates the
-            // automatic columns alone, so an existing override is never cleared here.
-            override_outcome: Set(None),
-            override_at: Set(None),
             decided_at: Set(now.to_string()),
         })
         .on_conflict(
@@ -5077,46 +5075,6 @@ impl Db {
         .exec(&self.conn())
         .await?;
         Ok(())
-    }
-
-    /// Apply (or, with `None`, clear) the reviewer's manual override of one recorded
-    /// verdict — a `promote` past a wall the runs failed, or its reversal. Returns
-    /// whether a row matched.
-    ///
-    /// It updates an existing verdict rather than creating one, so an override is
-    /// always recorded *alongside* the automatic outcome it disagrees with and the
-    /// disagreement stays legible. A rung the gate has not resolved has nothing to
-    /// promote past yet and returns `false`; the downward direction of manual control
-    /// is [`StoredLadderClimber::held`], which stops a climber wherever it stands
-    /// without pretending a rung was decided.
-    ///
-    /// Clearing passes `None` for both columns at once, restoring exactly what the gate
-    /// itself says.
-    pub async fn set_ladder_outcome_override(
-        &self,
-        ladder_id: &str,
-        rung_id: &str,
-        combination_key: &str,
-        decided_version: &str,
-        override_outcome: Option<LadderOutcomeKind>,
-        now: &str,
-    ) -> Result<bool> {
-        let res = ladder_outcome::Entity::update_many()
-            .col_expr(
-                ladder_outcome::Column::OverrideOutcome,
-                Expr::value(override_outcome.map(|outcome| outcome.as_str())),
-            )
-            .col_expr(
-                ladder_outcome::Column::OverrideAt,
-                Expr::value(override_outcome.map(|_| now)),
-            )
-            .filter(ladder_outcome::Column::LadderId.eq(ladder_id))
-            .filter(ladder_outcome::Column::RungId.eq(rung_id))
-            .filter(ladder_outcome::Column::CombinationKey.eq(combination_key))
-            .filter(ladder_outcome::Column::DecidedVersion.eq(decided_version))
-            .exec(&self.conn())
-            .await?;
-        Ok(res.rows_affected > 0)
     }
 }
 
@@ -5215,8 +5173,8 @@ fn gate_columns(gate: &Gate) -> (String, String, f64) {
 ///
 /// An unrecognized floor or threshold kind is a corrupt row and surfaces as an error
 /// rather than degrading into some other rule: a gate that quietly changed shape would
-/// wall or advance climbers for reasons nobody could reconstruct afterwards. A
-/// negative stored count clamps to zero, which is a gate that always advances — the
+/// fail or pass climbers for reasons nobody could reconstruct afterwards. A
+/// negative stored count clamps to zero, which is a gate that always passes — the
 /// harmless direction for a value that cannot be written through the API at all.
 fn gate_from_row(row: &ladder::Model) -> Result<Gate> {
     let floor = Rating::parse(&row.gate_floor).ok_or_else(|| {

@@ -59,7 +59,7 @@
               "type": "string"
             },
             "reason": {
-              "description": "Why, in the words the top-up reports it with.",
+              "description": "Why, in the words the launch pass reports it with.",
               "type": "string"
             }
           },
@@ -67,7 +67,7 @@
           "type": "object"
         },
         {
-          "description": "The cell's most recent terminal jobs all failed, and nothing of it is in flight.\nA run finishing no longer relaunches it. Fix: \"Top up now\" once the cause is\nfixed, which relaunches it.",
+          "description": "The cell's most recent terminal jobs all failed, and nothing of it is in flight.\nA run finishing no longer relaunches it. Fix: fix the cause, then retry the\nclimber (`POST /ladders/{id}/climbers/retry`), which relaunches it.",
           "properties": {
             "attempts": {
               "description": "How many failed jobs in a row marked it failing.",
@@ -103,11 +103,11 @@
       ]
     },
     "ClimberStatus": {
-      "description": "Where one climber stands. Five states, because \"stopped\" has several genuinely\ndifferent causes and conflating them makes a ladder impossible to act on.\n\nThere is no \"waiting on a review\" state: the validators rate every completed run, so\na rung the ladder can still feed is `climbing`, and one nothing the ladder does can\nmove is `blocked`, with the reason in [`LadderClimber::blocked`].",
+      "description": "Where one climber stands. Five states, because \"stopped\" has several genuinely\ndifferent causes and conflating them makes a ladder impossible to act on.\n\nThere is no \"waiting on a review\" state: the validators rate every completed run, so\na rung the ladder can still feed is `running`, and one nothing the ladder does can\nmove is `blocked`, with the reason in [`LadderClimber::blocked`].",
       "oneOf": [
         {
-          "const": "climbing",
-          "description": "The current rung is undecided and the ladder can still feed it: runs are still\nto complete, and the backend launches them as earlier ones finish.",
+          "const": "running",
+          "description": "The current rung is undecided and its runs can still launch: runs are still to\ncomplete, and the backend launches them as earlier ones finish.",
           "type": "string"
         },
         {
@@ -116,18 +116,18 @@
           "type": "string"
         },
         {
-          "const": "walled",
-          "description": "The current rung was failed. Reversible by hand with a promote; the automatic\nverdict underneath is never destroyed.",
+          "const": "failed",
+          "description": "The current rung was failed. The validators are assumed correct, so this is the\nclimber's result for that version of the case.",
           "type": "string"
         },
         {
-          "const": "held",
-          "description": "Stopped by hand. The automatic outcomes underneath are untouched, so clearing\nthe hold resumes the climb from exactly where it stood.",
+          "const": "paused",
+          "description": "Paused by its owner. A pause decides nothing, so resuming continues the climb from\nexactly where it stood.",
           "type": "string"
         },
         {
-          "const": "toppedOut",
-          "description": "Every rung cleared. There is nothing left to climb.",
+          "const": "completed",
+          "description": "Every rung passed. There is nothing left to climb.",
           "type": "string"
         }
       ]
@@ -136,18 +136,18 @@
       "description": "What a rung's evidence says about one climber.",
       "oneOf": [
         {
-          "const": "advance",
+          "const": "passed",
           "description": "The rung is passed; the climber moves to the next one.",
           "type": "string"
         },
         {
-          "const": "wall",
-          "description": "The rung is failed; the climber stops here. Reversible by hand — a\n`promote` override advances past a wall — so this is a computed opinion,\nnever a destroyed one.",
+          "const": "failed",
+          "description": "The rung is failed; the climber stops here. The validators are assumed correct,\nso this is the climber's result for that version of the case.",
           "type": "string"
         },
         {
           "const": "undecided",
-          "description": "Not enough evidence yet: runs are still to complete, or completed runs carry\nno validator rating. The climber holds.",
+          "description": "Not enough evidence yet: runs are still to complete, or completed runs carry\nno validator rating. The climber stays on the rung.",
           "type": "string"
         }
       ]
@@ -314,7 +314,7 @@
               "type": "null"
             }
           ],
-          "description": "Why the climber is blocked, naming the fix, or null when it is not. Kept under a\nhold too, so the reason stays visible while the climber is stopped by hand."
+          "description": "Why the climber is blocked, naming the fix, or null when it is not. Kept under a\npause too, so the fix stays visible while the climber is paused."
         },
         "currentRung": {
           "anyOf": [
@@ -325,10 +325,10 @@
               "type": "null"
             }
           ],
-          "description": "The rung it stands on, or null once it has topped out."
+          "description": "The rung it stands on, or null once it has completed."
         },
         "focused": {
-          "description": "The reviewer's \"watch this one\" flag, and the tiebreak between equal\npriorities.",
+          "description": "The owner's \"watch this one\" flag, and the tiebreak between equal priorities.",
           "type": "boolean"
         },
         "ggConfigId": {
@@ -350,10 +350,6 @@
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
           "description": "The harness the climber runs — `gg` on a gg climber."
         },
-        "held": {
-          "description": "Whether the climber is stopped by hand.",
-          "type": "boolean"
-        },
         "key": {
           "description": "The combination's canonical key — the text this ladder's steering and every one of\nits verdicts is stored against.\n\nIts shape follows the shape of the combination: a harness climber's key is its\n`harness|model|provider` triple, and a gg climber's names the configuration and the\nmodels it binds, because two climbers running one configuration on different models\nare exactly the two arms a ladder exists to separate. It is written and compared,\nnever parsed — a client reproduces it by echoing this field, not by assembling one.",
           "type": "string"
@@ -369,6 +365,10 @@
           },
           "type": "array"
         },
+        "paused": {
+          "description": "Whether the climber is paused by its owner.",
+          "type": "boolean"
+        },
         "priority": {
           "description": "Climb-order weight; higher goes first, zero is the default. Pushes one model to\nthe front without reordering the ladder — which would change what every *other*\nclimber is measured against.",
           "format": "int32",
@@ -383,7 +383,7 @@
           "description": "Where the climber stands."
         },
         "unlaunchable": {
-          "description": "Why this climber cannot be launched at all, or null when it can.\n\nA ladder is where an unlaunchable member is hardest to see: a climber that cannot\nlaunch simply stops moving, and a rung it is stuck on looks exactly like one still\nwaiting on its runs — for as long as anyone leaves it there. So the reason is carried on\nthe climber itself rather than only on the rung it happens to stand on, which a topped\nout or walled climber does not have at all.",
+          "description": "Why this climber cannot be launched at all, or null when it can.\n\nA ladder is where an unlaunchable member is hardest to see: a climber that cannot\nlaunch simply stops moving, and a rung it is stuck on looks exactly like one still\nwaiting on its runs — for as long as anyone leaves it there. So the reason is carried on\nthe climber itself rather than only on the rung it happens to stand on, which a\ncompleted climber does not have at all.",
           "type": ["string", "null"]
         }
       },
@@ -393,7 +393,7 @@
         "model",
         "priority",
         "focused",
-        "held",
+        "paused",
         "status",
         "outcomes"
       ],
@@ -403,13 +403,13 @@
       "description": "A resolved verdict on one rung, as the wire names it. The gate's third answer,\n\"not decided yet\", is deliberately absent: an unresolved rung has *no* verdict,\nand is reported as the absence of one rather than as a verdict of nothing.",
       "oneOf": [
         {
-          "const": "advanced",
-          "description": "The rung was cleared; the climber moved up.",
+          "const": "passed",
+          "description": "The climber passed the rung and moved up.",
           "type": "string"
         },
         {
-          "const": "walled",
-          "description": "The rung was failed; the climber stopped there.",
+          "const": "failed",
+          "description": "The climber failed the rung and stopped there.",
           "type": "string"
         }
       ]
@@ -478,38 +478,19 @@
       "description": "One recorded (or freshly computed) verdict on one rung for one climber.",
       "properties": {
         "decidedAt": {
-          "description": "RFC 3339 of when the automatic outcome was computed.",
+          "description": "RFC 3339 of when the verdict was computed.",
           "type": "string"
         },
         "decidedVersion": {
           "description": "The exact case version the verdict was decided against.\n\nPart of the verdict's identity, not decoration: bumping a rung to a newer case\nneither erases the verdict earned on the old one nor silently inherits it, and\nre-pinning back restores it.",
           "type": "string"
         },
-        "effective": {
-          "$ref": "#/$defs/LadderOutcome",
-          "description": "The verdict that actually governs the climb: the override when there is one,\nelse the automatic outcome."
-        },
         "outcome": {
           "$ref": "#/$defs/LadderOutcome",
-          "description": "What the gate computed. Recomputable at any time from the rung's validator\nratings."
-        },
-        "overrideAt": {
-          "description": "RFC 3339 of when the override was applied, or null when there is none.",
-          "type": ["string", "null"]
-        },
-        "overrideOutcome": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/LadderOutcome"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Your manual override of that result, or null for none. Kept beside the\nautomatic verdict rather than replacing it, so a recompute can never silently\nundo it and clearing it reverses the override exactly."
+          "description": "What the gate decided. Recomputable at any time from the rung's validator\nratings."
         },
         "recorded": {
-          "description": "Whether the verdict is stored, or was computed live for this response and will\nbe written down by the next top-up. A read never writes.",
+          "description": "Whether the verdict is stored, or was computed live for this response and will\nbe written down by the next launch pass. A read never writes.",
           "type": "boolean"
         },
         "rungId": {
@@ -525,7 +506,6 @@
         "rungId",
         "decidedVersion",
         "outcome",
-        "effective",
         "decidedAt",
         "stale",
         "recorded"
@@ -533,7 +513,7 @@
       "type": "object"
     },
     "RungTally": {
-      "description": "The counts one gate decision was made from, so a dashboard can say *why* a climber\nis walled or still climbing without re-deriving the floor and unloaded-run rules a\nsecond time and getting them subtly different.\n\nThe wire mirror of [`GateTally`], which is an internal type of the pure core.",
+      "description": "The counts one gate decision was made from, so a dashboard can say *why* a climber\nfailed or is still running without re-deriving the floor and unloaded-run rules a\nsecond time and getting them subtly different.\n\nThe wire mirror of [`GateTally`], which is an internal type of the pure core.",
       "properties": {
         "completed": {
           "description": "Completed runs on the rung.",
@@ -589,7 +569,7 @@
   "properties": {
     "bufferTarget": {
       "$ref": "#/$defs/BufferTarget",
-      "description": "The buffer target in force (the ladder's override, else the account's setting,\nelse the backend default): the most runs the ladder keeps in flight at once.\nWhen it is `unbounded`, `runsInFlight` never stops a top-up."
+      "description": "The buffer target in force (the ladder's override, else the account's setting,\nelse the backend default): the most runs the ladder keeps in flight at once.\nWhen it is `unbounded`, `runsInFlight` never stops a launch pass."
     },
     "climbers": {
       "description": "Every climber, in the order the ladder would feed them.",
@@ -599,19 +579,31 @@
       "type": "array"
     },
     "climbersBlocked": {
-      "description": "How many climbers are blocked (not counting a held one).",
+      "description": "How many climbers are blocked, not counting a paused one.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
     },
-    "climbersToppedOut": {
-      "description": "How many climbers have cleared every rung.",
+    "climbersCompleted": {
+      "description": "How many climbers have passed every rung.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
     },
-    "climbersWalled": {
-      "description": "How many climbers are walled.",
+    "climbersFailed": {
+      "description": "How many climbers failed a rung.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "climbersPaused": {
+      "description": "How many climbers their owner paused.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "climbersRunning": {
+      "description": "How many climbers are running.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -632,13 +624,7 @@
       "type": "array"
     },
     "runsInFlight": {
-      "description": "The runs in flight (jobs `queued` through `running`) across every rung every\nclimber has reached — the occupancy `bufferTarget` caps. When this has reached\nit, a top-up deliberately enqueues nothing, and the climb moves on as those runs\nfinish. Completed runs never count, reviewed or not.",
-      "format": "uint32",
-      "minimum": 0,
-      "type": "integer"
-    },
-    "runsMissing": {
-      "description": "The runs still to trigger across every climber's current rung.",
+      "description": "The runs in flight (jobs `queued` through `running`) across every rung every\nclimber has reached — the occupancy `bufferTarget` caps. When this has reached\nit, a launch pass deliberately enqueues nothing, and the climb moves on as those\nruns finish. Completed runs never count, reviewed or not.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -655,10 +641,11 @@
     "outerAxis",
     "rungs",
     "climbers",
-    "climbersToppedOut",
-    "climbersWalled",
+    "climbersRunning",
+    "climbersCompleted",
+    "climbersFailed",
     "climbersBlocked",
-    "runsMissing",
+    "climbersPaused",
     "runsUnreviewed",
     "runsInFlight",
     "bufferTarget"

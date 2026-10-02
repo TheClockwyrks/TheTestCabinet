@@ -1,10 +1,10 @@
-//! The rung gate: whether a ladder climber advances past a rung, is walled at it,
-//! or is not decided yet.
+//! The rung gate: whether a ladder climber passes a rung, fails it, or is not decided
+//! yet.
 //!
 //! There is exactly **one** rule, parameterised — not a set of modes:
 //!
 //! ```text
-//! advance when count(runs on this rung rated FLOOR or better) >= THRESHOLD
+//! pass when count(runs on this rung rated FLOOR or better) >= THRESHOLD
 //! ```
 //!
 //! [`Gate::floor`] is the worst [`Rating`] that still counts as a pass, and
@@ -38,7 +38,7 @@
 //!   build never loaded. The model had its attempt at the rung and produced nothing
 //!   that works, and no rating can ever arrive for it; leaving it out would have the
 //!   rung relaunched for as long as the model keeps failing it.
-//! - An **infrastructure** failure or a canceled run is never a wall at all and must
+//! - An **infrastructure** failure or a canceled run never fails a rung and must
 //!   not appear in `runs`. Neither says anything about the model: infrastructure
 //!   failures are retried (`job.attempt`), and a cancel was somebody's decision.
 //!
@@ -67,7 +67,7 @@ use test_cabinet_core::review::Rating;
 const FRACTION_EPSILON: f64 = 1e-9;
 
 /// How many of a rung's runs must clear the [floor](Gate::floor) for the climber to
-/// advance.
+/// pass the rung.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -85,7 +85,7 @@ pub enum GateThreshold {
     /// corrupt row) reads as `0.0`.
     ///
     /// Clamping is not the same as neutralising: below the range it degrades to
-    /// "always advance", but above it degrades to `1.0`, the strictest bar the rule
+    /// "always pass", but above it degrades to `1.0`, the strictest bar the rule
     /// can express — every completed run must clear the floor. That is deliberate.
     /// A fraction over one is a typo, not an instruction, and the nearest expressible
     /// reading of "more than all of them" is "all of them"; inventing a permissive
@@ -148,8 +148,8 @@ fn unloaded_counts_as_broken_default() -> bool {
 }
 
 impl Default for Gate {
-    /// The gentlest gate that still stops a hopeless climb: advance as long as a
-    /// single run was playable at all, wall only when the whole rung is broken.
+    /// The gentlest gate that still stops a hopeless climb: pass as long as a single
+    /// run was playable at all, fail only when the whole rung is broken.
     fn default() -> Self {
         Self {
             floor: Rating::Scuffed,
@@ -165,7 +165,7 @@ impl Default for Gate {
 /// Completed runs belong here, and so do the model's own failures, passed as a
 /// [`Rating::Broken`] run that never loaded. An infrastructure failure or a canceled
 /// run does not — the first is retried and the second was a person's decision, so
-/// neither is ever walled on.
+/// neither ever fails a rung.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RungRun {
     /// The run's **validator rating**: the functional rating its validators decided,
@@ -200,18 +200,17 @@ impl RungRun {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GateOutcome {
     /// The rung is passed; the climber moves to the next one.
-    Advance,
-    /// The rung is failed; the climber stops here. Reversible by hand — a
-    /// `promote` override advances past a wall — so this is a computed opinion,
-    /// never a destroyed one.
-    Wall,
+    Passed,
+    /// The rung is failed; the climber stops here. The validators are assumed correct,
+    /// so this is the climber's result for that version of the case.
+    Failed,
     /// Not enough evidence yet: runs are still to complete, or completed runs carry
-    /// no validator rating. The climber holds.
+    /// no validator rating. The climber stays on the rung.
     Undecided,
 }
 
 /// The counts a gate decision is made from, exposed so a ladder dashboard can show
-/// *why* a climber is walled or still climbing without re-deriving the floor and
+/// *why* a climber failed or is still running without re-deriving the floor and
 /// unloaded-run rules a second time (and getting them subtly different).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GateTally {
@@ -279,10 +278,10 @@ pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
 /// The decision is deliberately conservative in both directions, so an outcome
 /// never has to be taken back as more evidence lands:
 ///
-/// - [`Advance`](GateOutcome::Advance) only when the runs already in hand clear the
+/// - [`Passed`](GateOutcome::Passed) only when the runs already in hand clear the
 ///   bar — every still-unrated and still-running run could come back broken and
 ///   the answer would not change.
-/// - [`Wall`](GateOutcome::Wall) only when they *cannot* clear it — every remaining
+/// - [`Failed`](GateOutcome::Failed) only when they *cannot* clear it — every remaining
 ///   run could come back flawless and it would still fall short.
 /// - [`Undecided`](GateOutcome::Undecided) in between, which is also the answer
 ///   whenever [`Gate::early_stop`] is off and the rung has runs left to complete,
@@ -295,7 +294,7 @@ pub fn evaluate(runs: &[RungRun], target: u32, gate: &Gate) -> GateOutcome {
         return GateOutcome::Undecided;
     }
     if f64::from(counts.passing) + FRACTION_EPSILON >= counts.required {
-        return GateOutcome::Advance;
+        return GateOutcome::Passed;
     }
     // The best case still open: every unrated run turns out a pass and every run
     // still to complete comes back a pass too.
@@ -306,7 +305,7 @@ pub fn evaluate(runs: &[RungRun], target: u32, gate: &Gate) -> GateOutcome {
     if f64::from(best_case) + FRACTION_EPSILON >= counts.required {
         GateOutcome::Undecided
     } else {
-        GateOutcome::Wall
+        GateOutcome::Failed
     }
 }
 

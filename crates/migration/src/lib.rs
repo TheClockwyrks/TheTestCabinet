@@ -77,6 +77,7 @@ mod m20261002_000050_add_run_validator_rating;
 mod m20261002_000051_add_ladder_top_up_pending;
 mod m20261002_000052_add_job_retried_by;
 mod m20261002_000053_add_ladder_top_up_requested;
+mod m20261002_000054_ladder_plain_flow;
 
 pub struct Migrator;
 
@@ -141,6 +142,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261002_000051_add_ladder_top_up_pending::Migration),
             Box::new(m20261002_000052_add_job_retried_by::Migration),
             Box::new(m20261002_000053_add_ladder_top_up_requested::Migration),
+            Box::new(m20261002_000054_ladder_plain_flow::Migration),
         ]
     }
 }

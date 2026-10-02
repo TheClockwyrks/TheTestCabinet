@@ -7,9 +7,9 @@
 //! rung 1 while the models already halfway up carry on.
 //!
 //! A row appears when the gate **resolves** for that combination on that rung; a
-//! rung with no row is still undecided (climbing, or awaiting this account's
-//! reviews). Only completed runs feed the gate — a failed or canceled *job* is an
-//! infrastructure problem that retries (`job.attempt`), never a wall.
+//! rung with no row is still undecided. Only completed runs feed the gate — a failed
+//! or canceled *job* is an infrastructure problem that retries (`job.attempt`), never
+//! a failed rung.
 
 use sea_orm::entity::prelude::*;
 
@@ -37,24 +37,10 @@ pub struct Model {
     /// matches the rung's present pin.
     #[sea_orm(primary_key, auto_increment = false)]
     pub decided_version: String,
-    /// The automatically computed gate result: `advanced` or `walled`. Recomputable
-    /// at any time from this account's reviews of the rung's runs.
+    /// The gate's verdict: `passed` or `failed`. Recomputable at any time from the
+    /// validator ratings of the rung's runs.
     pub outcome: String,
-    /// The reviewer's manual override of that result (same vocabulary as
-    /// [`outcome`](Self::outcome); typically `advanced`, a promote past a gate the
-    /// runs failed), or `NULL` for none.
-    ///
-    /// Kept in its own column rather than overwriting `outcome` for two reasons: a
-    /// recomputed automatic outcome must never silently undo a human decision, and
-    /// clearing this column reverses the override exactly, restoring whatever the
-    /// gate itself says. The effective verdict is this column when set, else
-    /// `outcome`.
-    #[sea_orm(nullable)]
-    pub override_outcome: Option<String>,
-    /// RFC 3339 of when the override was applied, or `NULL` when there is none.
-    #[sea_orm(nullable)]
-    pub override_at: Option<String>,
-    /// RFC 3339 of when the automatic outcome was last computed.
+    /// RFC 3339 of when the verdict was last computed.
     pub decided_at: String,
 }
 

@@ -59,7 +59,7 @@
       "type": "object"
     },
     "GateThreshold": {
-      "description": "How many of a rung's runs must clear the [floor](Gate::floor) for the climber to\nadvance.",
+      "description": "How many of a rung's runs must clear the [floor](Gate::floor) for the climber to\npass the rung.",
       "oneOf": [
         {
           "description": "An absolute number of runs, independent of how many the rung ran. `1` is\n\"any run clearing the floor is enough\", which is how \"stop only when\neverything is broken\" is expressed.",
@@ -79,7 +79,7 @@
           "type": "object"
         },
         {
-          "description": "A share of the rung's completed runs, compared as\n`count >= fraction * completed`. Values outside `0.0..=1.0` are clamped into\nit, and a non-finite value (which cannot come from valid JSON but can from a\ncorrupt row) reads as `0.0`.\n\nClamping is not the same as neutralising: below the range it degrades to\n\"always advance\", but above it degrades to `1.0`, the strictest bar the rule\ncan express — every completed run must clear the floor. That is deliberate.\nA fraction over one is a typo, not an instruction, and the nearest expressible\nreading of \"more than all of them\" is \"all of them\"; inventing a permissive\nanswer instead would let a mistyped gate wave every climber through.",
+          "description": "A share of the rung's completed runs, compared as\n`count >= fraction * completed`. Values outside `0.0..=1.0` are clamped into\nit, and a non-finite value (which cannot come from valid JSON but can from a\ncorrupt row) reads as `0.0`.\n\nClamping is not the same as neutralising: below the range it degrades to\n\"always pass\", but above it degrades to `1.0`, the strictest bar the rule\ncan express — every completed run must clear the floor. That is deliberate.\nA fraction over one is a typo, not an instruction, and the nearest expressible\nreading of \"more than all of them\" is \"all of them\"; inventing a permissive\nanswer instead would let a mistyped gate wave every climber through.",
           "properties": {
             "fraction": {
               "description": "The share of completed runs that must clear the floor.",
@@ -184,11 +184,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "One ladder as a reader sees it: declaration and schedule flattened into a single\nobject, exactly as [`super::coverage::CoveragePlanOut`] does for a plan.",
   "properties": {
-    "autoTopUp": {
-      "default": false,
-      "description": "Whether the backend tops this ladder up itself whenever a job of one of its\ncells finishes — \"keep climbing as runs finish\".\n\n**On** by default, because it is what moves an enabled ladder along without\nanyone watching: the run that finishes is the evidence that may decide a rung,\nand the moment it lands is exactly the moment the next rung's runs should be\nasked for. Off means the ladder is fed only by enabling it and by an explicit\ntop-up. Enqueueing is already gated on the ladder being enabled at all, so this\ncannot make an untouched ladder start spending.",
-      "type": "boolean"
-    },
     "bufferTarget": {
       "anyOf": [
         {
@@ -198,7 +193,7 @@
           "type": "null"
         }
       ],
-      "description": "This ladder's override of the account's buffer target, or null to inherit it.\nOn a ladder the target caps the runs **in flight** at once (queued through\nrunning); completed runs never occupy it, reviewed or not. Null, a bound of `0`,\nand `unbounded` are three different instructions — \"no opinion\", \"never launch\nautomatically\", and \"launch every rung as soon as it is earned\". On a ladder the\nlast is the natural choice more often than on a plan: the gate is already what\nstops a hopeless climb."
+      "description": "This ladder's override of the account's buffer target, or null to inherit it.\nOn a ladder the target caps the runs **in flight** at once (queued through\nrunning); completed runs never occupy it, reviewed or not. Null, a bound of `0`,\nand `unbounded` are three different instructions — \"no opinion\", \"launch\nnothing\", and \"launch every rung as soon as it is earned\". On a ladder the\nlast is the natural choice more often than on a plan: the gate is already what\nstops a hopeless climb."
     },
     "comboGroupIds": {
       "description": "The referenced combination groups' ids — the same `kind = \"combo\"` coverage\ngroups a plan uses, so one saved set of models drives both and editing it\nreshapes both.",
@@ -233,7 +228,7 @@
     },
     "paused": {
       "default": false,
-      "description": "Whether topping up is suspended — the console calls this ladder **disabled**.\n\nA ladder is created suspended and enqueues nothing at all until the reviewer\nenables it: a climb is declared long before it is meant to start spending, and a\nladder that launched runs the moment it was saved would have spent a buffer's\nworth of tokens before its author had finished reading it back.",
+      "description": "Whether the ladder is **disabled**. Enabled is the ladder's one on/off control: an\nenabled ladder always launches its own climb, and a disabled one launches nothing.\n\nA ladder is created disabled and enqueues nothing at all until its owner enables\nit: a climb is declared long before it is meant to start spending, and a ladder\nthat launched runs the moment it was saved would have spent a buffer's worth of\ntokens before its author had finished reading it back.",
       "type": "boolean"
     },
     "rungs": {
