@@ -9,7 +9,7 @@
 //!
 //! [`Gate::floor`] is the worst [`Rating`] that still counts as a pass, and
 //! [`Gate::threshold`] is either an absolute number of runs or a fraction of the
-//! rung's completed runs. Between them they express the shapes a ladder's owner actually
+//! rung's runs. Between them they express the shapes a ladder's owner actually
 //! wants, without any of them being a special case in the code:
 //!
 //! | intent | floor | threshold |
@@ -33,22 +33,35 @@
 //! - A run whose build never loaded ([`RungRun::loaded`] is false) counts as
 //!   [`Rating::Broken`] outright when [`Gate::unloaded_counts_as_broken`] is on
 //!   (the default). There was nothing to play.
-//! - A run that ended on the model's own failure — catastrophic, timed out, harness
-//!   error, limit exceeded, hung — is in `runs` as a [`Rating::Broken`] run whose
-//!   build never loaded. The model had its attempt at the rung and produced nothing
+//! - A run that ended on the model's own failure — catastrophic, timed out, limit
+//!   exceeded, hung — is in `runs` as a [`Rating::Broken`] run whose build never
+//!   loaded. The model had its attempt at the rung and produced nothing
 //!   that works, and no rating can ever arrive for it; leaving it out would have the
 //!   rung relaunched for as long as the model keeps failing it.
-//! - An **infrastructure** failure or a canceled run never fails a rung and must
-//!   not appear in `runs`. Neither says anything about the model: infrastructure
-//!   failures are retried (`job.attempt`), and a cancel was somebody's decision.
+//! - An **infrastructure-class** failure (`infrastructure` or `harness_error`) or a
+//!   canceled run never fails a rung and must not appear in `runs`. None says anything
+//!   about the model: infrastructure-class failures are retried (`job.attempt`), and a
+//!   cancel was somebody's decision. An automatically retried attempt is not in `runs`
+//!   either; its retry stands for it.
+//!
+//! ## Runs still in flight
+//!
+//! The gate is also told how many of the slot's jobs are still in flight, and it never
+//! decides against them. The rung will finish with
+//! `max(target, counted + in_flight)` runs, and the threshold is measured against that:
+//! a duplicate or extra run that is still working is evidence still to come, not
+//! evidence to ignore. Without this a two-run rung with two broken runs finished and a
+//! third still running would fail on the spot, and the third run's pass would arrive to
+//! a verdict already recorded.
 //!
 //! ## Deciding early, or not
 //!
-//! [`Gate::early_stop`] is off by default: a rung completes **all** of its runs
-//! even when the outcome is already certain, because the runs are evidence as much
-//! as they are a gate — five runs of a case on a model are worth having in full.
-//! Turned on, the gate decides the moment the outcome is determined and the caller
-//! cancels the cell's runs that have not started yet (`queued` and `pending`).
+//! [`Gate::early_stop`] is off by default: a rung completes **all** of its runs —
+//! every run up to its target and every run still in flight — even when the outcome is
+//! already certain, because the runs are evidence as much as they are a gate. Turned
+//! on, the gate decides the moment the outcome is certain whatever the runs in flight
+//! come back as, and the caller cancels the slot's runs that have not started yet
+//! (`queued` and `pending`).
 
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +70,7 @@ use test_cabinet_core::review::Rating;
 /// Slack allowed when comparing a run count against a
 /// [fractional](GateThreshold::Fraction) requirement.
 ///
-/// `fraction * completed` is computed in binary floating point, where a product
+/// `fraction * runs` is computed in binary floating point, where a product
 /// that is a whole number in decimal need not be one in binary: `(3.0 / 17.0) * 85`
 /// lands a hair *above* fifteen, which without this would demand a sixteenth run
 /// that can never exist. The round fractions and small rungs a reviewer actually
@@ -79,26 +92,25 @@ pub enum GateThreshold {
         /// The number of runs that must clear the floor.
         runs: u32,
     },
-    /// A share of the rung's completed runs, compared as
-    /// `count >= fraction * completed`. Values outside `0.0..=1.0` are clamped into
+    /// A share of the runs the rung finishes with, compared as
+    /// `count >= fraction * runs`. Values outside `0.0..=1.0` are clamped into
     /// it, and a non-finite value (which cannot come from valid JSON but can from a
     /// corrupt row) reads as `0.0`.
     ///
     /// Clamping is not the same as neutralising: below the range it degrades to
     /// "always pass", but above it degrades to `1.0`, the strictest bar the rule
-    /// can express — every completed run must clear the floor. That is deliberate.
+    /// can express — every run must clear the floor. That is deliberate.
     /// A fraction over one is a typo, not an instruction, and the nearest expressible
     /// reading of "more than all of them" is "all of them"; inventing a permissive
     /// answer instead would let a mistyped gate wave every climber through.
     Fraction {
-        /// The share of completed runs that must clear the floor.
+        /// The share of the rung's runs that must clear the floor.
         fraction: f64,
     },
 }
 
 impl GateThreshold {
-    /// The number of runs this threshold demands when the rung ends with `total`
-    /// completed runs. Fractional by design: `0.5` of five runs is `2.5`, which
+    /// The number of runs this threshold demands when the rung ends with `total` runs. Fractional by design: `0.5` of five runs is `2.5`, which
     /// three runs clear and two do not — exactly "over half".
     fn required(self, total: u32) -> f64 {
         match self {
@@ -134,7 +146,7 @@ pub struct Gate {
     #[serde(default = "unloaded_counts_as_broken_default")]
     pub unloaded_counts_as_broken: bool,
     /// Whether the gate may decide on partial results, the caller then cancelling the
-    /// cell's jobs that have not started yet. **Off** by default — the runs are evidence in
+    /// slot's jobs that have not started yet. **Off** by default — the runs are evidence in
     /// their own right, so a rung finishes what it started even when the verdict is
     /// already certain.
     #[serde(default)]
@@ -163,9 +175,9 @@ impl Default for Gate {
 /// One run on a rung, as the gate sees it.
 ///
 /// Completed runs belong here, and so do the model's own failures, passed as a
-/// [`Rating::Broken`] run that never loaded. An infrastructure failure or a canceled
-/// run does not — the first is retried and the second was a person's decision, so
-/// neither ever fails a rung.
+/// [`Rating::Broken`] run that never loaded. An infrastructure-class failure or a
+/// canceled run does not — the first is retried and the second was a person's
+/// decision, so neither ever fails a rung.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RungRun {
     /// The run's **validator rating**: the functional rating its validators decided,
@@ -204,8 +216,8 @@ pub enum GateOutcome {
     /// The rung is failed; the climber stops here. The validators are assumed correct,
     /// so this is the climber's result for that version of the case.
     Failed,
-    /// Not enough evidence yet: runs are still to complete, or completed runs carry
-    /// no validator rating. The climber stays on the rung.
+    /// Not enough evidence yet: runs are still to come, or finished runs carry no
+    /// validator rating. The climber stays on the rung.
     Undecided,
 }
 
@@ -214,18 +226,20 @@ pub enum GateOutcome {
 /// unloaded-run rules a second time (and getting them subtly different).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GateTally {
-    /// Completed runs on the rung.
-    pub completed: u32,
-    /// Completed runs the gate has a rating for — carrying a validator rating, or
+    /// Counted runs on the slot: finished runs that are the model's result.
+    pub counted: u32,
+    /// Counted runs the gate has a rating for — carrying a validator rating, or
     /// decided as broken because the build never loaded.
     pub rated: u32,
-    /// Completed runs with no validator rating.
+    /// Counted runs with no validator rating.
     pub unrated: u32,
     /// Rated runs rated at or above the gate's floor.
     pub passing: u32,
-    /// Runs the rung has yet to complete against its target. Zero once the rung has
-    /// run everything it was going to.
+    /// Runs still to come: the rung's final run count less the counted ones. At least
+    /// [`Self::in_flight`], and zero once the rung has run everything it was going to.
     pub pending: u32,
+    /// The slot's jobs still in flight.
+    pub in_flight: u32,
     /// How many passing runs the threshold demands, measured against the run count
     /// the rung will finish with. Fractional; see [`Self::required_runs`].
     pub required: f64,
@@ -240,15 +254,15 @@ impl GateTally {
     }
 }
 
-/// Tally a rung's completed `runs` against its `target` and the `gate`'s floor.
+/// Tally a slot's counted `runs` against its `target`, the jobs still `in_flight`, and
+/// the `gate`'s floor.
 ///
 /// `target` is how many runs the rung is meant to end with (the ladder's per-cell
-/// target, or the rung's override); anything above the completed count is still
-/// coming. The threshold is measured against `max(completed, target)` — the run
-/// count the rung will finish with — so a fractional bar does not drift as runs
-/// land one by one.
-pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
-    let completed = runs.len() as u32;
+/// target, or the rung's override). The rung finishes with
+/// `max(target, counted + in_flight)` runs, and the threshold is measured against that
+/// final count, so a fractional bar does not drift as runs land one by one.
+pub fn tally(runs: &[RungRun], target: u32, in_flight: u32, gate: &Gate) -> GateTally {
+    let counted = runs.len() as u32;
     let mut rated = 0u32;
     let mut passing = 0u32;
     for run in runs {
@@ -259,35 +273,38 @@ pub fn tally(runs: &[RungRun], target: u32, gate: &Gate) -> GateTally {
             }
         }
     }
-    let pending = target.saturating_sub(completed);
+    let final_runs = target.max(counted.saturating_add(in_flight));
+    let pending = final_runs - counted;
     GateTally {
-        completed,
+        counted,
         rated,
-        unrated: completed - rated,
+        unrated: counted - rated,
         passing,
         pending,
-        required: gate.threshold.required(completed.saturating_add(pending)),
+        in_flight,
+        required: gate.threshold.required(final_runs),
     }
 }
 
 /// Evaluate the gate for one climber on one rung.
 ///
-/// `runs` is every **completed** run the climber has on the rung, `target` how many
-/// the rung is meant to end with, and `gate` the ladder's rule.
+/// `runs` is every **counted** run the climber has on the rung (in its dispatch),
+/// `target` how many the rung is meant to end with, `in_flight` how many of the slot's
+/// jobs are still queued through running, and `gate` the ladder's rule.
 ///
 /// The decision is deliberately conservative in both directions, so an outcome
 /// never has to be taken back as more evidence lands:
 ///
 /// - [`Passed`](GateOutcome::Passed) only when the runs already in hand clear the
-///   bar — every still-unrated and still-running run could come back broken and
-///   the answer would not change.
+///   bar — every still-unrated and still-coming run could come back broken and the
+///   answer would not change.
 /// - [`Failed`](GateOutcome::Failed) only when they *cannot* clear it — every remaining
 ///   run could come back flawless and it would still fall short.
 /// - [`Undecided`](GateOutcome::Undecided) in between, which is also the answer
-///   whenever [`Gate::early_stop`] is off and the rung has runs left to complete,
-///   however certain the outcome already is.
-pub fn evaluate(runs: &[RungRun], target: u32, gate: &Gate) -> GateOutcome {
-    let counts = tally(runs, target, gate);
+///   whenever [`Gate::early_stop`] is off and the rung has runs still to come — short
+///   of its target or still in flight — however certain the outcome already is.
+pub fn evaluate(runs: &[RungRun], target: u32, in_flight: u32, gate: &Gate) -> GateOutcome {
+    let counts = tally(runs, target, in_flight, gate);
     // Default behaviour: a rung finishes its runs before it is judged at all. The
     // outcome may be obvious already; the runs are still worth having.
     if !gate.early_stop && counts.pending > 0 {
@@ -297,7 +314,7 @@ pub fn evaluate(runs: &[RungRun], target: u32, gate: &Gate) -> GateOutcome {
         return GateOutcome::Passed;
     }
     // The best case still open: every unrated run turns out a pass and every run
-    // still to complete comes back a pass too.
+    // still to come — in flight or not yet launched — comes back a pass too.
     let best_case = counts
         .passing
         .saturating_add(counts.unrated)

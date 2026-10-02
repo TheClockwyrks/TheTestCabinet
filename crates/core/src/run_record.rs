@@ -575,6 +575,28 @@ impl RunState {
         !matches!(self, RunState::Infrastructure | RunState::Canceled)
     }
 
+    /// Whether a run that ended in this state is **the model's own result**, and so
+    /// counts toward a coverage cell's target and is evidence for a ladder rung's gate:
+    /// [`Completed`](RunState::Completed), and the model's own failures
+    /// ([`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut),
+    /// [`LimitExceeded`](RunState::LimitExceeded), [`Hung`](RunState::Hung)).
+    ///
+    /// A [`HarnessError`](RunState::HarnessError) is the harness's or the provider's
+    /// fault rather than the model's, so it counts no more than an
+    /// [`Infrastructure`](RunState::Infrastructure) failure does, and a
+    /// [`Canceled`](RunState::Canceled) run was somebody's decision. None of those three
+    /// ever fills a cell or decides a rung.
+    pub fn counts_as_model_result(self) -> bool {
+        matches!(
+            self,
+            RunState::Completed
+                | RunState::Catastrophic
+                | RunState::TimedOut
+                | RunState::LimitExceeded
+                | RunState::Hung
+        )
+    }
+
     /// Whether this state is one of the publishable *failure* tiers
     /// ([`Catastrophic`](RunState::Catastrophic),
     /// [`TimedOut`](RunState::TimedOut),

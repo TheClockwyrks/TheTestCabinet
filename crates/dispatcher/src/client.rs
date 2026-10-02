@@ -14,6 +14,10 @@
 //!   driver itself could never report. The status POST uses the **per-job token**
 //!   (carried in the [`ClaimedJob`]), not the service token — it is exactly the
 //!   call the dead driver would have made.
+//! - **Lost** — `GET /jobs/active` to read which jobs the backend believes a driver
+//!   is executing, and `POST /jobs/{id}/lost` (service token) to fail one whose
+//!   driver the cluster no longer runs. The service token, because a dispatcher that
+//!   restarted holds no per-job token for the jobs an earlier process dispatched.
 //!
 //! The dispatcher never enqueues, streams events, or pushes records: those are the
 //! console's and the driver's jobs.
@@ -97,6 +101,12 @@ pub enum JobState {
 }
 
 impl JobState {
+    /// Whether the backend believes a driver is executing the job: it was claimed and
+    /// has not reached a terminal state. Only such a job can lose its driver.
+    pub fn is_driven(self) -> bool {
+        matches!(self, Self::Dispatched | Self::Starting | Self::Running)
+    }
+
     /// Whether the run is over from the backend's perspective. A driver-pod death
     /// is only worth reporting when the backend has **not** reached one of these.
     pub fn is_terminal(self) -> bool {
@@ -108,6 +118,17 @@ impl JobState {
 #[derive(Debug, Deserialize)]
 struct JobStatusOut {
     state: JobState,
+}
+
+/// The subset of one `GET /jobs/active` row the dispatcher reads: the job's id and its
+/// lifecycle state.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveJob {
+    /// The backend job id.
+    pub run_id: String,
+    /// Where the job is in its lifecycle.
+    pub state: JobState,
 }
 
 /// A client for the backend's control-plane job API.
@@ -236,6 +257,74 @@ impl BackendClient {
                 what: "job status",
                 source,
             })
+    }
+
+    /// The jobs the backend still has in flight (`GET /jobs/active`), every state from
+    /// `queued` to `running`.
+    pub async fn active_jobs(&self) -> Result<Vec<ActiveJob>, ClientError> {
+        let response = self
+            .http
+            .get(format!("{}/jobs/active", self.base_url))
+            .bearer_auth(&self.service_token)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "active jobs",
+                source,
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::Status {
+                what: "active jobs",
+                status,
+                body,
+            });
+        }
+        response
+            .json::<Vec<ActiveJob>>()
+            .await
+            .map_err(|source| ClientError::Decode {
+                what: "active jobs",
+                source,
+            })
+    }
+
+    /// Report a job whose driver is gone without having reported
+    /// (`POST /jobs/{id}/lost`, service token). `detail` says what the dispatcher found.
+    /// The backend fails the job only while it is still `dispatched`, `starting` or
+    /// `running`, so a report racing the driver's own is harmless.
+    pub async fn report_lost(
+        &self,
+        job_id: &str,
+        detail: impl Into<String>,
+    ) -> Result<(), ClientError> {
+        let update = StatusUpdate {
+            state: DriverState::Failed,
+            record: None,
+            detail: Some(detail.into()),
+        };
+        let response = self
+            .http
+            .post(format!("{}/jobs/{job_id}/lost", self.base_url))
+            .bearer_auth(&self.service_token)
+            .json(&update)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "lost report",
+                source,
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        Err(ClientError::Status {
+            what: "lost report",
+            status,
+            body,
+        })
     }
 
     /// Report a driver-pod death the driver could never report itself

@@ -21,11 +21,16 @@
 //! is reaped by its TTL — the run-queue death-detection path (which needs the
 //! driver's per-job-token semantics) is not duplicated for the publish path.
 //!
-//! The only in-memory state is `{job_id → job_token}` for jobs this process
-//! dispatched, retained so it can present the per-job token when reporting a death.
-//! A token lost across a restart just means that job relies on its own driver
-//! reporting (or a later reconcile once the `Job` is gone) — never a correctness
-//! problem, only a missed safety-net for an already-rare double failure.
+//! The reconcile also finds **lost** jobs (see [`crate::lost`]): jobs the backend
+//! still believes a driver is executing, with no live driver `Job` for a grace
+//! period. Each is reported through the service-token `POST /jobs/{id}/lost`, so a
+//! driver that died with no one to report it — a whole-machine restart, or a `Job`
+//! that failed while no dispatcher held its token — never leaves its job in flight.
+//!
+//! The in-memory state is `{job_id → job_token}` for jobs this process dispatched,
+//! retained so a death report can present the per-job token, and the lost tracker's
+//! clock. A restart loses both safely: a death the token path can no longer report is
+//! reported lost once its grace has run again.
 
 use std::collections::HashMap;
 
@@ -37,6 +42,7 @@ use crate::client::BackendClient;
 use crate::config::Config;
 use crate::job::{build_driver_job, build_publish_job};
 use crate::kubernetes::{JobPhase, Kube, ManagedJob};
+use crate::lost::{LOST_GRACE, LostTracker};
 
 /// The running dispatcher: its config, the two clients, and the per-job tokens for
 /// jobs this process dispatched (for the death-detection report).
@@ -55,6 +61,8 @@ pub struct Dispatcher {
     /// reached under different conditions: a job can be un-reportable (no retained
     /// token, already terminal) yet still have a sandbox to clean up.
     reaped: std::collections::HashSet<String>,
+    /// Since when each driven backend job has had no live driver `Job`.
+    lost: LostTracker,
 }
 
 impl Dispatcher {
@@ -70,6 +78,7 @@ impl Dispatcher {
             tokens: HashMap::new(),
             reported_dead: std::collections::HashSet::new(),
             reaped: std::collections::HashSet::new(),
+            lost: LostTracker::default(),
         })
     }
 
@@ -102,8 +111,25 @@ impl Dispatcher {
     /// job was admitted, so the caller can keep draining the queue without backing
     /// off while capacity remains.
     async fn tick(&mut self) -> anyhow::Result<bool> {
+        // Read before the cluster, so a job claimed in between is not yet driven here
+        // rather than driven with no `Job`.
+        let driven = match self.backend.active_jobs().await {
+            Ok(jobs) => Some(
+                jobs.into_iter()
+                    .filter(|job| job.state.is_driven())
+                    .map(|job| job.run_id)
+                    .collect::<Vec<_>>(),
+            ),
+            Err(err) => {
+                tracing::warn!(error = %err, "could not read the backend's jobs in flight for lost-driver detection");
+                None
+            }
+        };
         let managed = self.kube.list_managed().await?;
         self.detect_deaths(&managed).await;
+        if let Some(driven) = driven {
+            self.detect_lost(&driven, &managed).await;
+        }
 
         let in_flight = managed
             .iter()
@@ -231,6 +257,40 @@ impl Dispatcher {
                 Err(err) => {
                     tracing::warn!(job_id, error = %err, "reporting the driver pod's death to the backend failed");
                 }
+            }
+        }
+    }
+
+    /// Report every driven job that has had no live driver `Job` for [`LOST_GRACE`]
+    /// (see [`crate::lost`]), with what the cluster says about its driver as the
+    /// detail. Best-effort: a report that fails is made again on the next tick.
+    async fn detect_lost(&mut self, driven: &[String], managed: &[ManagedJob]) {
+        let live: std::collections::HashSet<String> = managed
+            .iter()
+            .filter(|job| job.phase == JobPhase::Active)
+            .filter_map(|job| job.job_id.clone())
+            .collect();
+        let lost = self
+            .lost
+            .observe(driven, &live, std::time::Instant::now(), LOST_GRACE);
+        for job_id in lost {
+            let found = managed
+                .iter()
+                .find(|job| job.job_id.as_deref() == Some(job_id.as_str()));
+            let detail = match found {
+                Some(job) if job.phase == JobPhase::Failed => {
+                    self.kube.failure_detail(&job.name).await
+                }
+                Some(_) => {
+                    "the driver exited without its final status reaching the backend".to_string()
+                }
+                None => "the driver's Kubernetes Job no longer exists, so the run ended \
+                         without reporting (for example, the cluster restarted)"
+                    .to_string(),
+            };
+            tracing::warn!(job_id, detail = %detail, "a driven job has no live driver; reporting it lost");
+            if let Err(err) = self.backend.report_lost(&job_id, detail).await {
+                tracing::warn!(job_id, error = %err, "reporting a lost job to the backend failed");
             }
         }
     }

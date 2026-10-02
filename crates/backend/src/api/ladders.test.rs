@@ -10,11 +10,13 @@
 use super::*;
 
 use super::super::coverage::gg_member_defect;
-use super::super::coverage::resolve_member;
+use super::super::coverage::{cell_key, resolve_member};
 use test_cabinet_core::gg::{
     GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
 };
 use test_cabinet_core::review::Rating;
+
+use crate::coverage::gate::GateOutcome;
 
 fn combo(model: &str) -> ReviewPlanCombo {
     ReviewPlanCombo {
@@ -52,61 +54,9 @@ fn input(rungs: Vec<LadderRungInput>) -> LadderInput {
         combo_group_ids: vec![],
         combos: vec![],
         rungs,
-        schedule: None,
+        outer_axis: LadderAxis::Rung,
+        in_flight_limit: None,
     }
-}
-
-fn steering(key: &str, priority: i32, focused: bool) -> StoredLadderClimber {
-    StoredLadderClimber {
-        combination_key: key.to_string(),
-        priority,
-        focused,
-        paused: false,
-        updated_at: "2026-08-15T00:00:00Z".to_string(),
-        retried_at: None,
-    }
-}
-
-/// A three-rung ladder to resolve cell sets against.
-fn climb_of(slugs: &[&str]) -> StoredLadder {
-    ladder_from_input(
-        "l1".to_string(),
-        input(slugs.iter().map(|slug| rung_input(slug)).collect()),
-        "2026-08-15T00:00:00Z",
-    )
-    .expect("a valid climb")
-}
-
-/// One climber's standing: the rung it stands on (if any), and everywhere it reached.
-fn standing<'a>(
-    member: &'a PlanMember,
-    status: ClimberStatus,
-    current: Option<usize>,
-    reached: &'a [usize],
-) -> ClimberStanding<'a> {
-    ClimberStanding {
-        member,
-        status,
-        blocked: None,
-        failing: false,
-        current,
-        reached,
-    }
-}
-
-/// The `(model, rung position)` pairs a cell set names, for comparing sets by eye.
-fn placed(cells: &[RungCell], ladder: &StoredLadder) -> Vec<(String, usize)> {
-    cells
-        .iter()
-        .map(|cell| {
-            let position = ladder
-                .rungs
-                .iter()
-                .position(|rung| rung.id == cell.rung_id)
-                .expect("a cell names one of the ladder's rungs");
-            (cell.member.combo.model.clone(), position)
-        })
-        .collect()
 }
 
 /// A run the requester rated, that loaded.
@@ -265,7 +215,7 @@ fn the_three_worked_gate_shapes_hold_at_five_runs_a_rung() {
         rated(Rating::Broken),
     ];
     assert_eq!(
-        gate::evaluate(&three_good, target, &over_half),
+        gate::evaluate(&three_good, target, 0, &over_half),
         GateOutcome::Passed
     );
     let two_good = vec![
@@ -276,7 +226,7 @@ fn the_three_worked_gate_shapes_hold_at_five_runs_a_rung() {
         rated(Rating::Broken),
     ];
     assert_eq!(
-        gate::evaluate(&two_good, target, &over_half),
+        gate::evaluate(&two_good, target, 0, &over_half),
         GateOutcome::Failed
     );
 
@@ -287,12 +237,12 @@ fn the_three_worked_gate_shapes_hold_at_five_runs_a_rung() {
         ..Gate::default()
     });
     assert_eq!(
-        gate::evaluate(&two_good, target, &all_broken),
+        gate::evaluate(&two_good, target, 0, &all_broken),
         GateOutcome::Passed
     );
     let nothing_playable = vec![rated(Rating::Broken); 5];
     assert_eq!(
-        gate::evaluate(&nothing_playable, target, &all_broken),
+        gate::evaluate(&nothing_playable, target, 0, &all_broken),
         GateOutcome::Failed
     );
 
@@ -303,11 +253,11 @@ fn the_three_worked_gate_shapes_hold_at_five_runs_a_rung() {
         ..Gate::default()
     });
     assert_eq!(
-        gate::evaluate(&three_good, target, &any_passable),
+        gate::evaluate(&three_good, target, 0, &any_passable),
         GateOutcome::Passed
     );
     assert_eq!(
-        gate::evaluate(&two_good, target, &any_passable),
+        gate::evaluate(&two_good, target, 0, &any_passable),
         GateOutcome::Failed
     );
 }
@@ -325,7 +275,7 @@ fn a_build_that_never_loaded_is_judged_without_a_reviewer() {
         5
     ];
     assert_eq!(
-        gate::evaluate(&never_loaded, 5, &gate_rule),
+        gate::evaluate(&never_loaded, 5, 0, &gate_rule),
         GateOutcome::Failed
     );
     // Turned off, the same runs are simply unjudged and the climber waits.
@@ -334,7 +284,7 @@ fn a_build_that_never_loaded_is_judged_without_a_reviewer() {
         ..gate_rule
     };
     assert_eq!(
-        gate::evaluate(&never_loaded, 5, &patient),
+        gate::evaluate(&never_loaded, 5, 0, &patient),
         GateOutcome::Undecided
     );
 }
@@ -352,14 +302,17 @@ fn a_rung_finishes_its_runs_before_it_is_judged_unless_early_stop_is_on() {
     // Off by default: the verdict is already certain, and the rung still finishes its
     // runs, because five runs of a case on a model are evidence worth having in full.
     assert_eq!(
-        gate::evaluate(&so_far, 5, &gate_rule),
+        gate::evaluate(&so_far, 5, 0, &gate_rule),
         GateOutcome::Undecided
     );
     let impatient = Gate {
         early_stop: true,
         ..gate_rule
     };
-    assert_eq!(gate::evaluate(&so_far, 5, &impatient), GateOutcome::Failed);
+    assert_eq!(
+        gate::evaluate(&so_far, 5, 0, &impatient),
+        GateOutcome::Failed
+    );
 }
 
 #[test]
@@ -367,9 +320,9 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
     let gate_rule = Gate::default();
     let model = member("claude-opus-5");
     // Runs still to come: the ladder's to solve, and it keeps feeding this climber.
-    let climbing = gate::tally(&[rated(Rating::Broken)], 5, &gate_rule);
+    let climbing = gate::tally(&[rated(Rating::Broken)], 5, 0, &gate_rule);
     assert_eq!(
-        undecided_standing(&climbing, &model, 0, false),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, false),
         (ClimberStatus::Running, None)
     );
     // Every run completed and one carries no validator rating: nothing the ladder
@@ -380,10 +333,11 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
             loaded: true,
         }],
         1,
+        0,
         &gate_rule,
     );
     assert_eq!(
-        undecided_standing(&unrated, &model, 0, false),
+        undecided_standing(&unrated, model.unlaunchable.as_deref(), 0, false),
         (
             ClimberStatus::Blocked,
             Some(ClimberBlock::Unrated { runs: 1 })
@@ -391,22 +345,22 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
     );
     // Runs still to come, but the cell keeps failing and nothing of it is in flight.
     assert_eq!(
-        undecided_standing(&climbing, &model, 0, true),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, true),
         (
             ClimberStatus::Blocked,
             Some(ClimberBlock::Failing {
-                attempts: FAILING_STREAK
+                attempts: FAILING_STREAK as u32
             })
         )
     );
     // With a run still in flight it is climbing: that run may yet complete.
     assert_eq!(
-        undecided_standing(&climbing, &model, 1, true),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 1, true),
         (ClimberStatus::Running, None)
     );
     // A climber that cannot be launched is blocked for that reason first.
     let gone = gg_member("cfg-9", "opus", "haiku");
-    let (status, blocked) = undecided_standing(&climbing, &gone, 0, true);
+    let (status, blocked) = undecided_standing(&climbing, gone.unlaunchable.as_deref(), 0, true);
     assert_eq!(status, ClimberStatus::Blocked);
     assert!(
         matches!(blocked, Some(ClimberBlock::Unlaunchable { ref reason }) if reason.contains("cfg-9")),
@@ -416,13 +370,18 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
 
 #[test]
 fn a_blocked_reason_names_its_kind_on_the_wire() {
-    let json = serde_json::to_value(ClimberBlock::UnsupportedRung {
-        rung_id: "rung-1".to_string(),
+    let json = serde_json::to_value(ClimberBlock::Failing { attempts: 3 }).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "kind": "failing", "attempts": 3 })
+    );
+    let json = serde_json::to_value(ClimberBlock::Unlaunchable {
+        reason: "gone".to_string(),
     })
     .unwrap();
     assert_eq!(
         json,
-        serde_json::json!({ "kind": "unsupportedRung", "rungId": "rung-1" })
+        serde_json::json!({ "kind": "unlaunchable", "reason": "gone" })
     );
     assert_eq!(
         serde_json::to_value(ClimberStatus::Blocked).unwrap(),
@@ -436,46 +395,14 @@ fn a_required_fraction_is_reported_as_the_run_count_it_actually_takes() {
         threshold: GateThreshold::Fraction { fraction: 0.5 },
         ..Gate::default()
     };
-    let tally = RungTally::from_gate(gate::tally(&[rated(Rating::Great)], 5, &half));
+    let tally = RungTally::from_gate(gate::tally(&[rated(Rating::Great)], 5, 0, &half));
     // Half of five is 2.5, which three runs clear and two do not — "over half".
     assert_eq!(tally.required, 3);
-    assert_eq!(tally.completed, 1);
+    assert_eq!(tally.counted, 1);
+    assert_eq!(tally.in_flight, 0);
     assert_eq!(tally.pending, 4);
     assert_eq!(tally.passing, 1);
     assert_eq!(tally.unrated, 0);
-}
-
-#[test]
-fn steering_decides_the_climb_order_and_declaration_order_breaks_ties() {
-    let combos = vec![member("opus"), member("sonnet"), member("haiku")];
-    let mut steer = HashMap::new();
-    steer.insert(
-        combination_key(&combos[2].combo),
-        steering(&combination_key(&combos[2].combo), 10, false),
-    );
-    steer.insert(
-        combination_key(&combos[1].combo),
-        steering(&combination_key(&combos[1].combo), 0, true),
-    );
-    let order = climb_order(&combos, &steer);
-    // Priority first (haiku), then the focused tiebreak among equal priorities
-    // (sonnet), then declaration order for the rest (opus).
-    assert_eq!(
-        order
-            .iter()
-            .map(|&index| combos[index].combo.model.as_str())
-            .collect::<Vec<_>>(),
-        vec!["haiku", "sonnet", "opus"]
-    );
-}
-
-#[test]
-fn an_unsteered_climber_takes_its_declared_place_without_a_row() {
-    let combos = vec![member("opus"), member("sonnet")];
-    // No steering rows at all — which is exactly the state of a model added to a
-    // standing ladder — and the order is simply the ladder's own.
-    let order = climb_order(&combos, &HashMap::new());
-    assert_eq!(order, vec![0, 1]);
 }
 
 #[test]
@@ -488,72 +415,38 @@ fn an_unknown_stored_axis_falls_back_to_the_default() {
 }
 
 #[test]
-fn a_schedule_round_trips_through_the_stores_shape() {
-    let schedule = LadderSchedule {
-        outer_axis: LadderAxis::Combination,
-        paused: true,
-        buffer_target: Some(BufferTarget::Bounded { runs: 6 }),
-    };
-    assert_eq!(LadderSchedule::from_db(schedule.to_db()), schedule);
-    // The unbounded shape survives the store untouched too.
-    let unbounded = LadderSchedule {
-        buffer_target: Some(BufferTarget::Unbounded),
-        ..LadderSchedule::default()
-    };
-    assert_eq!(LadderSchedule::from_db(unbounded.to_db()), unbounded);
-    let default = LadderSchedule::default();
-    assert_eq!(default.outer_axis, LadderAxis::Rung);
-    // Disabled on creation: saving a climb describes the question, and a ladder that
-    // enqueued the moment it was saved would spend a whole buffer before its author had
-    // read it back.
-    assert!(default.paused);
-    assert_eq!(default.buffer_target, None);
-}
-
-#[test]
-fn a_recorded_verdict_is_reported_as_the_gate_decided_it() {
-    let stored = StoredLadderOutcome {
-        rung_id: "r1".to_string(),
-        combination_key: "claude|opus|".to_string(),
-        decided_version: "v1.0.0".to_string(),
-        outcome: LadderOutcomeKind::Failed,
-        decided_at: "2026-08-15T00:00:00Z".to_string(),
-    };
-    let wire = outcome_to_wire(&stored, false, true);
-    assert_eq!(wire.outcome, LadderOutcome::Failed);
-    assert!(wire.recorded);
-    assert!(!wire.stale);
-    // The wire carries the gate's verdict alone: no override, nothing "effective" beside
-    // it.
-    let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["outcome"], "failed");
-    for gone in ["overrideOutcome", "overrideAt", "effective"] {
-        assert!(json.get(gone).is_none(), "{gone} is not on the wire");
-    }
-}
-
-#[test]
 fn ladder_statuses_and_verdicts_use_the_plain_words_on_the_wire() {
     let word = |value: serde_json::Value| value.as_str().unwrap().to_string();
     let statuses = [
         (ClimberStatus::Running, "running"),
         (ClimberStatus::Blocked, "blocked"),
         (ClimberStatus::Failed, "failed"),
-        (ClimberStatus::Paused, "paused"),
         (ClimberStatus::Completed, "completed"),
     ];
     for (status, expected) in statuses {
         assert_eq!(word(serde_json::to_value(status).unwrap()), expected);
         assert_eq!(climber_status_word(status), expected);
     }
-    assert_eq!(
-        word(serde_json::to_value(LadderOutcome::Passed).unwrap()),
-        "passed"
-    );
-    assert_eq!(
-        word(serde_json::to_value(LadderOutcome::Failed).unwrap()),
-        "failed"
-    );
+    for (status, expected) in [
+        (SlotStatus::Running, "running"),
+        (SlotStatus::Blocked, "blocked"),
+        (SlotStatus::Passed, "passed"),
+        (SlotStatus::Failed, "failed"),
+        (SlotStatus::Pending, "pending"),
+        (SlotStatus::Skipped, "skipped"),
+    ] {
+        assert_eq!(word(serde_json::to_value(status).unwrap()), expected);
+    }
+    for status in [
+        DispatchStatus::Running,
+        DispatchStatus::Finished,
+        DispatchStatus::Stopped,
+    ] {
+        assert_eq!(word(serde_json::to_value(status).unwrap()), status.as_str());
+        assert_eq!(DispatchStatus::parse(status.as_str()), status);
+    }
+    // A status nobody recognises reads as ended, never as running.
+    assert_eq!(DispatchStatus::parse("paused"), DispatchStatus::Stopped);
     assert_eq!(
         word(serde_json::to_value(GateOutcome::Passed).unwrap()),
         "passed"
@@ -571,32 +464,6 @@ fn ladder_statuses_and_verdicts_use_the_plain_words_on_the_wire() {
     assert_eq!(LadderOutcomeKind::Failed.as_str(), "failed");
     assert!(LadderOutcomeKind::parse("advanced").is_err());
     assert!(LadderOutcomeKind::parse("walled").is_err());
-}
-
-#[test]
-fn a_schedule_carries_no_auto_top_up_on_the_wire() {
-    let json = serde_json::to_value(LadderSchedule::default()).unwrap();
-    assert!(json.get("autoTopUp").is_none());
-    assert_eq!(json["paused"], true);
-    assert_eq!(json["outerAxis"], "rung");
-}
-
-#[test]
-fn a_verdict_decided_live_is_flagged_as_not_yet_recorded() {
-    let rung = StoredLadderRung {
-        id: "r1".to_string(),
-        slug: "carom".to_string(),
-        version: "v1.0.0".to_string(),
-        variant: "base".to_string(),
-        engine: None,
-        runs_override: None,
-    };
-    let wire = live_outcome(&rung, LadderOutcome::Passed, "2026-08-15T00:00:00Z");
-    // A read never writes, so a verdict the gate resolved during a dashboard fetch is
-    // reported as computed rather than stored; the next launch pass writes it down.
-    assert!(!wire.recorded);
-    assert_eq!(wire.decided_version, "v1.0.0");
-    assert_eq!(wire.outcome, LadderOutcome::Passed);
 }
 
 #[test]
@@ -708,168 +575,6 @@ fn a_performance_case_can_never_be_a_rung() {
     assert!(RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::Performance));
     assert!(RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::GameJam));
     assert!(!RUNG_INELIGIBLE_TEST_TYPES.contains(&TestType::EndToEnd));
-}
-
-#[test]
-fn a_decided_rungs_unreviewed_runs_stay_reviewable_after_the_climber_moves_on() {
-    // The bug this exists to prevent: under the default gate one review of a five-run
-    // rung is enough to pass, and a queue drawn from the current rung alone would
-    // drop the four runs nobody had looked at the instant the first was judged — while
-    // they went on occupying the review buffer they had disappeared from.
-    let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let model = member("claude-opus-5");
-    let (active, reviewable) = cell_sets(
-        &ladder,
-        LadderAxis::Rung,
-        &[standing(
-            &model,
-            ClimberStatus::Running,
-            Some(2),
-            &[0, 1, 2],
-        )],
-    );
-
-    // Only the rung it is working is fed: launching the ones it has already cleared
-    // would be paying twice for a question the ladder has answered.
-    assert_eq!(placed(&active, &ladder), vec![("claude-opus-5".into(), 2)]);
-    // Everywhere it has been is still the reviewer's to judge.
-    assert_eq!(
-        placed(&reviewable, &ladder),
-        vec![
-            ("claude-opus-5".into(), 0),
-            ("claude-opus-5".into(), 1),
-            ("claude-opus-5".into(), 2),
-        ],
-    );
-}
-
-#[test]
-fn a_climber_that_is_not_fed_is_still_reviewed() {
-    // Failed, paused, and completed climbers are all stopped for different reasons, and
-    // none of them is a reason to hide runs that have already been paid for: a pause
-    // stops spending rather than labelling.
-    let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let failed = member("failed-model");
-    let paused = member("paused-model");
-    let completed = member("completed-model");
-    let (active, reviewable) = cell_sets(
-        &ladder,
-        LadderAxis::Combination,
-        &[
-            standing(&failed, ClimberStatus::Failed, Some(1), &[0, 1]),
-            standing(&paused, ClimberStatus::Paused, Some(0), &[0]),
-            standing(&completed, ClimberStatus::Completed, None, &[0, 1, 2]),
-        ],
-    );
-
-    assert!(
-        active.is_empty(),
-        "none of these three is worth spending on"
-    );
-    assert_eq!(
-        placed(&reviewable, &ladder),
-        vec![
-            ("failed-model".into(), 0),
-            ("failed-model".into(), 1),
-            ("paused-model".into(), 0),
-            ("completed-model".into(), 0),
-            ("completed-model".into(), 1),
-            ("completed-model".into(), 2),
-        ],
-    );
-}
-
-#[test]
-fn a_blocked_climber_is_fed_only_when_a_launch_pass_can_act_on_the_block() {
-    let ladder = climb_of(&["carom", "pong"]);
-    let model = member("claude-opus-5");
-    let blocked = |block: &'static ClimberBlock| {
-        let mut standing = standing(&model, ClimberStatus::Blocked, Some(1), &[0, 1]);
-        standing.blocked = Some(block);
-        standing
-    };
-    // A failing rung's cell is handed to the launch pass, which zeroes its demand and
-    // reports it, so the reason travels with the pass.
-    static FAILING: ClimberBlock = ClimberBlock::Failing { attempts: 3 };
-    let mut failing = blocked(&FAILING);
-    failing.failing = true;
-    let (active, reviewable) = cell_sets(&ladder, LadderAxis::Rung, &[failing]);
-    assert_eq!(placed(&active, &ladder), vec![("claude-opus-5".into(), 1)]);
-    assert!(active[0].failing);
-    assert_eq!(reviewable.len(), 2);
-
-    // A rung that cannot be climbed, and one whose runs have all completed, are never
-    // fed: nothing a launch pass launches would move either.
-    static UNSUPPORTED: ClimberBlock = ClimberBlock::UnsupportedRung {
-        rung_id: String::new(),
-    };
-    static UNRATED: ClimberBlock = ClimberBlock::Unrated { runs: 2 };
-    for block in [&UNSUPPORTED, &UNRATED] {
-        let (active, reviewable) = cell_sets(&ladder, LadderAxis::Rung, &[blocked(block)]);
-        assert!(active.is_empty());
-        assert_eq!(
-            reviewable.len(),
-            2,
-            "its runs are still counted and offered"
-        );
-    }
-}
-
-#[test]
-fn both_cell_sets_come_out_in_the_ladders_own_order() {
-    let ladder = climb_of(&["carom", "pong", "breakout"]);
-    let ahead = member("ahead-model");
-    let behind = member("behind-model");
-    let standings = [
-        standing(&ahead, ClimberStatus::Running, Some(2), &[0, 1, 2]),
-        standing(&behind, ClimberStatus::Running, Some(1), &[0, 1]),
-    ];
-
-    // Rung-major: the whole board is offered a rung at a time, so the two climbers'
-    // runs on rung 0 are reviewed against each other before rung 1 is looked at.
-    let (_, by_rung) = cell_sets(&ladder, LadderAxis::Rung, &standings);
-    assert_eq!(
-        placed(&by_rung, &ladder),
-        vec![
-            ("ahead-model".into(), 0),
-            ("behind-model".into(), 0),
-            ("ahead-model".into(), 1),
-            ("behind-model".into(), 1),
-            ("ahead-model".into(), 2),
-        ],
-    );
-
-    // Combination-major: one climber's whole climb, then the next — the steering order
-    // the caller passed, untouched.
-    let (_, by_combo) = cell_sets(&ladder, LadderAxis::Combination, &standings);
-    assert_eq!(
-        placed(&by_combo, &ladder),
-        vec![
-            ("ahead-model".into(), 0),
-            ("ahead-model".into(), 1),
-            ("ahead-model".into(), 2),
-            ("behind-model".into(), 0),
-            ("behind-model".into(), 1),
-        ],
-    );
-}
-
-#[test]
-fn one_case_pinned_on_two_rungs_is_one_cell() {
-    // Rungs are distinct, but the runs underneath them are keyed by the case and the
-    // combination: counting the cell twice would inflate the review buffer, and
-    // offering it twice would ask for the same run to be judged under two headings.
-    let ladder = climb_of(&["carom", "carom"]);
-    let model = member("claude-opus-5");
-    let (_, reviewable) = cell_sets(
-        &ladder,
-        LadderAxis::Rung,
-        &[standing(&model, ClimberStatus::Running, Some(1), &[0, 1])],
-    );
-    assert_eq!(
-        placed(&reviewable, &ladder),
-        vec![("claude-opus-5".into(), 0)]
-    );
 }
 
 // ---- gg climbers -----------------------------------------------------------
@@ -998,18 +703,23 @@ fn two_gg_climbers_of_one_configuration_are_two_climbers() {
         climber_key(&gg_combo("cfg-2", "opus", "haiku"))
     );
 
-    // They climb as separate rows on the board, each taking its own steering.
-    let combos = vec![
+    // A Run stores them as two climbers of the dispatch.
+    let climbers = dispatch_climbers_of(&[
         gg_member("cfg-1", "opus", "haiku"),
         gg_member("cfg-1", "opus", "sonnet"),
-    ];
-    let mut steer = HashMap::new();
-    steer.insert(critic_sonnet.clone(), steering(&critic_sonnet, 10, false));
-    assert_eq!(climb_order(&combos, &steer), vec![1, 0]);
+    ])
+    .unwrap();
+    assert_eq!(
+        climbers
+            .iter()
+            .map(|climber| (climber.climber_key.clone(), climber.position))
+            .collect::<Vec<_>>(),
+        vec![(critic_haiku, 0), (critic_sonnet, 1)]
+    );
 }
 
 #[test]
-fn a_gg_climber_read_off_the_board_is_steered_and_retried_as_itself() {
+fn a_gg_climber_read_off_the_board_is_retried_as_itself() {
     // What a board hands a client: the configuration's name and the root model filled in,
     // and the harness resolved to gg.
     let read = gg_member("cfg-1", "opus", "haiku").combo;
@@ -1017,15 +727,14 @@ fn a_gg_climber_read_off_the_board_is_steered_and_retried_as_itself() {
     assert_eq!(read.model, "opus");
     assert_eq!(read.harness, HarnessSlug::Gg);
 
-    // A console echoing that straight back into `POST /ladders/{id}/climbers` or
-    // `.../climbers/retry` addresses the climber it was reading, not a second one nothing on the
+    // A console echoing that straight back into `.../climbers/retry` addresses the climber it was reading, not a second one nothing on the
     // ladder refers to — because both keys are taken from the member as it is stored.
     let stored = gg_combo("cfg-1", "opus", "haiku");
     assert_ne!(read, stored, "the read shape really does differ");
     assert_eq!(climber_key(&read), climber_key(&stored));
 
     // Even a client that hands back a stale name and a stale root model — a configuration
-    // renamed and re-bound since it was read — steers the same climber, since neither is
+    // renamed and re-bound since it was read — retries the same climber, since neither is
     // part of what the climber is.
     let stale = ReviewPlanCombo {
         gg_config_name: Some("what it used to be called".to_string()),
@@ -1048,7 +757,7 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
         runs_override: None,
     };
     let case = rung_case(&rung);
-    // The key `rung_runs` asks the store for. The two gg segments are what keep one
+    // The key a dispatch groups this slot's evidence by. The two gg segments are what keep one
     // configuration's runs out of another's evidence: the configuration's id, because that is
     // what it is across time, and the bound models, because one configuration runs several.
     assert_eq!(
@@ -1191,31 +900,26 @@ fn a_climber_whose_configuration_vanished_keeps_its_place_and_stops_being_fed() 
         .clone()
         .expect("a configuration that is gone cannot be launched");
     assert!(reason.contains("cfg-9"), "unexpected: {reason}");
-    // And it still keys as itself, so the verdicts and the steering it earned stay
-    // attached to it and come back the moment the configuration does.
+    // And it still keys as itself, so a retry addresses it once the configuration is
+    // back.
     assert_eq!(
         climber_key(&member.combo),
         climber_key(&gg_combo("cfg-9", "opus", "haiku"))
     );
 
-    // What the launch pass's walk sees: a rung that wants nothing more, so the buffer is spent on
+    // What the launch pass sees: a slot that wants nothing more, so the limit is spent on
     // the climbers that can still move.
     let demand = CellDemand {
         target: 5,
-        completed: 2,
+        counted: 2,
         in_flight: 1,
-        unreviewed: 2,
         harness: 0,
     };
     let held_back = launchable_demand(demand, &member);
     assert_eq!(held_back.missing(), 0);
-    // Its occupancy is untouched, though. Runs already launched have not un-launched
-    // themselves, and they hold the review-buffer slots they always held.
-    assert_eq!(held_back.outstanding(), demand.outstanding());
-    assert!(
-        demand.outstanding() > 0,
-        "the demand really did occupy the buffer"
-    );
+    // Its runs in flight are untouched, though: runs already launched have not
+    // un-launched themselves, and they still count against the limit.
+    assert_eq!(held_back.in_flight, 1);
 
     // A resolvable climber is handed through unchanged.
     assert_eq!(
@@ -1224,78 +928,257 @@ fn a_climber_whose_configuration_vanished_keeps_its_place_and_stops_being_fed() 
     );
 }
 
-#[test]
-fn a_climber_that_cannot_be_launched_says_so_on_the_board() {
-    // The reason is the plan cell's reason, on the row the reviewer is actually looking at.
-    // A ladder is where it is hardest to infer: a climber that cannot launch simply stops
-    // moving, which reads exactly like one waiting on capacity, and the board is the only
-    // place anybody looks between launch passes.
-    let gone = gg_member("cfg-9", "opus", "haiku");
-    let row = climber_row(
-        climber_key(&gone.combo),
-        &gone,
-        None,
-        ClimberStatus::Running,
-        None,
-        None,
-        Vec::new(),
-    );
-    assert_eq!(row.unlaunchable, gone.unlaunchable);
-    let reason = row.unlaunchable.expect("the board carries the reason");
-    assert!(reason.contains("cfg-9"), "unexpected: {reason}");
+// ---- The walk and the progress bar ---------------------------------------------
 
-    // And a climber that can be launched carries nothing, so the row is a reason to act
-    // rather than a decoration every climber wears.
-    let fine = gg_member("cfg-1", "opus", "haiku");
-    let row = climber_row(
-        climber_key(&fine.combo),
-        &fine,
-        Some(&steering(
-            "gg:cfg-1|primary=opus,reviewer.critic=haiku",
-            3,
-            true,
-        )),
-        ClimberStatus::Running,
-        None,
-        None,
-        Vec::new(),
-    );
-    assert!(row.unlaunchable.is_none());
-    // The steering still arrives with it.
-    assert_eq!(row.priority, 3);
-    assert!(row.focused);
+/// A slot's evidence: its counted runs, its jobs in flight, and any recorded verdict.
+fn evidence(runs: &[Rating], in_flight: u32, recorded: Option<LadderOutcomeKind>) -> SlotEvidence {
+    SlotEvidence {
+        runs: runs.iter().map(|rating| rated(*rating)).collect(),
+        in_flight,
+        failing: false,
+        recorded,
+    }
+}
+
+/// Walk climbers over their evidence and total their slots the way the board does.
+fn totals(
+    targets: &[u32],
+    climbers: &[Vec<SlotEvidence>],
+    stopped: bool,
+) -> (SlotCounts, DispatchRuns) {
+    let gate = Gate::default();
+    let mut counts = SlotCounts::default();
+    let mut runs = DispatchRuns::default();
+    for slots in climbers {
+        let walk = walk_climber(targets, slots, &gate, None, stopped);
+        for (position, slot) in walk.slots.iter().enumerate() {
+            let target = targets[position];
+            let ev = &slots[position];
+            counts.add(slot.status);
+            runs.total += target;
+            runs.done += slot_runs_done(slot.status, target, ev.runs.len() as u32, ev.in_flight);
+            runs.in_flight += ev.in_flight;
+        }
+    }
+    (counts, runs)
+}
+
+/// Worked example A's three climbers on four rungs of 2, 2, 2 and 3 runs: one two rungs
+/// up and running its third, one failed on the first, one running its first.
+fn example_a() -> (Vec<u32>, Vec<Vec<SlotEvidence>>) {
+    use LadderOutcomeKind::{Failed, Passed};
+    let great = Rating::Great;
+    let broken = Rating::Broken;
+    let none = || evidence(&[], 0, None);
+    (
+        vec![2, 2, 2, 3],
+        vec![
+            vec![
+                evidence(&[great, great], 0, Some(Passed)),
+                evidence(&[great, broken], 0, Some(Passed)),
+                evidence(&[great], 1, None),
+                none(),
+            ],
+            vec![
+                evidence(&[broken, broken], 0, Some(Failed)),
+                none(),
+                none(),
+                none(),
+            ],
+            vec![evidence(&[], 2, None), none(), none(), none()],
+        ],
+    )
 }
 
 #[test]
-fn two_climbers_that_cannot_be_launched_are_two_cells() {
-    // Neither resolves to a launch identity, so both carry the same cell key with no runs
-    // under it. They are still two climbers, and a launch pass that reported one of them would
-    // leave the other stuck on a rung with nothing said about why.
-    let ladder = climb_of(&["carom"]);
-    let gone = gg_member("cfg-8", "opus", "haiku");
-    let also_gone = gg_member("cfg-9", "opus", "haiku");
-    assert!(gone.unlaunchable.is_some() && also_gone.unlaunchable.is_some());
-    let (active, _) = cell_sets(
-        &ladder,
-        LadderAxis::Rung,
-        &[
-            standing(&gone, ClimberStatus::Running, Some(0), &[0]),
-            standing(&also_gone, ClimberStatus::Running, Some(0), &[0]),
-        ],
+fn worked_example_a_a_running_dispatch_fills_its_bar_with_what_needs_no_more_executing() {
+    let (targets, climbers) = example_a();
+    let (counts, runs) = totals(&targets, &climbers, false);
+    assert_eq!(
+        runs,
+        DispatchRuns {
+            total: 27,
+            done: 14,
+            in_flight: 3,
+        }
     );
-    let named: Vec<Option<&str>> = active
-        .iter()
-        .map(|cell| cell.member.combo.gg_config_id.as_deref())
-        .collect();
-    assert_eq!(named, vec![Some("saved:cfg-8"), Some("saved:cfg-9")]);
+    assert_eq!(
+        counts,
+        SlotCounts {
+            total: 12,
+            running: 2,
+            blocked: 0,
+            passed: 2,
+            failed: 1,
+            pending: 4,
+            skipped: 3,
+        }
+    );
+}
 
-    // One such climber standing where two rungs pin one case is still one cell: the
-    // de-dupe that stops a case being counted and offered twice is untouched.
-    let twice = climb_of(&["carom", "carom"]);
-    let (_, reviewable) = cell_sets(
-        &twice,
-        LadderAxis::Rung,
-        &[standing(&gone, ClimberStatus::Running, Some(1), &[0, 1])],
+#[test]
+fn worked_example_b_an_early_stop_fills_a_decided_slot_but_its_runs_still_in_flight() {
+    let gate = Gate {
+        early_stop: true,
+        ..Gate::default()
+    };
+    // Run 1 passed while run 2 runs; run 3 was cancelled by the pass.
+    let walk = walk_climber(
+        &[3],
+        &[evidence(&[Rating::Great], 1, None)],
+        &gate,
+        None,
+        false,
     );
-    assert_eq!(reviewable.len(), 1);
+    assert_eq!(walk.slots[0].status, SlotStatus::Passed);
+    assert_eq!(walk.slots[0].newly, Some(LadderOutcomeKind::Passed));
+    assert_eq!(slot_runs_done(SlotStatus::Passed, 3, 1, 1), 2);
+    // Run 2 finishing broken changes nothing recorded, and fills the slot.
+    let walk = walk_climber(
+        &[3],
+        &[evidence(
+            &[Rating::Great, Rating::Broken],
+            0,
+            Some(LadderOutcomeKind::Passed),
+        )],
+        &gate,
+        None,
+        false,
+    );
+    assert_eq!(walk.slots[0].status, SlotStatus::Passed);
+    assert_eq!(walk.slots[0].newly, None);
+    assert_eq!(slot_runs_done(SlotStatus::Passed, 3, 2, 0), 3);
+}
+
+#[test]
+fn worked_example_c_a_stopped_dispatch_skips_every_slot_left_and_waits_only_on_its_runs() {
+    let (targets, mut climbers) = example_a();
+    let (counts, runs) = totals(&targets, &climbers, true);
+    assert_eq!(
+        runs,
+        DispatchRuns {
+            total: 27,
+            done: 24,
+            in_flight: 3,
+        }
+    );
+    assert_eq!(
+        (
+            counts.running,
+            counts.passed,
+            counts.failed,
+            counts.skipped,
+            counts.pending
+        ),
+        (0, 2, 1, 9, 0)
+    );
+    // As the runs in flight finish, the bar fills.
+    climbers[0][2] = evidence(&[Rating::Great, Rating::Broken], 0, None);
+    climbers[2][0] = evidence(&[Rating::Broken, Rating::Broken], 0, None);
+    let (_, runs) = totals(&targets, &climbers, true);
+    assert_eq!((runs.done, runs.total), (27, 27));
+}
+
+#[test]
+fn a_slot_never_counts_more_done_runs_than_its_target() {
+    assert_eq!(slot_runs_done(SlotStatus::Running, 2, 5, 0), 2);
+    assert_eq!(slot_runs_done(SlotStatus::Blocked, 2, 1, 0), 1);
+    assert_eq!(slot_runs_done(SlotStatus::Skipped, 2, 0, 5), 0);
+    assert_eq!(slot_runs_done(SlotStatus::Pending, 2, 0, 0), 0);
+    assert_eq!(slot_runs_done(SlotStatus::Failed, 2, 2, 0), 2);
+}
+
+#[test]
+fn a_broken_run_never_fails_a_rung_a_run_still_in_flight_can_pass() {
+    // One passing run needed, one broken counted, one more in flight: undecided.
+    let gate = Gate::default();
+    let walk = walk_climber(
+        &[1, 1],
+        &[evidence(&[Rating::Broken], 1, None), evidence(&[], 0, None)],
+        &gate,
+        None,
+        false,
+    );
+    assert_eq!(walk.status, ClimberStatus::Running);
+    assert_eq!(walk.slots[0].status, SlotStatus::Running);
+    assert_eq!(walk.slots[0].newly, None);
+    assert_eq!(walk.slots[0].tally.pending, 1);
+    // The second passes it.
+    let walk = walk_climber(
+        &[1, 1],
+        &[
+            evidence(&[Rating::Broken, Rating::Great], 0, None),
+            evidence(&[], 0, None),
+        ],
+        &gate,
+        None,
+        false,
+    );
+    assert_eq!(walk.slots[0].status, SlotStatus::Passed);
+    assert_eq!(walk.slots[0].newly, Some(LadderOutcomeKind::Passed));
+    assert_eq!(walk.current, Some(1));
+}
+
+#[test]
+fn a_recorded_verdict_governs_its_slot_whatever_the_runs_say_now() {
+    let gate = Gate::default();
+    let walk = walk_climber(
+        &[1, 1],
+        &[
+            evidence(&[Rating::Great], 0, Some(LadderOutcomeKind::Failed)),
+            evidence(&[], 0, None),
+        ],
+        &gate,
+        None,
+        false,
+    );
+    assert_eq!(walk.status, ClimberStatus::Failed);
+    assert_eq!(walk.current, Some(0));
+    assert_eq!(
+        walk.slots
+            .iter()
+            .map(|slot| slot.status)
+            .collect::<Vec<_>>(),
+        vec![SlotStatus::Failed, SlotStatus::Skipped]
+    );
+    assert!(walk.slots.iter().all(|slot| slot.newly.is_none()));
+}
+
+#[test]
+fn a_climber_that_passed_every_rung_is_completed_and_stands_nowhere() {
+    let gate = Gate::default();
+    let walk = walk_climber(
+        &[1],
+        &[evidence(&[Rating::Great], 0, None)],
+        &gate,
+        None,
+        true,
+    );
+    assert_eq!(walk.status, ClimberStatus::Completed);
+    assert_eq!(walk.current, None);
+    // A stop never un-passes a slot.
+    assert_eq!(walk.slots[0].status, SlotStatus::Passed);
+}
+
+#[test]
+fn a_dispatch_snapshot_resolves_each_rungs_target_and_round_trips() {
+    let mut submitted = input(vec![rung_input("pong"), rung_input("carom")]);
+    submitted.rungs[1].runs = Some(3);
+    submitted.outer_axis = LadderAxis::Combination;
+    let stored = ladder_from_input("l1".to_string(), submitted, "2026-10-02T00:00:00Z").unwrap();
+    let snapshot = snapshot_of(&stored, InFlightLimit::Unbounded);
+    assert_eq!(
+        snapshot
+            .rungs
+            .iter()
+            .map(|rung| rung.target)
+            .collect::<Vec<_>>(),
+        vec![5, 3]
+    );
+    assert_eq!(snapshot.rungs[0].runs, None);
+    assert_eq!(snapshot.outer_axis, LadderAxis::Combination);
+    let json = serde_json::to_string(&snapshot).unwrap();
+    let back: DispatchSnapshot = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, snapshot);
+    assert_eq!(snapshot.rungs[1].to_wire().runs, Some(3));
 }

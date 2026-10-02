@@ -9,25 +9,26 @@
 //! must be exercised exhaustively without standing up a store; the transports that
 //! call them do the reads, the writes, and the serialization.
 //!
-//! - [`schedule`] — the shared top-up algorithm. Given the cells of a plan (or the
-//!   rung of a ladder) in the order the owner chose, it answers which cells to
-//!   launch and how many runs each, keeping a bounded number of runs outstanding
-//!   rather than firing every missing run at once.
+//! - [`schedule`] — the shared launch-pass algorithm. Given the cells of a plan (or
+//!   the current rung slots of a ladder dispatch) in the order the owner chose, it
+//!   answers which cells to launch and how many runs each, keeping the owner's jobs in
+//!   flight under its runs-in-flight limit.
 //! - [`gate`] — the single parameterised rung gate. Given the validators' ratings
-//!   of a rung's completed runs, it answers whether the climber passed the rung,
-//!   failed it, or is not decided yet.
+//!   of a rung slot's counted runs and how many of its runs are still in flight, it
+//!   answers whether the climber passed the rung, failed it, or is not decided yet.
 //!
 //! ## The scope seam
 //!
 //! Both cores observe the same split the coverage feature is built on, and the
 //! callers must preserve it when they gather the inputs:
 //!
-//! - **Counts are global.** A cell's `completed`/`in_flight` counts every run of
-//!   that cell whoever launched it, so a run someone else already produced is
-//!   never re-requested.
-//! - **Reviewing is per-account.** "Unreviewed" means no review row for the
-//!   *requesting* account. A plan's buffer counts those runs; a ladder only reports
-//!   them, because its buffer caps runs in flight.
+//! - **A plan counts globally; a dispatch counts its own.** A plan cell's
+//!   `counted`/`in_flight` counts every run of that cell whoever launched it, so a run
+//!   someone else already produced is never re-requested. A ladder dispatch's rung slot
+//!   counts only the jobs its own origin names, so running a configuration again
+//!   measures it again.
+//! - **Reviewing is per-account and gates nothing.** "Unreviewed" means no review row
+//!   for the *requesting* account; plans and ladders only report it.
 //! - **A gate reads the validators, never a reviewer.** A ladder's gate reads the
 //!   lifted `run.validator_rating` — the validators' own rating with no review
 //!   override folded in. Neither the run's stored `rating` column (which folds in

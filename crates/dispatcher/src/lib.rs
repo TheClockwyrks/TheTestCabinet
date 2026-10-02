@@ -25,3 +25,4 @@ pub mod config;
 pub mod controller;
 pub mod job;
 pub mod kubernetes;
+pub mod lost;

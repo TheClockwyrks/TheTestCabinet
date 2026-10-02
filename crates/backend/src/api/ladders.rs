@@ -7,72 +7,43 @@
 //! combinations are **climbers**, and a climber only reaches the next rung by clearing
 //! the current one. A climber is either shape a
 //! [combination](super::coverage::ReviewPlanCombo) takes, so a saved gg configuration
-//! climbs beside a third-party harness and is measured against the same gate — which is
-//! why every climber is resolved into a [`PlanMember`] before anything counts, launches,
-//! or queues it. It is a sibling of a plan, not a mode of one — it shares the
-//! groups, the resolver, the matrix counts, the buffer target, the launch algorithm,
-//! and the halting controls, and differs in the one thing that matters: a plan spends
-//! its whole budget on every cell, a ladder spends it only where a model is still
-//! getting somewhere.
+//! climbs beside a third-party harness and is measured against the same gate.
 //!
-//! A ladder is an **automated** climb. The validators rate every run as it is pushed,
-//! the gate reads those ratings, and the backend runs a **launch pass** of the ladder
-//! itself whenever a run of one of its cells finishes ([`feed_ladders`]), its owner
-//! writes to it ([`spawn_refeed`]), or the backend starts ([`spawn_startup_feed`]), so a
-//! climber goes on until it passes every rung or fails one without anyone reviewing
-//! anything. The validators are assumed correct, so a failed rung is the climber's result.
-//! Reviews are labels added after the fact and never gate or move a climb.
+//! ## A configuration and its dispatch
+//!
+//! A ladder is a **configuration** and does nothing by itself. `POST /ladders/{id}/run`
+//! starts a **dispatch** of it: a snapshot of the rungs (with their resolved targets),
+//! the gate, the climb order and the runs-in-flight limit in force, plus the climbers
+//! resolved at that moment. Editing the configuration never touches a running dispatch.
+//! A ladder keeps only its latest dispatch; a Run after it ended replaces it.
+//!
+//! A dispatch **owns its runs**: every job it launches carries the origin
+//! `ladder:<ladder>/<dispatch>/<rung>`, and its gate and its progress read only those
+//! jobs ([`crate::db::Db::dispatch_evidence`]). Runs of an earlier dispatch, of a plan,
+//! or launched by hand never count, so running one configuration twice measures it twice,
+//! and two rungs pinning one case are two rung slots that share nothing.
 //!
 //! ## The gate
 //!
-//! There is exactly **one** rule, parameterised — never a set of modes:
+//! There is exactly **one** rule, parameterised — never a set of modes. It lives in
+//! [`crate::coverage::gate`], which owns the arithmetic, the unloaded-build shortcut, the
+//! runs still in flight, and the "not decided yet" answer. This module gathers the
+//! evidence for it and records what it decided: a recorded verdict stands for the rest
+//! of the dispatch.
 //!
-//! ```text
-//! pass when count(runs on this rung rated FLOOR or better) >= THRESHOLD
-//! ```
+//! ## Launch passes
 //!
-//! It lives in [`crate::coverage::gate`], which owns the arithmetic, the
-//! unloaded-build shortcut, and the deliberately conservative "not decided yet"
-//! answer. This module gathers the evidence for it and records what it decided.
-//!
-//! ## Progress is per combination, and it is derived
-//!
-//! A ladder stores **no** current-rung pointer. How far a climber has got is derived
-//! from its recorded [outcomes](crate::db::StoredLadderOutcome) — walk the rungs from
-//! the bottom until one is not passed — which is what lets a model added to a
-//! standing ladder next month start at rung 1 while the models already halfway up
-//! carry on. An outcome is keyed by
-//! the case **version** it was decided against, so bumping a rung's pin neither erases
-//! the verdict earned on the old content nor silently inherits it.
-//!
-//! Both are keyed by the climber's [`climber_key`]: `harness|model|provider` for a
-//! harness climber, and the configuration plus its slot bindings for a gg one, so two
-//! climbers running one configuration on different models keep separate histories.
-//!
-//! Steering — climb this one first, watch it, pause it — is stored separately
-//! ([`crate::db::StoredLadderClimber`]) precisely so it can never be confused with
-//! progress. The gate's verdicts are the only verdicts: nobody overrides one by hand.
-//!
-//! ## The scope seam
-//!
-//! Run and job **counts stay global**, as a plan's do: a run someone else produced still
-//! satisfies a rung's target and is never re-requested. **Judgement is the
-//! validators'**: a gate reads each run's lifted `run.validator_rating`, never the run's
-//! stored `rating` (which folds in every reviewer's checklist overrides) and never a
-//! review, so a climb is the same whoever looks at its runs and whatever they conclude.
-//! Only the review queue is per-account, and it decides nothing.
-//!
-//! ## Feeding and reviewing are different sets of rungs
-//!
-//! A ladder only ever **launches** a climber's current rung — that is the economy that
-//! makes it a ladder. What it **offers for review**, and what its runs-in-flight cap is
-//! measured over, is every rung a climber has reached: a rung early stop decided may
-//! still have a run executing, and a decided rung's completed runs are still worth an
-//! aesthetic label. See [`cell_sets`].
+//! The backend climbs a running dispatch by itself, in **launch passes** run through the
+//! shared [`super::launch`] loop: on Run, on a climber's Retry, whenever one of the
+//! dispatch's jobs finishes ([`dispatch_fed_by`]), and once at startup. A pass records
+//! every verdict the gate can now decide and launches each climber's current rung, up to
+//! the dispatch's limit. Only a climber's **current** rung is ever launched — that is
+//! what makes a ladder a ladder rather than a plan. Reviews are labels added after the
+//! fact and never gate or move a climb.
 //!
 //! Console-only reviewer tooling, like the rest of the coverage surface.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -83,26 +54,30 @@ use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::test_case::TestType;
 
 use crate::auth::AuthUser;
-use crate::coverage::gate::{self, Gate, GateOutcome, GateTally, GateThreshold, RungRun};
-use crate::coverage::schedule::{BufferTarget, CellDemand, top_up as decide_top_up};
+use crate::coverage::gate::{self, Gate, GateTally, GateThreshold, RungRun};
+use crate::coverage::schedule::{CellDemand, InFlightLimit, launch_pass};
 use crate::db::{
-    CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin, LadderOutcomeKind,
-    StoredLadder, StoredLadderClimber, StoredLadderOutcome, StoredLadderRung, combination_key,
+    CANCELABLE_WAITING_STATES, CellKey, CellRunRating, DispatchEvidence, JobCancelFilter,
+    JobOrigin, LadderOutcomeKind, OriginScope, SlotKey, StoredDispatch, StoredDispatchClimber,
+    StoredLadder, StoredLadderRung, TerminalJob, combination_key,
 };
 use crate::error::ApiError;
 
 use super::AppState;
 use super::coverage::{
-    CoverageCell, CoverageQueue, GgLibrary, HaltResult, MatrixCounting, MatrixCtx, PauseInput,
-    PlanMember, QueueCell, ReviewPlanCase, ReviewPlanCombo, TopUpBlocked, TopUpCell, TopUpResult,
-    TopUpSkipped, blocked_cell, cell_key, clamp_buffer_target, clamp_runs_per_cell, collect_queue,
-    enqueue_top_up, for_read, for_storage, gg_library, group_index, halt_jobs, launchable_demand,
-    new_id, now, read_gg_library, reject_unstorable_members, resolve_buffer_target, resolve_combos,
+    BlockedCell, CoverageQueue, CoverageQueueEntry, FAILING_STREAK, GgLibrary, HaltResult,
+    LaunchCell, LaunchPassResult, LaunchSkipped, MAX_QUEUE_RUNS, MemberCellIdentity, PlanMember,
+    ReviewPlanCase, ReviewPlanCombo, blocked_cell, blocked_reason, cancel_just_enqueued,
+    cell_key_of, clamp_in_flight_limit, clamp_runs_per_cell, enqueue_launches, for_read,
+    for_storage, gg_library, group_index, halt_jobs, harness_lane, is_failing_streak,
+    launchable_demand, new_id, now, read_gg_library, reject_unstorable_members, resolve_combos,
+    resolve_in_flight_limit, resolve_launch_facts, resolve_member,
 };
+use super::launch::{LaunchTarget, run_launch_passes, spawn_launch};
 
 /// The most rungs one ladder may hold. A ladder is a curated progression a reviewer
 /// reads top to bottom, not a sweep — past a few dozen steps it is a coverage plan
-/// wearing a costume, and every climber's progress walk grows with it.
+/// wearing a costume, and every climber's walk grows with it.
 const MAX_LADDER_RUNGS: usize = 50;
 
 /// The test types a rung may not hold, because a gate over them can never resolve and
@@ -114,10 +89,10 @@ const MAX_LADDER_RUNGS: usize = 50;
 ///   no domain ratings at all, so a jam run never yields a
 ///   [`Rating`](test_cabinet_core::Rating) for the gate to compare against its floor.
 ///
-/// Both are rejected at author time with an explicit message rather than silently
-/// stalling later, which is the failure mode that would be genuinely hard to diagnose.
-/// A **legacy** case version is refused on the same grounds by [`rung_ineligibility`]:
-/// only a reviewer rates its runs, and a ladder's gate reads validator ratings.
+/// Both are rejected when a ladder is saved and again when it is run, with an explicit
+/// message rather than a silent stall later. A **legacy** case version is refused on the
+/// same grounds by [`rung_ineligibility`]: only a reviewer rates its runs, and a
+/// ladder's gate reads validator ratings.
 const RUNG_INELIGIBLE_TEST_TYPES: [TestType; 2] = [TestType::Performance, TestType::GameJam];
 
 // ---- Wire types ------------------------------------------------------------
@@ -154,71 +129,6 @@ impl LadderAxis {
         match token {
             "combination" => LadderAxis::Combination,
             _ => LadderAxis::Rung,
-        }
-    }
-}
-
-/// How a ladder is **fed**, held apart from what it declares for exactly the reason
-/// [`super::coverage::CoverageSchedule`] is: the two are edited by different gestures,
-/// so saving an edited climb must never un-pause the ladder. The axis vocabulary is
-/// the only difference between the two — a ladder has rungs where a plan has cases.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LadderSchedule {
-    /// Which axis the emission loop nests on.
-    #[serde(default)]
-    pub outer_axis: LadderAxis,
-    /// Whether the ladder is **disabled**. Enabled is the ladder's one on/off control: an
-    /// enabled ladder always launches its own climb, and a disabled one launches nothing.
-    ///
-    /// A ladder is created disabled and enqueues nothing at all until its owner enables
-    /// it: a climb is declared long before it is meant to start spending, and a ladder
-    /// that launched runs the moment it was saved would have spent a buffer's worth of
-    /// tokens before its author had finished reading it back.
-    #[serde(default)]
-    pub paused: bool,
-    /// This ladder's override of the account's buffer target, or null to inherit it.
-    /// On a ladder the target caps the runs **in flight** at once (queued through
-    /// running); completed runs never occupy it, reviewed or not. Null, a bound of `0`,
-    /// and `unbounded` are three different instructions — "no opinion", "launch
-    /// nothing", and "launch every rung as soon as it is earned". On a ladder the
-    /// last is the natural choice more often than on a plan: the gate is already what
-    /// stops a hopeless climb.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub buffer_target: Option<BufferTarget>,
-}
-
-impl Default for LadderSchedule {
-    /// A new ladder climbs a rung at a time, starts **disabled**, and has no opinion on
-    /// the buffer target.
-    fn default() -> Self {
-        Self {
-            outer_axis: LadderAxis::Rung,
-            paused: true,
-            buffer_target: None,
-        }
-    }
-}
-
-impl LadderSchedule {
-    /// Lift a stored schedule onto the wire, resolving its free-text axis token.
-    fn from_db(stored: crate::db::LadderSchedule) -> Self {
-        Self {
-            outer_axis: LadderAxis::parse(&stored.outer_axis),
-            paused: stored.paused,
-            buffer_target: stored.buffer_target.map(clamp_buffer_target),
-        }
-    }
-
-    /// Lower this schedule to the store's shape, clamping the buffer override — the
-    /// buffer is the only thing bounding a launch pass's fan-out.
-    fn to_db(&self) -> crate::db::LadderSchedule {
-        crate::db::LadderSchedule {
-            outer_axis: self.outer_axis.as_str().to_string(),
-            paused: self.paused,
-            buffer_target: self.buffer_target.map(clamp_buffer_target),
         }
     }
 }
@@ -287,9 +197,8 @@ pub struct LadderRungInput {
     pub runs: Option<u32>,
 }
 
-/// A ladder **as declared**: the climb, the climbers, and the rule every rung is
-/// judged by. How it is fed is [`LadderSchedule`]; how far anyone has got is derived,
-/// and lives in [`LadderProgress`].
+/// A ladder's **configuration**: the climb, the climbers, the rule every rung is judged
+/// by, and how a dispatch of it is fed. What a dispatch did is [`LadderProgress`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -298,8 +207,8 @@ pub struct Ladder {
     pub id: String,
     /// The reviewer-chosen display name.
     pub name: String,
-    /// The default target number of runs for each `rung × combination` cell; a rung
-    /// may raise it for itself via [`LadderRung::runs`].
+    /// The default target number of runs for each rung slot; a rung may raise it for
+    /// itself via [`LadderRung::runs`].
     pub runs_per_cell: u32,
     /// The single parameterised rule every rung is judged by. Per ladder, not per
     /// rung: a ladder asks *one* question of an ordered series of cases, and only how
@@ -313,22 +222,14 @@ pub struct Ladder {
     pub combos: Vec<ReviewPlanCombo>,
     /// The rungs, low to high. The order **is** the climb.
     pub rungs: Vec<LadderRung>,
+    /// Which axis a dispatch's launch order nests on.
+    pub outer_axis: LadderAxis,
+    /// This ladder's override of the account's runs-in-flight limit, or null to inherit
+    /// it. A dispatch resolves it when it starts and keeps it.
+    #[serde(default)]
+    pub in_flight_limit: Option<InFlightLimit>,
     /// RFC 3339 of when the ladder was last saved.
     pub updated_at: String,
-}
-
-/// One ladder as a reader sees it: declaration and schedule flattened into a single
-/// object, exactly as [`super::coverage::CoveragePlanOut`] does for a plan.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LadderOut {
-    /// The ladder's declaration.
-    #[serde(flatten)]
-    pub ladder: Ladder,
-    /// How the ladder is being fed.
-    #[serde(flatten)]
-    pub schedule: LadderSchedule,
 }
 
 /// The create/update body for a ladder (the server assigns `id` and `updatedAt`).
@@ -338,7 +239,7 @@ pub struct LadderOut {
 pub struct LadderInput {
     /// The reviewer-chosen display name.
     pub name: String,
-    /// The default target number of runs for each `rung × combination` cell.
+    /// The default target number of runs for each rung slot.
     pub runs_per_cell: u32,
     /// The rule every rung is decided by, or null for [`Gate::default`] — the gentlest
     /// gate that still stops a hopeless climb (pass as long as one run was playable at
@@ -355,60 +256,86 @@ pub struct LadderInput {
     /// The rungs, low to high.
     #[serde(default)]
     pub rungs: Vec<LadderRungInput>,
-    /// The schedule to apply along with this save, or null to leave it alone. Nested
-    /// and optional for the same reason a plan's is: saving an edited climb must not
-    /// un-pause the ladder as a side effect. On **create** an absent schedule means
-    /// [`LadderSchedule::default`].
+    /// Which axis a dispatch's launch order nests on.
+    #[serde(default)]
+    pub outer_axis: LadderAxis,
+    /// This ladder's override of the account's runs-in-flight limit, or null to inherit.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub schedule: Option<LadderSchedule>,
+    pub in_flight_limit: Option<InFlightLimit>,
 }
 
-/// A resolved verdict on one rung, as the wire names it. The gate's third answer,
-/// "not decided yet", is deliberately absent: an unresolved rung has *no* verdict,
-/// and is reported as the absence of one rather than as a verdict of nothing.
+/// Where a ladder's latest dispatch stands. A ladder never run has no dispatch, which
+/// the console reads as "Not run yet".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum LadderOutcome {
-    /// The climber passed the rung and moved up.
-    Passed,
-    /// The climber failed the rung and stopped there.
-    Failed,
+pub enum DispatchStatus {
+    /// Launch passes are still climbing it.
+    Running,
+    /// Every climber completed or failed and none of its runs is in flight.
+    Finished,
+    /// Its owner stopped it. It launches nothing more.
+    Stopped,
 }
 
-impl LadderOutcome {
-    /// Lift a stored verdict onto the wire.
-    fn from_db(kind: LadderOutcomeKind) -> Self {
-        match kind {
-            LadderOutcomeKind::Passed => LadderOutcome::Passed,
-            LadderOutcomeKind::Failed => LadderOutcome::Failed,
+impl DispatchStatus {
+    /// The stored token.
+    fn as_str(self) -> &'static str {
+        match self {
+            DispatchStatus::Running => "running",
+            DispatchStatus::Finished => "finished",
+            DispatchStatus::Stopped => "stopped",
+        }
+    }
+
+    /// Parse a stored token. Anything unknown reads as ended: a dispatch nobody can
+    /// recognise as running must not keep launching.
+    fn parse(token: &str) -> Self {
+        match token {
+            "running" => DispatchStatus::Running,
+            "finished" => DispatchStatus::Finished,
+            _ => DispatchStatus::Stopped,
         }
     }
 }
 
-/// Where one climber stands. Five states, because "stopped" has several genuinely
-/// different causes and conflating them makes a ladder impossible to act on.
+/// Where one **rung slot** — one climber on one rung of a dispatch — stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum SlotStatus {
+    /// The climber's current rung, undecided, with runs launched or waiting for room.
+    Running,
+    /// The climber's current rung, undecided and blocked.
+    Blocked,
+    /// The gate passed it.
+    Passed,
+    /// The gate failed it.
+    Failed,
+    /// Not reached yet, while the dispatch is running.
+    Pending,
+    /// Never to run: the climber failed an earlier rung, or the dispatch was stopped.
+    Skipped,
+}
+
+/// Where one climber of a dispatch stands.
 ///
 /// There is no "waiting on a review" state: the validators rate every completed run, so
-/// a rung the ladder can still feed is `running`, and one nothing the ladder does can
-/// move is `blocked`, with the reason in [`LadderClimber::blocked`].
+/// a rung the dispatch can still feed is `running`, and one nothing it does can move is
+/// `blocked`, with the reason in [`LadderClimber::blocked`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum ClimberStatus {
-    /// The current rung is undecided and its runs can still launch: runs are still to
-    /// complete, and the backend launches them as earlier ones finish.
+    /// The current rung is undecided and its runs can still launch.
     Running,
-    /// The current rung is undecided and nothing the ladder does will move it. Why,
+    /// The current rung is undecided and nothing the dispatch does will move it. Why,
     /// and what fixes it, is [`LadderClimber::blocked`].
     Blocked,
     /// The current rung was failed. The validators are assumed correct, so this is the
-    /// climber's result for that version of the case.
+    /// climber's result.
     Failed,
-    /// Paused by its owner. A pause decides nothing, so resuming continues the climb from
-    /// exactly where it stood.
-    Paused,
     /// Every rung passed. There is nothing left to climb.
     Completed,
 }
@@ -418,57 +345,137 @@ pub enum ClimberStatus {
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum ClimberBlock {
-    /// The rung's case version is not validator-rated (or is a performance or game-jam
-    /// case), so no run of it is ever rated and the ladder never launches it. A stored
-    /// ladder can still hold one, since the check runs only when a ladder is saved.
-    /// Fix: replace or remove the rung.
-    UnsupportedRung {
-        /// The rung's stable id.
-        #[serde(rename = "rungId")]
-        rung_id: String,
-    },
-    /// The combination cannot be launched at all, and nothing of it is in flight. Fix:
-    /// fix or drop the combination.
+    /// The combination cannot be launched at all, and nothing of its rung is in flight.
+    /// Fix: fix the cause, then retry the climber, which resolves it again.
     Unlaunchable {
         /// Why, in the words the launch pass reports it with.
         reason: String,
     },
-    /// The cell's most recent terminal jobs all failed, and nothing of it is in flight.
-    /// A run finishing no longer relaunches it. Fix: fix the cause, then retry the
-    /// climber (`POST /ladders/{id}/climbers/retry`), which relaunches it.
+    /// The rung slot's most recent terminal jobs all failed on infrastructure, and
+    /// nothing of it is in flight. Fix: fix the cause, then retry the climber
+    /// (`POST /ladders/{id}/climbers/retry`), which relaunches it.
     Failing {
         /// How many failed jobs in a row marked it failing.
         attempts: u32,
     },
     /// Every run the rung will get has completed and the rung is still undecided,
     /// because `runs` of them carry no validator rating (pushed while the backend did
-    /// not hold the case version). Fix: re-push the runs, or replace the rung.
+    /// not hold the case version). Fix: re-push the runs, or stop the dispatch.
     Unrated {
-        /// How many of the rung's completed runs carry no validator rating.
+        /// How many of the rung's counted runs carry no validator rating.
         runs: u32,
     },
 }
 
-/// The counts one gate decision was made from, so a dashboard can say *why* a climber
-/// failed or is still running without re-deriving the floor and unloaded-run rules a
-/// second time and getting them subtly different.
+/// How many of a dispatch's rung slots are in each [`SlotStatus`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct SlotCounts {
+    /// Every rung slot: climbers × rungs.
+    pub total: u32,
+    /// Slots `running`.
+    pub running: u32,
+    /// Slots `blocked`.
+    pub blocked: u32,
+    /// Slots `passed`.
+    pub passed: u32,
+    /// Slots `failed`.
+    pub failed: u32,
+    /// Slots `pending`.
+    pub pending: u32,
+    /// Slots `skipped`.
+    pub skipped: u32,
+}
+
+impl SlotCounts {
+    /// Count one slot.
+    fn add(&mut self, status: SlotStatus) {
+        self.total += 1;
+        match status {
+            SlotStatus::Running => self.running += 1,
+            SlotStatus::Blocked => self.blocked += 1,
+            SlotStatus::Passed => self.passed += 1,
+            SlotStatus::Failed => self.failed += 1,
+            SlotStatus::Pending => self.pending += 1,
+            SlotStatus::Skipped => self.skipped += 1,
+        }
+    }
+}
+
+/// How much of a dispatch's execution is behind it: the figures its progress bar is
+/// drawn from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DispatchRuns {
+    /// The sum over rung slots of the rung's target runs.
+    pub total: u32,
+    /// The runs that need no more executing, summed per slot: a passed, failed or
+    /// skipped slot's whole target less its runs still in flight, a running or blocked
+    /// slot's counted runs up to its target, and nothing of a pending one. Equal to
+    /// `total` once nothing is left to execute.
+    pub done: u32,
+    /// The dispatch's jobs still in flight (`queued` through `running`).
+    pub in_flight: u32,
+}
+
+/// A ladder's latest dispatch, as its board reports it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LadderDispatch {
+    /// The dispatch's id: the second segment of its jobs' origins.
+    pub id: String,
+    /// Where it stands.
+    pub status: DispatchStatus,
+    /// RFC 3339 of the Run that started it.
+    pub started_at: String,
+    /// RFC 3339 of when it finished or was stopped, absent while running.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub ended_at: Option<String>,
+    /// The gate, as it stood at Run.
+    pub gate: Gate,
+    /// The climb order, as it stood at Run.
+    pub outer_axis: LadderAxis,
+    /// The runs-in-flight limit resolved at Run.
+    pub in_flight_limit: InFlightLimit,
+    /// The rung-slot counts.
+    pub slots: SlotCounts,
+    /// The runs: total, done, in flight.
+    pub runs: DispatchRuns,
+    /// How many climbers are running.
+    pub climbers_running: u32,
+    /// How many climbers are blocked.
+    pub climbers_blocked: u32,
+    /// How many climbers failed a rung.
+    pub climbers_failed: u32,
+    /// How many climbers passed every rung.
+    pub climbers_completed: u32,
+}
+
+/// The counts one gate answer was made from, so a dashboard can say *why* a slot passed,
+/// failed, or is still running without re-deriving the floor and unloaded-run rules.
 ///
 /// The wire mirror of [`GateTally`], which is an internal type of the pure core.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RungTally {
-    /// Completed runs on the rung.
-    pub completed: u32,
-    /// Completed runs the gate has a rating for — carrying a validator rating, or
-    /// decided as broken because the build never loaded.
+    /// The slot's counted runs: finished runs that are the model's result.
+    pub counted: u32,
+    /// Counted runs the gate has a rating for — carrying a validator rating, or
+    /// decided as broken because the build never loaded or the model failed.
     pub rated: u32,
-    /// Completed runs with no validator rating.
+    /// Counted runs with no validator rating.
     pub unrated: u32,
     /// Rated runs rated at or above the gate's floor.
     pub passing: u32,
-    /// Runs the rung has yet to complete against its target.
+    /// Runs the slot will still finish with: `max(target, counted + inFlight) − counted`.
     pub pending: u32,
+    /// The slot's jobs still in flight.
+    pub in_flight: u32,
     /// How many passing runs the threshold demands, as the whole number of runs it
     /// actually takes — a fractional bar of 2.5 means three.
     pub required: u32,
@@ -480,76 +487,57 @@ impl RungTally {
     /// only the display rounds.
     fn from_gate(tally: GateTally) -> Self {
         Self {
-            completed: tally.completed,
+            counted: tally.counted,
             rated: tally.rated,
             unrated: tally.unrated,
             passing: tally.passing,
             pending: tally.pending,
+            in_flight: tally.in_flight,
             required: tally.required_runs(),
         }
     }
 }
 
-/// The rung a climber currently stands on: the coverage cell it is filling, the gate
-/// evidence gathered so far, and what the gate makes of it right now.
+/// One rung slot of one climber.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LadderCell {
+pub struct LadderSlot {
     /// Which rung, by its stable id.
     pub rung_id: String,
     /// The rung's position in the climb, from zero.
     pub position: u32,
-    /// The cell's counts — the same shape a coverage plan's matrix reports, because it
-    /// is the same question asked of the same three grouped reads.
-    #[serde(flatten)]
-    pub cell: CoverageCell,
-    /// The gate evidence gathered so far.
-    pub tally: RungTally,
-    /// What the gate makes of that evidence *now*, including its "not decided yet"
-    /// answer — which a recorded outcome can never express.
-    pub outcome: GateOutcome,
+    /// Where the slot stands.
+    pub status: SlotStatus,
+    /// The gate evidence behind the slot's answer: present on a slot that has been
+    /// reached or has runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub tally: Option<RungTally>,
+    /// RFC 3339 of when the gate decided the slot, on a passed or failed slot. A verdict
+    /// a read computed live, which the next launch pass records, carries the read's time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub decided_at: Option<String>,
+    /// The dispatch's counted runs of this slot, oldest first.
+    pub run_ids: Vec<String>,
+    /// The dispatch's jobs of this slot still in flight, in queue order.
+    pub job_ids: Vec<String>,
 }
 
-/// One recorded (or freshly computed) verdict on one rung for one climber.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LadderRungOutcome {
-    /// Which rung, by its stable id.
-    pub rung_id: String,
-    /// The exact case version the verdict was decided against.
-    ///
-    /// Part of the verdict's identity, not decoration: bumping a rung to a newer case
-    /// neither erases the verdict earned on the old one nor silently inherits it, and
-    /// re-pinning back restores it.
-    pub decided_version: String,
-    /// What the gate decided. Recomputable at any time from the rung's validator
-    /// ratings.
-    pub outcome: LadderOutcome,
-    /// RFC 3339 of when the verdict was computed.
-    pub decided_at: String,
-    /// Whether this verdict was decided against a version the rung no longer pins —
-    /// history kept honest across a bump, and never allowed to govern the climb.
-    pub stale: bool,
-    /// Whether the verdict is stored, or was computed live for this response and will
-    /// be written down by the next launch pass. A read never writes.
-    pub recorded: bool,
-}
-
-/// One climber's whole standing on the ladder.
+/// One climber of a dispatch and its whole standing.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderClimber {
-    /// The combination's canonical key — the text this ladder's steering and every one of
-    /// its verdicts is stored against.
+    /// The combination's canonical key — the text the dispatch records this climber's
+    /// state against.
     ///
     /// Its shape follows the shape of the combination: a harness climber's key is its
     /// `harness|model|provider` triple, and a gg climber's names the configuration and the
     /// models it binds, because two climbers running one configuration on different models
     /// are exactly the two arms a ladder exists to separate. It is written and compared,
-    /// never parsed — a client reproduces it by echoing this field, not by assembling one.
+    /// never parsed.
     pub key: String,
     /// The harness the climber runs — `gg` on a gg climber.
     pub harness: HarnessSlug,
@@ -561,53 +549,33 @@ pub struct LadderClimber {
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
     /// The gg configuration this climber runs (`saved:<id>`), or null on a harness climber.
-    /// This is what makes a climber a gg climber.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub gg_config_id: Option<String>,
-    /// That configuration's current display name, or null on a harness climber. Resolved on
-    /// every read rather than stored, so a renamed configuration renames its climbers at
-    /// once.
+    /// That configuration's current display name, or null on a harness climber.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub gg_config_name: Option<String>,
     /// The model bound to each of the configuration's launch slots, keyed by slot name.
-    /// Empty on a harness climber. These are half of what the key distinguishes, so a board
-    /// can label two climbers of one configuration without re-deriving them.
+    /// Empty on a harness climber.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gg_slot_models: BTreeMap<String, String>,
-    /// Climb-order weight; higher goes first, zero is the default. Pushes one model to
-    /// the front without reordering the ladder — which would change what every *other*
-    /// climber is measured against.
-    pub priority: i32,
-    /// The owner's "watch this one" flag, and the tiebreak between equal priorities.
-    pub focused: bool,
-    /// Whether the climber is paused by its owner.
-    pub paused: bool,
     /// Why this climber cannot be launched at all, or null when it can.
-    ///
-    /// A ladder is where an unlaunchable member is hardest to see: a climber that cannot
-    /// launch simply stops moving, and a rung it is stuck on looks exactly like one still
-    /// waiting on its runs — for as long as anyone leaves it there. So the reason is carried on
-    /// the climber itself rather than only on the rung it happens to stand on, which a
-    /// completed climber does not have at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub unlaunchable: Option<String>,
     /// Where the climber stands.
     pub status: ClimberStatus,
-    /// Why the climber is blocked, naming the fix, or null when it is not. Kept under a
-    /// pause too, so the fix stays visible while the climber is paused.
+    /// Why the climber is blocked, naming the fix, or null when it is not.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub blocked: Option<ClimberBlock>,
-    /// The rung it stands on, or null once it has completed.
+    /// The position of the rung it stands on (or failed), absent once it completed.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub current_rung: Option<LadderCell>,
-    /// Every verdict this climber has on the ladder, in climb order, with any decided
-    /// against a superseded version flagged and trailing.
-    pub outcomes: Vec<LadderRungOutcome>,
+    pub current_rung: Option<u32>,
+    /// One slot per rung of the dispatch, in rung order.
+    pub slots: Vec<LadderSlot>,
 }
 
 /// One rung as the progress board describes it: the declaration plus how its pin has
@@ -623,82 +591,80 @@ pub struct LadderProgressRung {
     pub position: u32,
     /// The newest ingested version of this case. Empty when the case is not ingested.
     pub latest_version: String,
-    /// Whether the pinned version is not the newest ingested one — a hint that the
-    /// rung could be bumped, and a warning that doing so re-opens every verdict on it.
+    /// Whether the pinned version is not the newest ingested one.
     pub stale: bool,
-    /// Whether a ladder can climb this rung: false for a stored rung whose case version
-    /// the backend holds and which is not validator-rated (or is a performance or
-    /// game-jam case). Such a rung is never launched, and a climber that reaches it
-    /// without a recorded verdict is `blocked` as `unsupportedRung`. A version the
-    /// backend has not ingested is reported supported, as it is allowed at author time.
-    pub supported: bool,
 }
 
-/// The ladder's board: the climb, every climber's standing, and the roll-ups the
-/// dashboard header shows.
+/// The ladder's board: the rungs, its latest dispatch, and every climber of it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderProgress {
     /// The ladder's id.
     pub ladder_id: String,
-    /// The axis the climbers below are ordered on, and the order runs are emitted in.
-    pub outer_axis: LadderAxis,
-    /// The rungs, low to high.
+    /// The latest dispatch, or null for a ladder never run.
+    pub dispatch: Option<LadderDispatch>,
+    /// The rungs, low to high: the dispatch's when there is one, else the
+    /// configuration's.
     pub rungs: Vec<LadderProgressRung>,
-    /// Every climber, in the order the ladder would feed them.
+    /// Every climber of the dispatch, in its resolved order. Empty without one.
     pub climbers: Vec<LadderClimber>,
-    /// How many climbers are running.
-    pub climbers_running: u32,
-    /// How many climbers have passed every rung.
-    pub climbers_completed: u32,
-    /// How many climbers failed a rung.
-    pub climbers_failed: u32,
-    /// How many climbers are blocked, not counting a paused one.
-    pub climbers_blocked: u32,
-    /// How many climbers their owner paused.
-    pub climbers_paused: u32,
-    /// The completed runs the requester has not reviewed, across every rung every
-    /// climber has **reached** — exactly what `GET /ladders/{id}/queue` offers, so the
-    /// two always describe the same runs. Information only: reviews are labels added
-    /// after the fact, and this neither blocks nor feeds the climb.
+    /// The dispatch's completed runs the requester has not reviewed — exactly what
+    /// `GET /ladders/{id}/queue` offers. Information only.
     pub runs_unreviewed: u32,
-    /// The runs in flight (jobs `queued` through `running`) across every rung every
-    /// climber has reached — the occupancy `bufferTarget` caps. When this has reached
-    /// it, a launch pass deliberately enqueues nothing, and the climb moves on as those
-    /// runs finish. Completed runs never count, reviewed or not.
-    pub runs_in_flight: u32,
-    /// The buffer target in force (the ladder's override, else the account's setting,
-    /// else the backend default): the most runs the ladder keeps in flight at once.
-    /// When it is `unbounded`, `runsInFlight` never stops a launch pass.
-    pub buffer_target: BufferTarget,
 }
 
-/// The `POST /ladders/{id}/climbers` body: one combination's steering, written whole.
-///
-/// Whole rather than field-by-field because it is one decision — "climb this one first
-/// and watch it" — and a partial update can leave a combination focused-but-forgotten.
-#[derive(Debug, Clone, Deserialize)]
+/// One ladder on the ladders list: its configuration's headline and its latest
+/// dispatch's totals.
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LadderClimberInput {
-    /// Which combination to steer. Identified by the combination itself rather than by
-    /// its key, because a model id contains slashes and has no business in a URL path.
-    ///
-    /// A climber read off the board can be handed straight back: the key is taken from the
-    /// member as it would be stored, so the derived fields a read filled in
-    /// (`model`, `ggConfigName`) make no difference to which climber is addressed.
-    pub combination: ReviewPlanCombo,
-    /// Climb-order weight; higher goes first.
+pub struct LadderSummary {
+    /// The ladder's id.
+    pub id: String,
+    /// Its display name.
+    pub name: String,
+    /// How many rungs the configuration holds.
+    pub rungs: u32,
+    /// The configuration's runs per rung slot.
+    pub runs_per_cell: u32,
+    /// How many climbers the configuration resolves to now.
+    pub climbers: u32,
+    /// The latest dispatch, or null for a ladder never run.
+    pub dispatch: Option<LadderDispatchSummary>,
+}
+
+/// A dispatch's totals, for the ladders list.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LadderDispatchSummary {
+    /// The dispatch's id.
+    pub id: String,
+    /// Where it stands.
+    pub status: DispatchStatus,
+    /// RFC 3339 of the Run.
+    pub started_at: String,
+    /// RFC 3339 of when it ended, absent while running.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub ended_at: Option<String>,
+    /// The rung-slot counts, for the whole ladder.
+    pub slots: SlotCounts,
+    /// The runs: total, done, in flight.
+    pub runs: DispatchRuns,
+}
+
+/// The `POST /ladders/{id}/stop` body.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LadderStopInput {
+    /// Whether to cancel the dispatch's `dispatched`, `starting` and `running` jobs as
+    /// well as its waiting ones. Those are partly or wholly paid for, so a client
+    /// confirms first.
     #[serde(default)]
-    pub priority: i32,
-    /// The "watch this one" flag.
-    #[serde(default)]
-    pub focused: bool,
-    /// Whether to pause this climber where it stands. A pause decides no rung and
-    /// cancels nothing, so resuming continues exactly where the climb left off.
-    #[serde(default)]
-    pub paused: bool,
+    pub cancel_running: bool,
 }
 
 /// The `POST /ladders/{id}/climbers/retry` body: the climber to retry.
@@ -706,8 +672,9 @@ pub struct LadderClimberInput {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderRetryInput {
-    /// Which climber, in either shape and either — stored or read — form; normalized
-    /// exactly as [`LadderClimberInput::combination`] is.
+    /// Which climber, in either shape and either — stored or read — form: the key is
+    /// taken from the member as it would be stored, so a climber read off the board can
+    /// be handed straight back.
     pub combination: ReviewPlanCombo,
 }
 
@@ -715,8 +682,7 @@ pub struct LadderRetryInput {
 /// climb order.
 ///
 /// Ids rather than a list of rungs, because a reorder must not be able to edit a rung
-/// in passing — and because reordering by stable id is precisely what keeps every
-/// climber's recorded verdicts attached to the case that earned them.
+/// in passing.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -727,13 +693,76 @@ pub struct LadderRungOrderInput {
     pub rung_ids: Vec<String>,
 }
 
-// ---- CRUD ------------------------------------------------------------------
+/// The configuration a dispatch runs, as it stood at Run. Stored as JSON on the
+/// dispatch row; never on the wire as such.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DispatchSnapshot {
+    /// The rungs, low to high, each with its resolved target.
+    rungs: Vec<SnapshotRung>,
+    /// The gate.
+    gate: Gate,
+    /// The climb order.
+    outer_axis: LadderAxis,
+    /// The runs-in-flight limit in force at Run.
+    in_flight_limit: InFlightLimit,
+    /// The configuration's runs per rung slot (informational: targets are resolved).
+    runs_per_cell: u32,
+}
 
-/// `GET /ladders` — every ladder the token account owns, each with its schedule.
+/// One rung of a [`DispatchSnapshot`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotRung {
+    /// The rung's stable id.
+    id: String,
+    /// The test-case slug.
+    slug: String,
+    /// The pinned, exact version.
+    version: String,
+    /// The variant.
+    variant: String,
+    /// The engine, or `None` for `none`.
+    #[serde(default)]
+    engine: Option<String>,
+    /// The rung's own runs override, as configured.
+    #[serde(default)]
+    runs: Option<u32>,
+    /// The runs the rung's slots target: its override, else the ladder's.
+    target: u32,
+}
+
+impl SnapshotRung {
+    /// The rung as a pinned case.
+    fn case(&self) -> ReviewPlanCase {
+        ReviewPlanCase {
+            slug: self.slug.clone(),
+            version: self.version.clone(),
+            variant: self.variant.clone(),
+            engine: self.engine.clone(),
+        }
+    }
+
+    /// The rung on the wire.
+    fn to_wire(&self) -> LadderRung {
+        LadderRung {
+            id: self.id.clone(),
+            slug: self.slug.clone(),
+            version: self.version.clone(),
+            variant: self.variant.clone(),
+            engine: self.engine.clone(),
+            runs: self.runs,
+        }
+    }
+}
+
+// ---- Configuration ---------------------------------------------------------
+
+/// `GET /ladders` — every ladder configuration the token account owns.
 pub async fn list(
     State(state): State<AppState>,
     user: AuthUser,
-) -> Result<Json<Vec<LadderOut>>, ApiError> {
+) -> Result<Json<Vec<Ladder>>, ApiError> {
     let stored = state
         .db
         .list_ladders(&user.0.id)
@@ -745,89 +774,64 @@ pub async fn list(
         stored.iter().flat_map(|ladder| ladder.combos.iter()),
     )
     .await?;
-    let mut out = Vec::with_capacity(stored.len());
-    for ladder in stored {
-        let schedule = schedule_of(&state, &user.0.id, &ladder.id).await?;
-        out.push(LadderOut {
-            ladder: ladder_to_wire(ladder, &library),
-            schedule,
-        });
-    }
-    Ok(Json(out))
+    Ok(Json(
+        stored
+            .into_iter()
+            .map(|ladder| ladder_to_wire(ladder, &library))
+            .collect(),
+    ))
 }
 
-/// `GET /ladders/{id}` — one ladder's declaration and schedule. 404 when the id is
-/// not the caller's.
+/// `GET /ladders/{id}` — one ladder's configuration. 404 when the id is not the
+/// caller's.
 pub async fn get(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<LadderOut>, ApiError> {
+) -> Result<Json<Ladder>, ApiError> {
     let stored = load_ladder(&state, &user.0.id, &id).await?;
-    let schedule = schedule_of(&state, &user.0.id, &id).await?;
     let library = read_gg_library(&state, &user.0.id, stored.combos.iter()).await?;
-    Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored, &library),
-        schedule,
-    }))
+    Ok(Json(ladder_to_wire(stored, &library)))
 }
 
-/// `POST /ladders` — create a ladder. Targets are clamped, the gate is sanitized, and
-/// every rung's case type is checked so a rung that could never resolve is refused up
-/// front rather than stalling a climb weeks later.
+/// `POST /ladders` — create a ladder configuration. Targets are clamped, the gate is
+/// sanitized, and every rung's case type is checked so a rung that could never resolve
+/// is refused up front.
 ///
 /// A climber is refused on the same terms a plan's member is (`400`, naming the
-/// configuration and the slot): a gg climber pointing at a configuration the account does
-/// not own, or leaving one of its launch slots unbound, could never produce a run, and a
-/// ladder is precisely where that would be invisible — the climber would simply never move.
-///
-/// An absent schedule is [`LadderSchedule::default`], which is disabled, and a disabled
-/// ladder enqueues **nothing**: saving a climb is describing the question, not asking
-/// it — the ladder starts spending when it is enabled, and never before. A ladder created
-/// already enabled starts its climb at once, on a launch pass of its own, exactly as
-/// enabling it later would: nothing else would ever feed a ladder with no run in flight.
+/// configuration and the slot). Saving launches nothing: a ladder runs only when its
+/// owner presses Run.
 pub async fn create(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<LadderInput>,
-) -> Result<Json<LadderOut>, ApiError> {
-    let schedule = input.schedule.clone().unwrap_or_default();
+) -> Result<Json<Ladder>, ApiError> {
     let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
     let stored = ladder_from_input(new_id(), input, &now()?)?;
     reject_ineligible_rungs(&state, &stored.rungs)?;
     state
         .db
-        .insert_ladder(&user.0.id, &stored, &schedule.to_db())
+        .insert_ladder(&user.0.id, &stored)
         .await
         .map_err(ApiError::from)?;
-    if !schedule.paused {
-        spawn_refeed(&state, &user.0.id, &stored.id);
-    }
-    Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored, &library),
-        schedule,
-    }))
+    Ok(Json(ladder_to_wire(stored, &library)))
 }
 
-/// `PUT /ladders/{id}` — update a ladder's declaration in place, reconciling its
+/// `PUT /ladders/{id}` — update a ladder's configuration in place, reconciling its
 /// rungs. 404 when the id is not the caller's.
 ///
-/// Rungs are matched on their stable ids and **reconciled, never replaced**: a rung
-/// still present keeps its recorded verdicts, a new one is inserted, and only a rung
-/// genuinely dropped from the climb takes its verdicts with it — which is what
-/// dropping it means. The schedule is written only when the body carried one.
-///
-/// `400` for a climber the account cannot launch, exactly as [`create`] refuses one.
+/// Saving never touches a running dispatch: it runs its snapshot, and the edit applies
+/// to the next Run. `400` for a climber the account cannot launch, exactly as [`create`]
+/// refuses one.
 pub async fn update(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
     Json(input): Json<LadderInput>,
-) -> Result<Json<LadderOut>, ApiError> {
-    let requested_schedule = input.schedule.clone();
+) -> Result<Json<Ladder>, ApiError> {
     // The climbers already on the ladder, exempt from re-judgement — see
-    // [`reject_unstorable_members`]. A ladder is the place a member sits longest, so a
-    // configuration gaining a launch slot must not make the whole ladder unsavable.
+    // [`reject_unstorable_members`]: a configuration gaining a launch slot must not make
+    // the whole ladder unsavable.
     let climbing = state
         .db
         .get_ladder(&user.0.id, &id)
@@ -846,30 +850,16 @@ pub async fn update(
     if !updated {
         return Err(ApiError::not_found("ladder not found"));
     }
-    let schedule = match requested_schedule {
-        Some(schedule) => {
-            state
-                .db
-                .set_ladder_schedule(&user.0.id, &id, &schedule.to_db())
-                .await
-                .map_err(ApiError::from)?;
-            schedule
-        }
-        None => schedule_of(&state, &user.0.id, &id).await?,
-    };
-    spawn_refeed(&state, &user.0.id, &id);
-    Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored, &library),
-        schedule,
-    }))
+    Ok(Json(ladder_to_wire(stored, &library)))
 }
 
-/// `DELETE /ladders/{id}` — delete a ladder and, by cascade, its rungs, steering, and
-/// verdicts. 404 when the id is not the caller's.
+/// `DELETE /ladders/{id}` — delete a ladder, its rungs, and its dispatch. 404 when the
+/// id is not the caller's.
 ///
-/// Jobs the ladder launched are deliberately left alone: they record the ladder only
-/// as their origin, and deleting the ladder you launched from is not a reason to throw
-/// away runs that already cost money. Halt first if that is what you meant.
+/// The dispatch's jobs are deliberately left alone: they record the ladder only as their
+/// origin, and deleting a ladder is not a reason to throw away runs that already cost
+/// money. Stop first if that is what you meant. Their automatic retries are withheld and
+/// their finishes feed nothing, since their dispatch is gone.
 pub async fn delete(
     State(state): State<AppState>,
     user: AuthUser,
@@ -886,9 +876,9 @@ pub async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `POST /ladders/{id}/rungs/order` — reorder the climb without editing it. 404 when
-/// the id is not the caller's; 400 when the body is not a permutation of the ladder's
-/// current rungs.
+/// `POST /ladders/{id}/rungs/order` — reorder the configuration without editing it. 404
+/// when the id is not the caller's; 400 when the body is not a permutation of the
+/// ladder's current rungs. A running dispatch keeps its own order.
 pub async fn reorder_rungs(
     State(state): State<AppState>,
     user: AuthUser,
@@ -930,308 +920,411 @@ pub async fn reorder_rungs(
     if !updated {
         return Err(ApiError::not_found("ladder not found"));
     }
-    spawn_refeed(&state, &user.0.id, &id);
     Ok(Json(stored.rungs.iter().map(rung_to_wire).collect()))
 }
 
-// ---- Schedule --------------------------------------------------------------
+// ---- Dispatches ------------------------------------------------------------
 
-/// `GET /ladders/{id}/schedule` — how one ladder is being fed. 404 when the id is not
-/// the caller's.
-pub async fn schedule(
+/// `POST /ladders/{id}/run` — start a dispatch of the configuration as it stands, and
+/// run its first launch pass. Answers with the board.
+///
+/// `400` naming the cause when the configuration has no rungs, holds a rung that is not
+/// validator-rated, or resolves no climbers; `409` while a dispatch is running. A Run
+/// after a dispatch ended replaces it, its verdicts and climbers with it.
+pub async fn run(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<LadderSchedule>, ApiError> {
-    Ok(Json(schedule_of(&state, &user.0.id, &id).await?))
-}
-
-/// `PUT /ladders/{id}/schedule` — replace how one ladder is being fed, without
-/// re-sending (or racing) its climb. 404 when the id is not the caller's.
-pub async fn set_schedule(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(schedule): Json<LadderSchedule>,
-) -> Result<Json<LadderSchedule>, ApiError> {
-    let updated = state
+) -> Result<Json<LadderProgress>, ApiError> {
+    let user_id = &user.0.id;
+    let ladder = load_ladder(&state, user_id, &id).await?;
+    if ladder.rungs.is_empty() {
+        return Err(ApiError::bad_request("this ladder has no rungs"));
+    }
+    reject_ineligible_rungs(&state, &ladder.rungs)?;
+    let groups = group_index(&state, user_id).await?;
+    let library = gg_library(&state, user_id).await?;
+    let members = resolve_combos(&ladder.combo_group_ids, &ladder.combos, &groups, &library);
+    let climbers = dispatch_climbers_of(&members)?;
+    if climbers.is_empty() {
+        return Err(ApiError::bad_request("this ladder resolves no climbers"));
+    }
+    let limit = resolve_in_flight_limit(&state, user_id, ladder.in_flight_limit).await?;
+    let snapshot = snapshot_of(&ladder, limit);
+    let dispatch = StoredDispatch {
+        ladder_id: id.clone(),
+        id: new_id(),
+        status: DispatchStatus::Running.as_str().to_string(),
+        started_at: now()?,
+        ended_at: None,
+        snapshot_json: serde_json::to_string(&snapshot)
+            .map_err(|e| ApiError::internal(format!("encoding a dispatch snapshot: {e}")))?,
+    };
+    let started = state
         .db
-        .set_ladder_schedule(&user.0.id, &id, &schedule.to_db())
+        .start_ladder_dispatch(&dispatch, &climbers)
         .await
         .map_err(ApiError::from)?;
-    if !updated {
-        return Err(ApiError::not_found("ladder not found"));
+    if !started {
+        return Err(ApiError::conflict(
+            "a dispatch of this ladder is already running",
+        ));
     }
-    spawn_refeed(&state, &user.0.id, &id);
-    Ok(Json(schedule))
+    // The dispatch has started whatever its first pass does: a pass that fails leaves it
+    // running, and the next prompt (a finished run, a retry, a restart) passes again.
+    if let Err(err) = launch_ladder(&state, user_id, &id).await {
+        tracing::warn!(
+            ladder = %id,
+            error = %err.message,
+            "could not run a new dispatch's first launch pass"
+        );
+    }
+    Ok(Json(progress_of(&state, user_id, &id).await?))
 }
 
-// ---- Progress --------------------------------------------------------------
-
-/// `GET /ladders/{id}/progress` — the ladder's board: every climber's status, the rung
-/// it stands on, and its verdicts. 404 when the id is not the caller's.
+/// `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
+/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting` and `running`
+/// ones too. `409` when no dispatch is running.
 ///
-/// A **read**: verdicts the gate has resolved but nobody has written down yet are
-/// computed live and flagged [`LadderRungOutcome::recorded`] false. They are persisted
-/// by the next launch pass, which is a write — a `GET` that silently mutated the board would
-/// make a dashboard refresh part of the climb.
+/// The end is a conditional update, and the cancel reaches only the jobs whose origin
+/// names this dispatch. A launch pass that was enqueuing meanwhile checks the dispatch
+/// after it enqueues and cancels what it just enqueued.
+pub async fn stop(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+    input: Option<Json<LadderStopInput>>,
+) -> Result<Json<HaltResult>, ApiError> {
+    let input = input.map(|Json(input)| input).unwrap_or_default();
+    load_ladder(&state, &user.0.id, &id).await?;
+    let Some(dispatch_id) = state
+        .db
+        .end_ladder_dispatch(&id, None, DispatchStatus::Stopped.as_str(), &now()?)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        return Err(ApiError::conflict("no dispatch of this ladder is running"));
+    };
+    let canceled = halt_jobs(
+        &state,
+        &OriginScope::Prefix(dispatch_prefix(&id, &dispatch_id)),
+        input.cancel_running,
+        "canceled by stopping the ladder",
+    )
+    .await?;
+    Ok(Json(HaltResult {
+        canceled,
+        included_active: input.cancel_running,
+    }))
+}
+
+/// `GET /ladders/summary` — one entry per ladder for the ladders list: the
+/// configuration's headline and its latest dispatch's slot counts and runs. One request
+/// for the whole list.
+pub async fn summary(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Vec<LadderSummary>>, ApiError> {
+    let user_id = &user.0.id;
+    let ladders = state
+        .db
+        .list_ladders(user_id)
+        .await
+        .map_err(ApiError::from)?;
+    let groups = group_index(&state, user_id).await?;
+    let library = gg_library(&state, user_id).await?;
+    let mut out = Vec::with_capacity(ladders.len());
+    for ladder in ladders {
+        let climbers =
+            resolve_combos(&ladder.combo_group_ids, &ladder.combos, &groups, &library).len();
+        let dispatch = match state
+            .db
+            .ladder_dispatch(&ladder.id)
+            .await
+            .map_err(ApiError::from)?
+        {
+            Some(dispatch) => {
+                let board = read_dispatch(&state, &ladder.id, dispatch, &library, false).await?;
+                let (slots, runs) = board.totals();
+                Some(LadderDispatchSummary {
+                    id: board.dispatch.id.clone(),
+                    status: DispatchStatus::parse(&board.dispatch.status),
+                    started_at: board.dispatch.started_at.clone(),
+                    ended_at: board.dispatch.ended_at.clone(),
+                    slots,
+                    runs,
+                })
+            }
+            None => None,
+        };
+        out.push(LadderSummary {
+            id: ladder.id,
+            name: ladder.name,
+            rungs: ladder.rungs.len() as u32,
+            runs_per_cell: ladder.runs_per_cell,
+            climbers: climbers as u32,
+            dispatch,
+        });
+    }
+    Ok(Json(out))
+}
+
+/// `GET /ladders/{id}/progress` — the board: the rungs, the latest dispatch, and every
+/// climber of it with each rung slot. 404 when the id is not the caller's.
+///
+/// A **read**: verdicts the gate has resolved but nobody has recorded are computed live,
+/// and persisted by the next launch pass — a `GET` that mutated the board would make a
+/// dashboard refresh part of the climb.
 pub async fn progress(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<LadderProgress>, ApiError> {
-    let board = load_board(&state, &user.0.id, &id, false).await?;
-    Ok(Json(board.progress))
+    Ok(Json(progress_of(&state, &user.0.id, &id).await?))
+}
+
+/// `GET /ladders/{id}/queue` — the latest dispatch's completed runs the requesting
+/// account has not reviewed, in the ladder's own order. Empty without a dispatch.
+///
+/// The queue is there for labelling after the fact and neither blocks nor feeds the
+/// climb. A slot's runs sit together, oldest first. 404 when the id is not the caller's.
+pub async fn queue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<CoverageQueue>, ApiError> {
+    let user_id = &user.0.id;
+    load_ladder(&state, user_id, &id).await?;
+    let Some(dispatch) = state
+        .db
+        .ladder_dispatch(&id)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        return Ok(Json(CoverageQueue {
+            runs: Vec::new(),
+            truncated: false,
+        }));
+    };
+    let library = gg_library(&state, user_id).await?;
+    let board = read_dispatch(&state, &id, dispatch, &library, false).await?;
+    let unreviewed = state
+        .db
+        .unreviewed_among(&board.run_ids(), user_id)
+        .await
+        .map_err(ApiError::from)?;
+    let mut runs: Vec<CoverageQueueEntry> = Vec::new();
+    let mut truncated = false;
+    'slots: for (climber, position) in board.slot_order() {
+        let rung = &board.snapshot.rungs[position];
+        let member = &climber.member;
+        for run in &climber.slots[position].runs {
+            if !unreviewed.contains(&run.run_id) {
+                continue;
+            }
+            if runs.len() >= MAX_QUEUE_RUNS {
+                truncated = true;
+                break 'slots;
+            }
+            runs.push(CoverageQueueEntry {
+                run_id: run.run_id.clone(),
+                rung_id: Some(rung.id.clone()),
+                slug: rung.slug.clone(),
+                version: rung.version.clone(),
+                variant: rung.variant.clone(),
+                engine: rung.case().engine_slug(),
+                harness: member.combo.harness,
+                model: member.launch_model.clone(),
+                gg_config_id: member.combo.gg_config_id.clone(),
+                gg_config_name: member.combo.gg_config_name.clone(),
+                gg_slot_models: member.combo.gg_slot_models.clone(),
+                finished_at: run.finished_at.clone(),
+            });
+        }
+    }
+    Ok(Json(CoverageQueue { runs, truncated }))
+}
+
+/// `POST /ladders/{id}/climbers/retry` — retry a climber of the running dispatch that
+/// is blocked as `failing` or `unlaunchable`, once its owner has fixed the cause.
+///
+/// The retry is recorded on the dispatch's climber, and only jobs that ended after it
+/// count toward its failing streak, so the launch pass that follows relaunches its rung
+/// under the dispatch's limit; a pass also resolves the combination again, which is what
+/// clears an `unlaunchable` one that has been fixed. Recording it rather than launching
+/// once is what keeps a retry from being lost to a busy claim or a full limit.
+///
+/// `204`; `404` when the combination is not a climber of the dispatch; `409` when no
+/// dispatch is running or the climber is not blocked for one of those two reasons.
+pub async fn retry_climber(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+    Json(input): Json<LadderRetryInput>,
+) -> Result<StatusCode, ApiError> {
+    let user_id = &user.0.id;
+    load_ladder(&state, user_id, &id).await?;
+    let dispatch = state
+        .db
+        .ladder_dispatch(&id)
+        .await
+        .map_err(ApiError::from)?
+        .filter(|dispatch| DispatchStatus::parse(&dispatch.status) == DispatchStatus::Running)
+        .ok_or_else(|| ApiError::conflict("no dispatch of this ladder is running"))?;
+    let key = climber_key(&input.combination);
+    let library = gg_library(&state, user_id).await?;
+    let board = read_dispatch(&state, &id, dispatch, &library, false).await?;
+    let climber = board
+        .climbers
+        .iter()
+        .find(|climber| climber.stored.climber_key == key)
+        .ok_or_else(|| ApiError::not_found("not a climber of this ladder's dispatch"))?;
+    match &climber.walk.blocked {
+        Some(ClimberBlock::Failing { .. } | ClimberBlock::Unlaunchable { .. }) => {}
+        Some(ClimberBlock::Unrated { .. }) => {
+            return Err(ApiError::conflict(
+                "this climber is blocked by unrated runs, which a retry cannot help",
+            ));
+        }
+        None => {
+            return Err(ApiError::conflict(format!(
+                "this climber is {}, not blocked",
+                climber_status_word(climber.walk.status)
+            )));
+        }
+    }
+    let recorded = state
+        .db
+        .record_dispatch_climber_retry(&board.dispatch.id, &key, &now()?)
+        .await
+        .map_err(ApiError::from)?;
+    if !recorded {
+        return Err(ApiError::not_found(
+            "not a climber of this ladder's dispatch",
+        ));
+    }
+    spawn_launch(&state, LaunchTarget::Ladder, user_id, &id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A climber's status as its wire token, for a message that names it.
+fn climber_status_word(status: ClimberStatus) -> &'static str {
+    match status {
+        ClimberStatus::Running => "running",
+        ClimberStatus::Blocked => "blocked",
+        ClimberStatus::Failed => "failed",
+        ClimberStatus::Completed => "completed",
+    }
 }
 
 // ---- Launch passes ---------------------------------------------------------
 
-/// How many failed jobs in a row, with no completed run between them, mark a cell as
-/// failing. A launch pass then stops relaunching it, so a cell whose every run fails
-/// cannot relaunch itself forever; retrying its climber ([`retry_climber`]) starts the
-/// count afresh.
-const FAILING_STREAK: u32 = 3;
-
-/// The most launch passes one claim holder runs for the requests that arrived while it
-/// held the claim. Each pass sees every run that landed before it started, so a burst
-/// of finishes collapses into a pass or two; the bound only stops a pathological stream
-/// from pinning one task. A request still standing when the bound is reached is handed
-/// to a fresh launch pass of its own ([`spawn_pending_top_up`]), never left for a
-/// trigger that may not come.
-const MAX_TOP_UP_PASSES: u32 = 5;
-
-/// Run a **launch pass** of one ladder as `user_id`, its owner: resolve where every
-/// climber stands (recording any verdict that has become decidable, and with `earlyStop`
-/// on cancelling a decided rung's runs that have not started), then enqueue whole cells
-/// of the rungs they are on, up to the in-flight cap. What [`feed_ladders`] runs when a
-/// job finishes with no console open, and what [`spawn_refeed`] and
-/// [`spawn_startup_feed`] run.
-///
-/// Only a climber's **current** rung is ever launched — that is what makes this a
-/// ladder rather than a plan. Serialized per ladder by a claim on the ladder row, for
-/// the same reason a plan's top-up is: two callers would otherwise both observe the
-/// same shortfall and both enqueue for it.
-///
-/// A disabled ladder answers `skipped: paused` and takes no claim. When another pass
-/// holds the claim, this one leaves a request for another pass and tries the claim once
-/// more: the holder checks for requests after it
-/// releases the claim, so a request is always seen either by the holder or, when the
-/// claim came free in between, by this caller, which then serves it itself. Only when
-/// the second attempt also finds the claim held does it answer `skipped: busy`. The
-/// passes one call runs are merged into one result.
-pub(crate) async fn top_up_ladder(
+/// Run launch passes of a ladder's running dispatch as `user_id`, its owner: `skipped:
+/// notRunning` when it has none, else
+/// [`run_launch_passes`] under the ladder's claim.
+pub(super) async fn launch_ladder(
     state: &AppState,
     user_id: &str,
     id: &str,
-) -> Result<TopUpResult, ApiError> {
-    let schedule = schedule_of(state, user_id, id).await?;
-    let buffer_target = resolve_buffer_target(state, user_id, schedule.buffer_target).await?;
-    if schedule.paused {
-        return Ok(TopUpResult::skipped_by(TopUpSkipped::Paused, buffer_target));
-    }
-
-    let mut merged: Option<TopUpResult> = None;
-    let mut passes = 0u32;
-    let mut requested = false;
-    loop {
-        let claimed = state
-            .db
-            .claim_ladder_top_up(user_id, id, &now()?)
-            .await
-            .map_err(ApiError::from)?;
-        if !claimed {
-            if requested {
-                return Ok(merged.unwrap_or_else(|| {
-                    TopUpResult::skipped_by(TopUpSkipped::Busy, buffer_target)
-                }));
-            }
-            // Whoever holds the claim runs one more pass for this request before it
-            // lets go, so the evidence that prompted this call is not lost. The holder
-            // may already be past its last check, though, so the claim is tried once
-            // more: either it is still held, and the holder's check after its release
-            // sees the request, or it came free, and this caller serves the request.
-            state
-                .db
-                .request_ladder_top_up(id)
-                .await
-                .map_err(ApiError::from)?;
-            requested = true;
-            continue;
-        }
-
-        // Everything from here to the release runs under the claim. The release is
-        // unconditional: a claim nobody releases only expires after the store's lease,
-        // and stalling the ladder that long because one pass failed would turn a bad
-        // moment into a wedged ladder.
-        let worked =
-            top_up_passes(state, user_id, id, buffer_target, &mut passes, &mut merged).await;
-        let released = state.db.release_ladder_top_up(id).await;
-
-        // A request that landed between the last check and the release found the claim
-        // still held, so it is this caller's to serve. One this caller cannot serve —
-        // its passes are spent, or the last one failed — goes to a fresh pass rather
-        // than waiting on a trigger that may never come: the last runs of a climb
-        // finishing together are exactly when nothing else will.
-        let pending = match released {
-            Ok(()) => pass_requested(state, user_id, id).await,
-            Err(err) => Err(ApiError::from(err)),
-        };
-        match (worked, pending) {
-            (Ok(()), Ok(true)) if passes < MAX_TOP_UP_PASSES => {
-                requested = false;
-                continue;
-            }
-            (worked, Ok(true)) => {
-                spawn_pending_top_up(state, user_id, id);
-                worked?;
-            }
-            (worked, pending) => {
-                worked?;
-                pending?;
-            }
-        }
-        break;
-    }
-    Ok(merged.unwrap_or_else(|| TopUpResult::skipped_by(TopUpSkipped::Busy, buffer_target)))
+) -> Result<LaunchPassResult, ApiError> {
+    let ladder = load_ladder(state, user_id, id).await?;
+    let dispatch = state.db.ladder_dispatch(id).await.map_err(ApiError::from)?;
+    let running = dispatch
+        .as_ref()
+        .filter(|dispatch| DispatchStatus::parse(&dispatch.status) == DispatchStatus::Running);
+    let Some(dispatch) = running else {
+        let limit = resolve_in_flight_limit(state, user_id, ladder.in_flight_limit).await?;
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotRunning,
+            limit,
+        ));
+    };
+    let limit = parse_snapshot(dispatch)?.in_flight_limit;
+    run_launch_passes(state, LaunchTarget::Ladder, user_id, id, limit).await
 }
 
-/// Serve a ladder's pending launch-pass request on a task of its own, for a holder that
-/// has to let it go: its passes are spent, or its last pass failed.
+/// One launch pass of a ladder's running dispatch, run while this caller holds the
+/// ladder's claim: record every verdict the gate can now decide (cancelling a decided
+/// slot's waiting jobs under `earlyStop`), launch each climber's current rung up to the
+/// dispatch's limit, and mark the dispatch finished once every climber completed or
+/// failed and nothing of it is in flight.
 ///
-/// It cannot loop: it only runs a pass when it takes a request, and a request is only
-/// left by a trigger, so a ladder nobody is feeding settles after one more pass.
-fn spawn_pending_top_up(state: &AppState, user_id: &str, id: &str) {
-    let state = state.clone();
-    let user_id = user_id.to_string();
-    let id = id.to_string();
-    let task: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
-        Box::pin(async move {
-            match top_up_ladder(&state, &user_id, &id).await {
-                Ok(result) => tracing::info!(
-                    ladder = %id,
-                    enqueued = result.enqueued,
-                    skipped = ?result.skipped,
-                    "served a ladder's pending launch pass"
-                ),
-                Err(err) => tracing::warn!(
-                    ladder = %id,
-                    error = %err.message,
-                    "could not serve a ladder's pending launch pass"
-                ),
-            }
-        });
-    tokio::spawn(task);
-}
-
-/// Run launch passes while the claim is held: one, and another for every request that
-/// arrived meanwhile, up to [`MAX_TOP_UP_PASSES`] in all.
-async fn top_up_passes(
+/// The limit is the one in the snapshot of the dispatch this pass reads, never one carried
+/// in from whoever took the claim: a holder serving a request that arrived after a new Run
+/// must launch that dispatch under its own limit.
+pub(super) async fn ladder_pass_locked(
     state: &AppState,
     user_id: &str,
     id: &str,
-    buffer_target: BufferTarget,
-    passes: &mut u32,
-    merged: &mut Option<TopUpResult>,
-) -> Result<(), ApiError> {
-    loop {
-        // Taken before the pass reads anything, so a request made during the pass is
-        // still standing when it ends.
+) -> Result<LaunchPassResult, ApiError> {
+    let Some(dispatch) = running_dispatch(state, id).await? else {
+        let ladder = load_ladder(state, user_id, id).await?;
+        let limit = resolve_in_flight_limit(state, user_id, ladder.in_flight_limit).await?;
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotRunning,
+            limit,
+        ));
+    };
+    let limit = parse_snapshot(&dispatch)?.in_flight_limit;
+    let dispatch_id = dispatch.id.clone();
+    let library = gg_library(state, user_id).await?;
+    let board = read_dispatch(state, id, dispatch, &library, true).await?;
+
+    let in_flight = board.in_flight_total();
+    if board.finished() && in_flight == 0 {
         state
             .db
-            .take_ladder_top_up_request(id)
+            .end_ladder_dispatch(
+                id,
+                Some(&dispatch_id),
+                DispatchStatus::Finished.as_str(),
+                &now()?,
+            )
             .await
             .map_err(ApiError::from)?;
-        let result = top_up_locked(state, user_id, id, buffer_target).await?;
-        *merged = Some(match merged.take() {
-            None => result,
-            Some(earlier) => merge_top_ups(earlier, result),
+        return Ok(LaunchPassResult {
+            skipped: None,
+            in_flight_limit: limit,
+            in_flight: Some(0),
+            enqueued: 0,
+            cells: Vec::new(),
+            unlaunchable: Vec::new(),
+            early_stop_canceled: board.early_stop_canceled,
         });
-        *passes += 1;
-        if *passes >= MAX_TOP_UP_PASSES || !pass_requested(state, user_id, id).await? {
-            return Ok(());
-        }
     }
-}
 
-/// Whether another pass is wanted: one was requested, and the ladder is still enabled
-/// (a halt in the meantime pauses it, and must not be followed by a refill).
-async fn pass_requested(state: &AppState, user_id: &str, id: &str) -> Result<bool, ApiError> {
-    if !state
-        .db
-        .ladder_top_up_requested(id)
-        .await
-        .map_err(ApiError::from)?
-    {
-        return Ok(false);
-    }
-    Ok(!schedule_of(state, user_id, id).await?.paused)
-}
-
-/// Two passes' results as one: what both enqueued and could not launch, the later
-/// pass's view of the buffer, and every early-stop cancel.
-fn merge_top_ups(earlier: TopUpResult, later: TopUpResult) -> TopUpResult {
-    let mut cells = earlier.cells;
-    cells.extend(later.cells);
-    let mut unlaunchable = earlier.unlaunchable;
-    unlaunchable.extend(later.unlaunchable);
-    TopUpResult {
-        skipped: later.skipped,
-        buffer_target: later.buffer_target,
-        outstanding: later.outstanding.or(earlier.outstanding),
-        enqueued: earlier.enqueued + later.enqueued,
-        cells,
-        unlaunchable,
-        early_stop_canceled: earlier.early_stop_canceled + later.early_stop_canceled,
-    }
-}
-
-/// One launch pass, run while this caller holds the ladder's claim.
-async fn top_up_locked(
-    state: &AppState,
-    user_id: &str,
-    id: &str,
-    buffer_target: BufferTarget,
-) -> Result<TopUpResult, ApiError> {
-    // `record = true`: a launch pass is a write, and the whole point of resolving the board
-    // here is to write down the verdicts that let climbers move up.
-    let board = load_board(state, user_id, id, true).await?;
-
-    let mut demands: Vec<CellDemand> = Vec::with_capacity(board.active.len());
-    // Climbers whose member never resolved. A ladder is where this is easiest to miss —
-    // a climber that cannot launch simply stops moving — so the reason is reported
-    // beside the launches rather than left to be inferred from a board that stopped
-    // advancing.
-    let mut unlaunchable: Vec<TopUpBlocked> = Vec::new();
-    for active in &board.active {
-        let demand = board
-            .ctx
-            .demand(active.target, &active.case, &active.member);
-        // Only worth reporting on a rung that actually wanted runs: a rung already at its
-        // target is not being held up by anything.
-        if let Some(reason) = &active.member.unlaunchable
+    let active = board.active_slots();
+    let mut demands: Vec<CellDemand> = Vec::with_capacity(active.len());
+    let mut unlaunchable: Vec<BlockedCell> = Vec::new();
+    for slot in &active {
+        let demand = CellDemand {
+            target: slot.target,
+            counted: slot.counted,
+            in_flight: slot.in_flight,
+            harness: harness_lane(slot.member.combo.harness),
+        };
+        // Only worth reporting on a slot that actually wanted runs.
+        if let Some(reason) = &slot.member.unlaunchable
             && demand.missing() > 0
         {
             unlaunchable.push(blocked_cell(
-                Some(active.rung_id.clone()),
-                &active.case,
-                &active.member,
+                Some(slot.rung_id.clone()),
+                &slot.case,
+                slot.member,
                 reason.clone(),
             ));
         }
-        let demand = launchable_demand(demand, &active.member);
-        // A launch pass does not relaunch a cell whose runs keep failing — that is how a
-        // cell that always fails would relaunch itself forever. Retrying the climber resets
-        // the streak.
-        if active.failing && active.member.unlaunchable.is_none() {
+        let demand = launchable_demand(demand, slot.member);
+        // A pass does not relaunch a slot whose runs keep failing on infrastructure —
+        // that is how a slot that always fails would relaunch itself forever. Retrying
+        // the climber starts the streak afresh.
+        if slot.failing && slot.member.unlaunchable.is_none() {
             if demand.missing() > 0 {
                 unlaunchable.push(blocked_cell(
-                    Some(active.rung_id.clone()),
-                    &active.case,
-                    &active.member,
-                    format!(
-                        "its last {FAILING_STREAK} runs failed; retry the climber once the \
-                         cause is fixed"
-                    ),
+                    Some(slot.rung_id.clone()),
+                    &slot.case,
+                    slot.member,
+                    blocked_reason(),
                 ));
             }
             demands.push(CellDemand {
@@ -1242,75 +1335,54 @@ async fn top_up_locked(
         }
         demands.push(demand);
     }
-    // A ladder's buffer caps the runs in flight across every rung a climber has reached,
-    // never completed runs, so a climb never waits on a person. Taking the board's total
-    // rather than re-tallying the launchable cells keeps the number the dashboard shows
-    // and the number the launch pass obeys from ever disagreeing.
-    let in_flight = board.progress.runs_in_flight;
-    let launches = decide_top_up(
-        &demands,
-        board.ctx.harness_capacity(),
-        buffer_target,
-        in_flight,
-    );
-
-    let cells: Vec<TopUpCell<'_>> = launches
+    let launches = launch_pass(&demands, &board.harness_capacity, limit, in_flight);
+    let cells: Vec<LaunchCell<'_>> = launches
         .iter()
         .map(|launch| {
-            let active = &board.active[launch.cell];
-            TopUpCell {
-                rung_id: Some(active.rung_id.clone()),
-                case: &active.case,
-                member: &active.member,
+            let slot = &active[launch.cell];
+            LaunchCell {
+                rung_id: Some(slot.rung_id.clone()),
+                origin: JobOrigin::dispatch(id, dispatch_id.clone(), slot.rung_id.clone()),
+                case: &slot.case,
+                member: slot.member,
                 runs: launch.runs,
             }
         })
         .collect();
-    // A halt does not take the claim: it disables the ladder and then cancels its
-    // waiting jobs. A pass that began before the halt may therefore reach this point
-    // after it, and must not refill the queue the halt just emptied. Checked before the
-    // enqueue, and again after it, because the halt can land in between: either the
-    // halt's cancel comes after these jobs exist and reaches them, or the check below
-    // sees the ladder disabled and cancels them itself.
-    let origin = JobOrigin::Ladder(id.to_string());
-    if schedule_of(state, user_id, id).await?.paused {
-        return Ok(TopUpResult {
+
+    // A stop does not take the claim: it ends the dispatch and then cancels its jobs. A
+    // pass that began before the stop may reach this point after it, and must not refill
+    // the queue the stop just emptied. Checked before the enqueue, and again after it,
+    // because the stop can land in between: either the stop's cancel comes after these
+    // jobs exist and reaches them, or the check below sees the dispatch ended and cancels
+    // them itself. A new Run in between is the same: its dispatch is not this one.
+    let still_running =
+        |current: Option<StoredDispatch>| current.is_some_and(|d| d.id == dispatch_id);
+    if !still_running(running_dispatch(state, id).await?) {
+        return Ok(LaunchPassResult {
             early_stop_canceled: board.early_stop_canceled,
-            ..TopUpResult::skipped_by(TopUpSkipped::Paused, buffer_target)
+            ..LaunchPassResult::skipped_by(LaunchSkipped::NotRunning, limit)
         });
     }
-    let enqueued = enqueue_top_up(state, user_id, &origin, &cells).await?;
-    if !enqueued.launched.is_empty() && schedule_of(state, user_id, id).await?.paused {
-        // Only what this pass just enqueued: a plain disable stops new work and leaves
-        // the runs queued before it alone, and a halt cancels those itself.
-        let ids: Vec<String> = enqueued
-            .launched
-            .iter()
-            .flat_map(|cell| cell.job_ids.iter().cloned())
-            .collect();
-        super::jobs::sweep_cancel(
+    let enqueued = enqueue_launches(state, user_id, &cells).await?;
+    if !enqueued.launched.is_empty() && !still_running(running_dispatch(state, id).await?) {
+        cancel_just_enqueued(
             state,
-            &JobCancelFilter {
-                states: &CANCELABLE_WAITING_STATES,
-                origin: Some(&origin),
-                user_id: None,
-                cell: None,
-                ids: Some(&ids),
-            },
-            "canceled: the ladder was disabled while this run was being enqueued",
+            &enqueued.launched,
+            "canceled: the ladder dispatch ended while this run was being enqueued",
         )
         .await?;
-        return Ok(TopUpResult {
+        return Ok(LaunchPassResult {
             early_stop_canceled: board.early_stop_canceled,
-            ..TopUpResult::skipped_by(TopUpSkipped::Paused, buffer_target)
+            ..LaunchPassResult::skipped_by(LaunchSkipped::NotRunning, limit)
         });
     }
     unlaunchable.extend(enqueued.blocked);
 
-    Ok(TopUpResult {
+    Ok(LaunchPassResult {
         skipped: None,
-        buffer_target,
-        outstanding: Some(in_flight),
+        in_flight_limit: limit,
+        in_flight: Some(in_flight),
         enqueued: enqueued.launched.iter().map(|cell| cell.runs).sum(),
         cells: enqueued.launched,
         unlaunchable,
@@ -1318,880 +1390,189 @@ async fn top_up_locked(
     })
 }
 
-/// Feed the ladders a job that just reached a terminal state belongs to: every enabled
-/// ladder whose rungs pin the job's case, version, variant and engine, plus the ladder
-/// its `origin` names, each given a launch pass as its owner.
-///
-/// This is what makes a ladder climb by itself. There is no background daemon: the run
-/// that finishes is the evidence that may decide a rung, so its arrival is the moment to
-/// record the verdict and launch the next rung. The combination is not matched up
-/// front — which climbers a ladder has is its board's to resolve — so a ladder whose
-/// climbers do not include this job's combination simply finds nothing new to do.
-///
-/// Never fails: a ladder whose launch pass fails is logged and the rest are still fed,
-/// because this runs after a driver's status report is stored and must never be the
-/// reason that report fails.
-pub(crate) async fn feed_ladders(state: &AppState, job: &test_cabinet_entities::job::Model) {
-    let origin = job
-        .origin
-        .as_deref()
-        .and_then(JobOrigin::parse)
-        .and_then(|origin| match origin {
-            JobOrigin::Ladder(id) => Some(id),
-            JobOrigin::Plan(_) => None,
-        });
-    let engine = job
-        .engine_slug
-        .as_deref()
-        .unwrap_or(test_cabinet_core::engine::NONE_SLUG);
-    let ladders = match state
-        .db
-        .ladders_fed_by(
-            &job.test_case_slug,
-            &job.test_case_version,
-            &job.variant,
-            engine,
-            origin.as_deref(),
-        )
-        .await
-    {
-        Ok(ladders) => ladders,
-        Err(err) => {
-            tracing::warn!(job = %job.id, error = %err, "could not find the ladders a finished run feeds");
-            return;
-        }
+/// The ladder a job that just reached a terminal state feeds, as `(ladder id, owner)`:
+/// the one whose dispatch its origin names, while that dispatch is still the ladder's
+/// running one. A job of an ended or replaced dispatch, a legacy `ladder:<id>` job, and
+/// any other job feed no ladder. Never fails; a read that fails is logged.
+pub(super) async fn dispatch_fed_by(
+    state: &AppState,
+    job: &test_cabinet_entities::job::Model,
+) -> Option<(String, String)> {
+    let Some(JobOrigin::Ladder {
+        ladder_id,
+        dispatch_id: Some(dispatch_id),
+        ..
+    }) = job.origin.as_deref().and_then(JobOrigin::parse)
+    else {
+        return None;
     };
-    for (ladder_id, owner) in ladders {
-        match top_up_ladder(state, &owner, &ladder_id).await {
-            Ok(result) => tracing::info!(
-                job = %job.id,
-                ladder = %ladder_id,
-                enqueued = result.enqueued,
-                skipped = ?result.skipped,
-                early_stop_canceled = result.early_stop_canceled,
-                "ran a ladder launch pass after one of its runs finished"
-            ),
-            Err(err) => tracing::warn!(
-                job = %job.id,
-                ladder = %ladder_id,
-                error = %err.message,
-                "could not run a ladder launch pass after one of its runs finished"
-            ),
+    let read = async {
+        let running = running_dispatch(state, &ladder_id).await?;
+        if !running.is_some_and(|dispatch| dispatch.id == dispatch_id) {
+            return Ok(None);
         }
-    }
-}
-
-/// Run a launch pass of a ladder on a task of its own after its owner wrote to it — its
-/// rungs, its climbers, their steering, a retry, or its schedule (enabling included) —
-/// when it is enabled.
-///
-/// Such a write can open a climb that has nothing in flight: the ladder enabled, a rung
-/// replaced or bumped, a climber resumed or retried, a combination fixed, a rung or
-/// climber added, the in-flight cap raised. No run of the ladder is coming to finish and
-/// feed it, so without this the climb would sit still. Spawned rather than awaited, so
-/// the write answers at once and never fails because of the launch pass.
-pub(crate) fn spawn_refeed(state: &AppState, user_id: &str, id: &str) {
-    let state = state.clone();
-    let user_id = user_id.to_string();
-    let id = id.to_string();
-    tokio::spawn(async move {
-        refeed(&state, &user_id, &id, "an edit").await;
-    });
-}
-
-/// Run one launch pass of every enabled ladder, on a task of its own, as soon as the
-/// definition store is servable.
-///
-/// A ladder is otherwise fed only when something happens to it, and a restart loses
-/// some of those moments: the single-box reconciliation fails the jobs a restart
-/// orphaned without feeding anyone, and a feed that was spawned but had not finished
-/// dies with the process. A ladder left with nothing in flight would then never move
-/// again. A launch pass of every such ladder at boot puts each back to where its runs
-/// say it should be, and costs nothing for one that is already fed: a pass only
-/// launches what is missing. It waits for the store, because a pass reads the rungs'
-/// manifests and an empty store would make every rung look ingestible.
-pub(crate) fn spawn_startup_feed(state: AppState) {
-    tokio::spawn(async move {
-        while !state.ready.is_ready() {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
-        let ladders = match state.db.enabled_ladders().await {
-            Ok(ladders) => ladders,
-            Err(err) => {
-                tracing::warn!(error = %err, "could not list the ladders to feed at startup");
-                return;
-            }
-        };
-        for (id, owner) in ladders {
-            refeed(&state, &owner, &id, "startup").await;
-        }
-    });
-}
-
-/// One launch pass of a ladder that is enabled, logged rather than returned. `cause`
-/// names what prompted it, for the log.
-async fn refeed(state: &AppState, user_id: &str, id: &str, cause: &str) {
-    match schedule_of(state, user_id, id).await {
-        Ok(schedule) if !schedule.paused => {}
-        Ok(_) => return,
-        Err(err) => {
-            tracing::warn!(ladder = %id, cause, error = %err.message, "could not read a ladder's schedule to feed it");
-            return;
-        }
-    }
-    match top_up_ladder(state, user_id, id).await {
-        Ok(result) => tracing::info!(
-            ladder = %id,
-            cause,
-            enqueued = result.enqueued,
-            skipped = ?result.skipped,
-            "ran a ladder launch pass"
-        ),
-        Err(err) => tracing::warn!(
-            ladder = %id,
-            cause,
-            error = %err.message,
-            "could not run a ladder launch pass"
-        ),
-    }
-}
-
-// ---- Scoped review queue ---------------------------------------------------
-
-/// `GET /ladders/{id}/queue` — the completed runs on every rung the climbers have
-/// reached that the requesting account has not reviewed, **in the ladder's own order**.
-///
-/// The queue is there for labelling after the fact — an aesthetic rating, a writeup —
-/// and neither blocks nor feeds the climb, which the validators decide. It keeps the
-/// ladder's order because a rung's repeats arrive together and are best looked at side
-/// by side. 404 when the id is not the caller's.
-pub async fn queue(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<CoverageQueue>, ApiError> {
-    let board = load_board(&state, &user.0.id, &id, false).await?;
-    let cells: Vec<QueueCell<'_>> = board
-        .reviewable
-        .iter()
-        .map(|cell| QueueCell {
-            rung_id: Some(cell.rung_id.clone()),
-            case: &cell.case,
-            member: &cell.member,
-            unreviewed: board.ctx.unreviewed_for(&cell.case, &cell.member),
-        })
-        .collect();
-    Ok(Json(collect_queue(&state, &user.0.id, &cells).await?))
-}
-
-// ---- Halting ---------------------------------------------------------------
-
-/// `POST /ladders/{id}/pause` — the ladder's **disable / enable** control, and a new
-/// ladder starts on the disabled side of it. 404 when the id is not the caller's.
-///
-/// Enabling starts the climb: the backend runs a launch pass at once, with no second
-/// call. Disabling stops new work only, leaving the queue untouched; cancelling it is
-/// [`halt`].
-pub async fn pause(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(input): Json<PauseInput>,
-) -> Result<Json<LadderSchedule>, ApiError> {
-    let mut schedule = schedule_of(&state, &user.0.id, &id).await?;
-    schedule.paused = input.paused;
-    state
-        .db
-        .set_ladder_schedule(&user.0.id, &id, &schedule.to_db())
-        .await
-        .map_err(ApiError::from)?;
-    if !schedule.paused {
-        spawn_refeed(&state, &user.0.id, &id);
-    }
-    Ok(Json(schedule))
-}
-
-/// `POST /ladders/{id}/halt` — pause the ladder **and** cancel the jobs it launched
-/// that have cost nothing yet (`queued` and `pending`).
-///
-/// The common case, and it needs no confirmation precisely because it throws nothing
-/// away: those jobs have no driver and have spent no tokens. It reaches only jobs whose
-/// origin is this ladder, so a run launched by hand is never swept up. 404 when the id
-/// is not the caller's.
-pub async fn halt(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<HaltResult>, ApiError> {
-    halt_inner(state, user, id, false).await
-}
-
-/// `POST /ladders/{id}/halt-all` — pause the ladder and cancel **every** job it
-/// launched, including the ones already dispatched, starting, or running.
-///
-/// The rare control: those jobs are partly or wholly paid for, so the console must
-/// confirm before calling it and must never make it the default. 404 when the id is not
-/// the caller's.
-pub async fn halt_all(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<HaltResult>, ApiError> {
-    halt_inner(state, user, id, true).await
-}
-
-/// The shared body of [`halt`] and [`halt_all`], differing only in how far into the
-/// in-flight states the cancel reaches.
-async fn halt_inner(
-    state: AppState,
-    user: AuthUser,
-    id: String,
-    include_active: bool,
-) -> Result<Json<HaltResult>, ApiError> {
-    let mut schedule = schedule_of(&state, &user.0.id, &id).await?;
-    // Disable first: a halt that emptied the queue and left the ladder launching runs
-    // would refill exactly what it just cancelled.
-    schedule.paused = true;
-    state
-        .db
-        .set_ladder_schedule(&user.0.id, &id, &schedule.to_db())
-        .await
-        .map_err(ApiError::from)?;
-    let canceled = halt_jobs(
-        &state,
-        &JobOrigin::Ladder(id.clone()),
-        include_active,
-        "canceled by a ladder halt",
-    )
-    .await?;
-    Ok(Json(HaltResult {
-        canceled,
-        included_active: include_active,
-    }))
-}
-
-// ---- Climbers --------------------------------------------------------------
-
-/// `POST /ladders/{id}/climbers` — set one combination's steering: its climb priority,
-/// its focus flag, and whether it is paused.
-///
-/// A pause stops the climber where it stands without deciding a rung, so resuming
-/// continues from exactly where the climb left off. 404 when the id is not the caller's.
-pub async fn set_climber(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(input): Json<LadderClimberInput>,
-) -> Result<Json<StoredClimberOut>, ApiError> {
-    // Resolving the ladder first is what scopes the write to the caller's account: the
-    // child tables are keyed by ladder id alone and inherit the ladder's ownership.
-    load_ladder(&state, &user.0.id, &id).await?;
-    let climber = StoredLadderClimber {
-        combination_key: climber_key(&input.combination),
-        priority: input.priority,
-        focused: input.focused,
-        paused: input.paused,
-        updated_at: now()?,
-        // Not steering, and never written by a steering write.
-        retried_at: None,
+        state
+            .db
+            .ladder_owner(&ladder_id)
+            .await
+            .map_err(ApiError::from)
     };
-    state
-        .db
-        .set_ladder_climber(&id, &climber)
-        .await
-        .map_err(ApiError::from)?;
-    spawn_refeed(&state, &user.0.id, &id);
-    Ok(Json(StoredClimberOut {
-        key: climber.combination_key,
-        priority: climber.priority,
-        focused: climber.focused,
-        paused: climber.paused,
-        updated_at: climber.updated_at,
-    }))
-}
-
-/// One combination's stored steering, echoed back after a write.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredClimberOut {
-    /// The combination's canonical key.
-    pub key: String,
-    /// Climb-order weight; higher goes first.
-    pub priority: i32,
-    /// The "watch this one" flag.
-    pub focused: bool,
-    /// Whether the climber is paused by its owner.
-    pub paused: bool,
-    /// RFC 3339 of when the steering was written.
-    pub updated_at: String,
-}
-
-/// `POST /ladders/{id}/climbers/retry` — retry a climber whose rung keeps failing on
-/// infrastructure, once its owner has fixed the cause.
-///
-/// The retry is recorded on the climber, and only jobs that ended after it count toward
-/// its [failing streak](FAILING_STREAK), so the climber is `running` again and the launch
-/// pass that follows relaunches its rung under the ordinary in-flight cap. Recording it
-/// rather than launching once is what keeps a retry from being lost to a busy claim, a
-/// full cap, a disabled ladder, or a restart: whichever pass comes next launches the rung.
-/// Three more failures block the climber again.
-///
-/// `204` on success; `404` when the ladder is not the caller's or the combination is not
-/// one of its climbers; `409` when the climber is not blocked as `failing`. A paused
-/// climber that is blocked as failing may be retried, since a pause keeps its reason.
-pub async fn retry_climber(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(input): Json<LadderRetryInput>,
-) -> Result<StatusCode, ApiError> {
-    let board = load_board(&state, &user.0.id, &id, false).await?;
-    let key = climber_key(&input.combination);
-    let climber = board
-        .progress
-        .climbers
-        .iter()
-        .find(|climber| climber.key == key)
-        .ok_or_else(|| ApiError::not_found("not a climber of this ladder"))?;
-    match &climber.blocked {
-        Some(ClimberBlock::Failing { .. }) => {}
-        Some(_) => {
-            return Err(ApiError::conflict(
-                "this climber is blocked for another reason, not by failing runs",
-            ));
-        }
-        None => {
-            return Err(ApiError::conflict(format!(
-                "this climber is {}, not blocked by failing runs",
-                climber_status_word(climber.status)
-            )));
+    match read.await {
+        Ok(owner) => owner.map(|owner| (ladder_id, owner)),
+        Err(err) => {
+            tracing::warn!(job = %job.id, error = %err.message, "could not find the ladder dispatch a finished run feeds");
+            None
         }
     }
-    state
-        .db
-        .record_ladder_climber_retry(&id, &key, &now()?)
-        .await
-        .map_err(ApiError::from)?;
-    spawn_refeed(&state, &user.0.id, &id);
-    Ok(StatusCode::NO_CONTENT)
 }
 
-/// A climber's status as its wire token, for a message that names it.
-fn climber_status_word(status: ClimberStatus) -> &'static str {
-    match status {
-        ClimberStatus::Running => "running",
-        ClimberStatus::Blocked => "blocked",
-        ClimberStatus::Failed => "failed",
-        ClimberStatus::Paused => "paused",
-        ClimberStatus::Completed => "completed",
-    }
+/// A ladder's dispatch, when it is running.
+async fn running_dispatch(state: &AppState, id: &str) -> Result<Option<StoredDispatch>, ApiError> {
+    Ok(state
+        .db
+        .ladder_dispatch(id)
+        .await
+        .map_err(ApiError::from)?
+        .filter(|dispatch| DispatchStatus::parse(&dispatch.status) == DispatchStatus::Running))
 }
 
 // ---- The board -------------------------------------------------------------
 
-/// One climber's rung, resolved into the cell a launch pass or a queue walks.
-struct RungCell {
-    /// The rung's stable id.
-    rung_id: String,
-    /// The rung's case, at its pinned version.
-    case: ReviewPlanCase,
-    /// The resolved climber working it.
-    member: PlanMember,
-    /// How many runs the rung wants (its override, else the ladder's target).
-    target: u32,
-    /// Whether the cell's most recent terminal jobs all failed (see
-    /// [`FAILING_STREAK`]). Only ever set on a cell a launch pass may feed.
+/// One rung slot's evidence, as the pure walk reads it.
+#[derive(Debug, Clone, Default)]
+struct SlotEvidence {
+    /// The slot's counted runs, oldest first, as the gate reads them.
+    runs: Vec<RungRun>,
+    /// The slot's jobs in flight.
+    in_flight: u32,
+    /// Whether the slot's newest terminal jobs since the climber's last retry all failed
+    /// on infrastructure.
     failing: bool,
+    /// The verdict recorded on the slot, if any. It stands for the rest of the dispatch.
+    recorded: Option<LadderOutcomeKind>,
 }
 
-/// Everything one ladder read produces: the board for display, the cells a launch pass may
-/// feed, the cells a review queue may offer, and the loaded counts all three were
-/// derived from.
-struct Board {
-    /// The dashboard's view.
-    progress: LadderProgress,
-    /// The current rungs of the climbers still working one, in the ladder's emission
-    /// order. Only these are ever **launched** — that is what makes a ladder a ladder
-    /// rather than a plan.
-    active: Vec<RungCell>,
-    /// Every rung every climber has **reached**, in the same order — a wider set than
-    /// [`Self::active`], and the one the runs-in-flight cap and the review queue are
-    /// measured over. See [`cell_sets`] for why the two differ.
-    reviewable: Vec<RungCell>,
-    /// The counts the cells were tallied from, kept so a caller can re-derive a demand
-    /// without another round-trip.
-    ctx: MatrixCtx,
-    /// How many not-yet-started jobs this read cancelled because an early-stopping gate
-    /// decided their rung. Always `0` on a read that does not record.
-    early_stop_canceled: u32,
+/// One slot after the walk.
+#[derive(Debug, Clone, PartialEq)]
+struct WalkedSlot {
+    /// Where it stands.
+    status: SlotStatus,
+    /// The gate's tally over its evidence.
+    tally: GateTally,
+    /// A verdict the gate reached on this walk that is not recorded yet.
+    newly: Option<LadderOutcomeKind>,
 }
 
-/// What every climber's walk shares: the ladder, what is recorded about it, the counts,
-/// and what this read is allowed to do.
-struct WalkCtx<'a> {
-    state: &'a AppState,
-    ladder: &'a StoredLadder,
-    /// Every recorded verdict on the ladder.
-    recorded: &'a [StoredLadderOutcome],
-    /// The run and job counts.
-    ctx: &'a MatrixCtx,
-    /// Whether verdicts that have become decidable are written down (a launch pass), or only
-    /// reported (a read).
-    record: bool,
-    /// Whether each rung, by position, can be climbed at all ([`rung_supported`]).
-    supported: &'a [bool],
-    /// The cells this ladder still has waiting (`queued` or `pending`) jobs in, read
-    /// only when this walk records and the gate stops early — the only case in which a
-    /// decided rung's waiting jobs are cancelled.
-    waiting: Option<&'a crate::db::CellCounts>,
-}
-
-/// Resolve a whole ladder: its climbers, where each stands, and the cells that are
-/// live. `record` says whether verdicts that have become decidable are written down —
-/// true for a launch pass (a write), false for the dashboard and the queue (reads).
-///
-/// The cost is deliberately shaped: recorded verdicts come from one query for the whole
-/// board, and the gate is evaluated live only for the rungs a climber has reached that
-/// have no verdict yet — which is normally exactly one per climber, because the walk
-/// stops at the first rung that is not cleared.
-async fn load_board(
-    state: &AppState,
-    user_id: &str,
-    id: &str,
-    record: bool,
-) -> Result<Board, ApiError> {
-    let ladder = load_ladder(state, user_id, id).await?;
-    let schedule = schedule_of(state, user_id, id).await?;
-    let buffer_target = resolve_buffer_target(state, user_id, schedule.buffer_target).await?;
-
-    let groups = group_index(state, user_id).await?;
-    let library = gg_library(state, user_id).await?;
-    let mut combos = resolve_combos(&ladder.combo_group_ids, &ladder.combos, &groups, &library);
-    // Only when this read is about to launch. A board that is merely being looked at does not
-    // resolve model facts: the resolution can reach out to OpenRouter, and nothing on a read
-    // spends anything that a failure would have to be refunded from.
-    if record {
-        super::coverage::resolve_launch_facts(state, &mut combos).await;
-    }
-    let steering: HashMap<String, StoredLadderClimber> = state
-        .db
-        .list_ladder_climbers(id)
-        .await
-        .map_err(ApiError::from)?
-        .into_iter()
-        .map(|climber| (climber.combination_key.clone(), climber))
-        .collect();
-    let recorded = state
-        .db
-        .list_ladder_outcomes(id)
-        .await
-        .map_err(ApiError::from)?;
-    let supported: Vec<bool> = ladder
-        .rungs
-        .iter()
-        .map(|rung| rung_supported(state, rung))
-        .collect();
-    let waiting = if record && ladder.gate.early_stop {
-        Some(
-            state
-                .db
-                .waiting_job_cells(&JobOrigin::Ladder(id.to_string()))
-                .await
-                .map_err(ApiError::from)?,
-        )
-    } else {
-        None
-    };
-
-    let slugs: Vec<String> = ladder.rungs.iter().map(|rung| rung.slug.clone()).collect();
-    // A rung's runs are the ones its gate reads, the model's own failures included, so a
-    // rung that keeps failing uses up its target instead of relaunching itself.
-    let counting = MatrixCounting::Ladder {
-        unloaded_counts_as_broken: ladder.gate.unloaded_counts_as_broken,
-    };
-    let mut ctx = MatrixCtx::load(state, slugs.clone(), user_id, counting).await?;
-
-    let order = climb_order(&combos, &steering);
-
-    let walk = WalkCtx {
-        state,
-        ladder: &ladder,
-        recorded: &recorded,
-        ctx: &ctx,
-        record,
-        supported: &supported,
-        waiting: waiting.as_ref(),
-    };
-    let mut climbers: Vec<LadderClimber> = Vec::with_capacity(combos.len());
-    // Where each climber ended up, kept so both cell sets are built from the whole
-    // board at once — in the ladder's order rather than the walk's.
-    let mut standings: Vec<Standing> = Vec::with_capacity(combos.len());
-    let mut climbers_running = 0u32;
-    let mut climbers_completed = 0u32;
-    let mut climbers_failed = 0u32;
-    let mut climbers_blocked = 0u32;
-    let mut climbers_paused = 0u32;
-    let mut early_stop_canceled = 0u32;
-    for index in order {
-        let member = &combos[index];
-        let combo = &member.combo;
-        let key = climber_key(combo);
-        let steer = steering.get(&key);
-        let paused = steer.is_some_and(|s| s.paused);
-        let retried_at = steer.and_then(|s| s.retried_at.as_deref());
-        let climb = walk_climb(&walk, id, member, retried_at).await?;
-        early_stop_canceled += climb.canceled;
-
-        let status = if paused {
-            ClimberStatus::Paused
-        } else {
-            climb.status
-        };
-        match status {
-            ClimberStatus::Running => climbers_running += 1,
-            ClimberStatus::Completed => climbers_completed += 1,
-            ClimberStatus::Failed => climbers_failed += 1,
-            ClimberStatus::Blocked => climbers_blocked += 1,
-            ClimberStatus::Paused => climbers_paused += 1,
-        }
-        standings.push(Standing {
-            index,
-            status,
-            blocked: climb.blocked.clone(),
-            failing: climb.failing,
-            current: climb.current.as_ref().map(|current| current.position),
-            reached: climb.reached,
-        });
-
-        climbers.push(climber_row(
-            key,
-            member,
-            steer,
-            status,
-            climb.blocked,
-            climb.current.map(|current| current.cell),
-            climb.outcomes,
-        ));
-    }
-
-    // Cancelled jobs are no longer in flight. Counting them anyway would hold back the
-    // very rung the early decision just opened, so the counts are read again.
-    if early_stop_canceled > 0 {
-        ctx = MatrixCtx::load(state, slugs, user_id, counting).await?;
-    }
-
-    let standings: Vec<ClimberStanding<'_>> = standings
-        .iter()
-        .map(|standing| ClimberStanding {
-            member: &combos[standing.index],
-            status: standing.status,
-            blocked: standing.blocked.as_ref(),
-            failing: standing.failing,
-            current: standing.current,
-            reached: &standing.reached,
-        })
-        .collect();
-    let (active, reviewable) = cell_sets(&ladder, schedule.outer_axis, &standings);
-
-    // The runs in flight are measured over every rung a climber has reached, not only
-    // the rungs a launch pass may feed: a rung early stop decided may still have a run executing, and that run is
-    // spending money the cap exists to bound.
-    let mut runs_unreviewed = 0u32;
-    let mut runs_in_flight = 0u32;
-    for cell in &reviewable {
-        let demand = ctx.demand(cell.target, &cell.case, &cell.member);
-        runs_unreviewed += demand.unreviewed;
-        runs_in_flight += demand.in_flight;
-    }
-
-    let progress = LadderProgress {
-        ladder_id: ladder.id.clone(),
-        outer_axis: schedule.outer_axis,
-        rungs: ladder
-            .rungs
-            .iter()
-            .enumerate()
-            .map(|(position, rung)| {
-                let latest_version = ctx.latest_version(&rung.slug);
-                LadderProgressRung {
-                    // A case that is not ingested has no newer version to point at, so
-                    // it is not flagged: there is nothing for the owner to bump to.
-                    stale: !latest_version.is_empty() && latest_version != rung.version,
-                    rung: rung_to_wire(rung),
-                    position: position as u32,
-                    latest_version,
-                    supported: supported[position],
-                }
-            })
-            .collect(),
-        climbers,
-        climbers_running,
-        climbers_completed,
-        climbers_failed,
-        climbers_blocked,
-        climbers_paused,
-        runs_unreviewed,
-        runs_in_flight,
-        buffer_target,
-    };
-    Ok(Board {
-        progress,
-        active,
-        reviewable,
-        ctx,
-        early_stop_canceled,
-    })
-}
-
-/// Whether a cell's most recent [`FAILING_STREAK`] terminal jobs all failed on
-/// infrastructure — no completed (or cancelled) job among them, and none whose run ended
-/// on the model's own failure.
-///
-/// A model failure (catastrophic, timed out, harness error, limit exceeded, hung) is
-/// evidence: it uses one of the rung's runs and brings the rung closer to a verdict, so
-/// it breaks the streak rather than extending it. A job the backend failed because it
-/// restarted is not counted at all (see [`crate::db::Db::recent_terminal_jobs`]).
-///
-/// `since` is when the climber was last retried ([`retry_climber`]): only jobs that ended
-/// after it count, so a retry starts the streak afresh.
-async fn cell_is_failing(
-    state: &AppState,
-    cell: &CellKey,
-    since: Option<&str>,
-) -> Result<bool, ApiError> {
-    let jobs = state
-        .db
-        .recent_terminal_jobs(cell, u64::from(FAILING_STREAK), since)
-        .await
-        .map_err(ApiError::from)?;
-    Ok(jobs.len() == FAILING_STREAK as usize
-        && jobs
-            .iter()
-            .all(|job| job.state == "failed" && !job.model_outcome))
-}
-
-/// One climber's walk, kept by index into the resolved members until the whole board
-/// has been walked.
-struct Standing {
-    index: usize,
+/// One climber after the walk.
+#[derive(Debug, Clone, PartialEq)]
+struct Walk {
+    /// Each rung's slot, in rung order.
+    slots: Vec<WalkedSlot>,
+    /// Where the climber stands.
     status: ClimberStatus,
+    /// Why it is blocked, when it is.
     blocked: Option<ClimberBlock>,
-    failing: bool,
+    /// The rung it stands on or failed, `None` once completed.
     current: Option<usize>,
-    reached: Vec<usize>,
 }
 
-/// One climber's resolved standing, as the pure cell-set builder needs it: where it
-/// stands and everywhere it has been, both as positions in the ladder's rungs.
-struct ClimberStanding<'a> {
-    /// The resolved climber.
-    member: &'a PlanMember,
-    /// Where it stands, after any pause.
-    status: ClimberStatus,
-    /// Why it is blocked, when its walk left it blocked (kept under a pause).
-    blocked: Option<&'a ClimberBlock>,
-    /// Whether the cell of the rung it stands on keeps failing ([`FAILING_STREAK`]),
-    /// whether or not anything of it is still in flight.
-    failing: bool,
-    /// The rung it stands on, or `None` once every rung is passed.
-    current: Option<usize>,
-    /// Every rung it has reached, in climb order: the ones it passed, and the one it
-    /// stands on.
-    reached: &'a [usize],
-}
-
-/// Whether a launch pass may feed a climber in this standing.
+/// Walk one climber up a dispatch's rungs: a recorded verdict governs its slot, and the
+/// gate decides an unrecorded one. The first rung not passed is where the climber stands;
+/// the slots above it are `pending`, or `skipped` after a failure. A stopped dispatch
+/// skips every slot still `running`, `blocked` or `pending`, and leaves the climber's own
+/// status as walked.
 ///
-/// A running climber, of course. A blocked one only when the block is one a launch pass
-/// reports: a failing rung or an unlaunchable member, whose demand is zeroed but whose
-/// cell the pass still reports in its `unlaunchable` list. Never a rung that cannot be
-/// climbed or one whose runs have all completed.
-fn feeds(standing: &ClimberStanding<'_>) -> bool {
-    match standing.status {
-        ClimberStatus::Running => true,
-        ClimberStatus::Blocked => matches!(
-            standing.blocked,
-            Some(ClimberBlock::Failing { .. } | ClimberBlock::Unlaunchable { .. })
-        ),
-        _ => false,
-    }
-}
-
-/// Split the climbers' standings into the two cell sets a ladder read produces: the
-/// cells a launch pass may **feed**, and the cells the runs-in-flight cap and the review
-/// queue are measured over.
-///
-/// The two are deliberately different sets. Feeding is the ladder's economy — only a
-/// climber still working a rung is worth spending on, and only on the rung it is
-/// working. The second set is every rung a climber has reached: a rung early stop
-/// decided may still have a run executing, which the in-flight cap must still count,
-/// and a decided rung's completed runs are still worth an aesthetic label.
-///
-/// Both sets come out in the ladder's emission order and deduplicated by cell, so a
-/// ladder that pins one case on two rungs counts and offers its runs once.
-fn cell_sets(
-    ladder: &StoredLadder,
-    axis: LadderAxis,
-    standings: &[ClimberStanding<'_>],
-) -> (Vec<RungCell>, Vec<RungCell>) {
-    // Collected as `(rung position, cell)` so the rung-major axis can be produced by a
-    // stable sort on the position alone.
-    let mut active: Vec<(usize, RungCell)> = Vec::new();
-    let mut reviewable: Vec<(usize, RungCell)> = Vec::new();
-    for standing in standings {
-        // Only a climber that is actually working a rung contributes a cell to feed. A
-        // paused, failed, or completed climber is not fed, which is the whole economy of
-        // a ladder: budget goes where a model is still getting somewhere.
-        if feeds(standing)
-            && let Some(position) = standing.current
-            && let Some(rung) = ladder.rungs.get(position)
-        {
-            let mut cell = rung_cell(ladder, rung, standing.member);
-            cell.failing = standing.failing;
-            active.push((position, cell));
+/// Pure: the caller records the new verdicts and cancels what early stop decided.
+fn walk_climber(
+    targets: &[u32],
+    evidence: &[SlotEvidence],
+    gate: &Gate,
+    unlaunchable: Option<&str>,
+    stopped: bool,
+) -> Walk {
+    let mut slots: Vec<WalkedSlot> = Vec::with_capacity(targets.len());
+    let mut status = ClimberStatus::Completed;
+    let mut blocked = None;
+    let mut current = None;
+    for (position, (&target, ev)) in targets.iter().zip(evidence).enumerate() {
+        let tally = gate::tally(&ev.runs, target, ev.in_flight, gate);
+        if current.is_some() {
+            let status = if status == ClimberStatus::Failed {
+                SlotStatus::Skipped
+            } else {
+                SlotStatus::Pending
+            };
+            slots.push(WalkedSlot {
+                status,
+                tally,
+                newly: None,
+            });
+            continue;
         }
-        // Everywhere it has been, whatever stopped it. A paused climber's runs still run
-        // to completion — a pause stops new spending, not what is already in flight.
-        for &position in standing.reached {
-            if let Some(rung) = ladder.rungs.get(position) {
-                reviewable.push((position, rung_cell(ladder, rung, standing.member)));
+        let (verdict, newly) = match ev.recorded {
+            Some(kind) => (Some(kind), None),
+            None => {
+                let decided = LadderOutcomeKind::from_gate(gate::evaluate(
+                    &ev.runs,
+                    target,
+                    ev.in_flight,
+                    gate,
+                ));
+                (decided, decided)
+            }
+        };
+        let slot_status = match verdict {
+            Some(LadderOutcomeKind::Passed) => SlotStatus::Passed,
+            Some(LadderOutcomeKind::Failed) => {
+                status = ClimberStatus::Failed;
+                current = Some(position);
+                SlotStatus::Failed
+            }
+            None => {
+                let (standing, block) =
+                    undecided_standing(&tally, unlaunchable, ev.in_flight, ev.failing);
+                status = standing;
+                blocked = block;
+                current = Some(position);
+                match standing {
+                    ClimberStatus::Blocked => SlotStatus::Blocked,
+                    _ => SlotStatus::Running,
+                }
+            }
+        };
+        slots.push(WalkedSlot {
+            status: slot_status,
+            tally,
+            newly,
+        });
+    }
+    if stopped {
+        for slot in &mut slots {
+            if matches!(
+                slot.status,
+                SlotStatus::Running | SlotStatus::Blocked | SlotStatus::Pending
+            ) {
+                slot.status = SlotStatus::Skipped;
             }
         }
     }
-    (order_cells(active, axis), order_cells(reviewable, axis))
-}
-
-/// Put one set of cells into the ladder's emission order and drop repeats.
-fn order_cells(mut cells: Vec<(usize, RungCell)>, axis: LadderAxis) -> Vec<RungCell> {
-    if axis == LadderAxis::Rung {
-        // Bring the whole board up a rung before anyone moves on. A stable sort keeps
-        // the steering order within each rung, so priority still decides who goes first
-        // among the climbers standing on the same step.
-        cells.sort_by_key(|(position, _)| *position);
-    }
-    // Two rungs may pin the same case, and their runs are one cell however many rungs
-    // point at it: counting it twice would inflate the buffer, and offering it twice
-    // would ask the reviewer to judge the same run under two headings.
-    let mut seen = HashSet::new();
-    cells
-        .into_iter()
-        .map(|(_, cell)| cell)
-        .filter(|cell| seen.insert(repeat_key(cell)))
-        .collect()
-}
-
-/// What makes one cell a repeat of another, for [`order_cells`].
-///
-/// A cell's runs are counted by its [`cell_key`], which is the identity two rungs pinning
-/// one case share. A member that could not be resolved has no launch identity at all, so
-/// every unresolvable member of a case carries the same cell key while having no runs for
-/// that key to protect. Such a member is kept apart by its own climber key, so a rung
-/// carrying two broken configurations is reported as the two climbers it is stuck on
-/// rather than as one.
-fn repeat_key(cell: &RungCell) -> (CellKey, String) {
-    let climber = match &cell.member.unlaunchable {
-        Some(_) => climber_key(&cell.member.combo),
-        None => String::new(),
-    };
-    (cell_key(&cell.case, &cell.member), climber)
-}
-
-/// The key a climber's steering and its verdicts are stored against.
-///
-/// Always taken from the member as it would be **stored**, never from the shape a request
-/// happened to arrive in. A read hands a client back a gg climber with its configuration's
-/// name and its root model filled in ([`ReviewPlanCombo::for_storage`] describes the pair),
-/// and echoing that straight back into `POST /ladders/{id}/climbers` or `.../climbers/retry` has to
-/// address the very climber it was read from — otherwise steering a climber the board just
-/// showed you would silently mint a second one nothing on the ladder refers to.
-///
-/// The one function every ladder key goes through, so the board's key, the steering row's,
-/// and the verdict's cannot drift apart.
-fn climber_key(combo: &ReviewPlanCombo) -> String {
-    combination_key(&combo.for_storage())
-}
-
-/// One climber's row on the board: its combination, the owner's steering, and where the
-/// walk left it.
-///
-/// The row carries the member's [`unlaunchable`](PlanMember::unlaunchable) reason from the
-/// same resolution a plan's cells carry it from, so a climber a launch pass can never feed says
-/// so wherever it is shown.
-fn climber_row(
-    key: String,
-    member: &PlanMember,
-    steer: Option<&StoredLadderClimber>,
-    status: ClimberStatus,
-    blocked: Option<ClimberBlock>,
-    current_rung: Option<LadderCell>,
-    outcomes: Vec<LadderRungOutcome>,
-) -> LadderClimber {
-    let combo = &member.combo;
-    LadderClimber {
-        key,
-        harness: combo.harness,
-        model: combo.model.clone(),
-        provider: combo.provider.clone(),
-        gg_config_id: combo.gg_config_id.clone(),
-        gg_config_name: combo.gg_config_name.clone(),
-        gg_slot_models: combo.gg_slot_models.clone(),
-        priority: steer.map(|s| s.priority).unwrap_or(0),
-        focused: steer.map(|s| s.focused).unwrap_or(false),
-        paused: steer.is_some_and(|s| s.paused),
-        unlaunchable: member.unlaunchable.clone(),
+    Walk {
+        slots,
         status,
         blocked,
-        current_rung,
-        outcomes,
+        current,
     }
-}
-
-/// One rung, resolved into the cell its runs are counted, launched, and queued under.
-fn rung_cell(ladder: &StoredLadder, rung: &StoredLadderRung, member: &PlanMember) -> RungCell {
-    RungCell {
-        rung_id: rung.id.clone(),
-        case: rung_case(rung),
-        member: member.clone(),
-        target: rung.runs_override.unwrap_or(ladder.runs_per_cell),
-        failing: false,
-    }
-}
-
-/// The order the ladder feeds its climbers: the owner's steering first (higher
-/// priority, then focused), with resolved declaration order as the stable tiebreak.
-///
-/// Returned as indices into `combos` so the caller keeps the resolved list as the single
-/// source of truth for what the ladder's members are. A combination with no steering row
-/// sorts as priority `0`, unfocused — which is how a model added to a standing ladder
-/// takes its place at the back without anyone writing a row for it.
-fn climb_order(
-    combos: &[PlanMember],
-    steering: &HashMap<String, StoredLadderClimber>,
-) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..combos.len()).collect();
-    order.sort_by_key(|&index| {
-        let steer = steering.get(&climber_key(&combos[index].combo));
-        (
-            std::cmp::Reverse(steer.map(|s| s.priority).unwrap_or(0)),
-            std::cmp::Reverse(steer.map(|s| s.focused).unwrap_or(false)),
-            index,
-        )
-    });
-    order
 }
 
 /// Where a climber stands on a rung the gate has not decided, and why.
 ///
-/// `in_flight` is how many of the cell's jobs are still coming, and `failing` whether
-/// its most recent terminal jobs all failed. The order of the checks is the order of
-/// the fixes: a rung whose runs have all completed is waiting on nothing the ladder can
-/// launch, so it is blocked as unrated; otherwise the ladder can feed it — unless its
-/// climber cannot be launched or its runs keep failing, and nothing of it is still in
-/// flight to change that.
+/// The order of the checks is the order of the fixes: a rung with nothing pending is
+/// waiting on nothing the dispatch can launch, so it is blocked as unrated; otherwise the
+/// dispatch can feed it — unless its climber cannot be launched or its runs keep failing,
+/// and nothing of it is still in flight to change that.
 fn undecided_standing(
     tally: &GateTally,
-    member: &PlanMember,
+    unlaunchable: Option<&str>,
     in_flight: u32,
     failing: bool,
 ) -> (ClimberStatus, Option<ClimberBlock>) {
@@ -2204,11 +1585,11 @@ fn undecided_standing(
         );
     }
     if in_flight == 0 {
-        if let Some(reason) = &member.unlaunchable {
+        if let Some(reason) = unlaunchable {
             return (
                 ClimberStatus::Blocked,
                 Some(ClimberBlock::Unlaunchable {
-                    reason: reason.clone(),
+                    reason: reason.to_string(),
                 }),
             );
         }
@@ -2216,7 +1597,7 @@ fn undecided_standing(
             return (
                 ClimberStatus::Blocked,
                 Some(ClimberBlock::Failing {
-                    attempts: FAILING_STREAK,
+                    attempts: FAILING_STREAK as u32,
                 }),
             );
         }
@@ -2224,277 +1605,435 @@ fn undecided_standing(
     (ClimberStatus::Running, None)
 }
 
-/// Where one climber stands, and how it got there.
-struct Climb {
-    /// The status the gates imply, before any pause is applied.
-    status: ClimberStatus,
-    /// Why the climber is blocked, when it is.
-    blocked: Option<ClimberBlock>,
-    /// Whether the cell of the rung it stands on keeps failing.
+/// The runs of one rung slot that need no more executing, for the dispatch's progress
+/// bar. A decided or skipped slot needs no more runs, so its whole target is done once
+/// its runs in flight finish; a current one has done the runs it counted, up to its
+/// target; a pending one has done nothing.
+fn slot_runs_done(status: SlotStatus, target: u32, counted: u32, in_flight: u32) -> u32 {
+    match status {
+        SlotStatus::Running | SlotStatus::Blocked => counted.min(target),
+        SlotStatus::Passed | SlotStatus::Failed | SlotStatus::Skipped => {
+            target - in_flight.min(target)
+        }
+        SlotStatus::Pending => 0,
+    }
+}
+
+/// One rung slot's raw evidence, kept beside the walk for the wire and the queue.
+struct SlotFacts {
+    /// The dispatch's counted runs of the slot, oldest first.
+    runs: Vec<CellRunRating>,
+    /// The ids of its jobs in flight.
+    job_ids: Vec<String>,
+    /// How many of those are waiting.
+    waiting: u32,
+    /// Its cell, for a cancel narrowed to it.
+    cell: CellKey,
+}
+
+/// One climber of a dispatch, resolved and walked.
+struct BoardClimber {
+    /// The stored climber.
+    stored: StoredDispatchClimber,
+    /// The resolved member.
+    member: PlanMember,
+    /// Each rung's slot evidence, in rung order.
+    slots: Vec<SlotFacts>,
+    /// The walk.
+    walk: Walk,
+}
+
+/// A dispatch, read and walked: everything its board, its summary, its queue, and its
+/// launch pass are built from.
+struct DispatchBoard {
+    /// The dispatch row.
+    dispatch: StoredDispatch,
+    /// Its snapshot.
+    snapshot: DispatchSnapshot,
+    /// Its climbers, in resolved order.
+    climbers: Vec<BoardClimber>,
+    /// Its jobs' evidence.
+    evidence: DispatchEvidence,
+    /// The recorded verdicts and when each was recorded, by `(rung id, climber key)`.
+    decided: HashMap<(String, String), (LadderOutcomeKind, String)>,
+    /// How much room each harness has to start another run. Read only by a pass.
+    harness_capacity: Vec<crate::coverage::schedule::HarnessCapacity>,
+    /// How many waiting jobs this read cancelled because an early-stopping gate decided
+    /// their slot. Always `0` on a read that does not record.
+    early_stop_canceled: u32,
+}
+
+/// One slot a launch pass may feed.
+struct ActiveSlot<'a> {
+    rung_id: String,
+    position: usize,
+    case: ReviewPlanCase,
+    member: &'a PlanMember,
+    target: u32,
+    counted: u32,
+    in_flight: u32,
     failing: bool,
-    /// The rung it stands on, or `None` once every rung is passed.
-    current: Option<CurrentRung>,
-    /// Every rung it reached, by position, in climb order: the ones it passed and the
-    /// one it stopped on.
-    reached: Vec<usize>,
-    /// Its verdicts, in climb order, with superseded-version ones flagged and trailing.
-    outcomes: Vec<LadderRungOutcome>,
-    /// How many waiting jobs an early-stopping gate cancelled on the way up.
-    canceled: u32,
 }
 
-/// The rung a climber is on, with the cell the dashboard renders for it.
-struct CurrentRung {
-    /// Its index in the ladder's rungs.
-    position: usize,
-    /// The cell, counts and gate evidence included.
-    cell: LadderCell,
-}
-
-/// Walk one climber up the ladder until it reaches a rung it has not passed.
-///
-/// Recorded verdicts are consulted first and cost nothing; the gate is evaluated live
-/// only where a rung at its **current pin** has no verdict, and the walk stops at the
-/// first rung that is not passed — so a climber halfway up costs one evidence query,
-/// not one per rung.
-///
-/// A recorded verdict governs even on a rung that has since become
-/// [unsupported](rung_supported), so a climber that passed it stays past it. A rung
-/// without one that is unsupported stops the walk as `blocked`, decides nothing, and is
-/// never launched.
-///
-/// `retried_at` is when the climber was last retried, from which its failing streak
-/// counts ([`cell_is_failing`]).
-async fn walk_climb(
-    walk: &WalkCtx<'_>,
-    ladder_id: &str,
-    member: &PlanMember,
-    retried_at: Option<&str>,
-) -> Result<Climb, ApiError> {
-    let ladder = walk.ladder;
-    let key = climber_key(&member.combo);
-    let mine: Vec<&StoredLadderOutcome> = walk
-        .recorded
-        .iter()
-        .filter(|outcome| outcome.combination_key == key)
-        .collect();
-
-    let mut outcomes: Vec<LadderRungOutcome> = Vec::new();
-    let mut current: Option<CurrentRung> = None;
-    let mut reached: Vec<usize> = Vec::new();
-    let mut status = ClimberStatus::Completed;
-    let mut blocked: Option<ClimberBlock> = None;
-    let mut failing = false;
-    // The cases of every rung the walk found decided, whose waiting jobs an early stop
-    // cancels once the walk knows where the climber stands.
-    let mut decided: Vec<ReviewPlanCase> = Vec::new();
-
-    for (position, rung) in ladder.rungs.iter().enumerate() {
-        // Reaching a rung is what the loop iterating over it means, whether the climber
-        // goes on to pass it, fail it, or still be working on it.
-        reached.push(position);
-        let case = rung_case(rung);
-        // A verdict recorded against the version the rung pins *now* governs the climb;
-        // one recorded against a version it used to pin is history, appended below.
-        let at_pin = mine
-            .iter()
-            .find(|outcome| outcome.rung_id == rung.id && outcome.decided_version == rung.version);
-        if let Some(stored) = at_pin.copied() {
-            decided.push(case);
-            outcomes.push(outcome_to_wire(stored, false, true));
-            if stored.outcome == LadderOutcomeKind::Passed {
-                continue;
+impl DispatchBoard {
+    /// The rung-slot counts and the runs, over every slot of the dispatch.
+    fn totals(&self) -> (SlotCounts, DispatchRuns) {
+        let mut slots = SlotCounts::default();
+        let mut runs = DispatchRuns::default();
+        for climber in &self.climbers {
+            for (position, slot) in climber.walk.slots.iter().enumerate() {
+                let target = self.snapshot.rungs[position].target;
+                let facts = &climber.slots[position];
+                let counted = facts.runs.len() as u32;
+                let in_flight = facts.job_ids.len() as u32;
+                slots.add(slot.status);
+                runs.total += target;
+                runs.done += slot_runs_done(slot.status, target, counted, in_flight);
+                runs.in_flight += in_flight;
             }
-            status = ClimberStatus::Failed;
-            current = Some(rung_state(walk, position, rung, member, GateOutcome::Failed).await?);
-            break;
         }
+        (slots, runs)
+    }
 
-        if !walk.supported.get(position).copied().unwrap_or(true) {
-            status = ClimberStatus::Blocked;
-            blocked = Some(ClimberBlock::UnsupportedRung {
+    /// Every job of the dispatch in flight, whatever slot it belongs to — what its limit
+    /// caps and what keeps it from finishing.
+    fn in_flight_total(&self) -> u32 {
+        self.evidence
+            .in_flight
+            .values()
+            .map(|ids| ids.len() as u32)
+            .sum()
+    }
+
+    /// Whether every climber completed or failed.
+    fn finished(&self) -> bool {
+        self.climbers.iter().all(|climber| {
+            matches!(
+                climber.walk.status,
+                ClimberStatus::Completed | ClimberStatus::Failed
+            )
+        })
+    }
+
+    /// The counted runs of every slot, in no particular order.
+    fn run_ids(&self) -> Vec<String> {
+        self.climbers
+            .iter()
+            .flat_map(|climber| climber.slots.iter())
+            .flat_map(|slot| slot.runs.iter().map(|run| run.run_id.clone()))
+            .collect()
+    }
+
+    /// Every slot as `(climber, rung position)`, in the dispatch's own order: rung-major
+    /// for the `rung` axis, climber-major for `combination`.
+    fn slot_order(&self) -> Vec<(&BoardClimber, usize)> {
+        let rungs = self.snapshot.rungs.len();
+        let mut order = Vec::with_capacity(rungs * self.climbers.len());
+        match self.snapshot.outer_axis {
+            LadderAxis::Rung => {
+                for position in 0..rungs {
+                    for climber in &self.climbers {
+                        order.push((climber, position));
+                    }
+                }
+            }
+            LadderAxis::Combination => {
+                for climber in &self.climbers {
+                    for position in 0..rungs {
+                        order.push((climber, position));
+                    }
+                }
+            }
+        }
+        order
+    }
+
+    /// The slots a launch pass may feed, in the dispatch's emission order: every running
+    /// climber's current slot, and a blocked one's when the block is one a pass reports (a
+    /// failing slot or an unlaunchable climber, whose demand is zeroed). Never a slot
+    /// whose runs have all completed.
+    fn active_slots(&self) -> Vec<ActiveSlot<'_>> {
+        let mut active: Vec<ActiveSlot<'_>> = Vec::new();
+        for climber in &self.climbers {
+            let feeds = match climber.walk.status {
+                ClimberStatus::Running => true,
+                ClimberStatus::Blocked => matches!(
+                    climber.walk.blocked,
+                    Some(ClimberBlock::Failing { .. } | ClimberBlock::Unlaunchable { .. })
+                ),
+                _ => false,
+            };
+            let Some(position) = climber.walk.current.filter(|_| feeds) else {
+                continue;
+            };
+            let rung = &self.snapshot.rungs[position];
+            let facts = &climber.slots[position];
+            active.push(ActiveSlot {
                 rung_id: rung.id.clone(),
+                position,
+                case: rung.case(),
+                member: &climber.member,
+                target: rung.target,
+                counted: facts.runs.len() as u32,
+                in_flight: facts.job_ids.len() as u32,
+                failing: self.slot_failing(climber, position),
             });
-            current = Some(rung_state(walk, position, rung, member, GateOutcome::Undecided).await?);
-            break;
         }
-
-        let runs = rung_runs(walk.state, &case, member).await?;
-        let target = rung.runs_override.unwrap_or(ladder.runs_per_cell);
-        let tally = gate::tally(&runs, target, &ladder.gate);
-        let outcome = gate::evaluate(&runs, target, &ladder.gate);
-        if walk.record
-            && let Some(kind) = LadderOutcomeKind::from_gate(outcome)
-        {
-            walk.state
-                .db
-                .record_ladder_outcome(ladder_id, &rung.id, &key, &rung.version, kind, &now()?)
-                .await
-                .map_err(ApiError::from)?;
+        if self.snapshot.outer_axis == LadderAxis::Rung {
+            // Bring every climber up a rung before anyone moves on. A stable sort keeps
+            // the climbers' resolved order within each rung.
+            active.sort_by_key(|slot| slot.position);
         }
-        match outcome {
-            GateOutcome::Passed => {
-                decided.push(case);
-                outcomes.push(live_outcome(rung, LadderOutcome::Passed, &now()?));
-                continue;
-            }
-            GateOutcome::Failed => {
-                decided.push(case.clone());
-                outcomes.push(live_outcome(rung, LadderOutcome::Failed, &now()?));
-                status = ClimberStatus::Failed;
-            }
-            GateOutcome::Undecided => {
-                let in_flight = walk.ctx.demand(target, &case, member).in_flight;
-                // Read only where it can matter: a rung with runs still to complete, for
-                // a climber that can be launched at all.
-                failing = tally.pending > 0
-                    && member.unlaunchable.is_none()
-                    && cell_is_failing(walk.state, &cell_key(&case, member), retried_at).await?;
-                (status, blocked) = undecided_standing(&tally, member, in_flight, failing);
-            }
-        }
-        current = Some(CurrentRung {
-            position,
-            cell: LadderCell {
-                rung_id: rung.id.clone(),
-                position: position as u32,
-                cell: walk.ctx.cell(target, &case, member),
-                tally: RungTally::from_gate(tally),
-                outcome,
-            },
-        });
-        break;
+        active
     }
 
-    // A ladder may pin one case on two rungs, and the two then share a cell. A decided
-    // rung's waiting jobs are only spare when that cell is not also the undecided rung
-    // the climber now stands on: those jobs are that rung's runs, and cancelling them
-    // would starve it on every pass.
-    let standing_on = match (&current, status) {
-        (Some(on), ClimberStatus::Running | ClimberStatus::Blocked) => ladder
-            .rungs
-            .get(on.position)
-            .map(|rung| cell_key(&rung_case(rung), member)),
-        _ => None,
-    };
-    let mut canceled = 0u32;
-    let mut swept: Vec<CellKey> = Vec::new();
-    for case in &decided {
-        let key = cell_key(case, member);
-        if standing_on.as_ref() == Some(&key) || swept.contains(&key) {
-            continue;
-        }
-        canceled += cancel_decided_waiting(walk, ladder_id, case, member).await?;
-        swept.push(key);
+    /// Whether a slot's newest terminal jobs since the climber's retry all failed on
+    /// infrastructure.
+    fn slot_failing(&self, climber: &BoardClimber, position: usize) -> bool {
+        let rung = &self.snapshot.rungs[position];
+        let key: SlotKey = (rung.id.clone(), climber.slots[position].cell.clone());
+        slot_failing(
+            self.evidence
+                .terminal
+                .get(&key)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
+            climber.stored.retried_at.as_deref(),
+        )
     }
-
-    // History last: verdicts earned against versions the rungs no longer pin. They are
-    // kept so a bump does not erase what a model actually achieved, and flagged so
-    // nothing mistakes them for the current standing.
-    for stored in mine {
-        let superseded = !ladder
-            .rungs
-            .iter()
-            .any(|rung| rung.id == stored.rung_id && rung.version == stored.decided_version);
-        if superseded && ladder.rungs.iter().any(|rung| rung.id == stored.rung_id) {
-            outcomes.push(outcome_to_wire(stored, true, true));
-        }
-    }
-    Ok(Climb {
-        status,
-        blocked,
-        failing,
-        current,
-        reached,
-        outcomes,
-        canceled,
-    })
 }
 
-/// Cancel this ladder's jobs of one decided cell that have not started yet, when the
-/// gate stops early and the walk records. Returns how many were cancelled.
-///
-/// Reaches only `queued` and `pending` jobs whose origin is this ladder, in this one
-/// cell: a job already dispatched or running finishes and its run is kept, and a
-/// hand-launched job or another plan's job of the same cell is never touched. A cell
-/// with nothing waiting costs nothing, since the walk was handed the waiting cells up
-/// front. A cancelled job feeds no ladder, so this cannot loop.
-async fn cancel_decided_waiting(
-    walk: &WalkCtx<'_>,
-    ladder_id: &str,
-    case: &ReviewPlanCase,
-    member: &PlanMember,
-) -> Result<u32, ApiError> {
-    let Some(waiting) = walk.waiting else {
-        return Ok(0);
-    };
-    let key = cell_key(case, member);
-    if waiting.get(&key).copied().unwrap_or(0) == 0 {
-        return Ok(0);
-    }
-    let origin = JobOrigin::Ladder(ladder_id.to_string());
-    crate::api::jobs::sweep_cancel(
-        walk.state,
-        &JobCancelFilter {
-            states: &CANCELABLE_WAITING_STATES,
-            origin: Some(&origin),
-            user_id: None,
-            cell: Some(&key),
-            ids: None,
-        },
-        "canceled: the ladder's gate decided this rung early",
-    )
-    .await
+/// Whether a slot's terminal jobs (newest first) that ended after `since` form a failing
+/// streak.
+fn slot_failing(terminal: &[TerminalJob], since: Option<&str>) -> bool {
+    let since = since.and_then(|since| {
+        time::OffsetDateTime::parse(since, &time::format_description::well_known::Rfc3339).ok()
+    });
+    let after: Vec<TerminalJob> = terminal
+        .iter()
+        .filter(|job| {
+            since.is_none_or(|since| {
+                time::OffsetDateTime::parse(
+                    &job.ended_at,
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .is_ok_and(|ended| ended > since)
+            })
+        })
+        .cloned()
+        .collect();
+    is_failing_streak(&after)
 }
 
-/// The cell for a rung the walk stopped on without evaluating it live — a recorded
-/// failure, or a rung that cannot be climbed — so the dashboard still shows its evidence.
-async fn rung_state(
-    walk: &WalkCtx<'_>,
-    position: usize,
-    rung: &StoredLadderRung,
-    member: &PlanMember,
-    outcome: GateOutcome,
-) -> Result<CurrentRung, ApiError> {
-    let case = rung_case(rung);
-    let runs = rung_runs(walk.state, &case, member).await?;
-    let target = rung.runs_override.unwrap_or(walk.ladder.runs_per_cell);
-    Ok(CurrentRung {
-        position,
-        cell: LadderCell {
-            rung_id: rung.id.clone(),
-            position: position as u32,
-            cell: walk.ctx.cell(target, &case, member),
-            tally: RungTally::from_gate(gate::tally(&runs, target, &walk.ladder.gate)),
-            outcome,
-        },
-    })
-}
-
-/// The gate's evidence for one `rung × combination` cell: the validators' own rating of
-/// every completed run of it, and every run of it that ended on the model's own failure
-/// (as a broken run), oldest first.
+/// Read and walk one dispatch. `record` says whether verdicts that have become decidable
+/// are written down (and, under `earlyStop`, a decided slot's waiting jobs cancelled) —
+/// true for a launch pass of a running dispatch, false for every read.
 ///
-/// Never `run.rating`, which folds in every reviewer's checklist overrides, and never a
-/// review: a ladder's climb is decided by its validators, whoever looks at its runs.
-///
-/// A validator-rated run that carries no rating yet — stored before the column existed,
-/// on a deployment whose definition store was still empty when the startup backfill
-/// ran — is rated here from its record and the store's manifest, and the evidence read
-/// again, so such a run never stays unrated for longer than the store lacks its version.
-async fn rung_runs(
+/// The climbers' combinations are resolved against the live gg library, as a launch
+/// resolves them; a pass also resolves their launch facts, which can reach the model
+/// catalog, so a read never does.
+async fn read_dispatch(
     state: &AppState,
-    case: &ReviewPlanCase,
-    member: &PlanMember,
-) -> Result<Vec<RungRun>, ApiError> {
-    let key = cell_key(case, member);
-    let mut runs = state
+    ladder_id: &str,
+    dispatch: StoredDispatch,
+    library: &GgLibrary,
+    record: bool,
+) -> Result<DispatchBoard, ApiError> {
+    let snapshot = parse_snapshot(&dispatch)?;
+    let record = record && DispatchStatus::parse(&dispatch.status) == DispatchStatus::Running;
+    let stored = state
         .db
-        .cell_run_ratings(&key)
+        .dispatch_climbers(&dispatch.id)
         .await
         .map_err(ApiError::from)?;
-    let unrated: Vec<String> = runs
-        .iter()
+    let mut stored = stored;
+    let (mut members, identities) =
+        pin_climbers(state, &dispatch.id, &mut stored, library, record).await?;
+    let harness_capacity = if record {
+        resolve_launch_facts(state, &mut members).await;
+        super::coverage::MatrixCtx::load_for_ladder(state, Vec::new())
+            .await?
+            .harness_capacity()
+            .to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let mut evidence = read_evidence(state, ladder_id, &dispatch.id).await?;
+    let mut board = DispatchBoard {
+        dispatch,
+        snapshot,
+        climbers: Vec::new(),
+        evidence: DispatchEvidence::default(),
+        decided: HashMap::new(),
+        harness_capacity,
+        early_stop_canceled: 0,
+    };
+    board.decided = read_decided(state, &board.dispatch.id).await?;
+    board.climbers = walk_board(
+        &board,
+        stored.clone(),
+        members.clone(),
+        &identities,
+        &evidence,
+    );
+    if !record {
+        board.evidence = evidence;
+        return Ok(board);
+    }
+
+    let now = now()?;
+    let mut recorded_any = false;
+    for climber in &board.climbers {
+        for (position, slot) in climber.walk.slots.iter().enumerate() {
+            if let Some(kind) = slot.newly {
+                state
+                    .db
+                    .record_dispatch_outcome(
+                        &board.dispatch.id,
+                        &board.snapshot.rungs[position].id,
+                        &climber.stored.climber_key,
+                        kind,
+                        &now,
+                    )
+                    .await
+                    .map_err(ApiError::from)?;
+                recorded_any = true;
+            }
+        }
+    }
+    let mut canceled = 0u32;
+    if board.snapshot.gate.early_stop {
+        for climber in &board.climbers {
+            for (position, slot) in climber.walk.slots.iter().enumerate() {
+                let facts = &climber.slots[position];
+                if !matches!(slot.status, SlotStatus::Passed | SlotStatus::Failed)
+                    || facts.waiting == 0
+                {
+                    continue;
+                }
+                let origin = OriginScope::Exact(
+                    JobOrigin::dispatch(
+                        ladder_id,
+                        board.dispatch.id.clone(),
+                        board.snapshot.rungs[position].id.clone(),
+                    )
+                    .as_token(),
+                );
+                canceled += super::jobs::sweep_cancel(
+                    state,
+                    &JobCancelFilter {
+                        states: &CANCELABLE_WAITING_STATES,
+                        origin: Some(&origin),
+                        user_id: None,
+                        cell: Some(&facts.cell),
+                        ids: None,
+                    },
+                    "canceled: the ladder's gate decided this rung early",
+                    super::jobs::CancelFeed::Feed,
+                )
+                .await?;
+            }
+        }
+    }
+    if recorded_any || canceled > 0 {
+        // Cancelled jobs are no longer in flight, and counting them anyway would hold the
+        // dispatch back; recorded verdicts carry their time. Both are read again.
+        if canceled > 0 {
+            evidence = read_evidence(state, ladder_id, &board.dispatch.id).await?;
+        }
+        board.decided = read_decided(state, &board.dispatch.id).await?;
+        board.climbers = walk_board(&board, stored, members, &identities, &evidence);
+    }
+    board.evidence = evidence;
+    board.early_stop_canceled = canceled;
+    Ok(board)
+}
+
+/// Resolve a dispatch's climbers for this read, and the cell share each one's runs are
+/// found by.
+///
+/// The share is the one pinned on the climber, never the live resolution: a gg
+/// configuration edited or deleted mid-dispatch must not hide the runs the dispatch already
+/// made. Live resolution only decides whether the climber can launch more. A climber whose
+/// live resolution names other cells than its pinned ones is held `unlaunchable`, since
+/// its new runs would land where the dispatch never looks. A climber that never resolved
+/// is pinned by the first launch pass (`record`) that resolves it, unless an earlier
+/// climber already holds those cells.
+async fn pin_climbers(
+    state: &AppState,
+    dispatch_id: &str,
+    stored: &mut [StoredDispatchClimber],
+    library: &GgLibrary,
+    record: bool,
+) -> Result<(Vec<PlanMember>, Vec<Option<MemberCellIdentity>>), ApiError> {
+    let mut pinned: Vec<Option<MemberCellIdentity>> = Vec::with_capacity(stored.len());
+    for climber in stored.iter() {
+        pinned.push(
+            climber
+                .cell_json
+                .as_deref()
+                .map(decode_identity)
+                .transpose()?,
+        );
+    }
+    let mut members: Vec<PlanMember> = Vec::with_capacity(stored.len());
+    for (index, climber) in stored.iter_mut().enumerate() {
+        let combo: ReviewPlanCombo = serde_json::from_str(&climber.combo_json)
+            .map_err(|e| ApiError::internal(format!("reading a dispatch climber: {e}")))?;
+        let mut member = resolve_member(&combo, library);
+        let live = resolved_identity(&member);
+        match (&pinned[index], live) {
+            (Some(pin), Some(live)) if *pin != live && member.unlaunchable.is_none() => {
+                member.unlaunchable = Some(MOVED_CELLS.to_string());
+            }
+            (None, Some(live)) if member.unlaunchable.is_none() => {
+                if pinned.iter().flatten().any(|other| *other == live) {
+                    member.unlaunchable = Some(SHARED_CELLS.to_string());
+                } else if record {
+                    let json = encode_identity(&live)?;
+                    if state
+                        .db
+                        .pin_dispatch_climber_cell(dispatch_id, &climber.climber_key, &json)
+                        .await
+                        .map_err(ApiError::from)?
+                    {
+                        climber.cell_json = Some(json);
+                        pinned[index] = Some(live);
+                    } else {
+                        // Pinned meanwhile: this pass launches nothing for it, and the
+                        // next one reads the pin.
+                        member.unlaunchable = Some(PINNING.to_string());
+                    }
+                } else {
+                    // A read: what a launch would pin.
+                    pinned[index] = Some(live);
+                }
+            }
+            _ => {}
+        }
+        members.push(member);
+    }
+    Ok((members, pinned))
+}
+
+/// A dispatch's evidence, with any validator-rated run that carries no rating yet rated
+/// from its record and the store's manifest first — so such a run never stays unrated for
+/// longer than the store lacks its version.
+async fn read_evidence(
+    state: &AppState,
+    ladder_id: &str,
+    dispatch_id: &str,
+) -> Result<DispatchEvidence, ApiError> {
+    let evidence = state
+        .db
+        .dispatch_evidence(ladder_id, dispatch_id)
+        .await
+        .map_err(ApiError::from)?;
+    let unrated: Vec<String> = evidence
+        .runs
+        .values()
+        .flatten()
         .filter(|run| !run.model_failure && run.validator_rated && run.rating.is_none())
         .map(|run| run.run_id.clone())
         .collect();
@@ -2506,13 +2045,267 @@ async fn rung_runs(
             .map_err(ApiError::from)?
             > 0
     {
-        runs = state
+        return state
             .db
-            .cell_run_ratings(&key)
+            .dispatch_evidence(ladder_id, dispatch_id)
             .await
-            .map_err(ApiError::from)?;
+            .map_err(ApiError::from);
     }
-    Ok(runs.iter().map(|run| run.as_rung_run()).collect())
+    Ok(evidence)
+}
+
+/// A dispatch's recorded verdicts and their times, by `(rung id, climber key)`.
+async fn read_decided(
+    state: &AppState,
+    dispatch_id: &str,
+) -> Result<HashMap<(String, String), (LadderOutcomeKind, String)>, ApiError> {
+    Ok(state
+        .db
+        .dispatch_outcomes(dispatch_id)
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|outcome| {
+            (
+                (outcome.rung_id, outcome.climber_key),
+                (outcome.outcome, outcome.decided_at),
+            )
+        })
+        .collect())
+}
+
+/// Walk every climber of a board over `evidence`, finding each climber's runs by its
+/// pinned cell share in `identities` (`None`: it never resolved, and has no runs).
+fn walk_board(
+    board: &DispatchBoard,
+    stored: Vec<StoredDispatchClimber>,
+    members: Vec<PlanMember>,
+    identities: &[Option<MemberCellIdentity>],
+    evidence: &DispatchEvidence,
+) -> Vec<BoardClimber> {
+    let targets: Vec<u32> = board
+        .snapshot
+        .rungs
+        .iter()
+        .map(|rung| rung.target)
+        .collect();
+    let stopped = DispatchStatus::parse(&board.dispatch.status) == DispatchStatus::Stopped;
+    stored
+        .into_iter()
+        .zip(members)
+        .zip(identities)
+        .map(|((stored, member), identity)| {
+            let mut facts: Vec<SlotFacts> = Vec::with_capacity(targets.len());
+            let mut slot_evidence: Vec<SlotEvidence> = Vec::with_capacity(targets.len());
+            // A climber that never resolved forms the empty identity, which no job carries.
+            let identity = identity.clone().unwrap_or_else(|| {
+                (
+                    member.combo.harness.as_str().to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                )
+            });
+            for rung in &board.snapshot.rungs {
+                let cell = cell_key_of(&rung.case(), identity.clone());
+                let key: SlotKey = (rung.id.clone(), cell.clone());
+                let runs = evidence.runs.get(&key).cloned().unwrap_or_default();
+                let job_ids = evidence.in_flight.get(&key).cloned().unwrap_or_default();
+                let recorded = board
+                    .decided
+                    .get(&(rung.id.clone(), stored.climber_key.clone()))
+                    .map(|(kind, _)| *kind);
+                slot_evidence.push(SlotEvidence {
+                    runs: runs.iter().map(CellRunRating::as_rung_run).collect(),
+                    in_flight: job_ids.len() as u32,
+                    failing: slot_failing(
+                        evidence
+                            .terminal
+                            .get(&key)
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]),
+                        stored.retried_at.as_deref(),
+                    ),
+                    recorded,
+                });
+                facts.push(SlotFacts {
+                    runs,
+                    job_ids,
+                    waiting: evidence.waiting.get(&key).copied().unwrap_or(0),
+                    cell,
+                });
+            }
+            let walk = walk_climber(
+                &targets,
+                &slot_evidence,
+                &board.snapshot.gate,
+                member.unlaunchable.as_deref(),
+                stopped,
+            );
+            BoardClimber {
+                stored,
+                member,
+                slots: facts,
+                walk,
+            }
+        })
+        .collect()
+}
+
+/// The board for `GET /ladders/{id}/progress` and `POST /ladders/{id}/run`.
+async fn progress_of(
+    state: &AppState,
+    user_id: &str,
+    id: &str,
+) -> Result<LadderProgress, ApiError> {
+    let ladder = load_ladder(state, user_id, id).await?;
+    let Some(dispatch) = state.db.ladder_dispatch(id).await.map_err(ApiError::from)? else {
+        let rungs = ladder.rungs.iter().map(rung_to_wire).collect();
+        return Ok(LadderProgress {
+            ladder_id: ladder.id,
+            dispatch: None,
+            rungs: progress_rungs(state, rungs)?,
+            climbers: Vec::new(),
+            runs_unreviewed: 0,
+        });
+    };
+    let library = gg_library(state, user_id).await?;
+    let board = read_dispatch(state, id, dispatch, &library, false).await?;
+    let runs_unreviewed = state
+        .db
+        .unreviewed_among(&board.run_ids(), user_id)
+        .await
+        .map_err(ApiError::from)?
+        .len() as u32;
+    let rungs = board
+        .snapshot
+        .rungs
+        .iter()
+        .map(SnapshotRung::to_wire)
+        .collect();
+    Ok(LadderProgress {
+        ladder_id: ladder.id,
+        dispatch: Some(dispatch_to_wire(&board)),
+        rungs: progress_rungs(state, rungs)?,
+        climbers: climbers_to_wire(&board, &now()?),
+        runs_unreviewed,
+    })
+}
+
+/// Rungs with their newest ingested versions, as the board shows them.
+fn progress_rungs(
+    state: &AppState,
+    rungs: Vec<LadderRung>,
+) -> Result<Vec<LadderProgressRung>, ApiError> {
+    let mut latest: HashMap<String, String> = HashMap::new();
+    let mut out = Vec::with_capacity(rungs.len());
+    for (position, rung) in rungs.into_iter().enumerate() {
+        let latest_version = match latest.get(&rung.slug) {
+            Some(version) => version.clone(),
+            None => {
+                let version = state
+                    .store
+                    .list_visible_versions(&rung.slug, state.config.allow_experimental)
+                    .map_err(ApiError::from)?
+                    .pop()
+                    .unwrap_or_default();
+                latest.insert(rung.slug.clone(), version.clone());
+                version
+            }
+        };
+        out.push(LadderProgressRung {
+            // A case that is not ingested has no newer version to point at, so it is not
+            // flagged: there is nothing for the owner to bump to.
+            stale: !latest_version.is_empty() && latest_version != rung.version,
+            rung,
+            position: position as u32,
+            latest_version,
+        });
+    }
+    Ok(out)
+}
+
+/// A dispatch on the wire.
+fn dispatch_to_wire(board: &DispatchBoard) -> LadderDispatch {
+    let (slots, runs) = board.totals();
+    let count = |status: ClimberStatus| {
+        board
+            .climbers
+            .iter()
+            .filter(|climber| climber.walk.status == status)
+            .count() as u32
+    };
+    LadderDispatch {
+        id: board.dispatch.id.clone(),
+        status: DispatchStatus::parse(&board.dispatch.status),
+        started_at: board.dispatch.started_at.clone(),
+        ended_at: board.dispatch.ended_at.clone(),
+        gate: board.snapshot.gate,
+        outer_axis: board.snapshot.outer_axis,
+        in_flight_limit: board.snapshot.in_flight_limit,
+        slots,
+        runs,
+        climbers_running: count(ClimberStatus::Running),
+        climbers_blocked: count(ClimberStatus::Blocked),
+        climbers_failed: count(ClimberStatus::Failed),
+        climbers_completed: count(ClimberStatus::Completed),
+    }
+}
+
+/// A dispatch's climbers on the wire. `now` stamps a verdict a read computed live.
+fn climbers_to_wire(board: &DispatchBoard, now: &str) -> Vec<LadderClimber> {
+    board
+        .climbers
+        .iter()
+        .map(|climber| {
+            let combo = &climber.member.combo;
+            let slots = climber
+                .walk
+                .slots
+                .iter()
+                .enumerate()
+                .map(|(position, slot)| {
+                    let rung = &board.snapshot.rungs[position];
+                    let facts = &climber.slots[position];
+                    let reached = !matches!(slot.status, SlotStatus::Pending | SlotStatus::Skipped);
+                    let has_evidence = !facts.runs.is_empty() || !facts.job_ids.is_empty();
+                    let decided_at = match slot.status {
+                        SlotStatus::Passed | SlotStatus::Failed => Some(
+                            board
+                                .decided
+                                .get(&(rung.id.clone(), climber.stored.climber_key.clone()))
+                                .map(|(_, at)| at.clone())
+                                .unwrap_or_else(|| now.to_string()),
+                        ),
+                        _ => None,
+                    };
+                    LadderSlot {
+                        rung_id: rung.id.clone(),
+                        position: position as u32,
+                        status: slot.status,
+                        tally: (reached || has_evidence).then(|| RungTally::from_gate(slot.tally)),
+                        decided_at,
+                        run_ids: facts.runs.iter().map(|run| run.run_id.clone()).collect(),
+                        job_ids: facts.job_ids.clone(),
+                    }
+                })
+                .collect();
+            LadderClimber {
+                key: climber.stored.climber_key.clone(),
+                harness: combo.harness,
+                model: combo.model.clone(),
+                provider: combo.provider.clone(),
+                gg_config_id: combo.gg_config_id.clone(),
+                gg_config_name: combo.gg_config_name.clone(),
+                gg_slot_models: combo.gg_slot_models.clone(),
+                unlaunchable: climber.member.unlaunchable.clone(),
+                status: climber.walk.status,
+                blocked: climber.walk.blocked.clone(),
+                current_rung: climber.walk.current.map(|position| position as u32),
+                slots,
+            }
+        })
+        .collect()
 }
 
 // ---- Small helpers ---------------------------------------------------------
@@ -2529,23 +2322,122 @@ async fn load_ladder(state: &AppState, user_id: &str, id: &str) -> Result<Stored
         .ok_or_else(|| ApiError::not_found("ladder not found"))
 }
 
-/// One ladder's schedule, 404-ing when the id is not the caller's.
-async fn schedule_of(
-    state: &AppState,
-    user_id: &str,
-    id: &str,
-) -> Result<LadderSchedule, ApiError> {
-    state
-        .db
-        .ladder_schedule(user_id, id)
-        .await
-        .map_err(ApiError::from)?
-        .map(LadderSchedule::from_db)
-        .ok_or_else(|| ApiError::not_found("ladder not found"))
+/// The origin prefix every job of one dispatch carries: `ladder:<ladder>/<dispatch>`.
+fn dispatch_prefix(ladder_id: &str, dispatch_id: &str) -> String {
+    format!("ladder:{ladder_id}/{dispatch_id}")
 }
 
-/// A rung as the coverage machinery names a case, so a ladder cell and a plan cell are
-/// counted by exactly the same key.
+/// A dispatch's snapshot.
+fn parse_snapshot(dispatch: &StoredDispatch) -> Result<DispatchSnapshot, ApiError> {
+    serde_json::from_str(&dispatch.snapshot_json)
+        .map_err(|e| ApiError::internal(format!("reading a dispatch snapshot: {e}")))
+}
+
+/// The snapshot a Run takes of a configuration, with every rung's target resolved and
+/// the limit in force.
+fn snapshot_of(ladder: &StoredLadder, in_flight_limit: InFlightLimit) -> DispatchSnapshot {
+    DispatchSnapshot {
+        rungs: ladder
+            .rungs
+            .iter()
+            .map(|rung| SnapshotRung {
+                id: rung.id.clone(),
+                slug: rung.slug.clone(),
+                version: rung.version.clone(),
+                variant: rung.variant.clone(),
+                engine: rung.engine.clone(),
+                runs: rung.runs_override,
+                target: rung.runs_override.unwrap_or(ladder.runs_per_cell),
+            })
+            .collect(),
+        gate: ladder.gate,
+        outer_axis: LadderAxis::parse(&ladder.outer_axis),
+        in_flight_limit,
+        runs_per_cell: ladder.runs_per_cell,
+    }
+}
+
+/// The climbers a Run stores: every resolved member once, by its key, in resolved
+/// order, with its combination in the stored form and its cell share pinned when it
+/// resolved.
+///
+/// A member that resolves to the very cells of an earlier one is not stored: it asks for
+/// exactly that climber's runs, and two climbers sharing one set of runs would launch
+/// them twice and judge them twice.
+fn dispatch_climbers_of(members: &[PlanMember]) -> Result<Vec<StoredDispatchClimber>, ApiError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut cells: std::collections::HashSet<MemberCellIdentity> = std::collections::HashSet::new();
+    let mut climbers = Vec::with_capacity(members.len());
+    for member in members {
+        let key = climber_key(&member.combo);
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        let identity = resolved_identity(member);
+        if let Some(identity) = &identity
+            && !cells.insert(identity.clone())
+        {
+            continue;
+        }
+        climbers.push(StoredDispatchClimber {
+            climber_key: key,
+            position: climbers.len() as u32,
+            combo_json: serde_json::to_string(&member.combo.for_storage())
+                .map_err(|e| ApiError::internal(format!("encoding a climber: {e}")))?,
+            cell_json: identity.as_ref().map(encode_identity).transpose()?,
+            retried_at: None,
+        });
+    }
+    Ok(climbers)
+}
+
+/// A resolved member's cell share, or `None` when it could not be resolved (its launch
+/// model is empty — the identity no run carries).
+fn resolved_identity(member: &PlanMember) -> Option<MemberCellIdentity> {
+    (!member.launch_model.is_empty()).then(|| member.cell_identity())
+}
+
+/// A cell share as `ladder_dispatch_climber.cell_json` stores it.
+fn encode_identity(identity: &MemberCellIdentity) -> Result<String, ApiError> {
+    let (harness, model, config_id, models) = identity;
+    serde_json::to_string(&[harness, model, config_id, models])
+        .map_err(|e| ApiError::internal(format!("encoding a climber's cells: {e}")))
+}
+
+/// A stored cell share.
+fn decode_identity(json: &str) -> Result<MemberCellIdentity, ApiError> {
+    let [harness, model, config_id, models]: [String; 4] = serde_json::from_str(json)
+        .map_err(|e| ApiError::internal(format!("reading a climber's cells: {e}")))?;
+    Ok((harness, model, config_id, models))
+}
+
+/// Why a climber whose configuration now resolves to other cells than the ones its
+/// dispatch pinned is not launched: its new runs would land where this dispatch never
+/// looks.
+const MOVED_CELLS: &str = "its gg configuration now launches different runs from the ones \
+                           this dispatch started with; restore it, or Stop and Run again";
+
+/// Why a climber is not launched by a pass that found it pinned by another pass meanwhile.
+const PINNING: &str = "this climber was resolved by another launch pass just now; the next \
+                       pass launches it";
+
+/// Why a climber that resolved for the first time mid-dispatch is not launched: an
+/// earlier climber of the dispatch already asks for exactly these runs.
+const SHARED_CELLS: &str = "another climber of this dispatch already asks for exactly \
+                            these runs";
+
+/// The key a climber's state is stored against.
+///
+/// Always taken from the member as it would be **stored**, never from the shape a request
+/// happened to arrive in: a read hands a client back a gg climber with its
+/// configuration's name and its root model filled in, and echoing that straight back
+/// into `.../climbers/retry` has to address the very climber it was read from.
+fn climber_key(combo: &ReviewPlanCombo) -> String {
+    combination_key(&combo.for_storage())
+}
+
+/// A rung as the coverage machinery names a case.
+#[cfg(test)]
 fn rung_case(rung: &StoredLadderRung) -> ReviewPlanCase {
     ReviewPlanCase {
         slug: rung.slug.clone(),
@@ -2567,11 +2459,10 @@ fn rung_to_wire(rung: &StoredLadderRung) -> LadderRung {
     }
 }
 
-/// A stored ladder on the wire, its one-off climbers filled in from `configs`.
+/// A stored ladder on the wire, its one-off climbers filled in from `library`.
 ///
 /// What is stored is a pointer — a configuration id and its slot bindings — so every read
-/// resolves it, which is what lets a client that has never fetched `/gg/configs` render a
-/// climber and what makes a renamed configuration rename it everywhere at once.
+/// resolves it, which is what makes a renamed configuration rename it everywhere at once.
 fn ladder_to_wire(stored: StoredLadder, library: &GgLibrary) -> Ladder {
     Ladder {
         id: stored.id,
@@ -2581,44 +2472,20 @@ fn ladder_to_wire(stored: StoredLadder, library: &GgLibrary) -> Ladder {
         combo_group_ids: stored.combo_group_ids,
         combos: for_read(&stored.combos, library),
         rungs: stored.rungs.iter().map(rung_to_wire).collect(),
+        outer_axis: LadderAxis::parse(&stored.outer_axis),
+        in_flight_limit: stored.in_flight_limit.map(clamp_in_flight_limit),
         updated_at: stored.updated_at,
     }
 }
 
-/// A stored verdict on the wire.
-fn outcome_to_wire(stored: &StoredLadderOutcome, stale: bool, recorded: bool) -> LadderRungOutcome {
-    LadderRungOutcome {
-        rung_id: stored.rung_id.clone(),
-        decided_version: stored.decided_version.clone(),
-        outcome: LadderOutcome::from_db(stored.outcome),
-        decided_at: stored.decided_at.clone(),
-        stale,
-        recorded,
-    }
-}
-
-/// A verdict the gate resolved during this request but that is not stored (a read, or a
-/// rung whose write is still to come). Flagged `recorded: false` so nothing mistakes it
-/// for something on disk.
-fn live_outcome(rung: &StoredLadderRung, outcome: LadderOutcome, now: &str) -> LadderRungOutcome {
-    LadderRungOutcome {
-        rung_id: rung.id.clone(),
-        decided_version: rung.version.clone(),
-        outcome,
-        decided_at: now.to_string(),
-        stale: false,
-        recorded: false,
-    }
-}
-
-/// Build a stored ladder from a create/update body: clamp the targets, sanitize the
-/// gate, and mint ids for new rungs.
+/// Build a stored ladder from a create/update body: clamp the targets and the limit,
+/// sanitize the gate, and mint ids for new rungs.
 ///
 /// Three things are rejected rather than accepted-and-broken, because every one of them
 /// fails *silently* later: an empty climb, a climb longer than the cap, and a duplicated
-/// rung id (which would make two rungs share one set of recorded verdicts). The fourth
-/// check — a rung whose case version no gate can ever resolve — needs the definition
-/// store and lives in [`reject_ineligible_rungs`], so this stays pure.
+/// rung id. The fourth check — a rung whose case version no gate can ever resolve —
+/// needs the definition store and lives in [`reject_ineligible_rungs`], so this stays
+/// pure.
 fn ladder_from_input(
     id: String,
     input: LadderInput,
@@ -2666,11 +2533,11 @@ fn ladder_from_input(
         gate: sanitize_gate(input.gate.unwrap_or_default()),
         combo_group_ids: input.combo_group_ids,
         // Normalized on the way in, exactly as a group's and a plan's members are: a gg
-        // climber is the configuration it names and the models it binds, and a console that
-        // saved back what it had just read would otherwise store the name and the root model
-        // as they stood at that moment and go on reporting them forever.
+        // climber is the configuration it names and the models it binds.
         combos: for_storage(input.combos),
         rungs,
+        outer_axis: input.outer_axis.as_str().to_string(),
+        in_flight_limit: input.in_flight_limit.map(clamp_in_flight_limit),
         updated_at: updated_at.to_string(),
     })
 }
@@ -2705,15 +2572,6 @@ fn rung_ineligibility(state: &AppState, rung: &StoredLadderRung) -> Option<Strin
         ));
     }
     None
-}
-
-/// Whether a ladder can climb a stored rung: false when the store holds its case version
-/// and that version is a legacy, performance, or game-jam one. Saving a ladder refuses
-/// such a rung, but one stored before the check existed (or before its version was
-/// re-ingested as something else) stays readable: it is reported unsupported, never
-/// launched, and blocks a climber that reaches it without a recorded verdict.
-fn rung_supported(state: &AppState, rung: &StoredLadderRung) -> bool {
-    rung_ineligibility(state, rung).is_none()
 }
 
 /// Refuse any rung whose case version can never be climbed, naming the cause: a

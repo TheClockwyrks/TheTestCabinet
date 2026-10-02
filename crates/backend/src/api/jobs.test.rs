@@ -411,23 +411,32 @@ fn a_manual_launch_records_the_account_but_no_origin() {
 }
 
 #[test]
-fn a_top_up_launch_records_the_plan_or_ladder_that_asked_for_it() {
-    for (token, expected) in [
-        ("plan:p-1", JobOrigin::Plan("p-1".to_string())),
-        ("ladder:l-1", JobOrigin::Ladder("l-1".to_string())),
-    ] {
+fn a_hand_launch_from_a_plan_records_the_plan_that_asked_for_it() {
+    let query = LaunchQuery {
+        origin: Some("plan:p-1".to_string()),
+    };
+    let attribution = attribution(&account("acct-1"), &query).expect("a valid origin parses");
+    let job = build_new_job(
+        &launch_body(),
+        TestType::EndToEnd,
+        "2026-08-15T00:00:00Z",
+        &attribution,
+    )
+    .expect("the fixture body is valid");
+    assert_eq!(job.origin, Some(JobOrigin::plan("p-1")));
+}
+
+#[test]
+fn a_client_may_not_stamp_a_fill_or_a_ladder_origin() {
+    // Only the backend's own launch passes mint these: a client stamping one would make a
+    // fill or a dispatch count, retry and be fed by a run it never launched.
+    for token in ["plan:p-1/f-1", "ladder:l-1", "ladder:l-1/d-1/r-1"] {
         let query = LaunchQuery {
             origin: Some(token.to_string()),
         };
-        let attribution = attribution(&account("acct-1"), &query).expect("a valid origin parses");
-        let job = build_new_job(
-            &launch_body(),
-            TestType::EndToEnd,
-            "2026-08-15T00:00:00Z",
-            &attribution,
-        )
-        .expect("the fixture body is valid");
-        assert_eq!(job.origin, Some(expected));
+        let error = attribution(&account("acct-1"), &query)
+            .expect_err("a backend-minted origin is refused from a client");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST, "{token}");
     }
 }
 

@@ -411,8 +411,8 @@ pub(super) async fn candidate_record<'a>(
 /// A value of its own, rather than only ever fields written straight onto a
 /// [`LaunchBody`], because the resolution that produces it is the one part of minting a gg job
 /// that can **fail** and reaches the network. A caller about to launch many runs of one
-/// member — a coverage plan's top-up — resolves it once, before it decides what to launch, so
-/// that a member it cannot resolve costs the plan nothing rather than costing it the buffer
+/// member — a launch pass — resolves it once, before it decides what to launch, so
+/// that a member it cannot resolve costs the plan nothing rather than costing it the limit
 /// slots the scheduler had already handed that member.
 #[derive(Debug, Clone, Default)]
 pub(super) struct GgModelFacts {
@@ -659,16 +659,16 @@ pub(super) struct JobAttribution {
     /// The account that asked for the run. `None` only on a retry of a job enqueued
     /// before attribution existed.
     user_id: Option<String>,
-    /// The coverage plan or ladder that asked for the run, or `None` for a launch by
-    /// hand. This is what a scoped `halt` cancels by.
+    /// The coverage plan, fill, or ladder dispatch rung that asked for the run, or `None`
+    /// for a launch by hand. This is what a scoped halt or stop cancels by.
     origin: Option<JobOrigin>,
 }
 
 impl JobAttribution {
     /// The attribution a **scheduled** launch stamps: the account whose plan or ladder asked
-    /// for the run, and the plan or ladder itself.
+    /// for the run, and the fill or dispatch rung itself.
     ///
-    /// A coverage top-up mints its jobs through [`build_new_job`] like every other launch
+    /// A launch pass mints its jobs through [`build_new_job`] like every other launch
     /// path, but it does not arrive as an HTTP request carrying an `origin` query — it knows
     /// its origin as a value already, so it says so directly rather than formatting a token
     /// for [`attribution`] to parse straight back.
@@ -680,11 +680,14 @@ impl JobAttribution {
     }
 }
 
-/// Resolve the attribution for a launch request: the token's account, plus the
-/// plan/ladder named by the query's `origin`.
+/// Resolve the attribution for a launch request: the token's account, plus the plan
+/// named by the query's `origin`.
 ///
-/// An `origin` that is present but unparseable is a **400** rather than a silently
-/// dropped label. The whole point of the column is that a later `halt` can find these
+/// A client may name only a plan's hand launch, `plan:<id>`. A fill's
+/// `plan:<id>/<fill>` and every `ladder:` origin are minted by the backend's own launch
+/// passes, and a client stamping one would make a dispatch or a fill count, retry, and
+/// be fed by a run it never launched, so either is a **400**. An `origin` that is
+/// present but unparseable is a **400** too, rather than a silently dropped label. The whole point of the column is that a later `halt` can find these
 /// jobs again, so a run enqueued under a typo'd origin is one no halt will ever reach
 /// — a fault that surfaces much later and in a confusing shape ("this plan will not
 /// stop"), far from the request that caused it.
@@ -694,11 +697,15 @@ pub(super) fn attribution(
 ) -> Result<JobAttribution, ApiError> {
     let origin = match query.origin.as_deref() {
         None => None,
-        Some(token) => Some(JobOrigin::parse(token).ok_or_else(|| {
-            ApiError::bad_request(format!(
-                "`origin` must be `plan:<id>` or `ladder:<id>` (got `{token}`)"
-            ))
-        })?),
+        Some(token) => match JobOrigin::parse(token) {
+            Some(origin @ JobOrigin::Plan { fill_id: None, .. }) => Some(origin),
+            _ => {
+                return Err(ApiError::bad_request(format!(
+                    "`origin` must be `plan:<id>` (got `{token}`); fill and ladder origins \
+                     are minted by the backend"
+                )));
+            }
+        },
     };
     Ok(JobAttribution {
         user_id: Some(user.0.id.clone()),
@@ -905,6 +912,8 @@ pub async fn cancel(
             Some(detail),
         ),
     );
+    // The job held its cell for every plan filling it, and its slot for its dispatch.
+    spawn_cancel_feed(&state, vec![canceled.clone()]);
     Ok(Json(job_status_out(&canceled)))
 }
 
@@ -931,6 +940,7 @@ pub async fn cancel_waiting(
         &state,
         &global_filter(&CANCELABLE_WAITING_STATES),
         "canceled by an operator clearing the waiting queue",
+        CancelFeed::Nothing,
     )
     .await?;
     Ok(Json(BulkCancelOut {
@@ -959,6 +969,7 @@ pub async fn cancel_active(
         &state,
         &global_filter(&CANCELABLE_ACTIVE_STATES),
         "canceled by an operator killing the active runs",
+        CancelFeed::Nothing,
     )
     .await?;
     Ok(Json(BulkCancelOut {
@@ -986,6 +997,7 @@ pub async fn cancel_all(
         &state,
         &global_filter(&states),
         "canceled by an operator stopping every run",
+        CancelFeed::Nothing,
     )
     .await?;
     Ok(Json(BulkCancelOut {
@@ -1009,6 +1021,27 @@ fn global_filter<'a>(states: &'a [&'a str]) -> JobCancelFilter<'a> {
         cell: None,
         ids: None,
     }
+}
+
+/// Whether a cancel feeds the plans and the dispatch its jobs held cells for
+/// ([`super::launch::feed_canceled_jobs`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CancelFeed {
+    /// Feed them: a job cancelled by hand, by a scoped halt or stop, or by a gate's
+    /// early stop leaves its cell missing for whatever else is filling it.
+    Feed,
+    /// Feed nothing: a global sweep stops the cabinet, and refilling the queue it just
+    /// emptied would undo it.
+    Nothing,
+}
+
+/// Feed what cancelled jobs belonged to, on a task of its own, so the cancel answers at
+/// once and never fails because of a pass.
+fn spawn_cancel_feed(state: &AppState, jobs: Vec<job::Model>) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        super::launch::feed_canceled_jobs(&state, &jobs).await;
+    });
 }
 
 /// The shared body of the three global cancel controls: move every in-flight job in
@@ -1035,6 +1068,7 @@ pub(super) async fn sweep_cancel(
     state: &AppState,
     filter: &JobCancelFilter<'_>,
     detail: &str,
+    feed: CancelFeed,
 ) -> Result<u32, ApiError> {
     // Keep the rows, not just their ids: a run that ends here must be announced with
     // the same identity the console listed it under, and after the sweep it is no
@@ -1062,10 +1096,11 @@ pub(super) async fn sweep_cancel(
         .into_iter()
         .map(|job| job.id)
         .collect();
-    for job in before
-        .iter()
+    let ended: Vec<job::Model> = before
+        .into_iter()
         .filter(|job| !still_in_flight.contains(&job.id))
-    {
+        .collect();
+    for job in &ended {
         finish_run(
             state,
             RunEvent::finished(
@@ -1076,6 +1111,10 @@ pub(super) async fn sweep_cancel(
                 Some(detail),
             ),
         );
+    }
+
+    if feed == CancelFeed::Feed && !ended.is_empty() {
+        spawn_cancel_feed(state, ended);
     }
 
     tracing::info!(canceled, detail, "swept the run queue");
@@ -1217,6 +1256,62 @@ pub async fn update_status(
     Json(update): Json<StatusUpdate>,
 ) -> Result<StatusCode, ApiError> {
     let job = authorize_job(&state, &id, &headers).await?;
+    apply_status(&state, &id, job, update).await
+}
+
+/// `POST /jobs/{id}/lost` — the dispatcher reports a job whose driver is gone without
+/// having reported: the job is `dispatched`, `starting` or `running`, and the cluster has
+/// had no live driver `Job` for it for a while (it failed, completed without a terminal
+/// report reaching the backend, or no longer exists). Requires the service token, since
+/// a dispatcher that restarted holds no per-job token for the jobs an earlier process
+/// dispatched.
+///
+/// The body is a `failed` [`StatusUpdate`] with no record; its detail says what the
+/// dispatcher found. It lands exactly as a driver's own `failed` report would, automatic
+/// retry and coverage feed included. A job in any other state is left alone — a queued
+/// or pending job has no driver to lose, and a terminal one has already reported — and
+/// the answer is `204` either way, so a report racing the driver's own is harmless.
+#[tracing::instrument(name = "jobs.lost", skip(state, _service, update), fields(job.id = %id), err(Debug))]
+pub async fn report_lost(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+    Path(id): Path<String>,
+    Json(update): Json<StatusUpdate>,
+) -> Result<StatusCode, ApiError> {
+    if !matches!(update.state, DriverState::Failed) || update.record.is_some() {
+        return Err(ApiError::unprocessable(
+            "a lost job is reported as `failed`, with no record",
+        ));
+    }
+    let job = state
+        .db
+        .get_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
+    if !DRIVEN_STATES.contains(&job.state.as_str()) {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    tracing::warn!(
+        job_id = %id,
+        detail = update.detail.as_deref().unwrap_or(""),
+        "the dispatcher reported a job whose driver is gone"
+    );
+    apply_status(&state, &id, job, update).await
+}
+
+/// The job states a driver exists for: what [`report_lost`] may fail.
+const DRIVEN_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// Apply a status update to `job`, once whoever sent it is authorized: the driver itself
+/// ([`update_status`]) or the dispatcher reporting it lost ([`report_lost`]).
+async fn apply_status(
+    state: &AppState,
+    id: &str,
+    job: job::Model,
+    update: StatusUpdate,
+) -> Result<StatusCode, ApiError> {
+    let id = id.to_string();
 
     // A canceled job is terminal. Ignore any status the in-flight driver posts
     // before it notices the cancellation, so a late `running`/`succeeded`/`failed`
@@ -1293,21 +1388,21 @@ pub async fn update_status(
             // Decided before the record is stored, so the retry and the attempt's
             // `retried_by` stamp exist before its run does (see `maybe_enqueue_retry`).
             let retried = maybe_enqueue_retry(
-                &state,
+                state,
                 &job,
                 update.record.as_ref().map(|record| record.id.as_str()),
                 terminal_state,
                 already_terminal,
             )
             .await?;
-            let record_id = persist_produced(&state, &id, update.record.as_ref()).await?;
+            let record_id = persist_produced(state, &id, update.record.as_ref()).await?;
             state
                 .db
                 .set_job_state(&id, "failed", &now, Some(detail), record_id.as_deref())
                 .await
                 .map_err(ApiError::from)?;
             finish_and_notify(
-                &state,
+                state,
                 RunEvent::finished(
                     &id,
                     job_summary(&job),
@@ -1317,8 +1412,8 @@ pub async fn update_status(
                 ),
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
-            if feeds_ladders(already_terminal, retried) {
-                spawn_ladder_feed(&state, &job);
+            if feeds_coverage(already_terminal, retried) {
+                spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
         }
@@ -1333,14 +1428,14 @@ pub async fn update_status(
             // Decided before the record is stored, so the retry and the attempt's
             // `retried_by` stamp exist before its run does (see `maybe_enqueue_retry`).
             let retried = maybe_enqueue_retry(
-                &state,
+                state,
                 &job,
                 Some(record.id.as_str()),
                 terminal_state,
                 already_terminal,
             )
             .await?;
-            let record_id = persist_record(&state, &id, record).await?;
+            let record_id = persist_record(state, &id, record).await?;
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
             // model claimed done but the build won't load) — the record carries
             // which — unless the engine classified the run as the Test Cabinet's own
@@ -1357,7 +1452,7 @@ pub async fn update_status(
                         .await
                         .map_err(ApiError::from)?;
                     finish_and_notify(
-                        &state,
+                        state,
                         RunEvent::finished(
                             &id,
                             job_summary(&job),
@@ -1375,7 +1470,7 @@ pub async fn update_status(
                         .await
                         .map_err(ApiError::from)?;
                     finish_and_notify(
-                        &state,
+                        state,
                         RunEvent::finished(
                             &id,
                             job_summary(&job),
@@ -1387,8 +1482,8 @@ pub async fn update_status(
                     );
                 }
             }
-            if feeds_ladders(already_terminal, retried) {
-                spawn_ladder_feed(&state, &job);
+            if feeds_coverage(already_terminal, retried) {
+                spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
         }
@@ -1410,7 +1505,7 @@ pub async fn update_status(
                     "a canceled status must carry the run record",
                 ));
             };
-            let record_id = persist_record(&state, &id, record).await?;
+            let record_id = persist_record(state, &id, record).await?;
             state
                 .db
                 .attach_canceled_job_record(&id, &record_id, &now)
@@ -1422,27 +1517,28 @@ pub async fn update_status(
 }
 
 /// Whether a job that just reached a terminal state through the driver's report feeds
-/// the ladders it belongs to: the first time it goes terminal, and only when it did not
-/// enqueue an automatic retry — the retry takes its place in flight, so there is nothing
-/// new for a ladder to act on until the retry itself finishes.
+/// the dispatch and the filling plans it belongs to: the first time it goes terminal, and
+/// only when it did not enqueue an automatic retry — the retry takes its place in flight,
+/// so there is nothing new to act on until the retry itself finishes.
 ///
-/// Cancellations never reach this: a cancelled job — by hand, by a halt, or by an
-/// early-stopping gate — feeds nothing, which is also what keeps an early stop from
-/// looping.
-fn feeds_ladders(already_terminal: bool, retried: bool) -> bool {
+/// Cancellations never reach this: a cancel feeds through [`CancelFeed`] instead. An
+/// early stop's own cancels do feed its dispatch, which cannot loop: the next pass finds
+/// the decided slot with nothing left waiting to cancel.
+fn feeds_coverage(already_terminal: bool, retried: bool) -> bool {
     !already_terminal && !retried
 }
 
-/// Run a launch pass of the ladders a finished job feeds, on a task of its own.
+/// Run a launch pass of the dispatch and the filling plans a finished job feeds
+/// ([`super::launch::feed_finished_job`]), on a task of its own.
 ///
 /// Spawned rather than awaited, after the job's terminal state is stored: a launch pass
-/// resolves a whole ladder and may reach the model catalog, and the driver's status
-/// report must neither wait on that nor ever fail because of it.
-fn spawn_ladder_feed(state: &AppState, job: &job::Model) {
+/// resolves a whole plan or dispatch and may reach the model catalog, and the driver's
+/// status report must neither wait on that nor ever fail because of it.
+fn spawn_coverage_feed(state: &AppState, job: &job::Model) {
     let state = state.clone();
     let job = job.clone();
     tokio::spawn(async move {
-        super::ladders::feed_ladders(&state, &job).await;
+        super::launch::feed_finished_job(&state, &job).await;
     });
 }
 
@@ -1486,43 +1582,52 @@ fn retry_count_of(request_json: &str) -> u32 {
         .min(MAX_RETRY_COUNT)
 }
 
-/// Whether the coverage plan or ladder that launched `job` is currently paused — a
-/// ladder's paused flag is what the console calls **disabled**.
+/// Whether the fill or ladder dispatch that launched `job` has ended, so that an
+/// automatic retry of it would launch for nothing.
 ///
-/// A paused plan or ladder has been told to stop producing work, and re-enqueueing a
-/// failed run of it is producing work: it is a fresh `queued` job, minted minutes after
-/// the reviewer halted the queue and watched it empty. That is the shape of the bug
-/// this guards — runs "coming back" after being stopped, with nothing in the console
-/// that asked for them. Whatever was already in flight still runs to completion, which
-/// is the promise a pause makes; only the *next* attempt is withheld.
+/// A halted plan or a stopped dispatch has been told to stop producing work, and
+/// re-enqueueing a failed run of it is producing work: a fresh `queued` job minted after
+/// the queue was emptied. A dispatch replaced by a new Run is the same: its runs count for
+/// nothing any more. So the retry of a fill's job is withheld unless the plan is still on
+/// that fill, and a dispatch's unless that dispatch is still the ladder's running one. A
+/// legacy `ladder:<id>` job always launches nothing.
 ///
-/// Answers false, so the retry proceeds, whenever the question cannot be settled: an
-/// unattributed job (launched by hand — no plan ever spoke for it), one with no
-/// launching account to scope the lookup to, or an origin whose plan or ladder has since
-/// been deleted. Deleting a plan deliberately leaves its runs alone, and a run nobody
-/// can attribute is still a perfectly good run that a transient failure should not end.
-async fn origin_is_paused(state: &AppState, job: &job::Model) -> Result<bool, ApiError> {
+/// Answers false, so the retry proceeds, for a hand launch — unattributed, or a plan's
+/// `plan:<id>` from its Tests tab — and for a job with no launching account to scope the
+/// lookup to: a run nobody stopped is still a perfectly good run that a transient failure
+/// should not end.
+async fn origin_launches_nothing(state: &AppState, job: &job::Model) -> Result<bool, ApiError> {
     let Some(origin) = job.origin.as_deref().and_then(JobOrigin::parse) else {
         return Ok(false);
     };
-    let Some(user_id) = job.user_id.as_deref() else {
+    if job.user_id.is_none() {
         return Ok(false);
-    };
-    let paused = match origin {
-        JobOrigin::Plan(id) => state
+    }
+    Ok(match origin {
+        JobOrigin::Plan { fill_id: None, .. } => false,
+        JobOrigin::Plan {
+            plan_id,
+            fill_id: Some(fill),
+        } => state
             .db
-            .coverage_plan_schedule(user_id, &id)
+            .coverage_plan_fill(&plan_id)
             .await
             .map_err(ApiError::from)?
-            .map(|schedule| schedule.paused),
-        JobOrigin::Ladder(id) => state
+            .is_none_or(|current| current != fill),
+        JobOrigin::Ladder {
+            ladder_id,
+            dispatch_id: Some(dispatch),
+            ..
+        } => state
             .db
-            .ladder_schedule(user_id, &id)
+            .ladder_dispatch(&ladder_id)
             .await
             .map_err(ApiError::from)?
-            .map(|schedule| schedule.paused),
-    };
-    Ok(paused.unwrap_or(false))
+            .is_none_or(|current| current.id != dispatch || current.status != "running"),
+        JobOrigin::Ladder {
+            dispatch_id: None, ..
+        } => true,
+    })
 }
 
 /// Whether a terminal run in `state` should be automatically retried.
@@ -1562,29 +1667,29 @@ fn is_retryable(state: RunState) -> bool {
 /// unchanged, so no dispatcher change is needed.
 ///
 /// It also inherits the **original** job's attribution rather than taking none: the
-/// retry is still that account's run, and still the plan's or ladder's, so it stays in
-/// that plan's coverage buffer and is still reached by that plan's halt. A retry with
+/// retry is still that account's run, and still the fill's or dispatch's, so it counts
+/// toward the same limit and is still reached by that plan's halt or that dispatch's stop. A retry with
 /// no origin would be a job the plan launched and can no longer stop.
 ///
 /// Two guards keep the chain finite: `already_terminal` skips a duplicate/late
 /// terminal report (the decision is made only the first time a job goes terminal),
 /// and the strictly-monotonic `attempt` bounded by the request's `retryCount` means
-/// the chain always terminates. A third, [`origin_is_paused`], stops the chain
-/// outright when the plan or ladder that launched the run has been paused since: a
-/// halted queue that refills itself minutes later is indistinguishable from a queue
-/// that was never halted.
+/// the chain always terminates. A third, [`origin_launches_nothing`], stops the chain
+/// outright when the fill or dispatch that launched the run has ended since: a halted
+/// queue that refills itself minutes later is indistinguishable from a queue that was
+/// never halted.
 ///
 /// It runs **before** the attempt's record is stored, and the retry is enqueued in one
 /// transaction with the attempt's [`retried_by`](job::Model::retried_by) stamp and its
-/// `record_id` (`record_id`, the id the record will be stored under). A ladder leaves
+/// `record_id` (`record_id`, the id the record will be stored under). Counting leaves
 /// the run of a retried job out through those two columns, so the attempt's run is
-/// never visible without them: a top-up running concurrently never counts it, nor lets
-/// its gate decide on it, while its retry is still to be enqueued. A report that is
+/// never visible without them: a launch pass running concurrently never counts it, nor
+/// lets a gate decide on it, while its retry is still to be enqueued. A report that is
 /// sent again after the retry was enqueued but before the record was stored finds the
 /// stamp already set and enqueues nothing more.
 ///
-/// Returns whether a retry was enqueued, which decides whether the job feeds its ladders
-/// ([`feeds_ladders`]).
+/// Returns whether a retry was enqueued, which decides whether the job feeds its dispatch
+/// and plans ([`feeds_coverage`]).
 async fn maybe_enqueue_retry(
     state: &AppState,
     job: &job::Model,
@@ -1605,13 +1710,13 @@ async fn maybe_enqueue_retry(
     if attempt as u32 > retry_count {
         return Ok(false);
     }
-    if origin_is_paused(state, job).await? {
+    if origin_launches_nothing(state, job).await? {
         tracing::info!(
             parent_job = %job.id,
             origin = job.origin.as_deref().unwrap_or(""),
             terminal_state = ?terminal_state,
-            "skipped the automatic retry of a failed run: the plan or ladder that \
-             launched it is paused"
+            "skipped the automatic retry of a failed run: the fill or dispatch that \
+             launched it has ended"
         );
         return Ok(false);
     }
@@ -1664,6 +1769,28 @@ async fn maybe_enqueue_retry(
         .map_err(ApiError::from)?;
     if !enqueued {
         // A concurrent report of the same attempt enqueued its retry first.
+        return Ok(true);
+    }
+    // A halt or a Stop does not wait for this report: it ends the fill or dispatch and
+    // then cancels the jobs its origin names. One that lands between the check above and
+    // the enqueue has already swept, so the retry is checked again now that it exists —
+    // either the sweep comes after it and reaches it, or this sees the end and cancels it,
+    // exactly as a launch pass treats what it just enqueued.
+    if origin_launches_nothing(state, job).await? {
+        sweep_cancel(
+            state,
+            &JobCancelFilter {
+                states: &CANCELABLE_WAITING_STATES,
+                origin: None,
+                user_id: None,
+                cell: None,
+                ids: Some(std::slice::from_ref(&retry_id)),
+            },
+            "canceled: the fill or dispatch that launched this run ended while its retry \
+             was being enqueued",
+            CancelFeed::Feed,
+        )
+        .await?;
         return Ok(true);
     }
     tracing::info!(

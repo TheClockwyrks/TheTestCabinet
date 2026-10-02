@@ -43,9 +43,6 @@ pub mod store;
 
 use std::sync::Arc;
 
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
-
 use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
@@ -171,7 +168,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // only the configuration's name, so the account that launched it is traced through the
     // job that produced it and the name matched against that account's configurations. A run
     // that resolves to no configuration, or to two, keeps its `NULL` and counts toward no gg
-    // cell — an under-count the next top-up fills, where a guess would merge two
+    // cell — an under-count the next launch pass fills, where a guess would merge two
     // configurations' histories for good. Best-effort and never blocks startup, as the
     // backfills above are, and unlike them it runs exactly once: the name it resolves
     // through belongs to a library the operator keeps editing, so a later pass would answer
@@ -241,35 +238,25 @@ pub async fn build(config: Config) -> error::Result<Backend> {
 
     let db = Arc::new(db);
 
-    // Reconcile orphaned in-flight jobs before serving — but only single-box,
-    // where a backend restart means the whole stack (dispatcher + every driver)
-    // went down together, so any job the store still believes is `dispatched`/
-    // `running` is dead and can never reach a terminal state on its own. Running
-    // this before the router serves is race-free: no driver can be mid-report and
-    // the dispatcher cannot claim work until `/jobs/next` is up. A remote backend
-    // can restart while drivers keep running, so it must not reap (the gate).
-    if config.is_single_box() {
-        let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
-        let reaped = db
-            .fail_in_flight_jobs(&now, crate::db::REAPED_DETAIL)
-            .await?;
-        if reaped > 0 {
-            tracing::info!(
-                reaped,
-                "reaped in-flight jobs orphaned by a backend restart"
-            );
-        }
-    }
-
-    // A ladder's launch-pass claim still held at startup was held by a pass that died with
-    // the previous process: the backend is the single coordinator, so nothing else can
-    // hold one. Left in place it would turn the startup feed below away as busy until its
-    // lease ran out, with no holder left to serve the request that leaves behind.
-    let released = db.release_all_ladder_top_ups().await?;
+    // In-flight jobs are never reaped at startup. No deployment runs drivers inside the
+    // backend's lifecycle: the dispatcher creates a Kubernetes Job per run, which keeps
+    // running across a backend restart and reports when it is done. A driver that dies
+    // without reporting — one `Job` or, after a whole-machine restart, all of them — is
+    // found by the dispatcher, which compares the jobs this backend holds in flight with
+    // the driver `Job`s the cluster actually runs and reports each lost one
+    // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
+    // are still executing.
+    //
+    // A launch-pass claim still held at startup, on a plan or a ladder, was held by a pass
+    // that died with the previous process: the backend is the single coordinator, so
+    // nothing else can hold one. Left in place it would turn the startup passes away as
+    // busy until its lease ran out, with no holder left to serve the request that leaves
+    // behind.
+    let released = db.release_all_launch_claims().await?;
     if released > 0 {
         tracing::info!(
             released,
-            "released ladder launch-pass claims left by the previous process"
+            "released launch-pass claims left by the previous process"
         );
     }
 
@@ -391,10 +378,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
-    // A ladder is fed when something happens to it, and a restart loses some of those
-    // moments (the reconciliation above fails orphaned jobs without feeding anyone).
-    // Run a launch pass of every enabled ladder once, as soon as the store can be served.
-    api::spawn_ladder_startup_feed(state.clone());
+    // A running ladder dispatch and a filling plan are fed when one of their runs
+    // finishes, and a restart loses some of those moments: a feed that was spawned but had
+    // not finished dies with the process. Run a launch pass of each once, as soon as the
+    // store can be served.
+    api::spawn_startup_passes(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -405,3 +393,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         artifact_sweeper,
     })
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

@@ -309,18 +309,13 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
             case_group_ids: Vec::new(),
             combos: plan.combos,
             cases: plan.cases,
+            // Cases outer and the account's limit: what the legacy `review_plan` had. A
+            // migrated plan is not filling; its owner fills it from the console.
+            outer_axis: crate::api::CoverageAxis::Case,
+            in_flight_limit: None,
             updated_at: now.clone(),
         };
-        // A migrated plan starts under the default schedule, which is exactly the
-        // behaviour the legacy `review_plan` had: cases outer, not paused, and no
-        // automatic top-up. Migration must not change how an existing plan is fed —
-        // the reviewer opts into scheduling afterwards, from the console.
-        db.insert_coverage_plan(
-            &plan.user_id,
-            &coverage,
-            &crate::db::CoveragePlanSchedule::default(),
-        )
-        .await?;
+        db.insert_coverage_plan(&plan.user_id, &coverage).await?;
         db.mark_review_plan_migrated(&plan.user_id).await?;
         migrated += 1;
     }

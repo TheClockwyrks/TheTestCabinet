@@ -76,7 +76,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A reviewer's saved, reusable group of combinations or cases. Referenced by plans\nas a pointer; editing the group reshapes every plan that references it. Exactly\none of `combos`/`cases` is populated, per `kind`.",
+  "description": "An owner's saved, reusable group of combinations or cases. Referenced by plans\nas a pointer; editing the group reshapes every plan that references it. Exactly\none of `combos`/`cases` is populated, per `kind`.",
   "properties": {
     "cases": {
       "description": "The version-pinned cases, when `kind` is `case` (else empty).",

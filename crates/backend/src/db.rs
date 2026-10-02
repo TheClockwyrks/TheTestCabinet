@@ -39,16 +39,17 @@ use test_cabinet_core::run_record::{
 use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
     backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
-    coverage_plan, coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query,
-    harness_config, job, ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias,
-    model_price, model_probe, model_probe_item, publish_job, review, review_plan, review_revision,
-    run, run_link, snapshot_state, tournament,
+    coverage_plan, coverage_plan_cell_retry, coverage_settings, gg_agent, gg_config, gg_dashboard,
+    gg_saved_query, harness_config, job, ladder, ladder_dispatch, ladder_dispatch_climber,
+    ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price, model_probe,
+    model_probe_item, publish_job, review, review_plan, review_revision, run, run_link,
+    snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
-use crate::coverage::schedule::BufferTarget;
+use crate::coverage::schedule::InFlightLimit;
 use crate::error::{BackendError, Result};
 use crate::store::{CaseNames, StoredManifest};
 
@@ -60,36 +61,37 @@ use crate::store::{CaseNames, StoredManifest};
 /// and `running` each have a driver Job coming up or executing.
 const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
 
-/// The column value that stores an [unbounded](BufferTarget::Unbounded) buffer target.
+/// The column value that stores an [unbounded](InFlightLimit::Unbounded) runs-in-flight
+/// limit.
 ///
-/// The three `buffer_target` columns (`coverage_settings`, `coverage_plan`, `ladder`)
-/// are integers that only ever held a non-negative run count, and on the two override
+/// The three `in_flight_limit` columns (`coverage_settings`, `coverage_plan`, `ladder`)
+/// are integers that only ever hold a non-negative run count, and on the two override
 /// tables `NULL` already means "inherit". A negative value is the one thing those
 /// columns could never legitimately hold, which makes it a lossless place to keep the
 /// third instruction without a second column whose combination with the first would
 /// need an invariant of its own. Every read and write goes through
-/// [`buffer_target_from_column`] and [`buffer_target_to_column`], so nothing else
+/// [`in_flight_limit_from_column`] and [`in_flight_limit_to_column`], so nothing else
 /// knows the number.
-const UNBOUNDED_BUFFER_COLUMN: i32 = -1;
+const UNBOUNDED_LIMIT_COLUMN: i32 = -1;
 
-/// Decode a stored `buffer_target` column: negative is the unbounded marker, anything
+/// Decode a stored `in_flight_limit` column: negative is the unbounded marker, anything
 /// else the bound it counts.
-fn buffer_target_from_column(value: i32) -> BufferTarget {
+fn in_flight_limit_from_column(value: i32) -> InFlightLimit {
     if value < 0 {
-        BufferTarget::Unbounded
+        InFlightLimit::Unbounded
     } else {
-        BufferTarget::Bounded { runs: value as u32 }
+        InFlightLimit::Bounded { runs: value as u32 }
     }
 }
 
-/// Encode a buffer target for its column; the inverse of
-/// [`buffer_target_from_column`]. A bound wider than the column is saturated rather
+/// Encode a runs-in-flight limit for its column; the inverse of
+/// [`in_flight_limit_from_column`]. A bound wider than the column is saturated rather
 /// than wrapped into the marker, so a caller that forgot to clamp cannot accidentally
 /// store "no bound".
-fn buffer_target_to_column(target: BufferTarget) -> i32 {
-    match target {
-        BufferTarget::Bounded { runs } => i32::try_from(runs).unwrap_or(i32::MAX),
-        BufferTarget::Unbounded => UNBOUNDED_BUFFER_COLUMN,
+fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
+    match limit {
+        InFlightLimit::Bounded { runs } => i32::try_from(runs).unwrap_or(i32::MAX),
+        InFlightLimit::Unbounded => UNBOUNDED_LIMIT_COLUMN,
     }
 }
 
@@ -117,29 +119,22 @@ pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
 pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
-/// How long a top-up claim on a coverage plan or ladder stays valid before another
+/// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
 ///
-/// Top-up is an endpoint the console calls, not a background daemon, so the claim
-/// marker (`coverage_plan.topping_up_at` / `ladder.topping_up_at`) is released by the
-/// very request that took it — and a request that dies in between leaves it set. The
-/// lease bounds that: a marker older than this is treated as abandoned, so a crashed
-/// top-up costs one stalled interval instead of wedging the plan forever. A top-up is
-/// a handful of reads and one batch insert, so a couple of minutes is already orders
-/// of magnitude longer than it can legitimately take.
-const TOP_UP_LEASE: time::Duration = time::Duration::minutes(2);
+/// The claim marker (`coverage_plan.launch_claimed_at` / `ladder.launch_claimed_at`) is
+/// released by the very pass that took it — and a pass that dies in between leaves it
+/// set. The lease bounds that: a marker older than this is treated as abandoned, so a
+/// crashed pass costs one stalled interval instead of wedging the plan or ladder forever.
+/// A pass is a handful of reads and one batch insert, so a couple of minutes is already
+/// orders of magnitude longer than it can legitimately take.
+const LAUNCH_LEASE: time::Duration = time::Duration::minutes(2);
 
-/// The `detail` the startup reconciliation ([`Db::fail_in_flight_jobs`]) fails an
-/// orphaned job with. A constant rather than a caller's string, because it is also how a
-/// ladder recognises a failure that was the restart's rather than the cell's
-/// ([`Db::recent_terminal_jobs`]).
+/// The `detail` an earlier backend failed an orphaned job with when it restarted. The
+/// backend no longer reaps anything, but rows written then still carry it, and a failure
+/// that was the restart's rather than the cell's must not count toward a failing streak
+/// ([`Db::recent_terminal_jobs`]). Legacy rows only.
 pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this run was in flight";
-
-/// The job states a backend restart must reap: a driver was executing them (or
-/// being created for them) and went down with the backend, so the job can never
-/// reach a terminal state on its own. `queued`/`pending` jobs have no driver, so
-/// they are left for the dispatcher to drain once it reconnects.
-const REAPABLE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// The publish-job states that mean a release is already under way for a run: it is
 /// waiting to be claimed, or a `tcab-publisher` Job is carrying it out. A run with
@@ -154,8 +149,8 @@ const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
 /// blocking a fresh publish.
 ///
 /// Nothing reaps a publish job whose publisher pod died before reporting — the run
-/// queue has a startup reconciliation ([`Db::fail_in_flight_jobs`]) but the publish
-/// queue has no equivalent, so such a job sits in `dispatched` forever. Without this
+/// queue relies on the dispatcher's death detection, which the publish queue has no
+/// equivalent of — so such a job sits in `dispatched` forever. Without this
 /// cutoff the enqueue-time dedup would wedge that run's publishing permanently,
 /// which is a worse failure than the duplicate deploy it prevents. A real publish
 /// takes minutes, so an hour only ever releases a job whose publisher is genuinely
@@ -2567,7 +2562,7 @@ impl Db {
     pub async fn list_coverage_plans(
         &self,
         user_id: &str,
-    ) -> Result<Vec<crate::api::CoveragePlan>> {
+    ) -> Result<Vec<crate::api::CoveragePlanOut>> {
         coverage_plan::Entity::find()
             .filter(coverage_plan::Column::UserId.eq(user_id))
             .order_by_asc(coverage_plan::Column::Name)
@@ -2583,7 +2578,7 @@ impl Db {
         &self,
         user_id: &str,
         id: &str,
-    ) -> Result<Option<crate::api::CoveragePlan>> {
+    ) -> Result<Option<crate::api::CoveragePlanOut>> {
         let Some(row) = coverage_plan::Entity::find_by_id(id.to_string())
             .one(&self.conn())
             .await?
@@ -2596,19 +2591,12 @@ impl Db {
         Ok(Some(coverage_plan_from_row(row)?))
     }
 
-    /// Insert a new coverage plan (id already minted by the handler) with the
-    /// [schedule](CoveragePlanSchedule) it starts under.
-    ///
-    /// The schedule is a separate argument rather than part of the plan because the
-    /// two are edited apart (see [`CoveragePlanSchedule`]) — but a *create* has to
-    /// state one, so it is required here. A caller with no opinion passes
-    /// [`CoveragePlanSchedule::default`], which reproduces the behaviour plans had
-    /// before they could be scheduled at all.
+    /// Insert a new coverage plan (id already minted by the handler). A new plan is not
+    /// filling and holds no launch claim.
     pub async fn insert_coverage_plan(
         &self,
         user_id: &str,
         plan: &crate::api::CoveragePlan,
-        schedule: &CoveragePlanSchedule,
     ) -> Result<()> {
         coverage_plan::ActiveModel {
             id: Set(plan.id.clone()),
@@ -2619,13 +2607,11 @@ impl Db {
             case_group_ids_json: Set(serde_json::to_string(&plan.case_group_ids)?),
             combos_json: Set(serde_json::to_string(&plan.combos)?),
             cases_json: Set(serde_json::to_string(&plan.cases)?),
-            outer_axis: Set(schedule.outer_axis.clone()),
-            paused: Set(schedule.paused),
-            auto_top_up: Set(schedule.auto_top_up),
-            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
-            // A fresh plan is nobody's claim: the marker is only ever set by a top-up
-            // taking the plan, and cleared when it lets go.
-            topping_up_at: Set(None),
+            outer_axis: Set(plan.outer_axis.as_str().to_string()),
+            in_flight_limit: Set(plan.in_flight_limit.map(in_flight_limit_to_column)),
+            launch_claimed_at: Set(None),
+            launch_requested: Set(false),
+            fill_id: Set(None),
             updated_at: Set(plan.updated_at.clone()),
         }
         .insert(&self.conn())
@@ -2633,14 +2619,12 @@ impl Db {
         Ok(())
     }
 
-    /// Update a coverage plan in place, scoped to the owning account. Returns whether
-    /// a row matched.
+    /// Update a coverage plan's configuration in place, scoped to the owning account.
+    /// Returns whether a row matched.
     ///
-    /// Writes the plan's **declaration** only — its members and target. The
-    /// [schedule](CoveragePlanSchedule) columns are deliberately untouched, so saving
-    /// an edit to a plan's model list can never un-pause it or silently reset its
-    /// buffer target under a reviewer who paused it thirty seconds earlier; those
-    /// travel through [`Self::set_coverage_plan_schedule`].
+    /// Writes everything the owner edits — members, target, order and limit override —
+    /// and nothing the backend owns: the fill in progress and the launch claim are left
+    /// as they are, so saving an edit never starts or ends filling.
     pub async fn update_coverage_plan(
         &self,
         user_id: &str,
@@ -2667,6 +2651,14 @@ impl Db {
             .col_expr(
                 coverage_plan::Column::CasesJson,
                 Expr::value(serde_json::to_string(&plan.cases)?),
+            )
+            .col_expr(
+                coverage_plan::Column::OuterAxis,
+                Expr::value(plan.outer_axis.as_str()),
+            )
+            .col_expr(
+                coverage_plan::Column::InFlightLimit,
+                Expr::value(plan.in_flight_limit.map(in_flight_limit_to_column)),
             )
             .col_expr(
                 coverage_plan::Column::UpdatedAt,
@@ -2876,53 +2868,57 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
-    /// One plan's [schedule](CoveragePlanSchedule), scoped to the owning account
-    /// (`None` when the id is unknown or owned by someone else).
-    pub async fn coverage_plan_schedule(
+    /// Start filling a plan, scoped to the owning account: set its `fill_id` to
+    /// `fill_id` unless it is already filling. Answers the fill in progress afterwards —
+    /// the new one, or the one that was already running — or `None` when the plan is not
+    /// the account's.
+    pub async fn start_coverage_plan_fill(
         &self,
         user_id: &str,
         id: &str,
-    ) -> Result<Option<CoveragePlanSchedule>> {
+        fill_id: &str,
+    ) -> Result<Option<String>> {
+        coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::FillId, Expr::value(fill_id))
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .filter(coverage_plan::Column::FillId.is_null())
+            .exec(&self.conn())
+            .await?;
         Ok(coverage_plan::Entity::find_by_id(id.to_string())
             .filter(coverage_plan::Column::UserId.eq(user_id))
             .one(&self.conn())
             .await?
-            .map(|row| CoveragePlanSchedule {
-                outer_axis: row.outer_axis,
-                paused: row.paused,
-                auto_top_up: row.auto_top_up,
-                buffer_target: row.buffer_target.map(buffer_target_from_column),
-            }))
+            .and_then(|row| row.fill_id))
     }
 
-    /// Replace a plan's [schedule](CoveragePlanSchedule), scoped to the owning
-    /// account. Returns whether a row matched.
-    ///
-    /// The counterpart to [`Self::update_coverage_plan`]'s declaration-only write: the
-    /// pause toggle, the outer-axis picker and the buffer override all land here
-    /// without re-sending (or racing) the plan's member lists. `topping_up_at` is not
-    /// part of the schedule — it is a claim the store owns, not a setting — so
-    /// changing the schedule never disturbs a top-up already in progress.
-    pub async fn set_coverage_plan_schedule(
-        &self,
-        user_id: &str,
-        id: &str,
-        schedule: &CoveragePlanSchedule,
-    ) -> Result<bool> {
+    /// The fill in progress on a plan, or `None` when it is not filling (or does not
+    /// exist). Not scoped to an account: only reached from a plan already resolved.
+    pub async fn coverage_plan_fill(&self, id: &str) -> Result<Option<String>> {
+        Ok(coverage_plan::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+            .and_then(|row| row.fill_id))
+    }
+
+    /// End fill `fill_id` of a plan, when it is still the plan's fill in progress.
+    /// Returns whether it was. A compare-and-clear, so a fill started after the caller
+    /// read the old one is never ended by it.
+    pub async fn end_coverage_plan_fill(&self, id: &str, fill_id: &str) -> Result<bool> {
         let res = coverage_plan::Entity::update_many()
-            .col_expr(
-                coverage_plan::Column::OuterAxis,
-                Expr::value(schedule.outer_axis.clone()),
-            )
-            .col_expr(coverage_plan::Column::Paused, Expr::value(schedule.paused))
-            .col_expr(
-                coverage_plan::Column::AutoTopUp,
-                Expr::value(schedule.auto_top_up),
-            )
-            .col_expr(
-                coverage_plan::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
-            )
+            .col_expr(coverage_plan::Column::FillId, Expr::value(None::<String>))
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::FillId.eq(fill_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// End whatever fill a plan has in progress, scoped to the owning account. What a
+    /// halt does first. Returns whether the plan is the account's.
+    pub async fn halt_coverage_plan_fill(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::FillId, Expr::value(None::<String>))
             .filter(coverage_plan::Column::Id.eq(id))
             .filter(coverage_plan::Column::UserId.eq(user_id))
             .exec(&self.conn())
@@ -2930,27 +2926,39 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
-    /// Take the top-up claim on a coverage plan, returning whether this caller got it.
+    /// Every filling plan, as `(plan id, owning account)`, ordered by id: what a finished
+    /// run may feed, and what the backend runs a launch pass of at startup.
+    pub async fn filling_coverage_plans(&self) -> Result<Vec<(String, String)>> {
+        Ok(coverage_plan::Entity::find()
+            .filter(coverage_plan::Column::FillId.is_not_null())
+            .order_by_asc(coverage_plan::Column::Id)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.id, row.user_id))
+            .collect())
+    }
+
+    /// Take the launch-pass claim on a coverage plan, returning whether this caller got
+    /// it.
     ///
-    /// Top-up is an endpoint the console calls rather than a background daemon, so two
-    /// tabs — or one fast double review-submit — otherwise both observe the same
-    /// shortfall and both enqueue for it, filling the buffer twice over. A caller must
-    /// hold this claim across the whole read-decide-enqueue sequence and
-    /// [release](Self::release_coverage_plan_top_up) it afterwards, whatever the
-    /// outcome.
+    /// A pass is started by the owner and by every finished run of a filling plan, so two
+    /// can otherwise both observe the same shortfall and both enqueue for it. A caller
+    /// must hold this claim across the whole read-decide-enqueue sequence and
+    /// [release](Self::release_coverage_plan_launch) it afterwards, whatever the outcome.
     ///
-    /// The claim is a compare-and-swap on `topping_up_at`: the update matches only
+    /// The claim is a compare-and-swap on `launch_claimed_at`: the update matches only
     /// while the column still holds the value this call read, so a racing caller that
-    /// read the same value finds zero rows affected and backs off. PostgreSQL
-    /// re-evaluates the predicate after the row lock it blocked on is released, and
-    /// SQLite serializes writers outright, so neither backend can let both win.
+    /// read the same value finds zero rows affected and backs off. PostgreSQL re-evaluates
+    /// the predicate after the row lock it blocked on is released, and SQLite serializes
+    /// writers outright, so neither backend can let both win.
     ///
-    /// A claim older than `TOP_UP_LEASE` is treated as abandoned and taken over —
-    /// which is the whole reason the marker is a timestamp rather than a flag. The
-    /// staleness comparison is made on **parsed instants**, never on the stored
-    /// strings: an RFC 3339 subsecond part is variable-length, so lexicographic order
-    /// is not reliably chronological order.
-    pub async fn claim_coverage_plan_top_up(
+    /// A claim older than `LAUNCH_LEASE` is treated as abandoned and taken over — which
+    /// is the whole reason the marker is a timestamp rather than a flag. The staleness
+    /// comparison is made on **parsed instants**, never on the stored strings: an RFC
+    /// 3339 subsecond part is variable-length, so lexicographic order is not reliably
+    /// chronological order.
+    pub async fn claim_coverage_plan_launch(
         &self,
         user_id: &str,
         id: &str,
@@ -2965,29 +2973,29 @@ impl Db {
             txn.commit().await?;
             return Ok(false);
         };
-        if !top_up_claim_is_available(plan.topping_up_at.as_deref(), now) {
+        if !launch_claim_is_available(plan.launch_claimed_at.as_deref(), now) {
             txn.commit().await?;
             return Ok(false);
         }
         let mut update = coverage_plan::Entity::update_many()
-            .col_expr(coverage_plan::Column::ToppingUpAt, Expr::value(now))
+            .col_expr(coverage_plan::Column::LaunchClaimedAt, Expr::value(now))
             .filter(coverage_plan::Column::Id.eq(id));
-        update = match plan.topping_up_at {
-            Some(held) => update.filter(coverage_plan::Column::ToppingUpAt.eq(held)),
-            None => update.filter(coverage_plan::Column::ToppingUpAt.is_null()),
+        update = match plan.launch_claimed_at {
+            Some(held) => update.filter(coverage_plan::Column::LaunchClaimedAt.eq(held)),
+            None => update.filter(coverage_plan::Column::LaunchClaimedAt.is_null()),
         };
         let claimed = update.exec(&txn).await?.rows_affected > 0;
         txn.commit().await?;
         Ok(claimed)
     }
 
-    /// Release the top-up claim on a coverage plan, whether or not this caller took
-    /// it. Unconditional by design: the lease already bounds a claim nobody releases,
-    /// and a release that could fail would just be another way to wedge the plan.
-    pub async fn release_coverage_plan_top_up(&self, id: &str) -> Result<()> {
+    /// Release the launch-pass claim on a coverage plan, whether or not this caller took
+    /// it. Unconditional by design: the lease already bounds a claim nobody releases, and
+    /// a release that could fail would just be another way to wedge the plan.
+    pub async fn release_coverage_plan_launch(&self, id: &str) -> Result<()> {
         coverage_plan::Entity::update_many()
             .col_expr(
-                coverage_plan::Column::ToppingUpAt,
+                coverage_plan::Column::LaunchClaimedAt,
                 Expr::value(None::<String>),
             )
             .filter(coverage_plan::Column::Id.eq(id))
@@ -2996,37 +3004,110 @@ impl Db {
         Ok(())
     }
 
-    /// An account's chosen default buffer target, or `None` when they have never set
-    /// one.
+    /// Ask for another launch pass of a plan whose claim somebody else holds: set its
+    /// `launch_requested` flag, which the holder checks before letting go.
+    pub async fn request_coverage_plan_launch(&self, id: &str) -> Result<()> {
+        coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::LaunchRequested, Expr::value(true))
+            .filter(coverage_plan::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Take a plan's pending launch-pass request, clearing it, and answer whether there
+    /// was one. A compare-and-clear on the flag, so two callers can never both take one
+    /// request.
+    pub async fn take_coverage_plan_launch_request(&self, id: &str) -> Result<bool> {
+        let res = coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::LaunchRequested, Expr::value(false))
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::LaunchRequested.eq(true))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Whether a plan has a launch pass requested and not yet taken.
+    pub async fn coverage_plan_launch_requested(&self, id: &str) -> Result<bool> {
+        Ok(coverage_plan::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+            .is_some_and(|row| row.launch_requested))
+    }
+
+    /// When the owner last retried each of a plan's cells, keyed by the cell's
+    /// [`cell_key_text`].
+    pub async fn coverage_plan_cell_retries(
+        &self,
+        plan_id: &str,
+    ) -> Result<HashMap<String, String>> {
+        Ok(coverage_plan_cell_retry::Entity::find()
+            .filter(coverage_plan_cell_retry::Column::PlanId.eq(plan_id))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.cell_key, row.retried_at))
+            .collect())
+    }
+
+    /// Record that the owner retried one cell of a plan at `now`. Only jobs that ended
+    /// after it count toward the cell's failing streak from here on.
+    pub async fn record_coverage_plan_cell_retry(
+        &self,
+        plan_id: &str,
+        cell: &CellKey,
+        now: &str,
+    ) -> Result<()> {
+        coverage_plan_cell_retry::Entity::insert(coverage_plan_cell_retry::ActiveModel {
+            plan_id: Set(plan_id.to_string()),
+            cell_key: Set(cell_key_text(cell)),
+            retried_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                coverage_plan_cell_retry::Column::PlanId,
+                coverage_plan_cell_retry::Column::CellKey,
+            ])
+            .update_column(coverage_plan_cell_retry::Column::RetriedAt)
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// An account's chosen default runs-in-flight limit, or `None` when they have never
+    /// set one.
     ///
     /// `None` is deliberately not a bound of `0`: an account with no row has expressed
-    /// no opinion, and the caller applies the backend's compiled-in default rather
-    /// than the store materializing a row on read. An explicit `0` — "never top me up
-    /// automatically" — and an explicit "no bound" are both different, storable
-    /// instructions.
-    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<BufferTarget>> {
+    /// no opinion, and the caller applies the backend's compiled-in default rather than
+    /// the store materializing a row on read. An explicit `0` — "launch nothing" — and an
+    /// explicit "no bound" are both different, storable instructions.
+    pub async fn coverage_in_flight_limit(&self, user_id: &str) -> Result<Option<InFlightLimit>> {
         Ok(coverage_settings::Entity::find_by_id(user_id.to_string())
             .one(&self.conn())
             .await?
-            .map(|row| buffer_target_from_column(row.buffer_target)))
+            .map(|row| in_flight_limit_from_column(row.in_flight_limit)))
     }
 
-    /// Set an account's default buffer target, creating its settings row on first use.
-    pub async fn set_coverage_buffer_target(
+    /// Set an account's default runs-in-flight limit, creating its settings row on first
+    /// use.
+    pub async fn set_coverage_in_flight_limit(
         &self,
         user_id: &str,
-        buffer_target: BufferTarget,
+        limit: InFlightLimit,
         now: &str,
     ) -> Result<()> {
         coverage_settings::Entity::insert(coverage_settings::ActiveModel {
             user_id: Set(user_id.to_string()),
-            buffer_target: Set(buffer_target_to_column(buffer_target)),
+            in_flight_limit: Set(in_flight_limit_to_column(limit)),
             updated_at: Set(now.to_string()),
         })
         .on_conflict(
             OnConflict::column(coverage_settings::Column::UserId)
                 .update_columns([
-                    coverage_settings::Column::BufferTarget,
+                    coverage_settings::Column::InFlightLimit,
                     coverage_settings::Column::UpdatedAt,
                 ])
                 .to_owned(),
@@ -3034,6 +3115,29 @@ impl Db {
         .exec(&self.conn())
         .await?;
         Ok(())
+    }
+
+    /// Release every coverage plan's and every ladder's launch-pass claim. Run once at
+    /// startup, before anything is served: the backend is a single coordinator, so no
+    /// launch pass can be running anywhere at that moment, and a claim still held was
+    /// held by a process that died with it. Left in place, the claim would turn the
+    /// startup pass away as busy until its lease ran out, with nobody left to serve the
+    /// request it leaves. A pending request is kept, for the startup pass to take.
+    pub async fn release_all_launch_claims(&self) -> Result<u64> {
+        let plans = coverage_plan::Entity::update_many()
+            .col_expr(
+                coverage_plan::Column::LaunchClaimedAt,
+                Expr::value(None::<String>),
+            )
+            .filter(coverage_plan::Column::LaunchClaimedAt.is_not_null())
+            .exec(&self.conn())
+            .await?;
+        let ladders = ladder::Entity::update_many()
+            .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
+            .filter(ladder::Column::LaunchClaimedAt.is_not_null())
+            .exec(&self.conn())
+            .await?;
+        Ok(plans.rows_affected + ladders.rows_affected)
     }
 
     /// Every saved gg query the account owns, ordered by display name.
@@ -3454,56 +3558,25 @@ impl Db {
         Ok(())
     }
 
-    /// Count the **completed** runs for every coverage cell whose case slug is in
-    /// `slugs`, in a single grouped query. The result is keyed by the cell's
-    /// [`CellKey`] identity; a cell with no completed runs is simply absent. Only
-    /// evaluable `completed` runs count toward a cell's target; the failure tiers do
-    /// not.
+    /// Count the **counted** runs — the model's own results — for every coverage cell
+    /// whose case slug is in `slugs`, in a single grouped query. The result is keyed by
+    /// the cell's [`CellKey`] identity; a cell with none is simply absent.
     ///
-    /// This computes the whole coverage matrix's completed counts at once, so the
-    /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
-    /// per cell, thousands of serial round-trips for a large plan.
-    pub async fn count_completed_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
-        self.count_runs_by_cell(slugs, &["completed"], false).await
-    }
-
-    /// Count the runs that say something about their **model** for every coverage cell
-    /// whose case slug is in `slugs`: the `completed` runs plus the publishable failure
-    /// tiers — catastrophic, timed out, harness error, limit exceeded and hung — keyed
-    /// exactly as [`Self::count_completed_runs_by_cell`] keys its counts.
+    /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
+    /// `limit_exceeded` or `hung` ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)): each is the model's result
+    /// and uses one of the cell's runs. An infrastructure-class failure
+    /// (`infrastructure`, `harness_error`) or a cancel says nothing about the model and
+    /// never counts. Nor does the run of a job that was automatically retried
+    /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
     ///
-    /// What a ladder's rung counts toward its target, because its gate counts the same
-    /// runs as evidence (see [`Self::cell_run_ratings`]): a run that ended on the model's
-    /// own failure has used one of the rung's runs, and leaving it out would relaunch the
-    /// rung for as long as the model keeps failing it. The infrastructure and canceled
-    /// states are still left out, since neither says anything about the model.
-    ///
-    /// The run of a job that was automatically retried ([`job::Model::retried_by`]) is
-    /// left out too: its retry takes its place, in flight until it ends, so one launch
-    /// counts once and a rung is never decided on an attempt whose retry is still to
-    /// come.
-    pub async fn count_model_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
-        self.count_runs_by_cell(slugs, &model_outcome_states(), true)
-            .await
-    }
-
-    /// The grouped count behind [`Self::count_completed_runs_by_cell`] and
-    /// [`Self::count_model_runs_by_cell`]: the runs in one of `states`, per cell, less
-    /// the runs of retried jobs when `skip_retried` is set.
-    async fn count_runs_by_cell(
-        &self,
-        slugs: &[String],
-        states: &[&str],
-        skip_retried: bool,
-    ) -> Result<CellCounts> {
+    /// This computes a whole coverage matrix's counts at once, so the `coverage` handler
+    /// does not fan out into a per-cell `COUNT(*)`.
+    pub async fn count_counted_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let mut query = run::Entity::find();
-        if skip_retried {
-            query = query.filter(not_a_retried_attempt());
-        }
-        let rows: Vec<CellCountRow> = query
+        let rows: Vec<CellCountRow> = run::Entity::find()
+            .filter(not_a_retried_attempt())
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
@@ -3514,7 +3587,7 @@ impl Db {
             .column(run::Column::GgConfigId)
             .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
-            .filter(run::Column::RunState.is_in(states.iter().copied()))
+            .filter(run::Column::RunState.is_in(counted_run_states()))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
@@ -3532,10 +3605,9 @@ impl Db {
 
     /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
     /// running — for every coverage cell whose case slug is in `slugs`, in a single
-    /// grouped query (the companion to [`Self::count_completed_runs_by_cell`], keyed
-    /// the same way). In-flight jobs count toward a cell's target alongside completed
-    /// runs, so triggering the missing runs immediately marks the cell satisfied and
-    /// the reviewer does not double-trigger while runs are still executing (or
+    /// grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
+    /// same way). In-flight jobs count toward a cell's target alongside counted runs, so
+    /// a launch pass never launches a cell twice while its runs are still executing (or
     /// waiting to).
     pub async fn count_in_flight_jobs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
         if slugs.is_empty() {
@@ -3569,34 +3641,23 @@ impl Db {
     }
 
     /// Count, per coverage cell, the completed runs **the given account has not
-    /// reviewed** — keyed exactly like the other two grouped counts, absent for a cell
-    /// with none.
+    /// reviewed** — keyed exactly like the other grouped counts, absent for a cell with
+    /// none.
     ///
-    /// This is the second half of "outstanding" (the first being the in-flight jobs
-    /// [`Self::count_in_flight_jobs_by_cell`] tallies), and the only per-account number
-    /// in the coverage picture. Counts stay global — a run someone else produced still
-    /// satisfies a cell's target and is never re-requested — but *judgement* does not:
-    /// a finished run is only outstanding for the person who has not looked at it,
-    /// which is precisely what stops a plan racing ahead of the reviewer feeding it.
+    /// Informational only: a plan reports it as the work waiting on its owner. Reviews
+    /// never launch, gate or hold back anything.
     ///
     /// The automatically graded types are excluded on the same grounds
-    /// [`Self::list_unreviewed`] excludes them: no reviewer can ever clear them, so
-    /// counting them would permanently occupy buffer slots that never free.
-    ///
-    /// `exclude_unloaded` leaves out runs whose build never loaded. A ladder whose gate
-    /// counts an unloaded build as broken decides those without a reviewer, so they
-    /// must not hold a slot; a coverage plan has no gate and still wants a human to
-    /// look, so it passes `false`.
+    /// [`Self::list_unreviewed`] excludes them: no reviewer can ever clear them.
     pub async fn count_unreviewed_runs_by_cell(
         &self,
         slugs: &[String],
         reviewer_user_id: &str,
-        exclude_unloaded: bool,
     ) -> Result<CellCounts> {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let mut query = run::Entity::find()
+        let query = run::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
@@ -3626,9 +3687,6 @@ impl Db {
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)));
-        if exclude_unloaded {
-            query = query.filter(run::Column::Loaded.eq(true));
-        }
         let rows: Vec<CellCountRow> = query
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
@@ -3644,91 +3702,21 @@ impl Db {
         Ok(cell_counts(rows))
     }
 
-    /// The validators' own rating of every run of one cell that says something about its
-    /// model, oldest first — the evidence a ladder's rung gate is evaluated from.
-    ///
-    /// `cell` is the same [`CellKey`] the grouped counts are keyed by, so a caller
-    /// builds it exactly as it builds the key it looks a count up with. The model
-    /// segment is the id the run was **launched** with (a provider-routed harness
-    /// carries an `openrouter/` prefix the plan's canonical model omits); matching on
-    /// anything else silently reads zero. The two gg segments are matched through the
-    /// same `COALESCE` the counts collapse with (`cell_gg_segment`), so a harness
-    /// cell's empty pair selects exactly the rows that carry no configuration — a gate
-    /// therefore reads the evidence of the one configuration its climber names, not of
-    /// every gg run of the case. The engine segment is matched through the same
-    /// collapse (`cell_engine_segment`), so a `none` cell reads the runs recorded before
-    /// the slug was lifted as the engineless runs they are.
-    ///
-    /// The runs returned are the ones that say something about the model: `completed`
-    /// runs, and runs that ended on one of the model's own failures (catastrophic, timed
-    /// out, harness error, limit exceeded, hung), which carry
-    /// [`CellRunRating::model_failure`]. An infrastructure failure or a cancel says
-    /// nothing about the model — the first retries (`job.attempt`), the second was a
-    /// person's decision — so neither is ever mistaken for a wall. Nor is the run of a
-    /// job that was automatically retried ([`job::Model::retried_by`]): the retry takes
-    /// its place, so the gate waits for the retry rather than deciding on the attempt it
-    /// replaced.
-    ///
-    /// The rating is the lifted `run.validator_rating`, never `run.rating` and never a
-    /// review — see [`CellRunRating::rating`].
-    pub async fn cell_run_ratings(&self, cell: &CellKey) -> Result<Vec<CellRunRating>> {
-        let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
-        let rows: Vec<(String, String, bool, bool, Option<String>)> = run::Entity::find()
-            .select_only()
-            .column(run::Column::Id)
-            .column(run::Column::RunState)
-            .column(run::Column::Loaded)
-            .column(run::Column::ValidatorRated)
-            .column(run::Column::ValidatorRating)
-            .filter(run::Column::RunState.is_in(model_outcome_states()))
-            .filter(not_a_retried_attempt())
-            .filter(run::Column::TestCaseSlug.eq(slug))
-            .filter(run::Column::TestCaseVersion.eq(version))
-            .filter(run::Column::Variant.eq(variant))
-            .filter(Expr::expr(cell_engine_segment(run::Column::EngineSlug)).eq(engine.as_str()))
-            .filter(run::Column::HarnessSlug.eq(harness))
-            .filter(run::Column::ModelId.eq(model))
-            .filter(Expr::expr(cell_gg_segment(run::Column::GgConfigId)).eq(gg_config_id.as_str()))
-            .filter(Expr::expr(cell_gg_segment(run::Column::GgModels)).eq(gg_models.as_str()))
-            .order_by_asc(run::Column::FinishedAt)
-            .order_by_asc(run::Column::Id)
-            .into_tuple()
-            .all(&self.conn())
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(run_id, run_state, loaded, validator_rated, rating)| CellRunRating {
-                    run_id,
-                    model_failure: run_state != "completed",
-                    loaded,
-                    validator_rated,
-                    // A token that no longer parses reads as "no rating", which the gate
-                    // treats as unrated rather than as a bad result. Guessing either way
-                    // would decide a climb on something no validator said.
-                    rating: rating.as_deref().and_then(Rating::parse),
-                },
-            )
-            .collect())
-    }
-
     /// One cell's most recent **terminal** jobs (`succeeded`, `failed`, `canceled`),
     /// newest first, at most `limit` of them, whoever launched them, each read as a
     /// [`TerminalJob`].
     ///
-    /// What a ladder reads to tell a rung whose runs keep failing on infrastructure from
-    /// one still climbing: a job's terminal transition stamps its `updated_at`, so
-    /// ordering on it is ordering on when each job ended. The cell is matched through
-    /// the same collapses [`Self::count_in_flight_jobs_by_cell`] groups by.
+    /// What a plan reads to tell a cell whose runs keep failing on infrastructure from one
+    /// still filling: a job's terminal transition stamps its `updated_at`, so ordering on
+    /// it is ordering on when each job ended. The cell is matched through the same
+    /// collapses [`Self::count_in_flight_jobs_by_cell`] groups by.
     ///
-    /// A job the backend failed because it restarted while the job was executing
-    /// ([`REAPED_DETAIL`]) is left out altogether. The restart is not the cell's fault,
-    /// and a launch pass launches whole cells, so counting it would mark every cell that
-    /// had a few runs executing at the restart as failing.
+    /// A job an earlier backend failed because it restarted while the job was executing
+    /// ([`REAPED_DETAIL`], legacy rows only) is left out altogether: the restart was not
+    /// the cell's fault.
     ///
     /// With `since`, only jobs that ended strictly after that RFC 3339 instant are read:
-    /// what a retried climber's streak counts from.
+    /// what a retried cell's streak counts from.
     pub async fn recent_terminal_jobs(
         &self,
         cell: &CellKey,
@@ -3760,27 +3748,35 @@ impl Db {
             .map(|since| time::OffsetDateTime::parse(since, &Rfc3339))
             .transpose()
             .map_err(|e| BackendError::Internal(format!("parsing a retry time: {e}")))?;
-        let rows: Vec<(String, Option<String>)> = rows
+        let rows: Vec<(String, Option<String>, String)> = rows
             .into_iter()
             .filter(|(_, _, ended)| {
                 since.is_none_or(|since| {
                     time::OffsetDateTime::parse(ended, &Rfc3339).is_ok_and(|ended| ended > since)
                 })
             })
-            .map(|(state, record, _)| (state, record))
             .collect();
+        self.terminal_jobs(rows).await
+    }
+
+    /// Read `(state, record id, ended at)` rows as [`TerminalJob`]s, looking up which
+    /// records are counted runs in one query.
+    async fn terminal_jobs(
+        &self,
+        rows: Vec<(String, Option<String>, String)>,
+    ) -> Result<Vec<TerminalJob>> {
         let record_ids: Vec<&str> = rows
             .iter()
-            .filter_map(|(_, record)| record.as_deref())
+            .filter_map(|(_, record, _)| record.as_deref())
             .collect();
-        let model_outcomes: std::collections::HashSet<String> = if record_ids.is_empty() {
+        let counted: std::collections::HashSet<String> = if record_ids.is_empty() {
             std::collections::HashSet::new()
         } else {
             run::Entity::find()
                 .select_only()
                 .column(run::Column::Id)
                 .filter(run::Column::Id.is_in(record_ids))
-                .filter(run::Column::RunState.is_in(model_outcome_states()))
+                .filter(run::Column::RunState.is_in(counted_run_states()))
                 .into_tuple::<String>()
                 .all(&self.conn())
                 .await?
@@ -3789,43 +3785,12 @@ impl Db {
         };
         Ok(rows
             .into_iter()
-            .map(|(state, record)| TerminalJob {
-                model_outcome: record.is_some_and(|id| model_outcomes.contains(&id)),
+            .map(|(state, record, ended_at)| TerminalJob {
+                counted: record.is_some_and(|id| counted.contains(&id)),
                 state,
+                ended_at,
             })
             .collect())
-    }
-
-    /// The cells a ladder's own jobs are still **waiting** in (`queued` or `pending`,
-    /// so nothing has been spent on them), keyed like every grouped count. What an
-    /// early-stopping ladder checks before it cancels anything, so a top-up that decides
-    /// nothing new costs one read rather than one sweep per decided rung.
-    pub async fn waiting_job_cells(&self, origin: &JobOrigin) -> Result<CellCounts> {
-        let rows: Vec<CellCountRow> = job::Entity::find()
-            .select_only()
-            .column(job::Column::TestCaseSlug)
-            .column(job::Column::TestCaseVersion)
-            .column(job::Column::Variant)
-            .column(job::Column::EngineSlug)
-            .column(job::Column::HarnessSlug)
-            .column(job::Column::ModelId)
-            .column(job::Column::GgConfigId)
-            .column(job::Column::GgModels)
-            .column_as(job::Column::Id.count(), "cnt")
-            .filter(job::Column::State.is_in(CANCELABLE_WAITING_STATES))
-            .filter(job::Column::Origin.eq(origin.as_token()))
-            .group_by(job::Column::TestCaseSlug)
-            .group_by(job::Column::TestCaseVersion)
-            .group_by(job::Column::Variant)
-            .group_by(job::Column::EngineSlug)
-            .group_by(job::Column::HarnessSlug)
-            .group_by(job::Column::ModelId)
-            .group_by(job::Column::GgConfigId)
-            .group_by(job::Column::GgModels)
-            .into_tuple()
-            .all(&self.conn())
-            .await?;
-        Ok(cell_counts(rows))
     }
 }
 
@@ -3845,72 +3810,40 @@ fn cell_job_query(cell: &CellKey) -> sea_orm::Select<job::Entity> {
         .filter(Expr::expr(cell_gg_segment(job::Column::GgModels)).eq(gg_models.as_str()))
 }
 
-/// How a coverage plan is **fed**, as opposed to what it declares: the order it emits
-/// its cells in, whether it is suspended, whether a submitted review tops it up, and
-/// its override of the account's buffer target.
-///
-/// Held apart from the plan's declaration ([`crate::api::CoveragePlan`]) because the
-/// two are edited independently — the members and the runs-per-cell target are the
-/// plan's *definition*, while these are the controls a reviewer reaches for while it
-/// is running — and so that saving an edit to one can never silently overwrite the
-/// other. See [`Db::set_coverage_plan_schedule`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CoveragePlanSchedule {
-    /// Which axis the cell loop nests on: `"case"` (finish one case across every
-    /// combination) or `"combination"` (finish one combination across every case).
-    ///
-    /// The transport owns this vocabulary and validates it; the store round-trips
-    /// whatever it was handed, exactly as it does for a coverage group's `kind`.
-    pub outer_axis: String,
-    /// Whether topping up is suspended. The mildest halting control: it stops new runs
-    /// being emitted and leaves everything already queued alone.
-    pub paused: bool,
-    /// Whether submitting a review re-runs this plan's top-up automatically.
-    pub auto_top_up: bool,
-    /// This plan's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`]. `None`, a bound of `0`, and
-    /// [`BufferTarget::Unbounded`] are three different instructions — "no opinion",
-    /// "never top up", and "top up everything".
-    pub buffer_target: Option<BufferTarget>,
-}
-
-impl Default for CoveragePlanSchedule {
-    /// The behaviour a plan had before it could be scheduled at all: cases outer, not
-    /// paused, never topping itself up, and no opinion on the buffer target. These
-    /// match the columns' database defaults, so a plan created with this schedule and
-    /// one created before the columns existed are indistinguishable.
-    fn default() -> Self {
-        Self {
-            outer_axis: "case".to_string(),
-            paused: false,
-            auto_top_up: false,
-            buffer_target: None,
-        }
-    }
-}
-
-/// One terminal job of a coverage cell, as a ladder reads it to tell a rung whose runs
-/// keep failing on infrastructure ([`Db::recent_terminal_jobs`]).
+/// One terminal job of a coverage cell or rung slot, as read to tell one whose runs keep
+/// failing on infrastructure ([`Db::recent_terminal_jobs`], [`DispatchEvidence`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalJob {
     /// The job's terminal state: `succeeded`, `failed` or `canceled`.
     pub state: String,
-    /// Whether the job's run ended on an outcome that says something about its model
-    /// (completed, or one of the model's own failures), as opposed to an infrastructure
-    /// failure or no run at all. A failed job with such a run failed on the model, which
-    /// is evidence for the rung's gate rather than a fault of the cell.
-    pub model_outcome: bool,
+    /// Whether the job's run is a counted run — the model's own result — as opposed to an
+    /// infrastructure-class failure or no run at all. A failed job with a counted run
+    /// failed on the model, which is a result rather than a fault of the cell.
+    pub counted: bool,
+    /// RFC 3339 of when the job ended (its `updated_at`).
+    pub ended_at: String,
 }
 
-/// One run of a coverage cell that says something about its model — a completed run, or
-/// one that ended on the model's own failure — reduced to what a ladder's rung gate reads.
+impl TerminalJob {
+    /// Whether this job failed on infrastructure: it ended without a counted run, and
+    /// was not canceled. That is a job that ended `failed` with no run (or an
+    /// `infrastructure` one), and also one that ended `succeeded` with a `harness_error`
+    /// run — a harness error is infrastructure-class, but its run is still delivered, so
+    /// its job succeeds. A canceled job breaks the streak.
+    pub fn failed_on_infrastructure(&self) -> bool {
+        self.state != "canceled" && !self.counted
+    }
+}
+
+/// One counted run of a rung slot — a completed run, or one that ended on the model's own
+/// failure — reduced to what a ladder's rung gate reads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellRunRating {
     /// The run's id, so a ladder dashboard can link to the evidence a verdict was
     /// decided from.
     pub run_id: String,
     /// Whether the run ended on one of the model's own failures — catastrophic, timed
-    /// out, harness error, limit exceeded or hung — rather than completing. Such a run
+    /// out, limit exceeded or hung — rather than completing. Such a run
     /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
     /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
     pub model_failure: bool,
@@ -3931,6 +3864,8 @@ pub struct CellRunRating {
     /// checklist overrides, and never a review: reviews are labels added after the fact
     /// and never move a climb.
     pub rating: Option<Rating>,
+    /// RFC 3339 of when the run finished.
+    pub finished_at: String,
 }
 
 impl CellRunRating {
@@ -3956,14 +3891,14 @@ impl CellRunRating {
     }
 }
 
-/// Whether a top-up claim marked at `held` may be taken now: it is free (`None`) or
-/// its [lease](TOP_UP_LEASE) has expired.
+/// Whether a launch-pass claim marked at `held` may be taken now: it is free (`None`) or
+/// its [lease](LAUNCH_LEASE) has expired.
 ///
 /// A marker that cannot be parsed is treated as **expired**. It can only have got
 /// there by hand or from a future format, and refusing to take an uninterpretable
 /// claim would wedge the plan permanently — the far worse of the two failures, since
-/// the only cost of taking it wrongly is one duplicated top-up.
-fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
+/// the only cost of taking it wrongly is one duplicated launch pass.
+fn launch_claim_is_available(held: Option<&str>, now: &str) -> bool {
     let Some(held) = held else {
         return true;
     };
@@ -3974,7 +3909,7 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
     ) else {
         return true;
     };
-    now - held > TOP_UP_LEASE
+    now - held > LAUNCH_LEASE
 }
 
 /// A coverage cell's identity:
@@ -3997,7 +3932,7 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
 /// - the configuration's **id**, because that is what a configuration *is* across time:
 ///   its name is display text an operator rewrites freely and nothing keeps unique within
 ///   an account, so a cell keyed on the name would empty itself on a rename — the plan
-///   reading 0/N and the next top-up re-buying every run behind it — and would merge two
+///   reading 0/N and the next launch pass re-buying every run behind it — and would merge two
 ///   configurations that happen to agree on one. A ladder's climber is keyed on the same
 ///   id ([`combination_key`]), so a rung's recorded verdicts and the runs counted under
 ///   them describe one configuration rather than two halves that disagree;
@@ -4023,6 +3958,25 @@ pub type CellKey = (
 
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
+
+/// A [`CellKey`] as one stored string: its eight segments joined with the unit
+/// separator (`U+001F`), which no segment can contain. What
+/// `coverage_plan_cell_retry.cell_key` holds.
+pub fn cell_key_text(cell: &CellKey) -> String {
+    let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
+    [
+        slug,
+        version,
+        variant,
+        engine,
+        harness,
+        model,
+        gg_config_id,
+        gg_models,
+    ]
+    .map(String::as_str)
+    .join("\u{1f}")
+}
 
 /// Fold the
 /// `(slug, version, variant, engine, harness, model, gg configuration id, gg models, count)`
@@ -4155,16 +4109,21 @@ fn coverage_group_members_json(group: &crate::api::CoverageGroup) -> Result<Stri
 
 /// Convert a stored coverage-plan row into its contract shape, decoding its JSON
 /// group-reference and one-off member arrays.
-fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::CoveragePlan> {
-    Ok(crate::api::CoveragePlan {
-        id: row.id,
-        name: row.name,
-        runs_per_cell: row.runs_per_cell.max(0) as u32,
-        combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
-        case_group_ids: serde_json::from_str(&row.case_group_ids_json)?,
-        combos: serde_json::from_str(&row.combos_json)?,
-        cases: serde_json::from_str(&row.cases_json)?,
-        updated_at: row.updated_at,
+fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::CoveragePlanOut> {
+    Ok(crate::api::CoveragePlanOut {
+        plan: crate::api::CoveragePlan {
+            id: row.id,
+            name: row.name,
+            runs_per_cell: row.runs_per_cell.max(0) as u32,
+            combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
+            case_group_ids: serde_json::from_str(&row.case_group_ids_json)?,
+            combos: serde_json::from_str(&row.combos_json)?,
+            cases: serde_json::from_str(&row.cases_json)?,
+            outer_axis: crate::api::CoverageAxis::parse(&row.outer_axis),
+            in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
+            updated_at: row.updated_at,
+        },
+        filling: row.fill_id.is_some(),
     })
 }
 
@@ -4267,8 +4226,8 @@ fn comparison_from_row(row: comparison::Model) -> Result<StoredComparison> {
 
 // ---- Ladders --------------------------------------------------------------
 
-/// The canonical key a ladder identifies one **climber** by — the text its steering
-/// rows and its recorded verdicts are stored against — in one of two forms, one per
+/// The canonical key a ladder identifies one **climber** by — the text a dispatch
+/// stores its climbers and their recorded verdicts against — in one of two forms, one per
 /// shape a [combination](crate::api::ReviewPlanCombo) takes.
 ///
 /// A harness climber is `harness|model|provider`, with an empty trailing segment when
@@ -4296,7 +4255,7 @@ fn comparison_from_row(row: comparison::Model) -> Result<StoredComparison> {
 ///
 /// The **canonical** model is used in the harness form, not the launched one: this key
 /// names a member of the ladder, not a row in the `run` table, and the two differ for
-/// provider-routed harnesses (see [`Db::cell_run_ratings`], which does want the launched
+/// provider-routed harnesses (a [`CellKey`], which names runs, does want the launched
 /// id).
 pub fn combination_key(combo: &crate::api::ReviewPlanCombo) -> String {
     let Some(config) = combo.gg_config_ref() else {
@@ -4316,44 +4275,41 @@ pub fn combination_key(combo: &crate::api::ReviewPlanCombo) -> String {
     format!("gg:{config}|{bindings}")
 }
 
-/// A reviewer's ladder as stored: an ordered climb through a series of test cases,
-/// and the combinations that climb it.
+/// A ladder's configuration as stored: an ordered climb through a series of test cases,
+/// the combinations that climb it, and how a dispatch of it launches.
 ///
-/// This is the ladder's **declaration** — what it is, not how it is being fed; the
-/// latter is [`LadderSchedule`], exactly as a coverage plan splits into
-/// [`crate::api::CoveragePlan`] and [`CoveragePlanSchedule`].
-///
-/// Progress is deliberately absent. How far a combination has climbed is derived from
-/// its [`StoredLadderOutcome`] rows, never from a pointer on the ladder, which is what
-/// lets a model added to a standing ladder next month start at rung 1 while the models
-/// already halfway up carry on. Per-combination steering lives in
-/// [`StoredLadderClimber`].
+/// Standing is deliberately absent: it belongs to a [`StoredDispatch`], which snapshots
+/// this configuration at Run and counts only its own runs.
 ///
 /// Not `PartialEq`: its combinations are [`crate::api::ReviewPlanCombo`]s, which are
-/// wire types and carry no equality. Compare the parts that matter instead — two
-/// ladders being "equal" is not a question the store ever has to answer.
+/// wire types and carry no equality.
 #[derive(Debug, Clone)]
 pub struct StoredLadder {
     /// The ladder's opaque id (minted by the handler, as a plan's is).
     pub id: String,
-    /// The reviewer-chosen display name.
+    /// The owner-chosen display name.
     pub name: String,
-    /// The default target number of runs for each `rung × combination` cell; a rung
-    /// may raise it for itself via [`StoredLadderRung::runs_override`].
+    /// The default target number of runs for each `rung × combination` slot; a rung may
+    /// raise it for itself via [`StoredLadderRung::runs_override`].
     pub runs_per_cell: u32,
     /// The single parameterised rule every rung is judged by. Stored per ladder rather
     /// than per rung because a ladder asks *one* question of an ordered series of
     /// cases; only how many runs it takes to answer varies by rung.
     pub gate: Gate,
     /// The referenced combination groups' ids — the same `coverage_group`
-    /// (`kind = "combo"`) pointers a plan uses, so one saved set of models can drive
-    /// both and editing it reshapes both.
+    /// (`kind = "combo"`) pointers a plan uses.
     pub combo_group_ids: Vec<String>,
     /// One-off combinations pinned directly on the ladder, unioned with the groups.
     pub combos: Vec<crate::api::ReviewPlanCombo>,
-    /// The rungs, low to high. The order **is** the climb: see
-    /// [`StoredLadderRung`] for why position is not a field.
+    /// The rungs, low to high. The order **is** the climb: see [`StoredLadderRung`] for
+    /// why position is not a field.
     pub rungs: Vec<StoredLadderRung>,
+    /// Which axis a dispatch's launch order nests on: `"rung"` or `"combination"`. The
+    /// transport owns and validates this vocabulary; the store round-trips it.
+    pub outer_axis: String,
+    /// This ladder's override of the account's runs-in-flight limit, or `None` to
+    /// inherit [`Db::coverage_in_flight_limit`].
+    pub in_flight_limit: Option<InFlightLimit>,
     /// RFC 3339 of when the ladder was last saved.
     pub updated_at: String,
 }
@@ -4368,15 +4324,12 @@ pub struct StoredLadder {
 pub struct StoredLadderRung {
     /// The rung's stable opaque id, minted when the rung is added and never reused.
     ///
-    /// It survives both a reorder and a version bump, and every recorded outcome
-    /// references it, which is the point: a positional identifier would silently
-    /// reattribute a combination's verdicts to a different case the moment the ladder
-    /// was reordered.
+    /// It survives both a reorder and a version bump, and a dispatch's snapshot, its
+    /// jobs' origins and its recorded outcomes all reference it.
     pub id: String,
     /// The test-case slug.
     pub slug: String,
-    /// The pinned, exact version. A gate outcome records the version it was decided
-    /// against, so bumping this neither erases the old verdict nor inherits it.
+    /// The pinned, exact version.
     pub version: String,
     /// The variant to climb.
     pub variant: String,
@@ -4393,68 +4346,43 @@ pub struct StoredLadderRung {
     pub runs_override: Option<u32>,
 }
 
-/// How a ladder is **fed**: the order it emits its cells in, whether it is enabled, and
-/// its override of the account's buffer target. The ladder's counterpart to [`CoveragePlanSchedule`], split from the
-/// declaration for the same reason.
+/// One Run of a ladder, as stored in `ladder_dispatch`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LadderSchedule {
-    /// Which axis the emission loop nests on: `"rung"` (finish a rung across every
-    /// climber before anyone moves up) or `"combination"` (send one climber as far up
-    /// as it gets before starting the next). The transport owns and validates this
-    /// vocabulary; the store round-trips what it was handed.
-    pub outer_axis: String,
-    /// Whether the ladder is disabled. An enabled ladder launches its own climb.
-    pub paused: bool,
-    /// This ladder's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`]; the same three instructions as
-    /// [`CoveragePlanSchedule::buffer_target`], though on a ladder the bound caps the
-    /// runs in flight rather than a review backlog.
-    pub buffer_target: Option<BufferTarget>,
+pub struct StoredDispatch {
+    /// The ladder this dispatch ran.
+    pub ladder_id: String,
+    /// The dispatch's own id.
+    pub id: String,
+    /// `running`, `finished` or `stopped`. The transport owns this vocabulary.
+    pub status: String,
+    /// RFC 3339 of the Run.
+    pub started_at: String,
+    /// RFC 3339 of when it ended, `None` while running.
+    pub ended_at: Option<String>,
+    /// The configuration as it stood at Run, as JSON. The transport owns its shape.
+    pub snapshot_json: String,
 }
 
-impl Default for LadderSchedule {
-    /// A ladder climbs a rung at a time, is not paused, and has no opinion on the buffer
-    /// target. These match the columns' database defaults.
-    fn default() -> Self {
-        Self {
-            outer_axis: "rung".to_string(),
-            paused: false,
-            buffer_target: None,
-        }
-    }
-}
-
-/// A reviewer's steering of one combination on one ladder: climb this one first,
-/// watch it, stop it. Never progress — that lives in [`StoredLadderOutcome`], so there
-/// is exactly one source of truth for how far a climber has got.
+/// One climber of a dispatch, as stored in `ladder_dispatch_climber`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredLadderClimber {
-    /// The steered combination's [`combination_key`].
-    pub combination_key: String,
-    /// Climb-order weight; higher goes first, `0` is the default. Pushes one model to
-    /// the front without reordering the ladder, which would change what every *other*
-    /// climber is measured against.
-    pub priority: i32,
-    /// The reviewer's "watch this one" flag, and the tiebreak between equal
-    /// priorities.
-    pub focused: bool,
-    /// Whether the owner paused this combination where it stands. A pause decides no
-    /// rung, so resuming continues the climb from exactly where it was.
-    pub paused: bool,
-    /// RFC 3339 of when this steering was last changed.
-    pub updated_at: String,
-    /// RFC 3339 of when the owner last retried this climber after its rung kept failing,
-    /// or `None` for never. Only jobs that ended after it count toward the failing
-    /// streak. Written by [`Db::record_ladder_climber_retry`] alone: a steering write
-    /// leaves it as it is.
+pub struct StoredDispatchClimber {
+    /// The climber's canonical key ([`combination_key`]).
+    pub climber_key: String,
+    /// Its place in the resolved order, from `0`.
+    pub position: u32,
+    /// The stored combination, as JSON.
+    pub combo_json: String,
+    /// The climber's pinned share of its cell keys, as JSON, or `None` while it has never
+    /// resolved. The transport owns its shape.
+    pub cell_json: Option<String>,
+    /// RFC 3339 of when the owner last retried it, or `None`.
     pub retried_at: Option<String>,
 }
 
-/// A resolved gate verdict as stored in `ladder_outcome`.
+/// A resolved gate verdict as stored in `ladder_dispatch_outcome`.
 ///
-/// [`GateOutcome::Undecided`] has no token because it has no row: a rung still
-/// running is *unrecorded* rather than recorded as undecided, so "no verdict yet" can never be confused with "a verdict of
-/// nothing".
+/// [`GateOutcome::Undecided`] has no token because it has no row: a rung still running
+/// is *unrecorded* rather than recorded as undecided.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LadderOutcomeKind {
     /// The climber passed the rung and moved up.
@@ -4473,8 +4401,8 @@ impl LadderOutcomeKind {
     }
 
     /// Parse a stored token, erroring on an unknown value (a corrupt row) rather than
-    /// guessing — a verdict quietly read as its opposite would move a climb for
-    /// reasons nobody could reconstruct.
+    /// guessing — a verdict quietly read as its opposite would move a climb for reasons
+    /// nobody could reconstruct.
     pub fn parse(token: &str) -> Result<Self> {
         match token {
             "passed" => Ok(LadderOutcomeKind::Passed),
@@ -4496,38 +4424,49 @@ impl LadderOutcomeKind {
     }
 }
 
-/// One combination's recorded verdict on one rung, at one pinned case version.
+/// One climber's recorded verdict on one rung of a dispatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredLadderOutcome {
+pub struct StoredDispatchOutcome {
     /// The rung this verdict is about, by its stable id.
     pub rung_id: String,
-    /// The combination this verdict is about, by its [`combination_key`].
-    pub combination_key: String,
-    /// The exact case version the verdict was decided against. Part of the row's
-    /// identity, so bumping a rung to a newer version neither erases the verdict
-    /// earned on the old one nor silently inherits it, and re-pinning back restores
-    /// it. A rung's *current* verdict is the row whose version matches its present
-    /// pin.
-    pub decided_version: String,
-    /// What the gate decided. Recomputable at any time from the rung's validator
-    /// ratings.
+    /// The climber this verdict is about, by its [`combination_key`].
+    pub climber_key: String,
+    /// What the gate decided.
     pub outcome: LadderOutcomeKind,
-    /// RFC 3339 of when the verdict was last computed.
+    /// RFC 3339 of when the gate decided.
     pub decided_at: String,
 }
 
-/// Ladders: the ordered, gated sibling of a coverage plan.
+/// A rung slot of a dispatch: the rung's id and the climber's [`CellKey`] on that rung.
+pub type SlotKey = (String, CellKey);
+
+/// One terminal job as read for a failing streak: its state, its record id, and when it
+/// ended.
+type TerminalRow = (String, Option<String>, String);
+
+/// Everything a dispatch's jobs say about its rung slots, read in one pass over the jobs
+/// whose origin names the dispatch ([`Db::dispatch_evidence`]).
+#[derive(Debug, Clone, Default)]
+pub struct DispatchEvidence {
+    /// The ids of each slot's jobs still in flight, in queue order.
+    pub in_flight: HashMap<SlotKey, Vec<String>>,
+    /// How many of each slot's jobs are still waiting (`queued` or `pending`).
+    pub waiting: HashMap<SlotKey, u32>,
+    /// Each slot's counted runs, oldest first: the run of every finished job of the slot
+    /// that was not automatically retried and ended in a
+    /// [counted](test_cabinet_core::run_record::RunState::counts_as_model_result) state.
+    pub runs: HashMap<SlotKey, Vec<CellRunRating>>,
+    /// Each slot's terminal jobs, newest first, for the failing streak.
+    pub terminal: HashMap<SlotKey, Vec<TerminalJob>>,
+}
+
+/// Ladders: the ordered, gated sibling of a coverage plan, and their dispatches.
 ///
 /// A ladder itself is per-account (keyed by the auth-service `user_id`) and every
-/// read/write of one is scoped by it. Its child tables — rungs, climbers, outcomes —
-/// are keyed by `ladder_id` alone and **inherit** that scoping: a caller reaches them
-/// only after resolving the ladder through [`Db::get_ladder`], which is where
-/// ownership is checked. The alternative, re-verifying the owner on every outcome
-/// write, would put a query in front of each row of a recompute that walks the whole
-/// board.
-///
-/// As with plans, run and job counting stays global; only *judgement* — whose reviews
-/// a gate reads — is per account.
+/// read/write of one is scoped by it. Its child tables — rungs, the dispatch, its
+/// climbers and outcomes — are keyed by the ladder or dispatch id alone and **inherit**
+/// that scoping: a caller reaches them only after resolving the ladder through
+/// [`Db::get_ladder`], or from a job whose origin names them.
 impl Db {
     /// Every ladder the account owns, ordered by display name, each with its rungs in
     /// climb order. The rungs are fetched in one further query and bucketed, so
@@ -4576,9 +4515,16 @@ impl Db {
         Ok(Some(stored_ladder(row, rungs)?))
     }
 
-    /// One ladder's rungs in climb order. Exposed on its own for the paths that need
-    /// the climb but not the ladder's own settings (a top-up walking the rungs, a
-    /// recompute of every outcome).
+    /// The account that owns a ladder, or `None` when there is no such ladder. What a
+    /// finished job's origin is resolved through to run its dispatch's launch pass.
+    pub async fn ladder_owner(&self, id: &str) -> Result<Option<String>> {
+        Ok(ladder::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+            .map(|row| row.user_id))
+    }
+
+    /// One ladder's rungs in climb order.
     pub async fn list_ladder_rungs(&self, ladder_id: &str) -> Result<Vec<StoredLadderRung>> {
         Ok(ladder_rung::Entity::find()
             .filter(ladder_rung::Column::LadderId.eq(ladder_id))
@@ -4590,33 +4536,27 @@ impl Db {
             .collect())
     }
 
-    /// Insert a new ladder (ids already minted by the handler) with its rungs and the
-    /// [schedule](LadderSchedule) it starts under. The ladder row and every rung land
-    /// in one transaction, so a ladder never exists with half a climb.
-    pub async fn insert_ladder(
-        &self,
-        user_id: &str,
-        stored: &StoredLadder,
-        schedule: &LadderSchedule,
-    ) -> Result<()> {
+    /// Insert a new ladder (ids already minted by the handler) with its rungs. The
+    /// ladder row and every rung land in one transaction, so a ladder never exists with
+    /// half a climb.
+    pub async fn insert_ladder(&self, user_id: &str, stored: &StoredLadder) -> Result<()> {
         let (gate_floor, gate_threshold_kind, gate_threshold_value) = gate_columns(&stored.gate);
         let txn = self.conn().begin().await?;
         ladder::ActiveModel {
             id: Set(stored.id.clone()),
             user_id: Set(user_id.to_string()),
             name: Set(stored.name.clone()),
-            outer_axis: Set(schedule.outer_axis.clone()),
+            outer_axis: Set(stored.outer_axis.clone()),
             runs_per_cell: Set(stored.runs_per_cell as i32),
             gate_floor: Set(gate_floor),
             gate_threshold_kind: Set(gate_threshold_kind),
             gate_threshold_value: Set(gate_threshold_value),
             early_stop: Set(stored.gate.early_stop),
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
-            paused: Set(schedule.paused),
-            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
+            in_flight_limit: Set(stored.in_flight_limit.map(in_flight_limit_to_column)),
             // A fresh ladder is nobody's claim; only a launch pass ever sets this.
-            topping_up_at: Set(None),
-            top_up_pending: Set(false),
+            launch_claimed_at: Set(None),
+            launch_requested: Set(false),
             combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
             combos_json: Set(serde_json::to_string(&stored.combos)?),
             updated_at: Set(stored.updated_at.clone()),
@@ -4628,20 +4568,13 @@ impl Db {
         Ok(())
     }
 
-    /// Update a ladder's **declaration** in place, scoped to the owning account, and
+    /// Update a ladder's configuration in place, scoped to the owning account, and
     /// reconcile its rungs to the supplied list. Returns whether a row matched.
     ///
-    /// The [schedule](LadderSchedule) columns are untouched for the same reason
-    /// [`Self::update_coverage_plan`] leaves a plan's alone: editing the climb must not
-    /// un-pause a ladder somebody paused. They travel through
-    /// [`Self::set_ladder_schedule`].
-    ///
-    /// Rungs are **reconciled, never replaced**. Rewriting them wholesale would delete
-    /// every rung row, and `ladder_outcome` cascades from `ladder_rung` — so saving a
-    /// rename would silently erase every climber's recorded progress. Instead a rung
-    /// still present is updated in place under its stable id (keeping its outcomes), a
-    /// new one is inserted, and only a rung genuinely removed from the climb takes its
-    /// verdicts with it, which is what removing it means.
+    /// A dispatch is never touched: it runs from its own snapshot, so an edit applies to
+    /// the next Run. Rungs are reconciled rather than replaced — a rung still present is
+    /// updated in place under its stable id, a new one is inserted, and only a rung
+    /// genuinely removed from the climb is deleted.
     pub async fn update_ladder(&self, user_id: &str, stored: &StoredLadder) -> Result<bool> {
         let (gate_floor, gate_threshold_kind, gate_threshold_value) = gate_columns(&stored.gate);
         let txn = self.conn().begin().await?;
@@ -4667,6 +4600,14 @@ impl Db {
             .col_expr(
                 ladder::Column::CountUnloadedAsBroken,
                 Expr::value(stored.gate.unloaded_counts_as_broken),
+            )
+            .col_expr(
+                ladder::Column::OuterAxis,
+                Expr::value(stored.outer_axis.clone()),
+            )
+            .col_expr(
+                ladder::Column::InFlightLimit,
+                Expr::value(stored.in_flight_limit.map(in_flight_limit_to_column)),
             )
             .col_expr(
                 ladder::Column::ComboGroupIdsJson,
@@ -4702,69 +4643,37 @@ impl Db {
         Ok(true)
     }
 
-    /// Delete a ladder, scoped to the owning account. Returns whether a row was
-    /// removed.
+    /// Delete a ladder, scoped to the owning account, with its rungs and its dispatch
+    /// (climbers and outcomes included). Returns whether a row was removed.
     ///
-    /// Its rungs, climbers, and outcomes all carry `ON DELETE CASCADE` back to the
-    /// ladder (and foreign keys are enforced on both backends — see
-    /// [`Self::connect`]), so the whole climb goes with it and nothing is orphaned.
-    /// Jobs the ladder launched are *not* touched: a job is a run in its own right, it
-    /// records the ladder only as its `origin`, and deleting the plan you launched
-    /// from is not a reason to throw away runs that already cost money. Halt first if
-    /// that is what you meant.
+    /// Jobs the ladder launched are *not* touched: a job is a run in its own right and
+    /// records the ladder only as its `origin`. Their retries are withheld and their
+    /// finishes feed nothing, since no dispatch names them any more. Stop first to cancel
+    /// them.
     pub async fn delete_ladder(&self, user_id: &str, id: &str) -> Result<bool> {
+        let txn = self.conn().begin().await?;
+        let Some(_) = ladder::Entity::find_by_id(id.to_string())
+            .filter(ladder::Column::UserId.eq(user_id))
+            .one(&txn)
+            .await?
+        else {
+            txn.commit().await?;
+            return Ok(false);
+        };
+        delete_dispatch_rows(&txn, id).await?;
         let res = ladder::Entity::delete_many()
             .filter(ladder::Column::Id.eq(id))
             .filter(ladder::Column::UserId.eq(user_id))
-            .exec(&self.conn())
+            .exec(&txn)
             .await?;
+        txn.commit().await?;
         Ok(res.rows_affected > 0)
     }
 
-    /// One ladder's [schedule](LadderSchedule), scoped to the owning account.
-    pub async fn ladder_schedule(&self, user_id: &str, id: &str) -> Result<Option<LadderSchedule>> {
-        Ok(ladder::Entity::find_by_id(id.to_string())
-            .filter(ladder::Column::UserId.eq(user_id))
-            .one(&self.conn())
-            .await?
-            .map(|row| LadderSchedule {
-                outer_axis: row.outer_axis,
-                paused: row.paused,
-                buffer_target: row.buffer_target.map(buffer_target_from_column),
-            }))
-    }
-
-    /// Replace a ladder's [schedule](LadderSchedule), scoped to the owning account.
-    /// Returns whether a row matched. The ladder's counterpart to
-    /// [`Self::set_coverage_plan_schedule`].
-    pub async fn set_ladder_schedule(
-        &self,
-        user_id: &str,
-        id: &str,
-        schedule: &LadderSchedule,
-    ) -> Result<bool> {
-        let res = ladder::Entity::update_many()
-            .col_expr(
-                ladder::Column::OuterAxis,
-                Expr::value(schedule.outer_axis.clone()),
-            )
-            .col_expr(ladder::Column::Paused, Expr::value(schedule.paused))
-            .col_expr(
-                ladder::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
-            )
-            .filter(ladder::Column::Id.eq(id))
-            .filter(ladder::Column::UserId.eq(user_id))
-            .exec(&self.conn())
-            .await?;
-        Ok(res.rows_affected > 0)
-    }
-
-    /// Take the top-up claim on a ladder, returning whether this caller got it. The
-    /// ladder's counterpart to [`Self::claim_coverage_plan_top_up`], with the same
-    /// compare-and-swap and the same `TOP_UP_LEASE`; see that method for why
-    /// both exist and how the race is closed.
-    pub async fn claim_ladder_top_up(&self, user_id: &str, id: &str, now: &str) -> Result<bool> {
+    /// Take the launch-pass claim on a ladder, returning whether this caller got it. The
+    /// ladder's counterpart to [`Self::claim_coverage_plan_launch`], with the same
+    /// compare-and-swap and the same `LAUNCH_LEASE`.
+    pub async fn claim_ladder_launch(&self, user_id: &str, id: &str, now: &str) -> Result<bool> {
         let txn = self.conn().begin().await?;
         let Some(row) = ladder::Entity::find_by_id(id.to_string())
             .filter(ladder::Column::UserId.eq(user_id))
@@ -4774,27 +4683,27 @@ impl Db {
             txn.commit().await?;
             return Ok(false);
         };
-        if !top_up_claim_is_available(row.topping_up_at.as_deref(), now) {
+        if !launch_claim_is_available(row.launch_claimed_at.as_deref(), now) {
             txn.commit().await?;
             return Ok(false);
         }
         let mut update = ladder::Entity::update_many()
-            .col_expr(ladder::Column::ToppingUpAt, Expr::value(now))
+            .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(now))
             .filter(ladder::Column::Id.eq(id));
-        update = match row.topping_up_at {
-            Some(held) => update.filter(ladder::Column::ToppingUpAt.eq(held)),
-            None => update.filter(ladder::Column::ToppingUpAt.is_null()),
+        update = match row.launch_claimed_at {
+            Some(held) => update.filter(ladder::Column::LaunchClaimedAt.eq(held)),
+            None => update.filter(ladder::Column::LaunchClaimedAt.is_null()),
         };
         let claimed = update.exec(&txn).await?.rows_affected > 0;
         txn.commit().await?;
         Ok(claimed)
     }
 
-    /// Release the top-up claim on a ladder. Unconditional, for the same reason
-    /// [`Self::release_coverage_plan_top_up`] is.
-    pub async fn release_ladder_top_up(&self, id: &str) -> Result<()> {
+    /// Release the launch-pass claim on a ladder. Unconditional, for the same reason
+    /// [`Self::release_coverage_plan_launch`] is.
+    pub async fn release_ladder_launch(&self, id: &str) -> Result<()> {
         ladder::Entity::update_many()
-            .col_expr(ladder::Column::ToppingUpAt, Expr::value(None::<String>))
+            .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
             .filter(ladder::Column::Id.eq(id))
             .exec(&self.conn())
             .await?;
@@ -4802,11 +4711,10 @@ impl Db {
     }
 
     /// Ask for another launch pass of a ladder whose claim somebody else holds: set its
-    /// `top_up_pending` flag, which the holder checks before letting go. Not scoped to an
-    /// account — it is only ever reached from a ladder the caller already resolved.
-    pub async fn request_ladder_top_up(&self, id: &str) -> Result<()> {
+    /// `launch_requested` flag, which the holder checks before letting go.
+    pub async fn request_ladder_launch(&self, id: &str) -> Result<()> {
         ladder::Entity::update_many()
-            .col_expr(ladder::Column::TopUpPending, Expr::value(true))
+            .col_expr(ladder::Column::LaunchRequested, Expr::value(true))
             .filter(ladder::Column::Id.eq(id))
             .exec(&self.conn())
             .await?;
@@ -4816,79 +4724,131 @@ impl Db {
     /// Take a ladder's pending launch-pass request, clearing it, and answer whether there
     /// was one. A compare-and-clear on the flag, so two callers can never both take one
     /// request.
-    pub async fn take_ladder_top_up_request(&self, id: &str) -> Result<bool> {
+    pub async fn take_ladder_launch_request(&self, id: &str) -> Result<bool> {
         let res = ladder::Entity::update_many()
-            .col_expr(ladder::Column::TopUpPending, Expr::value(false))
+            .col_expr(ladder::Column::LaunchRequested, Expr::value(false))
             .filter(ladder::Column::Id.eq(id))
-            .filter(ladder::Column::TopUpPending.eq(true))
+            .filter(ladder::Column::LaunchRequested.eq(true))
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
     }
 
-    /// Release every ladder's launch-pass claim. Run once at startup, before anything is
-    /// served: the backend is a single coordinator, so no launch pass can be running
-    /// anywhere at that moment, and a claim still held was held by a process that died
-    /// with it. Left in place, the claim would turn the startup feed of that ladder
-    /// away as busy until its lease ran out, with nobody left to serve the request it
-    /// leaves. A pending request is kept, for the startup feed to take.
-    pub async fn release_all_ladder_top_ups(&self) -> Result<u64> {
-        let res = ladder::Entity::update_many()
-            .col_expr(ladder::Column::ToppingUpAt, Expr::value(None::<String>))
-            .filter(ladder::Column::ToppingUpAt.is_not_null())
-            .exec(&self.conn())
-            .await?;
-        Ok(res.rows_affected)
-    }
-
     /// Whether a ladder has a launch pass requested and not yet taken.
-    pub async fn ladder_top_up_requested(&self, id: &str) -> Result<bool> {
+    pub async fn ladder_launch_requested(&self, id: &str) -> Result<bool> {
         Ok(ladder::Entity::find_by_id(id.to_string())
             .one(&self.conn())
             .await?
-            .is_some_and(|row| row.top_up_pending))
+            .is_some_and(|row| row.launch_requested))
     }
 
-    /// The ladders a finished job of one case pin feeds, as `(ladder id, owner)` pairs:
-    /// every ladder holding a rung that pins `slug`, `version`, `variant` and `engine`
-    /// (an absent rung engine meaning `none`), plus the ladder `origin` names, kept only
-    /// when the ladder is enabled.
-    ///
-    /// The combination is deliberately not matched here. Which climbers a ladder has,
-    /// gg ones included, is the board's to resolve, and a ladder whose climbers do not
-    /// include the job's combination simply finds nothing new to do.
-    pub async fn ladders_fed_by(
+    /// A ladder's latest dispatch, or `None` when it has never been run.
+    pub async fn ladder_dispatch(&self, ladder_id: &str) -> Result<Option<StoredDispatch>> {
+        Ok(ladder_dispatch::Entity::find_by_id(ladder_id.to_string())
+            .one(&self.conn())
+            .await?
+            .map(stored_dispatch))
+    }
+
+    /// Start a dispatch of a ladder: replace its ended dispatch (and that one's climbers
+    /// and outcomes) with `dispatch` and its `climbers`, in one transaction. Answers
+    /// `false`, writing nothing, when the ladder's dispatch is still running — only one
+    /// may run at a time.
+    pub async fn start_ladder_dispatch(
         &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        engine: &str,
-        origin: Option<&str>,
-    ) -> Result<Vec<(String, String)>> {
-        let mut ids: Vec<String> = ladder_rung::Entity::find()
-            .filter(ladder_rung::Column::Slug.eq(slug))
-            .filter(ladder_rung::Column::Version.eq(version))
-            .filter(ladder_rung::Column::Variant.eq(variant))
+        dispatch: &StoredDispatch,
+        climbers: &[StoredDispatchClimber],
+    ) -> Result<bool> {
+        let txn = self.conn().begin().await?;
+        if let Some(current) = ladder_dispatch::Entity::find_by_id(dispatch.ladder_id.clone())
+            .one(&txn)
+            .await?
+            && current.status == "running"
+        {
+            txn.commit().await?;
+            return Ok(false);
+        }
+        delete_dispatch_rows(&txn, &dispatch.ladder_id).await?;
+        let inserted = ladder_dispatch::Entity::insert(ladder_dispatch::ActiveModel {
+            ladder_id: Set(dispatch.ladder_id.clone()),
+            id: Set(dispatch.id.clone()),
+            status: Set(dispatch.status.clone()),
+            started_at: Set(dispatch.started_at.clone()),
+            ended_at: Set(dispatch.ended_at.clone()),
+            snapshot_json: Set(dispatch.snapshot_json.clone()),
+        })
+        .exec(&txn)
+        .await;
+        if inserted.is_err() {
+            // A concurrent Run inserted its dispatch between the read and the insert.
+            txn.rollback().await?;
+            return Ok(false);
+        }
+        if !climbers.is_empty() {
+            ladder_dispatch_climber::Entity::insert_many(climbers.iter().map(|climber| {
+                ladder_dispatch_climber::ActiveModel {
+                    dispatch_id: Set(dispatch.id.clone()),
+                    climber_key: Set(climber.climber_key.clone()),
+                    position: Set(climber.position as i32),
+                    combo_json: Set(climber.combo_json.clone()),
+                    cell_json: Set(climber.cell_json.clone()),
+                    retried_at: Set(climber.retried_at.clone()),
+                }
+            }))
+            .exec(&txn)
+            .await?;
+        }
+        txn.commit().await?;
+        Ok(true)
+    }
+
+    /// End a ladder's running dispatch with `status` (`stopped` or `finished`) at `now`.
+    /// A conditional update on the dispatch's id and its `running` status, so only one
+    /// caller ends it and a dispatch already ended is left as it is. With `dispatch_id`,
+    /// only that dispatch is ended. Answers the id of the dispatch it ended.
+    pub async fn end_ladder_dispatch(
+        &self,
+        ladder_id: &str,
+        dispatch_id: Option<&str>,
+        status: &str,
+        now: &str,
+    ) -> Result<Option<String>> {
+        let Some(current) = ladder_dispatch::Entity::find_by_id(ladder_id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if current.status != "running" || dispatch_id.is_some_and(|id| id != current.id) {
+            return Ok(None);
+        }
+        let res = ladder_dispatch::Entity::update_many()
+            .col_expr(ladder_dispatch::Column::Status, Expr::value(status))
+            .col_expr(ladder_dispatch::Column::EndedAt, Expr::value(now))
+            .filter(ladder_dispatch::Column::LadderId.eq(ladder_id))
+            .filter(ladder_dispatch::Column::Id.eq(current.id.clone()))
+            .filter(ladder_dispatch::Column::Status.eq("running"))
+            .exec(&self.conn())
+            .await?;
+        Ok((res.rows_affected > 0).then_some(current.id))
+    }
+
+    /// Every running dispatch, as `(ladder id, owning account)`, ordered by ladder id:
+    /// what the backend runs a launch pass of at startup.
+    pub async fn running_dispatches(&self) -> Result<Vec<(String, String)>> {
+        let ids: Vec<String> = ladder_dispatch::Entity::find()
+            .filter(ladder_dispatch::Column::Status.eq("running"))
+            .order_by_asc(ladder_dispatch::Column::LadderId)
             .all(&self.conn())
             .await?
             .into_iter()
-            .filter(|rung| {
-                rung.engine
-                    .as_deref()
-                    .unwrap_or(test_cabinet_core::engine::NONE_SLUG)
-                    == engine
-            })
-            .map(|rung| rung.ladder_id)
+            .map(|row| row.ladder_id)
             .collect();
-        ids.extend(origin.map(str::to_string));
-        ids.sort();
-        ids.dedup();
         if ids.is_empty() {
             return Ok(Vec::new());
         }
         Ok(ladder::Entity::find()
             .filter(ladder::Column::Id.is_in(ids))
-            .filter(ladder::Column::Paused.eq(false))
             .order_by_asc(ladder::Column::Id)
             .all(&self.conn())
             .await?
@@ -4897,136 +4857,78 @@ impl Db {
             .collect())
     }
 
-    /// Every enabled ladder, as `(ladder id, owning account)`, ordered by id. What the
-    /// backend runs a launch pass of once at startup, so a ladder a restart left with
-    /// nothing in flight climbs on.
-    pub async fn enabled_ladders(&self) -> Result<Vec<(String, String)>> {
-        Ok(ladder::Entity::find()
-            .filter(ladder::Column::Paused.eq(false))
-            .order_by_asc(ladder::Column::Id)
+    /// A dispatch's climbers, in their resolved order.
+    pub async fn dispatch_climbers(&self, dispatch_id: &str) -> Result<Vec<StoredDispatchClimber>> {
+        Ok(ladder_dispatch_climber::Entity::find()
+            .filter(ladder_dispatch_climber::Column::DispatchId.eq(dispatch_id))
+            .order_by_asc(ladder_dispatch_climber::Column::Position)
+            .order_by_asc(ladder_dispatch_climber::Column::ClimberKey)
             .all(&self.conn())
             .await?
             .into_iter()
-            .map(|row| (row.id, row.user_id))
-            .collect())
-    }
-
-    /// Every steering row on one ladder, ordered so the reviewer's own priority is the
-    /// climb order: focused and highest-priority first, then by key for a stable tie.
-    ///
-    /// Combinations with no row are absent — an un-steered climber writes nothing —
-    /// so the caller unions this against the ladder's resolved members rather than
-    /// treating it as the member list.
-    pub async fn list_ladder_climbers(&self, ladder_id: &str) -> Result<Vec<StoredLadderClimber>> {
-        Ok(ladder_climber::Entity::find()
-            .filter(ladder_climber::Column::LadderId.eq(ladder_id))
-            .order_by_desc(ladder_climber::Column::Priority)
-            .order_by_desc(ladder_climber::Column::Focused)
-            .order_by_asc(ladder_climber::Column::CombinationKey)
-            .all(&self.conn())
-            .await?
-            .into_iter()
-            .map(|row| StoredLadderClimber {
-                combination_key: row.combination_key,
-                priority: row.priority,
-                focused: row.focused,
-                paused: row.paused,
-                updated_at: row.updated_at,
+            .map(|row| StoredDispatchClimber {
+                climber_key: row.climber_key,
+                position: row.position.max(0) as u32,
+                combo_json: row.combo_json,
+                cell_json: row.cell_json,
                 retried_at: row.retried_at,
             })
             .collect())
     }
 
-    /// Set one combination's steering on a ladder, creating the row on first use.
-    ///
-    /// Steering is written whole because it is one small decision — "climb this one
-    /// first and watch it" — rather than three independent settings, and a whole write
-    /// cannot leave a combination focused-but-forgotten by a partial update. The
-    /// climber's [`StoredLadderClimber::retried_at`] is not steering and is left as it
-    /// is.
-    pub async fn set_ladder_climber(
+    /// Pin the cell share of a dispatch climber that had none: a climber that could not be
+    /// resolved at Run, resolving for the first time. A conditional update, so a share
+    /// once pinned is never replaced. Answers whether it pinned.
+    pub async fn pin_dispatch_climber_cell(
         &self,
-        ladder_id: &str,
-        climber: &StoredLadderClimber,
-    ) -> Result<()> {
-        ladder_climber::Entity::insert(ladder_climber::ActiveModel {
-            ladder_id: Set(ladder_id.to_string()),
-            combination_key: Set(climber.combination_key.clone()),
-            priority: Set(climber.priority),
-            focused: Set(climber.focused),
-            paused: Set(climber.paused),
-            updated_at: Set(climber.updated_at.clone()),
-            retried_at: Set(None),
-        })
-        .on_conflict(
-            OnConflict::columns([
-                ladder_climber::Column::LadderId,
-                ladder_climber::Column::CombinationKey,
-            ])
-            .update_columns([
-                ladder_climber::Column::Priority,
-                ladder_climber::Column::Focused,
-                ladder_climber::Column::Paused,
-                ladder_climber::Column::UpdatedAt,
-            ])
-            .to_owned(),
-        )
-        .exec(&self.conn())
-        .await?;
-        Ok(())
+        dispatch_id: &str,
+        climber_key: &str,
+        cell_json: &str,
+    ) -> Result<bool> {
+        let res = ladder_dispatch_climber::Entity::update_many()
+            .col_expr(
+                ladder_dispatch_climber::Column::CellJson,
+                Expr::value(cell_json),
+            )
+            .filter(ladder_dispatch_climber::Column::DispatchId.eq(dispatch_id))
+            .filter(ladder_dispatch_climber::Column::ClimberKey.eq(climber_key))
+            .filter(ladder_dispatch_climber::Column::CellJson.is_null())
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
     }
 
-    /// Record that the owner retried one climber at `now`, creating its steering row
-    /// un-steered when it has none. Only jobs that ended after `now` count toward its
-    /// failing streak from here on. Its steering is left as it is.
-    pub async fn record_ladder_climber_retry(
+    /// Record that the owner retried one climber of a dispatch at `now`. Only jobs that
+    /// ended after it count toward its failing streak from here on. Answers whether the
+    /// climber is one of the dispatch's.
+    pub async fn record_dispatch_climber_retry(
         &self,
-        ladder_id: &str,
-        combination_key: &str,
+        dispatch_id: &str,
+        climber_key: &str,
         now: &str,
-    ) -> Result<()> {
-        ladder_climber::Entity::insert(ladder_climber::ActiveModel {
-            ladder_id: Set(ladder_id.to_string()),
-            combination_key: Set(combination_key.to_string()),
-            priority: Set(0),
-            focused: Set(false),
-            paused: Set(false),
-            updated_at: Set(now.to_string()),
-            retried_at: Set(Some(now.to_string())),
-        })
-        .on_conflict(
-            OnConflict::columns([
-                ladder_climber::Column::LadderId,
-                ladder_climber::Column::CombinationKey,
-            ])
-            .update_columns([
-                ladder_climber::Column::RetriedAt,
-                ladder_climber::Column::UpdatedAt,
-            ])
-            .to_owned(),
-        )
-        .exec(&self.conn())
-        .await?;
-        Ok(())
+    ) -> Result<bool> {
+        let res = ladder_dispatch_climber::Entity::update_many()
+            .col_expr(ladder_dispatch_climber::Column::RetriedAt, Expr::value(now))
+            .filter(ladder_dispatch_climber::Column::DispatchId.eq(dispatch_id))
+            .filter(ladder_dispatch_climber::Column::ClimberKey.eq(climber_key))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
     }
 
-    /// Every recorded verdict on one ladder — one climber's whole progress and the
-    /// board's at once — ordered by combination then rung for a stable read.
-    ///
-    /// A rung with no row for a combination is *undecided*.
-    pub async fn list_ladder_outcomes(&self, ladder_id: &str) -> Result<Vec<StoredLadderOutcome>> {
-        ladder_outcome::Entity::find()
-            .filter(ladder_outcome::Column::LadderId.eq(ladder_id))
-            .order_by_asc(ladder_outcome::Column::CombinationKey)
-            .order_by_asc(ladder_outcome::Column::RungId)
+    /// Every verdict recorded in a dispatch.
+    pub async fn dispatch_outcomes(&self, dispatch_id: &str) -> Result<Vec<StoredDispatchOutcome>> {
+        ladder_dispatch_outcome::Entity::find()
+            .filter(ladder_dispatch_outcome::Column::DispatchId.eq(dispatch_id))
+            .order_by_asc(ladder_dispatch_outcome::Column::ClimberKey)
+            .order_by_asc(ladder_dispatch_outcome::Column::RungId)
             .all(&self.conn())
             .await?
             .into_iter()
             .map(|row| {
-                Ok(StoredLadderOutcome {
+                Ok(StoredDispatchOutcome {
                     rung_id: row.rung_id,
-                    combination_key: row.combination_key,
-                    decided_version: row.decided_version,
+                    climber_key: row.climber_key,
                     outcome: LadderOutcomeKind::parse(&row.outcome)?,
                     decided_at: row.decided_at,
                 })
@@ -5034,56 +4936,292 @@ impl Db {
             .collect()
     }
 
-    /// Record the gate's verdict for one combination on one rung, at the case version it
-    /// was decided against.
-    ///
-    /// Idempotent: re-deciding the same rung updates the verdict and its timestamp.
-    ///
-    /// `decided_version` is part of the row's identity, so bumping a rung's pin later
-    /// leaves this verdict recorded against the version that actually earned it rather
-    /// than silently transferring it to different content.
-    pub async fn record_ladder_outcome(
+    /// Record the gate's verdict for one climber on one rung of a dispatch. A verdict
+    /// stands once recorded: recording one for a slot that already has one leaves the
+    /// first in place.
+    pub async fn record_dispatch_outcome(
         &self,
-        ladder_id: &str,
+        dispatch_id: &str,
         rung_id: &str,
-        combination_key: &str,
-        decided_version: &str,
+        climber_key: &str,
         outcome: LadderOutcomeKind,
         now: &str,
     ) -> Result<()> {
-        ladder_outcome::Entity::insert(ladder_outcome::ActiveModel {
-            ladder_id: Set(ladder_id.to_string()),
+        ladder_dispatch_outcome::Entity::insert(ladder_dispatch_outcome::ActiveModel {
+            dispatch_id: Set(dispatch_id.to_string()),
             rung_id: Set(rung_id.to_string()),
-            combination_key: Set(combination_key.to_string()),
-            decided_version: Set(decided_version.to_string()),
+            climber_key: Set(climber_key.to_string()),
             outcome: Set(outcome.as_str().to_string()),
             decided_at: Set(now.to_string()),
         })
         .on_conflict(
             OnConflict::columns([
-                ladder_outcome::Column::LadderId,
-                ladder_outcome::Column::RungId,
-                ladder_outcome::Column::CombinationKey,
-                ladder_outcome::Column::DecidedVersion,
+                ladder_dispatch_outcome::Column::DispatchId,
+                ladder_dispatch_outcome::Column::RungId,
+                ladder_dispatch_outcome::Column::ClimberKey,
             ])
-            .update_columns([
-                ladder_outcome::Column::Outcome,
-                ladder_outcome::Column::DecidedAt,
-            ])
+            .do_nothing()
             .to_owned(),
         )
+        .do_nothing()
         .exec(&self.conn())
         .await?;
         Ok(())
+    }
+
+    /// Read everything a dispatch's own jobs say about its rung slots, in two queries:
+    /// every job whose origin names the dispatch (`ladder:<ladder>/<dispatch>/<rung>`),
+    /// and the runs of the finished ones. Grouped by `(rung id, cell)`, where the cell is
+    /// read off the job's lifted columns exactly as the grouped counts read it.
+    pub async fn dispatch_evidence(
+        &self,
+        ladder_id: &str,
+        dispatch_id: &str,
+    ) -> Result<DispatchEvidence> {
+        let prefix = format!("ladder:{ladder_id}/{dispatch_id}");
+        let jobs = job::Entity::find()
+            .filter(origin_prefix_condition(&prefix))
+            .order_by_asc(job::Column::QueueSeq)
+            .all(&self.conn())
+            .await?;
+        let mut evidence = DispatchEvidence::default();
+        // (slot, record id, ended at) of the finished jobs whose run may count.
+        let mut finished: Vec<(SlotKey, String)> = Vec::new();
+        let mut terminal_rows: Vec<(SlotKey, TerminalRow, i64)> = Vec::new();
+        for job in jobs {
+            let Some(JobOrigin::Ladder {
+                rung_id: Some(rung_id),
+                ..
+            }) = job.origin.as_deref().and_then(JobOrigin::parse)
+            else {
+                continue;
+            };
+            let slot: SlotKey = (
+                rung_id,
+                (
+                    job.test_case_slug.clone(),
+                    job.test_case_version.clone(),
+                    job.variant.clone(),
+                    cell_engine(job.engine_slug.clone()),
+                    job.harness_slug.clone(),
+                    job.model_id.clone(),
+                    job.gg_config_id.clone().unwrap_or_default(),
+                    job.gg_models.clone().unwrap_or_default(),
+                ),
+            );
+            if IN_FLIGHT_STATES.contains(&job.state.as_str()) {
+                if CANCELABLE_WAITING_STATES.contains(&job.state.as_str()) {
+                    *evidence.waiting.entry(slot.clone()).or_insert(0) += 1;
+                }
+                evidence.in_flight.entry(slot).or_default().push(job.id);
+                continue;
+            }
+            let reaped = job.detail.as_deref() == Some(REAPED_DETAIL);
+            if !reaped {
+                terminal_rows.push((
+                    slot.clone(),
+                    (
+                        job.state.clone(),
+                        job.record_id.clone(),
+                        job.updated_at.clone(),
+                    ),
+                    job.queue_seq,
+                ));
+            }
+            if job.retried_by.is_none()
+                && let Some(record) = job.record_id
+            {
+                finished.push((slot, record));
+            }
+        }
+
+        // The terminal jobs, newest first per slot, read as `TerminalJob`s in one go.
+        terminal_rows.sort_by(|(_, (_, _, a_ended), a_seq), (_, (_, _, b_ended), b_seq)| {
+            let a = OffsetDateTime::parse(a_ended, &Rfc3339).ok();
+            let b = OffsetDateTime::parse(b_ended, &Rfc3339).ok();
+            b.cmp(&a).then(b_seq.cmp(a_seq))
+        });
+        let slots: Vec<SlotKey> = terminal_rows
+            .iter()
+            .map(|(slot, _, _)| slot.clone())
+            .collect();
+        let read = self
+            .terminal_jobs(terminal_rows.into_iter().map(|(_, row, _)| row).collect())
+            .await?;
+        for (slot, job) in slots.into_iter().zip(read) {
+            evidence.terminal.entry(slot).or_default().push(job);
+        }
+
+        if finished.is_empty() {
+            return Ok(evidence);
+        }
+        let ids: Vec<&str> = finished.iter().map(|(_, id)| id.as_str()).collect();
+        let rows: Vec<(String, String, bool, bool, Option<String>, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::RunState)
+            .column(run::Column::Loaded)
+            .column(run::Column::ValidatorRated)
+            .column(run::Column::ValidatorRating)
+            .column(run::Column::FinishedAt)
+            .filter(run::Column::Id.is_in(ids))
+            .filter(run::Column::RunState.is_in(counted_run_states()))
+            .order_by_asc(run::Column::FinishedAt)
+            .order_by_asc(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let slot_of: HashMap<String, SlotKey> = finished
+            .into_iter()
+            .map(|(slot, record)| (record, slot))
+            .collect();
+        for (run_id, run_state, loaded, validator_rated, rating, finished_at) in rows {
+            let Some(slot) = slot_of.get(&run_id) else {
+                continue;
+            };
+            evidence
+                .runs
+                .entry(slot.clone())
+                .or_default()
+                .push(CellRunRating {
+                    model_failure: run_state != "completed",
+                    loaded,
+                    validator_rated,
+                    // A token that no longer parses reads as "no rating", which the gate
+                    // treats as unrated rather than as a bad result.
+                    rating: rating.as_deref().and_then(Rating::parse),
+                    finished_at,
+                    run_id,
+                });
+        }
+        Ok(evidence)
+    }
+
+    /// How many jobs whose origin is `prefix`, or extends it with `/`, are in flight. A
+    /// plan's limit counts `plan:<id>`; a dispatch's counts `ladder:<l>/<d>`.
+    pub async fn count_in_flight_jobs_by_origin_prefix(&self, prefix: &str) -> Result<u32> {
+        let count = job::Entity::find()
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .filter(origin_prefix_condition(prefix))
+            .count(&self.conn())
+            .await?;
+        Ok(count.min(u64::from(u32::MAX)) as u32)
+    }
+
+    /// How many of each of an account's plans' jobs are in flight, keyed by plan id, in
+    /// one query: what the plans summary reports without a query per plan.
+    pub async fn count_in_flight_jobs_by_plan(
+        &self,
+        user_id: &str,
+    ) -> Result<HashMap<String, u32>> {
+        let plan_ids: std::collections::HashSet<String> = coverage_plan::Entity::find()
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| row.id)
+            .collect();
+        let origins: Vec<(Option<String>, i64)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Origin)
+            .column_as(job::Column::Id.count(), "cnt")
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .filter(job::Column::Origin.like("plan:%"))
+            .group_by(job::Column::Origin)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut counts: HashMap<String, u32> = HashMap::new();
+        for (origin, count) in origins {
+            if let Some(JobOrigin::Plan { plan_id, .. }) =
+                origin.as_deref().and_then(JobOrigin::parse)
+                && plan_ids.contains(&plan_id)
+            {
+                *counts.entry(plan_id).or_insert(0) += count.max(0) as u32;
+            }
+        }
+        Ok(counts)
+    }
+
+    /// Which of `run_ids` are completed runs `reviewer_user_id` has not reviewed,
+    /// leaving out the automatically graded types no reviewer can clear. What a ladder's
+    /// review queue and its unreviewed count read.
+    pub async fn unreviewed_among(
+        &self,
+        run_ids: &[String],
+        reviewer_user_id: &str,
+    ) -> Result<std::collections::HashSet<String>> {
+        if run_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .join(
+                JoinType::LeftJoin,
+                run::Relation::Review.def().on_condition({
+                    let reviewer = reviewer_user_id.to_string();
+                    move |_run, review| {
+                        Expr::col((review, review::Column::ReviewerUserId))
+                            .eq(reviewer.clone())
+                            .into_condition()
+                    }
+                }),
+            )
+            .filter(review::Column::Id.is_null())
+            .filter(run::Column::Id.is_in(run_ids.iter().map(String::as_str)))
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES))
+            .into_tuple::<String>()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .collect())
+    }
+}
+
+/// Delete a ladder's dispatch with its climbers and outcomes, inside `txn`. Explicit
+/// rather than left to the foreign keys' cascade, so the rows go however the backend's
+/// foreign-key enforcement is configured.
+async fn delete_dispatch_rows(txn: &DatabaseTransaction, ladder_id: &str) -> Result<()> {
+    let Some(dispatch) = ladder_dispatch::Entity::find_by_id(ladder_id.to_string())
+        .one(txn)
+        .await?
+    else {
+        return Ok(());
+    };
+    ladder_dispatch_outcome::Entity::delete_many()
+        .filter(ladder_dispatch_outcome::Column::DispatchId.eq(dispatch.id.clone()))
+        .exec(txn)
+        .await?;
+    ladder_dispatch_climber::Entity::delete_many()
+        .filter(ladder_dispatch_climber::Column::DispatchId.eq(dispatch.id.clone()))
+        .exec(txn)
+        .await?;
+    ladder_dispatch::Entity::delete_many()
+        .filter(ladder_dispatch::Column::LadderId.eq(ladder_id))
+        .exec(txn)
+        .await?;
+    Ok(())
+}
+
+/// A stored dispatch row in its in-memory form.
+fn stored_dispatch(row: ladder_dispatch::Model) -> StoredDispatch {
+    StoredDispatch {
+        ladder_id: row.ladder_id,
+        id: row.id,
+        status: row.status,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        snapshot_json: row.snapshot_json,
     }
 }
 
 /// Write a ladder's rungs, stamping each with its index in the list as its `position`
 /// so the stored order is the list order by construction.
 ///
-/// Upserts on the rung's stable id: a rung already stored is updated in place — which
-/// is what keeps its `ladder_outcome` rows, since those cascade from it — and a new one
-/// is inserted. Removing rungs is the caller's job ([`Db::update_ladder`] does it in
+/// Upserts on the rung's stable id: a rung already stored is updated in place and a new
+/// one is inserted. Removing rungs is the caller's job ([`Db::update_ladder`] does it in
 /// the same transaction), because only the caller knows whether an absent rung was
 /// deleted or simply not being written this time.
 async fn write_ladder_rungs(
@@ -5136,6 +5274,8 @@ fn stored_ladder(row: ladder::Model, rungs: Vec<StoredLadderRung>) -> Result<Sto
         combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
         combos: serde_json::from_str(&row.combos_json)?,
         rungs,
+        outer_axis: row.outer_axis,
+        in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
         updated_at: row.updated_at,
     })
 }
@@ -5709,23 +5849,26 @@ fn publishable_failure_states() -> Vec<&'static str> {
         .collect()
 }
 
-/// The wire strings of the run states that say something about their **model**: every
-/// [publishable](test_cabinet_core::run_record::RunState::is_publishable) state, so
-/// `completed` and the publishable failure tiers, and never the infrastructure failure
-/// or an operator's cancel. What a ladder's rung counts as its runs and its gate reads
-/// as evidence ([`Db::cell_run_ratings`]).
-fn model_outcome_states() -> Vec<&'static str> {
+/// The wire strings of the **counted** run states — the model's own results: completed,
+/// catastrophic, timed out, limit exceeded and hung. Never the infrastructure-class
+/// failures (`infrastructure`, `harness_error`) or an operator's cancel. What a coverage
+/// cell and a rung slot count toward their targets and a rung's gate reads as evidence.
+///
+/// Derived from
+/// [`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)
+/// rather than written out, so the counting rule has one definition.
+pub(crate) fn counted_run_states() -> Vec<&'static str> {
     test_cabinet_core::run_record::RunState::ALL
         .into_iter()
-        .filter(|state| state.is_publishable())
+        .filter(|state| state.counts_as_model_result())
         .map(run_state_str)
         .collect()
 }
 
 /// A condition on `run` that holds for every run **not** produced by a job that was
 /// automatically retried: the run's id is not the `record_id` of any job with a
-/// `retried_by`. What a ladder counts its rung's runs through, so an attempt and its
-/// retry are one of the rung's runs rather than two.
+/// `retried_by`. What every count goes through, so an attempt and its retry are one run
+/// rather than two.
 fn not_a_retried_attempt() -> SimpleExpr {
     run::Column::Id.not_in_subquery(
         sea_orm::sea_query::Query::select()
@@ -5787,43 +5930,173 @@ fn sqlite_file_path(url: &str) -> Option<PathBuf> {
 /// rather than by a variant here — "launched by nothing in particular" is the absence
 /// of an origin, not a kind of one.
 ///
-/// This is what makes a scoped halt safe. `halt` cancels exactly the plan's or
-/// ladder's own waiting jobs; without an origin there would be no way to tell those
-/// from the manual run someone kicked off in another tab, and a job with no origin is
-/// never swept up by a scoped halt.
+/// This is what makes a scoped halt or stop safe, what a plan's and a dispatch's
+/// runs-in-flight limit counts, and what a ladder dispatch counts its evidence by: a
+/// dispatch owns exactly the jobs whose origin names it. Coverage *plans* still count
+/// every run of a cell, whoever launched it.
 ///
-/// Deliberately invisible to coverage counting, which stays global: a run counts
-/// toward its cell's target whoever launched it and whatever launched it.
+/// Every id is a UUID or cuid2 (no `/` or `:`), so `/` is a safe separator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobOrigin {
-    /// A coverage plan's top-up, by the plan's id.
-    Plan(String),
-    /// A ladder's top-up, by the ladder's id.
-    Ladder(String),
+    /// A coverage plan's job: `plan:<plan_id>` for a launch by hand from the plan (its
+    /// Tests tab, or a cell retry on a plan that is not filling), or
+    /// `plan:<plan_id>/<fill_id>` for a job a fill launched.
+    Plan {
+        /// The plan's id.
+        plan_id: String,
+        /// The fill that launched the job, or `None` for a launch by hand.
+        fill_id: Option<String>,
+    },
+    /// A ladder's job: `ladder:<ladder_id>/<dispatch_id>/<rung_id>`, launched by a
+    /// dispatch for one rung. A legacy `ladder:<ladder_id>` (both ids `None`) predates
+    /// dispatches: it is parsed, but never counted and never retried.
+    Ladder {
+        /// The ladder's id.
+        ladder_id: String,
+        /// The dispatch that launched the job, or `None` for a legacy job.
+        dispatch_id: Option<String>,
+        /// The rung the job was launched for, or `None` for a legacy job.
+        rung_id: Option<String>,
+    },
 }
 
 impl JobOrigin {
-    /// The stored token: `plan:<id>` or `ladder:<id>`. Prefixed rather than bare so a
-    /// plan and a ladder cannot halt each other's runs — their ids are minted
-    /// independently and nothing stops them colliding.
-    pub fn as_token(&self) -> String {
-        match self {
-            JobOrigin::Plan(id) => format!("plan:{id}"),
-            JobOrigin::Ladder(id) => format!("ladder:{id}"),
+    /// A launch by hand from a plan.
+    pub fn plan(plan_id: impl Into<String>) -> Self {
+        JobOrigin::Plan {
+            plan_id: plan_id.into(),
+            fill_id: None,
         }
     }
 
-    /// Parse a stored token, returning `None` for anything that is not one of the two
-    /// forms — including the empty string and a token from a future kind of owner.
-    /// Unrecognized is treated as unattributed rather than as an error: an origin is a
-    /// label on a job, and a job nobody can attribute is still a perfectly good job.
-    pub fn parse(token: &str) -> Option<Self> {
-        if let Some(id) = token.strip_prefix("plan:") {
-            return (!id.is_empty()).then(|| JobOrigin::Plan(id.to_string()));
+    /// A job a plan's fill launched.
+    pub fn fill(plan_id: impl Into<String>, fill_id: impl Into<String>) -> Self {
+        JobOrigin::Plan {
+            plan_id: plan_id.into(),
+            fill_id: Some(fill_id.into()),
         }
-        let id = token.strip_prefix("ladder:")?;
-        (!id.is_empty()).then(|| JobOrigin::Ladder(id.to_string()))
     }
+
+    /// A job a ladder dispatch launched for one rung.
+    pub fn dispatch(
+        ladder_id: impl Into<String>,
+        dispatch_id: impl Into<String>,
+        rung_id: impl Into<String>,
+    ) -> Self {
+        JobOrigin::Ladder {
+            ladder_id: ladder_id.into(),
+            dispatch_id: Some(dispatch_id.into()),
+            rung_id: Some(rung_id.into()),
+        }
+    }
+
+    /// The stored token, per the forms above. Prefixed rather than bare so a plan and a
+    /// ladder cannot halt each other's runs — their ids are minted independently and
+    /// nothing stops them colliding.
+    pub fn as_token(&self) -> String {
+        match self {
+            JobOrigin::Plan {
+                plan_id,
+                fill_id: None,
+            } => format!("plan:{plan_id}"),
+            JobOrigin::Plan {
+                plan_id,
+                fill_id: Some(fill),
+            } => format!("plan:{plan_id}/{fill}"),
+            JobOrigin::Ladder {
+                ladder_id,
+                dispatch_id: Some(dispatch),
+                rung_id: Some(rung),
+            } => format!("ladder:{ladder_id}/{dispatch}/{rung}"),
+            JobOrigin::Ladder {
+                ladder_id,
+                dispatch_id: Some(dispatch),
+                rung_id: None,
+            } => format!("ladder:{ladder_id}/{dispatch}"),
+            JobOrigin::Ladder { ladder_id, .. } => format!("ladder:{ladder_id}"),
+        }
+    }
+
+    /// The owner's prefix, `plan:<id>` or `ladder:<id>`: every job of the plan or ladder,
+    /// whichever fill or dispatch launched it, has an origin equal to it or starting with
+    /// it followed by `/`.
+    pub fn owner_prefix(&self) -> String {
+        match self {
+            JobOrigin::Plan { plan_id, .. } => format!("plan:{plan_id}"),
+            JobOrigin::Ladder { ladder_id, .. } => format!("ladder:{ladder_id}"),
+        }
+    }
+
+    /// Parse a stored token, returning `None` for anything that is not one of the forms
+    /// above — including the empty string, an empty segment, and a token from a future
+    /// kind of owner. Unrecognized is treated as unattributed rather than as an error: an
+    /// origin is a label on a job, and a job nobody can attribute is still a perfectly
+    /// good job.
+    pub fn parse(token: &str) -> Option<Self> {
+        if let Some(rest) = token.strip_prefix("plan:") {
+            let mut parts = rest.split('/');
+            let plan_id = parts.next().filter(|id| !id.is_empty())?;
+            let fill_id = match parts.next() {
+                None => None,
+                Some(fill) if !fill.is_empty() => Some(fill.to_string()),
+                Some(_) => return None,
+            };
+            if parts.next().is_some() {
+                return None;
+            }
+            return Some(JobOrigin::Plan {
+                plan_id: plan_id.to_string(),
+                fill_id,
+            });
+        }
+        let rest = token.strip_prefix("ladder:")?;
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.iter().any(|part| part.is_empty()) {
+            return None;
+        }
+        match parts.as_slice() {
+            [ladder] => Some(JobOrigin::Ladder {
+                ladder_id: ladder.to_string(),
+                dispatch_id: None,
+                rung_id: None,
+            }),
+            [ladder, dispatch, rung] => Some(JobOrigin::dispatch(*ladder, *dispatch, *rung)),
+            _ => None,
+        }
+    }
+}
+
+/// Which origins a bulk cancel reaches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OriginScope {
+    /// Exactly this origin token: one rung of one dispatch, say.
+    Exact(String),
+    /// This token and every token that extends it with `/`: `plan:<id>` reaches a plan's
+    /// hand launches and every fill's jobs, `ladder:<l>/<d>` every rung of one dispatch.
+    Prefix(String),
+}
+
+impl OriginScope {
+    /// The condition on `job.origin` this scope selects.
+    fn condition(&self) -> Condition {
+        match self {
+            OriginScope::Exact(token) => Condition::all().add(job::Column::Origin.eq(token)),
+            OriginScope::Prefix(prefix) => origin_prefix_condition(prefix),
+        }
+    }
+}
+
+/// `origin = prefix OR origin LIKE prefix || '/%'`, with the prefix's `LIKE`
+/// metacharacters escaped (ids never carry them, but a prefix is never a pattern).
+fn origin_prefix_condition(prefix: &str) -> Condition {
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    Condition::any().add(job::Column::Origin.eq(prefix)).add(
+        job::Column::Origin
+            .like(sea_orm::sea_query::LikeExpr::new(format!("{escaped}/%")).escape('\\')),
+    )
 }
 
 /// Everything one claim pass changed: the job it handed to the dispatcher, and the
@@ -5856,10 +6129,10 @@ pub struct JobCancelFilter<'a> {
     /// have cost nothing yet), or both that and [`CANCELABLE_ACTIVE_STATES`] for the
     /// confirmed "stop everything" controls.
     pub states: &'a [&'a str],
-    /// Restrict to the jobs one plan or ladder launched. `None` sweeps every job in the
-    /// chosen states whatever launched it, **including manual launches**, which is why
-    /// only the explicitly global controls leave it unset.
-    pub origin: Option<&'a JobOrigin>,
+    /// Restrict to the jobs one plan, ladder dispatch or rung launched. `None` sweeps
+    /// every job in the chosen states whatever launched it, **including manual
+    /// launches**, which is why only the explicitly global controls leave it unset.
+    pub origin: Option<&'a OriginScope>,
     /// Restrict to the jobs one account launched. `None` sweeps every account's — jobs
     /// enqueued before attribution existed carry no `user_id`, so a filter set here
     /// silently skips them, which is correct for "cancel *my* runs" and wrong for
@@ -5869,9 +6142,9 @@ pub struct JobCancelFilter<'a> {
     /// the grouped counts use. What an early-stopping ladder narrows its cancel to, so
     /// deciding one rung for one climber never touches another cell's runs.
     pub cell: Option<&'a CellKey>,
-    /// Restrict to these jobs. What a ladder's top-up narrows its cancel to when a
-    /// disable lands while it enqueues, so it takes back only what it just enqueued and
-    /// never the runs the ladder queued before.
+    /// Restrict to these jobs. What a launch pass narrows its cancel to when a stop or
+    /// halt lands while it enqueues, so it takes back only what it just enqueued and
+    /// never the runs queued before.
     pub ids: Option<&'a [String]>,
 }
 
@@ -6393,7 +6666,7 @@ impl Db {
             .col_expr(job::Column::Detail, Expr::value(detail))
             .filter(job::Column::State.is_in(states));
         if let Some(origin) = filter.origin {
-            update = update.filter(job::Column::Origin.eq(origin.as_token()));
+            update = update.filter(origin.condition());
         }
         if let Some(user_id) = filter.user_id {
             update = update.filter(job::Column::UserId.eq(user_id));
@@ -6480,30 +6753,6 @@ impl Db {
         Ok(job::Entity::find_by_id(id.to_string())
             .one(&self.conn())
             .await?)
-    }
-
-    /// Fail every job mid-execution (`dispatched`, `starting`, or `running`) in one
-    /// update, stamping `updated_at` and the supplied terminal `detail`. Returns how
-    /// many were reaped.
-    ///
-    /// This is the single-box backend's startup reconciliation (see
-    /// [`crate::build`]): when the whole stack shares one machine, a backend
-    /// restart means every in-flight driver went down with it, so any job the
-    /// store still believes is executing is orphaned — it can never reach a
-    /// terminal state on its own and would otherwise show as forever "running".
-    /// `queued` and `pending` jobs are deliberately left untouched: they have no
-    /// driver yet, so the dispatcher drains them normally once it reconnects.
-    /// [`crate::build`] passes [`REAPED_DETAIL`], which a ladder recognises a reaped job
-    /// by.
-    pub async fn fail_in_flight_jobs(&self, now: &str, detail: &str) -> Result<u64> {
-        let result = job::Entity::update_many()
-            .col_expr(job::Column::State, Expr::value("failed"))
-            .col_expr(job::Column::UpdatedAt, Expr::value(now))
-            .col_expr(job::Column::Detail, Expr::value(detail))
-            .filter(job::Column::State.is_in(REAPABLE_STATES))
-            .exec(&self.conn())
-            .await?;
-        Ok(result.rows_affected)
     }
 
     /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
@@ -7663,7 +7912,7 @@ impl Db {
     /// Left unfilled, the column reads as `NULL`, which every grouped coverage query coalesces
     /// to the empty string — the **harness** form of the cell key. So the entire gg backlog
     /// would count toward no gg cell at all: a plan's cells would read zero however many runs
-    /// stood behind them, its top-up would re-buy work that already exists, and a ladder rung
+    /// stood behind them, its launch pass would re-buy work that already exists, and a ladder rung
     /// gated on a configuration would find no evidence in its own history. Coverage counts are
     /// global precisely so that a run someone already paid for is never re-requested, and that
     /// promise is only kept if the runs that predate the column are keyed like the ones after
@@ -7809,13 +8058,13 @@ impl Db {
     /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) and the column
     /// lifted from it. The column is what the grouped counts read and the record is what a
     /// cell's review queue matches a run against, so filling one alone would produce a run
-    /// that counts toward a cell and can never be offered for review in it — a review-buffer
-    /// slot spent on a run no reviewer is ever shown.
+    /// that counts toward a cell and can never be offered for review in it — a run no
+    /// reviewer is ever shown.
     ///
     /// Both are left alone whenever the answer is not exact: no job points at the run, the
     /// job that does is unattributed, two jobs disagree about whose run it is, the account
     /// no longer has a configuration by that name, or it has more than one. A miss
-    /// under-counts one cell, which the next top-up fills with new runs; a guess would merge
+    /// under-counts one cell, which the next launch pass fills with new runs; a guess would merge
     /// two configurations' histories permanently, and no later pass could tell it had
     /// happened. Rows recording no name at all — a set assembled by hand — are never
     /// candidates: they belong in no configuration's cell.

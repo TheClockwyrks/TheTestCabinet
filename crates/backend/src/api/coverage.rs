@@ -1,51 +1,35 @@
-//! The reviewer coverage endpoints: reusable groups, multiple declarative plans,
-//! the coverage matrix computed from a plan, and the controls that **feed** a plan
-//! — its review buffer, its top-up, its review queue, and its halts.
+//! The coverage endpoints: reusable groups, multiple declarative plans, the coverage
+//! matrix computed from a plan, and the controls that **fill** a plan — its
+//! runs-in-flight limit, its launch passes, its review queue, and its halts.
 //!
-//! A reviewer builds **groups** — named, reusable sets of harness+model
-//! **combinations** (`kind = "combo"`) or version-pinned test **cases**
-//! (`kind = "case"`) — and **plans** that reference those groups as pointers, so
-//! editing a group reshapes every plan that references it. A plan is **hybrid**: it
-//! references groups *and* may pin individual one-off combinations/cases; the
-//! backend resolves the referenced groups, unions them with the one-offs, and
-//! de-dupes before crossing cases × combinations into cells. Each plan carries its
-//! own target runs-per-cell, so the model space can be split into smaller,
-//! separately triggerable plans.
+//! An owner builds **groups** — named, reusable sets of harness+model **combinations**
+//! (`kind = "combo"`) or version-pinned test **cases** (`kind = "case"`) — and **plans**
+//! that reference those groups as pointers, so editing a group reshapes every plan that
+//! references it. A plan is **hybrid**: it references groups *and* may pin individual
+//! one-off combinations/cases; the backend resolves the referenced groups, unions them
+//! with the one-offs, and de-dupes before crossing cases × combinations into cells. Each
+//! plan carries its own target runs-per-cell.
 //!
-//! ## Declaration versus schedule
+//! ## Counting
 //!
-//! A plan is two things, deliberately kept apart everywhere (here, and in the store
-//! — see [`crate::db::CoveragePlanSchedule`]): its **declaration** (the members and
-//! the runs-per-cell target, [`CoveragePlan`]) and its **schedule** (the order it
-//! emits cells in, whether it is paused, whether a submitted review tops it up, and
-//! its buffer-target override, [`CoverageSchedule`]). They are edited by different
-//! gestures at different moments, so saving an edit to a plan's model list can never
-//! silently un-pause it. The two are flattened back together on the wire as
-//! [`CoveragePlanOut`], because a reviewer reading a plan wants one object.
+//! Counts are **global**: a cell's counted runs and in-flight jobs count every run of
+//! that cell whoever launched it, so a run that already exists is never re-requested. A
+//! counted run is the model's own result — completed, catastrophic, timed out, limit
+//! exceeded or hung — and an automatically retried attempt counts once, with its retry.
+//! [`CoverageCell::unreviewed`] is the one per-account number, and it is informational:
+//! reviews never launch, gate or hold back anything.
 //!
-//! ## The scope seam
+//! ## Filling
 //!
-//! Everything is per-account (attributed to the token's account via [`AuthUser`])
-//! and private to the reviewer, but "per-account" means two different things and the
-//! difference is load-bearing:
+//! `POST /coverage-plans/{id}/fill` starts filling a plan and runs a launch pass: the
+//! shared scheduler ([`crate::coverage::schedule`]) launches whole missing cells, in the
+//! plan's order, while the plan's own jobs in flight stay under its runs-in-flight limit.
+//! Every finished run of a filling plan's cell runs another pass, and filling ends when
+//! every launchable cell is filled, or the plan is halted. A cell whose last three jobs
+//! failed on infrastructure is blocked until its owner retries it.
 //!
-//! - **Counts are global.** A cell's completed runs and in-flight jobs count every
-//!   run of that cell whoever launched it, so a run someone else already produced is
-//!   never re-requested.
-//! - **Judgement is per-account.** [`CoverageCell::unreviewed`] is the runs *you*
-//!   have not looked at, and it is what bounds the review buffer — which is what
-//!   stops a plan racing ahead of the person reviewing it.
-//!
-//! `GET /coverage-plans/{id}/coverage` expands one plan into its cells and
-//! `GET /coverage-plans/summary` returns the per-plan roll-ups the account's Coverage
-//! tab and the Home widget show. `POST /coverage-plans/{id}/topup` runs the shared
-//! scheduler ([`crate::coverage::schedule`]) and enqueues what it decides;
-//! `GET /coverage-plans/{id}/queue` returns the plan's unreviewed-by-you runs *in the
-//! plan's own order*, so reviewing walks the buffer in the order it was deliberately
-//! filled rather than newest-first.
-//!
-//! This is console-only reviewer tooling: the public static site never reaches it
-//! (it carries no bearer token and never mounts this transport).
+//! This is console-only tooling: the public static site never reaches it (it carries no
+//! bearer token and never mounts this transport).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -60,18 +44,17 @@ use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
-use crate::coverage::schedule::{
-    BufferTarget, CellDemand, HarnessCapacity, outstanding_across, top_up,
-};
+use crate::coverage::schedule::{CellDemand, HarnessCapacity, InFlightLimit, launch_pass};
 use crate::db::{
     CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin,
-    SortDir, SummaryFilter, SummarySort, SummaryState, combination_key,
+    OriginScope, SortDir, SummaryFilter, SummarySort, SummaryState, TerminalJob, combination_key,
 };
 use crate::error::ApiError;
 use crate::store::CaseNames;
 
 use super::AppState;
 use super::GgConfig;
+use super::launch::LaunchTarget;
 
 /// The largest target a plan may set for its runs-per-cell count. A guard against
 /// a fat-fingered value fanning out into thousands of queued runs; well above any
@@ -83,31 +66,25 @@ const MAX_RUNS_PER_CELL: u32 = 100;
 /// ladder), so an emptied field is a plan to fix rather than a target to store.
 const MIN_RUNS_PER_CELL: u32 = 1;
 
-/// The review-buffer size applied to an account that has never chosen one.
-///
-/// The buffer bounds how much work a top-up leaves waiting on the reviewer, so the
-/// default has to be small enough that the first few reviews still steer the plan
-/// (which is the entire point of buffering rather than firing the whole matrix) and
-/// large enough that the queue never runs dry between review sessions. Ten runs is
-/// roughly two cells at a typical five-runs-per-cell target.
-const DEFAULT_BUFFER_TARGET: BufferTarget = BufferTarget::Bounded { runs: 10 };
+/// The runs-in-flight limit applied to an account that has never chosen one: small
+/// enough that one plan or ladder does not take over the queue, and large enough to keep
+/// a couple of cells' runs going at a typical five runs per cell.
+const DEFAULT_IN_FLIGHT_LIMIT: InFlightLimit = InFlightLimit::Bounded { runs: 10 };
 
-/// The largest *bounded* review buffer an account or plan may set. The same class of
-/// guard as [`MAX_RUNS_PER_CELL`]: a bound is what limits a top-up's fan-out, so a
-/// mistyped value here is a mistyped value in units of queued runs.
-///
-/// Deliberately not the way to switch the buffer off. A reviewer who wants a plan to
-/// run through everything says so with [`BufferTarget::Unbounded`], which the
-/// scheduler honours as an instruction; a bound at this ceiling is still a bound, and
-/// silently becomes a stall the day a plan outgrows it.
-const MAX_BUFFER_TARGET: u32 = 500;
+/// The largest *bounded* runs-in-flight limit an account, plan or ladder may set. The
+/// same class of guard as [`MAX_RUNS_PER_CELL`]: a mistyped value here is a mistyped
+/// value in units of queued runs. An owner who wants everything queued at once says so
+/// with [`InFlightLimit::Unbounded`].
+const MAX_IN_FLIGHT_LIMIT: u32 = 500;
 
 /// The most runs one scoped review queue returns. The queue exists to be walked in
-/// order, not paged through — a reviewer works from the front of it — so it is
-/// capped rather than paginated, comfortably above [`MAX_BUFFER_TARGET`] so a full
-/// bounded buffer is always visible whole. An unbounded plan can outgrow it, and
-/// reports `truncated` when it has.
-const MAX_QUEUE_RUNS: usize = 600;
+/// order, not paged through, so it is capped rather than paginated, and reports
+/// `truncated` when it has more behind it.
+pub(super) const MAX_QUEUE_RUNS: usize = 600;
+
+/// How many consecutive infrastructure-class failures block a cell or a climber: its
+/// newest this-many finished jobs all failed with no counted run.
+pub(super) const FAILING_STREAK: u64 = 3;
 
 /// How many of a cell's completed runs the queue inspects when picking out the
 /// unreviewed ones, newest first.
@@ -307,12 +284,10 @@ impl CoverageGroupKind {
 }
 
 /// Which axis a coverage plan's cell loop nests on — and therefore the order its
-/// runs execute in, since a top-up emits cells in this order, `job.queue_seq` is
+/// runs execute in, since a launch pass emits cells in this order, `job.queue_seq` is
 /// monotonic, and the dispatcher claims in ascending order.
 ///
-/// The console labels these "One case at a time" and "One model at a time". They are
-/// deliberately *not* described to reviewers as depth- or breadth-first: the choice
-/// is about what you want to be able to review together, not about tree traversal.
+/// The console labels these "One case at a time" and "One model at a time".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -347,75 +322,7 @@ impl CoverageAxis {
     }
 }
 
-/// How a plan is **fed**, as opposed to what it declares.
-///
-/// Split from [`CoveragePlan`] because the two are edited by different gestures —
-/// the members and the target are the plan's definition, these are the controls a
-/// reviewer reaches for while it is running — so writing one can never clobber the
-/// other. Flattened into [`CoveragePlanOut`] on the way out, so a reader still sees
-/// one object.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CoverageSchedule {
-    /// Which axis the cell loop nests on, and therefore the order runs execute in.
-    #[serde(default)]
-    pub outer_axis: CoverageAxis,
-    /// Whether topping up is suspended. The mildest halting control: no new runs are
-    /// emitted and everything already queued is left alone.
-    #[serde(default)]
-    pub paused: bool,
-    /// Whether submitting a review re-runs this plan's top-up automatically. Off by
-    /// default, so an existing plan never silently starts enqueueing.
-    #[serde(default)]
-    pub auto_top_up: bool,
-    /// This plan's override of the account's review-buffer target, or null to inherit
-    /// it. Null, a bound of `0`, and `unbounded` are three different instructions —
-    /// "no opinion", "never top up", and "top up everything" — which is why this is
-    /// nullable rather than defaulted, and a shape rather than a number.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub buffer_target: Option<BufferTarget>,
-}
-
-impl Default for CoverageSchedule {
-    /// The behaviour a plan had before it could be scheduled at all: cases outer, not
-    /// paused, never topping itself up, no opinion on the buffer target.
-    fn default() -> Self {
-        Self {
-            outer_axis: CoverageAxis::Case,
-            paused: false,
-            auto_top_up: false,
-            buffer_target: None,
-        }
-    }
-}
-
-impl CoverageSchedule {
-    /// Lift a stored schedule onto the wire, resolving its free-text axis token.
-    fn from_db(stored: crate::db::CoveragePlanSchedule) -> Self {
-        Self {
-            outer_axis: CoverageAxis::parse(&stored.outer_axis),
-            paused: stored.paused,
-            auto_top_up: stored.auto_top_up,
-            buffer_target: stored.buffer_target.map(clamp_buffer_target),
-        }
-    }
-
-    /// Lower this schedule to the store's shape, clamping the buffer override: the
-    /// buffer is what bounds a top-up's fan-out, so a mistyped bound is a mistyped
-    /// value in units of queued runs.
-    fn to_db(&self) -> crate::db::CoveragePlanSchedule {
-        crate::db::CoveragePlanSchedule {
-            outer_axis: self.outer_axis.as_str().to_string(),
-            paused: self.paused,
-            auto_top_up: self.auto_top_up,
-            buffer_target: self.buffer_target.map(clamp_buffer_target),
-        }
-    }
-}
-
-/// A reviewer's saved, reusable group of combinations or cases. Referenced by plans
+/// An owner's saved, reusable group of combinations or cases. Referenced by plans
 /// as a pointer; editing the group reshapes every plan that references it. Exactly
 /// one of `combos`/`cases` is populated, per `kind`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -454,20 +361,16 @@ pub struct CoverageGroupInput {
     pub cases: Vec<ReviewPlanCase>,
 }
 
-/// A reviewer's named coverage plan **as declared**: the groups it references, any
-/// one-off members, and the target runs-per-cell. Persisted whole; one account may
-/// hold many.
-///
-/// How the plan is *fed* is [`CoverageSchedule`], stored beside this and never
-/// written by a declaration save. Handlers return the two flattened together as
-/// [`CoveragePlanOut`].
+/// An owner's named coverage plan: the groups it references, any one-off members, the
+/// target runs-per-cell, the order it launches in, and its runs-in-flight limit
+/// override. Persisted whole; one account may hold many.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoveragePlan {
     /// The plan's opaque id (minted on create).
     pub id: String,
-    /// The reviewer-chosen display name.
+    /// The owner-chosen display name.
     pub name: String,
     /// The target number of runs desired for each `case × combination` cell.
     pub runs_per_cell: u32,
@@ -479,24 +382,30 @@ pub struct CoveragePlan {
     pub combos: Vec<ReviewPlanCombo>,
     /// One-off cases pinned directly on the plan (unioned with the groups).
     pub cases: Vec<ReviewPlanCase>,
+    /// Which axis the cell loop nests on, and therefore the order runs launch in.
+    #[serde(default)]
+    pub outer_axis: CoverageAxis,
+    /// This plan's override of the account's runs-in-flight limit, or null to inherit
+    /// it. Null, a bound of `0`, and `unbounded` are three different instructions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub in_flight_limit: Option<InFlightLimit>,
     /// RFC 3339 of when the plan was last saved.
     pub updated_at: String,
 }
 
-/// One plan as a reader sees it: its declaration and its schedule, flattened into a
-/// single object so `outerAxis`, `paused`, `autoTopUp`, and `bufferTarget` sit
-/// alongside the plan's own fields. The split exists in the code and the store, not
-/// in the reviewer's mental model.
+/// One plan as a reader sees it: its configuration, and whether it is filling — which
+/// only the fill and halt endpoints change.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoveragePlanOut {
-    /// The plan's declaration.
+    /// The plan's configuration.
     #[serde(flatten)]
     pub plan: CoveragePlan,
-    /// How the plan is being fed.
-    #[serde(flatten)]
-    pub schedule: CoverageSchedule,
+    /// Whether the plan is filling: launching its missing runs under its limit until
+    /// every launchable cell is filled.
+    pub filling: bool,
 }
 
 /// The create/update body for a coverage plan (the server assigns `id` and
@@ -505,7 +414,7 @@ pub struct CoveragePlanOut {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoveragePlanInput {
-    /// The reviewer-chosen display name.
+    /// The owner-chosen display name.
     pub name: String,
     /// The target number of runs desired for each `case × combination` cell.
     /// Rejected outside `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL` rather than corrected
@@ -523,21 +432,19 @@ pub struct CoveragePlanInput {
     /// One-off cases pinned directly on the plan.
     #[serde(default)]
     pub cases: Vec<ReviewPlanCase>,
-    /// The schedule to apply along with this save, or null to leave it alone.
-    ///
-    /// Nested and optional rather than flattened into the body, and that is the whole
-    /// point: a console that saves an edited member list without sending a schedule
-    /// cannot un-pause the plan or reset its buffer target as a side effect. On
-    /// **create** an absent schedule means [`CoverageSchedule::default`] — today's
-    /// behaviour exactly.
+    /// Which axis the cell loop nests on. Defaults to `case`.
+    #[serde(default)]
+    pub outer_axis: CoverageAxis,
+    /// The plan's runs-in-flight limit override, or null to inherit the account's. A
+    /// bound is clamped to `MAX_IN_FLIGHT_LIMIT`.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub schedule: Option<CoverageSchedule>,
+    pub in_flight_limit: Option<InFlightLimit>,
 }
 
 /// One cell of the coverage matrix: a plan case (at its pinned version) crossed
 /// with a resolved combination, with the run/job counts that say how close it is to
-/// the target and how much of it is waiting on the requester.
+/// the target.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -575,7 +482,7 @@ pub struct CoverageCell {
     /// The model bound to each of the configuration's launch slots. Empty on a harness cell.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gg_slot_models: BTreeMap<String, String>,
-    /// Why a top-up cannot launch this cell, or null when it can.
+    /// Why a launch pass cannot launch this cell, or null when it can.
     ///
     /// A cell whose member cannot be resolved is still counted and still reported — it keeps
     /// its place in the matrix carrying the reason — because a plan that silently got
@@ -585,26 +492,27 @@ pub struct CoverageCell {
     pub unlaunchable: Option<String>,
     /// The target run count (the plan's `runs_per_cell`).
     pub desired: u32,
-    /// Completed runs for this cell, counted globally.
-    pub completed: u32,
+    /// Counted runs for this cell — the model's own results — counted globally, a
+    /// retried attempt once.
+    pub counted: u32,
+    /// Whether the cell is filled: `counted >= desired`. Runs in flight do not fill it.
+    pub filled: bool,
+    /// Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
+    /// its last three finished jobs failed on infrastructure, and a launch pass skips it
+    /// until its owner retries it.
+    pub blocked: bool,
     /// In-flight jobs (queued / pending / dispatched / starting / running) for this
     /// cell, counted globally.
     pub in_flight: u32,
     /// How many of [`Self::in_flight`] are `pending` — deliberately held back rather
     /// than merely waiting to be claimed, because their harness is at its parallelism
     /// cap or (for a game jam) another run of the same jam is already going on that
-    /// model.
-    ///
-    /// Surfaced separately because it is the answer to "why is my buffer full but
-    /// nothing running?", which is otherwise indistinguishable from a stuck queue. It
-    /// is a **subset** of `inFlight`, not an addition to it.
+    /// model. A **subset** of `inFlight`, not an addition to it.
     pub pending: u32,
-    /// How many of [`Self::completed`] the **requesting account** has not reviewed.
-    /// The only per-account number on the cell: it changes nothing about what the
-    /// cell needs, but it occupies the review buffer, which is what makes an
-    /// otherwise mysteriously idle plan explicable.
+    /// How many of the cell's completed runs the **requesting account** has not
+    /// reviewed. Informational: it changes nothing about what the cell needs.
     pub unreviewed: u32,
-    /// How many more runs to trigger: `max(0, desired - (completed + in_flight))`.
+    /// How many more runs to launch: `max(0, desired - (counted + in_flight))`.
     pub remaining: u32,
     /// The newest ingested version of this case (may differ from `version` when
     /// the pin is stale). Empty when the case is not ingested.
@@ -621,29 +529,36 @@ pub struct CoverageCell {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageMatrix {
     /// Every `case × combination` cell, in the plan's own emission order — which
-    /// axis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so
+    /// axis is outer is the plan's [`CoveragePlan::outer_axis`], echoed below so
     /// a reader knows what the order means without fetching the plan again.
     pub cells: Vec<CoverageCell>,
     /// The axis the cells above are ordered on.
     pub outer_axis: CoverageAxis,
-    /// How many cells have met their target (`remaining == 0`).
-    pub cells_satisfied: u32,
+    /// How many cells are filled (`counted >= desired`; runs in flight do not count).
+    pub cells_filled: u32,
     /// The total number of cells.
     pub cells_total: u32,
-    /// The sum of every cell's `remaining` — the total runs still to trigger.
+    /// How many cells are blocked on infrastructure failures.
+    pub cells_blocked: u32,
+    /// The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+    pub runs_done: u32,
+    /// The runs the plan asks for: the sum of every cell's `desired`.
+    pub runs_total: u32,
+    /// The plan's own jobs in flight — every job whose origin names the plan — which is
+    /// what its limit counts.
+    pub runs_in_flight: u32,
+    /// The sum of every cell's `remaining` — the total runs still to launch.
     pub runs_missing: u32,
     /// The sum of every cell's `pending` — runs deliberately held back by the queue.
     pub runs_pending: u32,
-    /// The sum of every cell's `unreviewed` — completed runs waiting on *you*.
+    /// The sum of every cell's `unreviewed` — completed runs the requester has not
+    /// reviewed. Informational.
     pub runs_unreviewed: u32,
-    /// The plan's review-buffer occupancy: in-flight jobs plus unreviewed runs. When
-    /// this has reached `bufferTarget`, a top-up will deliberately enqueue nothing,
-    /// which is the difference between a finished plan and a full one.
-    pub runs_outstanding: u32,
-    /// The buffer target in force for this plan (its own override, else the
-    /// account's setting, else the backend default). When it is `unbounded`,
-    /// `runsOutstanding` never stops a top-up.
-    pub buffer_target: BufferTarget,
+    /// The runs-in-flight limit in force for this plan (its own override, else the
+    /// account's setting, else the backend default).
+    pub in_flight_limit: InFlightLimit,
+    /// Whether the plan is filling.
+    pub filling: bool,
 }
 
 /// One plan's coverage roll-up for the plans list and the Home widget: the cell
@@ -658,37 +573,38 @@ pub struct CoveragePlanSummary {
     pub name: String,
     /// The plan's target runs-per-cell.
     pub runs_per_cell: u32,
-    /// How many cells have met their target.
-    pub cells_satisfied: u32,
+    /// How many cells are filled.
+    pub cells_filled: u32,
     /// The total number of cells.
     pub cells_total: u32,
-    /// The total runs still to trigger across the plan.
+    /// How many cells are blocked on infrastructure failures.
+    pub cells_blocked: u32,
+    /// The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+    pub runs_done: u32,
+    /// The runs the plan asks for.
+    pub runs_total: u32,
+    /// The plan's own jobs in flight.
+    pub runs_in_flight: u32,
+    /// The total runs still to launch across the plan.
     pub runs_missing: u32,
     /// The completed runs across the plan the requester has not reviewed.
     pub runs_unreviewed: u32,
-    /// Whether the plan is paused. Carried on the summary so the list can say why a
-    /// plan with missing runs is not filling itself.
-    pub paused: bool,
-    /// Whether a submitted review tops this plan up.
-    pub auto_top_up: bool,
+    /// Whether the plan is filling.
+    pub filling: bool,
 }
 
-/// The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write.
-/// One setting today; the resource exists because the review buffer is a property of
-/// the *reviewer* (how much work they want waiting on them) rather than of any one
-/// plan, with a per-plan override for the exceptions.
+/// The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write: the
+/// account's default runs-in-flight limit, which a plan or ladder may override.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageSettings {
-    /// The account's default review-buffer target: how many runs a top-up may leave
-    /// outstanding (in flight, or finished and unreviewed) before it stops, or
-    /// `unbounded` for a reviewer who wants every plan to run through everything
-    /// unless it says otherwise.
-    pub buffer_target: BufferTarget,
-    /// Whether [`Self::buffer_target`] is the account's own choice or the backend's
-    /// compiled-in default because they have never chosen one. A `PUT` always makes
-    /// it a choice.
+    /// How many of one plan's or one ladder dispatch's jobs may be in flight at once, or
+    /// `unbounded`.
+    pub in_flight_limit: InFlightLimit,
+    /// Whether [`Self::in_flight_limit`] is the account's own choice or the backend's
+    /// compiled-in default because they have never chosen one. A `PUT` always makes it
+    /// a choice.
     pub is_default: bool,
 }
 
@@ -697,36 +613,34 @@ pub struct CoverageSettings {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageSettingsInput {
-    /// The review-buffer target to store. A bound is clamped to `MAX_BUFFER_TARGET`;
-    /// a bound of `0` is a legitimate value — "never top me up automatically" — and
-    /// is stored as such, and `unbounded` is stored as itself.
-    pub buffer_target: BufferTarget,
+    /// The limit to store. A bound is clamped to `MAX_IN_FLIGHT_LIMIT`; a bound of `0` is
+    /// a legitimate value — "launch nothing" — and `unbounded` is stored as itself.
+    pub in_flight_limit: InFlightLimit,
 }
 
-/// Why a top-up did no work. Distinguishing these matters: "paused" is a decision
-/// the reviewer made and can undo, "busy" is a moment that will pass, and neither is
-/// the same as a top-up that ran and found nothing to launch.
+/// Why a launch pass did no work. "busy" is a moment that will pass; the others are
+/// states the owner changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum TopUpSkipped {
-    /// The plan or ladder is paused.
-    Paused,
-    /// Another top-up of the same plan or ladder holds the claim. Top-up is
-    /// serialized per plan so two console tabs (or a fast double review submit)
-    /// cannot both observe the same shortfall and both enqueue for it.
+pub enum LaunchSkipped {
+    /// The plan is not filling.
+    NotFilling,
+    /// The ladder has no running dispatch.
+    NotRunning,
+    /// Another launch pass of the same plan or ladder holds the claim; the holder runs
+    /// one more pass for this request before it lets go.
     Busy,
 }
 
-/// One cell a top-up launched, and the jobs it enqueued for it.
+/// One cell a launch pass launched, and the jobs it enqueued for it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct TopUpLaunch {
+pub struct LaunchedCell {
     /// The ladder rung this cell belongs to, or null for a coverage plan (which has
-    /// no rungs). Shared shape, because plans and ladders top up through the same
-    /// code path and a console showing "what did that button just do" wants one
-    /// answer format.
+    /// no rungs). Shared shape, because plans and ladders launch through the same code
+    /// path.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub rung_id: Option<String>,
@@ -759,8 +673,7 @@ pub struct TopUpLaunch {
     /// The model bound to each of the configuration's launch slots. Empty on a harness member.
     ///
     /// Reported for the same reason the blocked list reports it: `gg` and a root model are not
-    /// a name — two configurations, or two arms of one, read identically without it, and a
-    /// report of what a top-up just launched that cannot tell them apart is not a report.
+    /// a name — two configurations, or two arms of one, read identically without it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gg_slot_models: BTreeMap<String, String>,
     /// How many runs were enqueued for this cell — always the cell's whole shortfall,
@@ -771,16 +684,16 @@ pub struct TopUpLaunch {
     pub job_ids: Vec<String>,
 }
 
-/// One cell a top-up **could not** launch, and why.
+/// One cell a launch pass **could not** launch, and why: a member that cannot be
+/// resolved, or a cell blocked on infrastructure failures.
 ///
-/// Reported per cell rather than per member, and beside the launches rather than instead of
-/// them, because the two answer different halves of "why is this plan idle": a top-up that
-/// enqueued four cells and skipped two broken ones is working, and a reviewer needs to see
+/// Reported per cell, beside the launches rather than instead of them: a pass that
+/// enqueued four cells and skipped two broken ones is working, and the owner needs to see
 /// both numbers to know that.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct TopUpBlocked {
+pub struct BlockedCell {
     /// The ladder rung this cell belongs to, or null for a coverage plan.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -814,53 +727,47 @@ pub struct TopUpBlocked {
     /// The model bound to each of the configuration's launch slots. Empty on a harness member.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gg_slot_models: BTreeMap<String, String>,
-    /// Why the cell could not be launched, in the words a reviewer has to act on.
+    /// Why the cell could not be launched, in the words the owner has to act on.
     pub reason: String,
 }
 
-/// What a top-up did, reported in enough detail that an idle plan is never a
-/// mystery: whether it ran at all, what the buffer allowed, and exactly what it
+/// What a launch pass did, reported in enough detail that an idle plan or ladder is
+/// never a mystery: whether it ran at all, what the limit allowed, and exactly what it
 /// enqueued.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct TopUpResult {
-    /// Why nothing was attempted, or null when the scheduler ran. A top-up that ran
-    /// and enqueued nothing (a full buffer, or a satisfied plan) reports null here
-    /// with `enqueued` zero — deliberately distinct from having been skipped.
+pub struct LaunchPassResult {
+    /// Why nothing was attempted, or null when the scheduler ran. A pass that ran and
+    /// enqueued nothing (a full limit, or nothing missing) reports null here with
+    /// `enqueued` zero.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub skipped: Option<TopUpSkipped>,
-    /// The buffer target in force (the plan's override, else the account's setting,
-    /// else the backend default).
-    pub buffer_target: BufferTarget,
-    /// The buffer occupancy as the scheduler saw it, or null when it never ran. On a
-    /// plan that is the requester's runs in flight plus their unreviewed completed runs;
-    /// on a ladder it is the runs in flight alone, since a ladder's buffer caps how many
-    /// runs the climb spends at once and completed runs never occupy it.
+    pub skipped: Option<LaunchSkipped>,
+    /// The runs-in-flight limit in force.
+    pub in_flight_limit: InFlightLimit,
+    /// The plan's or dispatch's own jobs in flight as the scheduler saw them, or null
+    /// when it never ran.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub outstanding: Option<u32>,
+    pub in_flight: Option<u32>,
     /// How many runs were enqueued in total.
     pub enqueued: u32,
     /// The cells that were launched, in the order they were emitted — which is the
-    /// order they will execute and therefore be reviewed in.
-    pub cells: Vec<TopUpLaunch>,
-    /// The cells the top-up wanted to launch and could not, each with its reason — a
-    /// configuration that has been deleted, a launch slot nothing is bound to, or a model
-    /// the catalog can resolve no context window for.
-    ///
-    /// One broken member never stops the rest of the plan being fed, so this list and
+    /// order they will execute in.
+    pub cells: Vec<LaunchedCell>,
+    /// The cells the pass wanted to launch and could not, each with its reason. One
+    /// broken member never stops the rest being launched, so this list and
     /// [`Self::cells`] are routinely both non-empty.
-    pub unlaunchable: Vec<TopUpBlocked>,
+    pub unlaunchable: Vec<BlockedCell>,
     /// How many not-yet-started jobs (`queued` or `pending`) a ladder whose gate stops
     /// early cancelled because the rung they belonged to was decided. Always `0` on a
     /// coverage plan, and on a ladder with `earlyStop` off.
     pub early_stop_canceled: u32,
 }
 
-/// One run in a scoped review queue: a completed run of this plan (or ladder) the
-/// requesting account has not reviewed.
+/// One run in a scoped review queue: a completed run of this plan (or ladder dispatch)
+/// the requesting account has not reviewed.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -909,10 +816,8 @@ pub struct CoverageQueueEntry {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageQueue {
-    /// The runs to review, in the order the plan or ladder emitted their cells —
-    /// **not** newest-first like the global Unreviewed page. Reviewing walks the
-    /// buffer in the order it was deliberately filled, which is what makes a case's
-    /// repeats comparable against each other.
+    /// The runs to review, in the plan's or ladder's own order — **not** newest-first
+    /// like the global Unreviewed page — so a case's repeats sit together.
     pub runs: Vec<CoverageQueueEntry>,
     /// Whether the listing was cut short at the cap. A queue is walked from the
     /// front, not paged, so this is a "there is more behind this" flag rather than a
@@ -920,25 +825,23 @@ pub struct CoverageQueue {
     pub truncated: bool,
 }
 
-/// The `POST …/pause` body: the pause state to set. A body rather than two verbs so
-/// the control is idempotent and a console can drive a toggle without tracking which
-/// direction it is going.
+/// The `POST /coverage-plans/{id}/cells/retry` body: the blocked cell to retry.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PauseInput {
-    /// Whether the plan or ladder stops launching runs: a plan stops topping up, and a
-    /// ladder is disabled.
-    pub paused: bool,
+pub struct PlanCellRetryInput {
+    /// The cell's case, at its pinned version and engine.
+    pub case: ReviewPlanCase,
+    /// The cell's combination, as the plan holds it.
+    pub combination: ReviewPlanCombo,
 }
 
-/// What a halt did — a plan's or a ladder's, which differ only in what they sweep.
+/// What a plan's halt or a ladder's stop did.
 ///
 /// The **count is the point**, not a nicety: a halt that reports only success cannot
-/// be told apart from a halt whose scope was wrong, and the reviewer's next move
-/// differs completely between "the queue was already empty" and "nothing I launched
-/// was found". The plan or ladder is always left paused, which is why that is stated
-/// here in prose rather than reported as a field that could only ever say `true`.
+/// be told apart from a halt whose scope was wrong. The plan always stops filling (and
+/// the dispatch always ends), which is why that is stated here in prose rather than
+/// reported as a field that could only ever say `true`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -1050,13 +953,13 @@ pub async fn delete_group(
 
 // ---- Plans ----------------------------------------------------------------
 
-/// `GET /coverage-plans` — every plan the token account owns, each with its
-/// schedule.
+/// `GET /coverage-plans` — every plan the token account owns, each with whether it is
+/// filling.
 pub async fn list_plans(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<Vec<CoveragePlanOut>>, ApiError> {
-    let plans = state
+    let mut plans = state
         .db
         .list_coverage_plans(&user.0.id)
         .await
@@ -1064,21 +967,16 @@ pub async fn list_plans(
     let library = read_gg_library(
         &state,
         &user.0.id,
-        plans.iter().flat_map(|plan| plan.combos.iter()),
+        plans.iter().flat_map(|out| out.plan.combos.iter()),
     )
     .await?;
-    let mut out = Vec::with_capacity(plans.len());
-    for mut plan in plans {
-        let schedule = plan_schedule_of(&state, &user.0.id, &plan.id).await?;
-        plan.combos = for_read(&plan.combos, &library);
-        out.push(CoveragePlanOut { plan, schedule });
+    for out in &mut plans {
+        out.plan.combos = for_read(&out.plan.combos, &library);
     }
-    Ok(Json(out))
+    Ok(Json(plans))
 }
 
-/// `POST /coverage-plans` — create a plan. An absent schedule starts the plan on
-/// [`CoverageSchedule::default`] — indistinguishable from the plans that existed
-/// before a plan could be scheduled at all.
+/// `POST /coverage-plans` — create a plan. A new plan is not filling.
 ///
 /// `400` for a runs-per-cell target outside the range the backend will honour (see
 /// [`validated_runs_per_cell`]), and for a one-off gg member the account cannot launch
@@ -1089,24 +987,26 @@ pub async fn create_plan(
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
     let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
-    let (mut plan, schedule) = plan_from_input(new_id(), input, &now()?)?;
-    let schedule = schedule.unwrap_or_default();
+    let mut plan = plan_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_coverage_plan(&user.0.id, &plan, &schedule.to_db())
+        .insert_coverage_plan(&user.0.id, &plan)
         .await
         .map_err(ApiError::from)?;
     plan.combos = for_read(&plan.combos, &library);
-    Ok(Json(CoveragePlanOut { plan, schedule }))
+    Ok(Json(CoveragePlanOut {
+        plan,
+        filling: false,
+    }))
 }
 
 /// `PUT /coverage-plans/{id}` — update a plan in place. 404 when the id is not the
 /// caller's, 400 for a runs-per-cell target outside the range the backend will honour
 /// (see [`validated_runs_per_cell`]).
 ///
-/// The declaration is always written; the schedule only when the body carried one, so
-/// saving an edited member list cannot un-pause a plan the reviewer paused a moment
-/// earlier. The response reports whichever schedule is now in force.
+/// Saving never starts or ends filling. An edit of a filling plan applies at once — a
+/// plan is a standing declaration — so it runs a launch pass, which launches whatever the
+/// edit added.
 pub async fn update_plan(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1120,10 +1020,10 @@ pub async fn update_plan(
         .get_coverage_plan(&user.0.id, &id)
         .await
         .map_err(ApiError::from)?
-        .map(|plan| plan.combos)
+        .map(|out| out.plan.combos)
         .unwrap_or_default();
     let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
-    let (mut plan, schedule) = plan_from_input(id, input, &now()?)?;
+    let mut plan = plan_from_input(id, input, &now()?)?;
     let updated = state
         .db
         .update_coverage_plan(&user.0.id, &plan)
@@ -1132,19 +1032,17 @@ pub async fn update_plan(
     if !updated {
         return Err(ApiError::not_found("coverage plan not found"));
     }
-    let schedule = match schedule {
-        Some(schedule) => {
-            state
-                .db
-                .set_coverage_plan_schedule(&user.0.id, &plan.id, &schedule.to_db())
-                .await
-                .map_err(ApiError::from)?;
-            schedule
-        }
-        None => plan_schedule_of(&state, &user.0.id, &plan.id).await?,
-    };
+    let filling = state
+        .db
+        .coverage_plan_fill(&plan.id)
+        .await
+        .map_err(ApiError::from)?
+        .is_some();
+    if filling {
+        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0.id, &plan.id);
+    }
     plan.combos = for_read(&plan.combos, &library);
-    Ok(Json(CoveragePlanOut { plan, schedule }))
+    Ok(Json(CoveragePlanOut { plan, filling }))
 }
 
 /// `DELETE /coverage-plans/{id}` — delete a plan. 404 when the id is not the
@@ -1172,8 +1070,8 @@ pub async fn delete_plan(
 
 /// `GET /coverage-plans/summary` — the per-plan roll-ups for the plans list and the
 /// Home widget. Resolves every plan's members, gathers the union of their case slugs
-/// so the grouped count queries run once for the whole account, then tallies
-/// each plan against those counts.
+/// so the grouped count queries run once for the whole account, then tallies each plan
+/// against those counts.
 pub async fn plans_summary(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1186,11 +1084,11 @@ pub async fn plans_summary(
     let groups = group_index(&state, &user.0.id).await?;
     let library = gg_library(&state, &user.0.id).await?;
 
-    let resolved: Vec<(&CoveragePlan, Vec<PlanMember>, Vec<ReviewPlanCase>)> = plans
+    let resolved: Vec<(&CoveragePlanOut, Vec<PlanMember>, Vec<ReviewPlanCase>)> = plans
         .iter()
-        .map(|plan| {
-            let (combos, cases) = resolve_members(plan, &groups, &library);
-            (plan, combos, cases)
+        .map(|out| {
+            let (combos, cases) = resolve_members(&out.plan, &groups, &library);
+            (out, combos, cases)
         })
         .collect();
 
@@ -1198,82 +1096,85 @@ pub async fn plans_summary(
         .iter()
         .flat_map(|(_, _, cases)| cases.iter().map(|c| c.slug.clone()))
         .collect();
-    let ctx = MatrixCtx::load(&state, all_slugs, &user.0.id, MatrixCounting::Plan).await?;
+    let ctx = MatrixCtx::load(&state, all_slugs, &user.0.id).await?;
+    let in_flight = state
+        .db
+        .count_in_flight_jobs_by_plan(&user.0.id)
+        .await
+        .map_err(ApiError::from)?;
 
     let mut summaries = Vec::with_capacity(resolved.len());
-    for (plan, combos, cases) in &resolved {
-        let schedule = plan_schedule_of(&state, &user.0.id, &plan.id).await?;
-        let roll = ctx.tally(plan.runs_per_cell, schedule.outer_axis, combos, cases);
+    for (out, combos, cases) in &resolved {
+        let plan = &out.plan;
+        let retries = state
+            .db
+            .coverage_plan_cell_retries(&plan.id)
+            .await
+            .map_err(ApiError::from)?;
+        let blocked = ctx
+            .blocked_cells(&state, plan.runs_per_cell, combos, cases, &retries)
+            .await?;
+        let roll = ctx.tally(plan.runs_per_cell, combos, cases, &blocked);
         summaries.push(CoveragePlanSummary {
             id: plan.id.clone(),
             name: plan.name.clone(),
             runs_per_cell: plan.runs_per_cell,
-            cells_satisfied: roll.cells_satisfied,
+            cells_filled: roll.cells_filled,
             cells_total: roll.cells_total,
+            cells_blocked: roll.cells_blocked,
+            runs_done: roll.runs_done,
+            runs_total: roll.runs_total,
+            runs_in_flight: in_flight.get(&plan.id).copied().unwrap_or(0),
             runs_missing: roll.runs_missing,
             runs_unreviewed: roll.runs_unreviewed,
-            paused: schedule.paused,
-            auto_top_up: schedule.auto_top_up,
+            filling: out.filling,
         });
     }
     Ok(Json(summaries))
 }
 
 /// `GET /coverage-plans/{id}/coverage` — the coverage matrix for one plan, in the
-/// plan's own emission order. 404 when the id is not the caller's.
+/// plan's own launch order. 404 when the id is not the caller's.
 pub async fn plan_coverage(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<CoverageMatrix>, ApiError> {
-    let plan = load_plan(&state, &user.0.id, &id).await?;
-    let schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0.id, &id).await?;
+    let plan = &out.plan;
     let groups = group_index(&state, &user.0.id).await?;
     let library = gg_library(&state, &user.0.id).await?;
-    let (combos, cases) = resolve_members(&plan, &groups, &library);
+    let (combos, cases) = resolve_members(plan, &groups, &library);
 
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, MatrixCounting::Plan).await?;
-    let buffer_target = resolve_buffer_target(&state, &user.0.id, schedule.buffer_target).await?;
-    Ok(Json(ctx.matrix(
-        plan.runs_per_cell,
-        schedule.outer_axis,
-        buffer_target,
-        &combos,
-        &cases,
-    )))
-}
-
-// ---- Plan schedule + account settings --------------------------------------
-
-/// `GET /coverage-plans/{id}/schedule` — how one plan is being fed. 404 when the id
-/// is not the caller's.
-pub async fn plan_schedule(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<CoverageSchedule>, ApiError> {
-    Ok(Json(plan_schedule_of(&state, &user.0.id, &id).await?))
-}
-
-/// `PUT /coverage-plans/{id}/schedule` — replace how one plan is being fed, without
-/// re-sending (or racing) its member lists. 404 when the id is not the caller's.
-pub async fn set_plan_schedule(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(schedule): Json<CoverageSchedule>,
-) -> Result<Json<CoverageSchedule>, ApiError> {
-    let updated = state
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let retries = state
         .db
-        .set_coverage_plan_schedule(&user.0.id, &id, &schedule.to_db())
+        .coverage_plan_cell_retries(&plan.id)
         .await
         .map_err(ApiError::from)?;
-    if !updated {
-        return Err(ApiError::not_found("coverage plan not found"));
-    }
-    Ok(Json(schedule))
+    let blocked = ctx
+        .blocked_cells(&state, plan.runs_per_cell, &combos, &cases, &retries)
+        .await?;
+    let in_flight_limit = resolve_in_flight_limit(&state, &user.0.id, plan.in_flight_limit).await?;
+    let runs_in_flight = state
+        .db
+        .count_in_flight_jobs_by_origin_prefix(&JobOrigin::plan(&plan.id).owner_prefix())
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(ctx.matrix(MatrixInput {
+        runs_per_cell: plan.runs_per_cell,
+        axis: plan.outer_axis,
+        in_flight_limit,
+        runs_in_flight,
+        filling: out.filling,
+        combos: &combos,
+        cases: &cases,
+        blocked: &blocked,
+    })))
 }
+
+// ---- Account settings ------------------------------------------------------
 
 /// `GET /coverage-settings` — the account's coverage settings, falling back to the
 /// backend's compiled-in default when the account has never chosen one (no row is
@@ -1284,146 +1185,234 @@ pub async fn settings(
 ) -> Result<Json<CoverageSettings>, ApiError> {
     let stored = state
         .db
-        .coverage_buffer_target(&user.0.id)
+        .coverage_in_flight_limit(&user.0.id)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(CoverageSettings {
-        buffer_target: stored
-            .map(clamp_buffer_target)
-            .unwrap_or(DEFAULT_BUFFER_TARGET),
+        in_flight_limit: stored
+            .map(clamp_in_flight_limit)
+            .unwrap_or(DEFAULT_IN_FLIGHT_LIMIT),
         is_default: stored.is_none(),
     }))
 }
 
-/// `PUT /coverage-settings` — set the account's default review-buffer target,
-/// creating its settings row on first use.
+/// `PUT /coverage-settings` — set the account's default runs-in-flight limit, creating
+/// its settings row on first use.
 pub async fn set_settings(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<CoverageSettingsInput>,
 ) -> Result<Json<CoverageSettings>, ApiError> {
-    let buffer_target = clamp_buffer_target(input.buffer_target);
+    let in_flight_limit = clamp_in_flight_limit(input.in_flight_limit);
     state
         .db
-        .set_coverage_buffer_target(&user.0.id, buffer_target, &now()?)
+        .set_coverage_in_flight_limit(&user.0.id, in_flight_limit, &now()?)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(CoverageSettings {
-        buffer_target,
+        in_flight_limit,
         is_default: false,
     }))
 }
 
-// ---- Top-up ----------------------------------------------------------------
+// ---- Filling ---------------------------------------------------------------
 
-/// `POST /coverage-plans/{id}/topup` — refill the plan's review buffer: walk its
-/// cells in its own order, skip the ones already at target (counted globally), and
-/// enqueue whole cells until the requester has `bufferTarget` runs outstanding.
+/// `POST /coverage-plans/{id}/fill` — start filling the plan, then run a launch pass and
+/// answer its report. A plan already filling keeps its fill and runs a pass.
 ///
-/// This is an endpoint the console calls, not a background daemon, so it is
-/// **serialized per plan** by a claim on the plan row: two tabs, or one fast double
-/// review-submit, would otherwise both observe the same shortfall and both enqueue
-/// for it. It is otherwise idempotent — it recomputes the shortfall from the store
-/// on every call, and the jobs it just enqueued count as in flight the next time.
-///
-/// 404 when the id is not the caller's.
-pub async fn top_up_plan(
+/// A filling plan launches whole missing cells, in its own order, while its own jobs in
+/// flight stay under its runs-in-flight limit; every finished run of one of its cells
+/// runs another pass; and filling ends when every launchable cell is filled, or the plan
+/// is halted. 404 when the id is not the caller's.
+pub async fn fill_plan(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<TopUpResult>, ApiError> {
-    let plan = load_plan(&state, &user.0.id, &id).await?;
-    let schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
-    let buffer_target = resolve_buffer_target(&state, &user.0.id, schedule.buffer_target).await?;
-    if schedule.paused {
-        return Ok(Json(TopUpResult::skipped_by(
-            TopUpSkipped::Paused,
-            buffer_target,
-        )));
-    }
-
-    let claimed = state
+) -> Result<Json<LaunchPassResult>, ApiError> {
+    load_plan(&state, &user.0.id, &id).await?;
+    state
         .db
-        .claim_coverage_plan_top_up(&user.0.id, &id, &now()?)
+        .start_coverage_plan_fill(&user.0.id, &id, &new_id())
         .await
-        .map_err(ApiError::from)?;
-    if !claimed {
-        return Ok(Json(TopUpResult::skipped_by(
-            TopUpSkipped::Busy,
-            buffer_target,
-        )));
-    }
-
-    // Everything from here to the release runs under the claim. The release is
-    // unconditional — a claim nobody releases only expires after the store's lease,
-    // and stalling the plan for that long because a top-up failed would turn one bad
-    // request into a wedged plan.
-    let worked = plan_top_up_locked(&state, &user, &plan, schedule.outer_axis, buffer_target).await;
-    let released = state.db.release_coverage_plan_top_up(&id).await;
-    let result = worked?;
-    released.map_err(ApiError::from)?;
-    Ok(Json(result))
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found("coverage plan not found"))?;
+    Ok(Json(launch_plan(&state, &user.0.id, &id).await?))
 }
 
-/// The body of [`top_up_plan`], run while this caller holds the plan's top-up claim.
-/// Split out so the claim is released on every path, including a failure.
-async fn plan_top_up_locked(
+/// Run launch passes of one plan as `user_id`, its owner: `skipped: notFilling` when it
+/// is not filling, else [`run_launch_passes`](super::launch::run_launch_passes).
+pub(super) async fn launch_plan(
     state: &AppState,
-    user: &AuthUser,
-    plan: &CoveragePlan,
-    axis: CoverageAxis,
-    buffer_target: BufferTarget,
-) -> Result<TopUpResult, ApiError> {
-    let groups = group_index(state, &user.0.id).await?;
-    let library = gg_library(state, &user.0.id).await?;
+    user_id: &str,
+    id: &str,
+) -> Result<LaunchPassResult, ApiError> {
+    let out = load_plan(state, user_id, id).await?;
+    let limit = resolve_in_flight_limit(state, user_id, out.plan.in_flight_limit).await?;
+    if !out.filling {
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotFilling,
+            limit,
+        ));
+    }
+    super::launch::run_launch_passes(state, LaunchTarget::Plan, user_id, id, limit).await
+}
+
+/// One launch pass of a filling plan, run while this caller holds the plan's claim.
+///
+/// Counts are global, so a cell is launched only for what nothing — this plan, another,
+/// or a hand launch — has already produced or is producing. Unlaunchable and blocked
+/// cells are skipped and reported. The plan's own jobs in flight (every job whose origin
+/// names it) are what its limit caps. When every launchable cell is filled, filling ends.
+///
+/// The limit is resolved here, from the plan and the account as they stand now, never
+/// carried in from whoever took the claim: a holder serving a request that arrived
+/// after the owner changed the limit must launch under the new one.
+pub(super) async fn plan_pass_locked(
+    state: &AppState,
+    user_id: &str,
+    id: &str,
+) -> Result<LaunchPassResult, ApiError> {
+    let out = load_plan(state, user_id, id).await?;
+    let plan = &out.plan;
+    let limit = resolve_in_flight_limit(state, user_id, plan.in_flight_limit).await?;
+    let Some(fill_id) = state
+        .db
+        .coverage_plan_fill(id)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotFilling,
+            limit,
+        ));
+    };
+    let groups = group_index(state, user_id).await?;
+    let library = gg_library(state, user_id).await?;
     let (mut combos, cases) = resolve_members(plan, &groups, &library);
     // Before the scheduler decides anything: a gg member whose models the catalog cannot
-    // answer for has to be unlaunchable *now*, or it spends buffer and capacity on runs that
-    // are never enqueued and starves the members that could have used them.
+    // answer for has to be unlaunchable *now*, or it spends the limit and capacity on runs
+    // that are never enqueued and starves the members that could have used them.
     resolve_launch_facts(state, &mut combos).await;
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    // A coverage plan has no gate, so a run whose build never loaded still wants a
-    // human to look at it and still occupies a buffer slot. Only a ladder, which can
-    // decide such a run without a reviewer, excludes them.
-    let ctx = MatrixCtx::load(state, slugs, &user.0.id, MatrixCounting::Plan).await?;
+    let ctx = MatrixCtx::load(state, slugs, user_id).await?;
+    let retries = state
+        .db
+        .coverage_plan_cell_retries(id)
+        .await
+        .map_err(ApiError::from)?;
+    let blocked = ctx
+        .blocked_cells(state, plan.runs_per_cell, &combos, &cases, &retries)
+        .await?;
 
-    let ordered = cells_in_order(axis, &combos, &cases);
+    let ordered = cells_in_order(plan.outer_axis, &combos, &cases);
     let mut demands: Vec<CellDemand> = Vec::with_capacity(ordered.len());
-    let mut unlaunchable: Vec<TopUpBlocked> = Vec::new();
+    let mut unlaunchable: Vec<BlockedCell> = Vec::new();
+    // Whether any cell the pass can still launch is short of its target. Filling ends when
+    // none is: an unlaunchable cell cannot be filled by waiting, and a blocked one waits on
+    // its owner's retry, which a filling plan stays filling for.
+    let mut fillable_unfilled = false;
     for (case, member) in &ordered {
         let demand = ctx.demand(plan.runs_per_cell, case, member);
-        // Reported only when the cell actually wanted runs: a cell already at its target is
-        // skipped before the reason it could not be launched ever matters.
-        if let Some(reason) = &member.unlaunchable
-            && demand.missing() > 0
-        {
-            unlaunchable.push(blocked_cell(None, case, member, reason.clone()));
+        let key = cell_key(case, member);
+        if let Some(reason) = &member.unlaunchable {
+            // Reported only when the cell actually wanted runs.
+            if demand.missing() > 0 {
+                unlaunchable.push(blocked_cell(None, case, member, reason.clone()));
+            }
+            demands.push(CellDemand {
+                target: 0,
+                ..demand
+            });
+            continue;
         }
-        demands.push(launchable_demand(demand, member));
+        if demand.counted < demand.target {
+            fillable_unfilled = true;
+        }
+        if blocked.contains(&key) {
+            unlaunchable.push(blocked_cell(None, case, member, blocked_reason()));
+            demands.push(CellDemand {
+                target: 0,
+                ..demand
+            });
+            continue;
+        }
+        demands.push(demand);
     }
-    let outstanding = outstanding_across(&demands);
-    let launches = top_up(&demands, ctx.harness_capacity(), buffer_target, outstanding);
+    let in_flight = state
+        .db
+        .count_in_flight_jobs_by_origin_prefix(&JobOrigin::plan(id).owner_prefix())
+        .await
+        .map_err(ApiError::from)?;
+    let launches = launch_pass(&demands, ctx.harness_capacity(), limit, in_flight);
 
-    let cells: Vec<TopUpCell<'_>> = launches
+    let origin = JobOrigin::fill(id, fill_id.clone());
+    let cells: Vec<LaunchCell<'_>> = launches
         .iter()
         .map(|launch| {
             let (case, member) = ordered[launch.cell];
-            TopUpCell {
+            LaunchCell {
                 rung_id: None,
+                origin: origin.clone(),
                 case,
                 member,
                 runs: launch.runs,
             }
         })
         .collect();
-    let enqueued =
-        enqueue_top_up(state, &user.0.id, &JobOrigin::Plan(plan.id.clone()), &cells).await?;
+
+    // A halt does not take the claim: it ends the fill and then cancels the plan's waiting
+    // jobs. A pass that began before the halt may reach this point after it, and must not
+    // refill the queue the halt just emptied. Checked before the enqueue, and again after
+    // it, because the halt can land in between: either the halt's cancel comes after these
+    // jobs exist and reaches them, or the check below sees the fill ended and cancels them.
+    let still_filling = |fill: Option<String>| fill.as_deref() == Some(fill_id.as_str());
+    if !still_filling(
+        state
+            .db
+            .coverage_plan_fill(id)
+            .await
+            .map_err(ApiError::from)?,
+    ) {
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotFilling,
+            limit,
+        ));
+    }
+    let enqueued = enqueue_launches(state, user_id, &cells).await?;
+    if !enqueued.launched.is_empty()
+        && !still_filling(
+            state
+                .db
+                .coverage_plan_fill(id)
+                .await
+                .map_err(ApiError::from)?,
+        )
+    {
+        cancel_just_enqueued(
+            state,
+            &enqueued.launched,
+            "canceled: the plan stopped filling while this run was being enqueued",
+        )
+        .await?;
+        return Ok(LaunchPassResult::skipped_by(
+            LaunchSkipped::NotFilling,
+            limit,
+        ));
+    }
     unlaunchable.extend(enqueued.blocked);
 
-    Ok(TopUpResult {
+    if !fillable_unfilled {
+        state
+            .db
+            .end_coverage_plan_fill(id, &fill_id)
+            .await
+            .map_err(ApiError::from)?;
+    }
+
+    Ok(LaunchPassResult {
         skipped: None,
-        buffer_target,
-        outstanding: Some(outstanding),
+        in_flight_limit: limit,
+        in_flight: Some(in_flight),
         enqueued: enqueued.launched.iter().map(|cell| cell.runs).sum(),
         cells: enqueued.launched,
         unlaunchable,
@@ -1431,32 +1420,231 @@ async fn plan_top_up_locked(
     })
 }
 
+/// Cancel exactly the jobs a launch pass just enqueued, for a pass that found its plan
+/// or dispatch ended while it enqueued. Only those: the runs queued before are the halt's
+/// or the stop's to cancel.
+pub(super) async fn cancel_just_enqueued(
+    state: &AppState,
+    launched: &[LaunchedCell],
+    detail: &str,
+) -> Result<u32, ApiError> {
+    let ids: Vec<String> = launched
+        .iter()
+        .flat_map(|cell| cell.job_ids.iter().cloned())
+        .collect();
+    super::jobs::sweep_cancel(
+        state,
+        &JobCancelFilter {
+            states: &CANCELABLE_WAITING_STATES,
+            origin: None,
+            user_id: None,
+            cell: None,
+            ids: Some(&ids),
+        },
+        detail,
+        super::jobs::CancelFeed::Feed,
+    )
+    .await
+}
+
+/// The reason a blocked cell or climber is reported with.
+pub(super) fn blocked_reason() -> String {
+    format!(
+        "its last {FAILING_STREAK} runs failed on infrastructure; retry it once the cause is \
+         fixed"
+    )
+}
+
+/// Whether a cell's or slot's newest terminal jobs, newest first, block it: the newest
+/// [`FAILING_STREAK`] of them all failed on infrastructure. A job whose run counts, and
+/// a canceled job, break the streak.
+pub(super) fn is_failing_streak(jobs: &[TerminalJob]) -> bool {
+    jobs.len() >= FAILING_STREAK as usize
+        && jobs
+            .iter()
+            .take(FAILING_STREAK as usize)
+            .all(TerminalJob::failed_on_infrastructure)
+}
+
+/// The filling plans a job that just finished feeds, as `(plan id, owner)`: every filling
+/// plan one of whose cells the job's cell is — whoever launched the job, since a plan
+/// counts every run of its cells. Never fails; a plan that cannot be resolved is logged
+/// and skipped.
+pub(super) async fn plans_fed_by(
+    state: &AppState,
+    job: &test_cabinet_entities::job::Model,
+) -> Vec<(String, String)> {
+    let plans = match state.db.filling_coverage_plans().await {
+        Ok(plans) => plans,
+        Err(err) => {
+            tracing::warn!(job = %job.id, error = %err, "could not list the filling plans a finished run may feed");
+            return Vec::new();
+        }
+    };
+    let job_cell: CellKey = (
+        job.test_case_slug.clone(),
+        job.test_case_version.clone(),
+        job.variant.clone(),
+        job.engine_slug
+            .clone()
+            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
+        job.harness_slug.clone(),
+        job.model_id.clone(),
+        job.gg_config_id.clone().unwrap_or_default(),
+        job.gg_models.clone().unwrap_or_default(),
+    );
+    let mut fed = Vec::new();
+    for (plan_id, owner) in plans {
+        match plan_has_cell(state, &owner, &plan_id, &job_cell).await {
+            Ok(true) => fed.push((plan_id, owner)),
+            Ok(false) => {}
+            Err(err) => tracing::warn!(
+                job = %job.id,
+                plan = %plan_id,
+                error = %err.message,
+                "could not resolve a filling plan's cells"
+            ),
+        }
+    }
+    fed
+}
+
+/// Whether `cell` is one of a plan's cells. Short-circuits on the case pin before
+/// resolving any member.
+async fn plan_has_cell(
+    state: &AppState,
+    user_id: &str,
+    plan_id: &str,
+    cell: &CellKey,
+) -> Result<bool, ApiError> {
+    let out = load_plan(state, user_id, plan_id).await?;
+    let groups = group_index(state, user_id).await?;
+    let cases = resolve_cases(&out.plan.case_group_ids, &out.plan.cases, &groups);
+    let pinned = cases.iter().any(|case| {
+        case.slug == cell.0
+            && case.version == cell.1
+            && case.variant == cell.2
+            && case.engine_slug() == cell.3
+    });
+    if !pinned {
+        return Ok(false);
+    }
+    let library = gg_library(state, user_id).await?;
+    let (combos, cases) = resolve_members(&out.plan, &groups, &library);
+    Ok(cases
+        .iter()
+        .any(|case| combos.iter().any(|member| cell_key(case, member) == *cell)))
+}
+
+/// `POST /coverage-plans/{id}/cells/retry` — retry one blocked cell.
+///
+/// The retry is recorded, so only jobs that ended after it count toward the cell's
+/// streak, and the cell is launched again: by a launch pass while the plan is filling,
+/// and otherwise as a launch by hand of the cell's shortfall (origin `plan:<id>`). `204`;
+/// `404` when the cell is not one of the plan's (or the plan is not the caller's), `409`
+/// when it is not blocked.
+pub async fn retry_plan_cell(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+    Json(input): Json<PlanCellRetryInput>,
+) -> Result<StatusCode, ApiError> {
+    let out = load_plan(&state, &user.0.id, &id).await?;
+    let plan = &out.plan;
+    let groups = group_index(&state, &user.0.id).await?;
+    let library = gg_library(&state, &user.0.id).await?;
+    let (mut combos, cases) = resolve_members(plan, &groups, &library);
+    let wanted_member = resolve_member(&input.combination.for_storage(), &library);
+    let wanted_key = combination_key(&wanted_member.combo.for_storage());
+    let Some(case) = cases.iter().find(|case| {
+        case.slug == input.case.slug
+            && case.version == input.case.version
+            && case.variant == input.case.variant
+            && case.engine_slug() == input.case.engine_slug()
+    }) else {
+        return Err(ApiError::not_found("that cell is not one of this plan's"));
+    };
+    let Some(index) = combos
+        .iter()
+        .position(|member| combination_key(&member.combo.for_storage()) == wanted_key)
+    else {
+        return Err(ApiError::not_found("that cell is not one of this plan's"));
+    };
+    resolve_launch_facts(&state, std::slice::from_mut(&mut combos[index])).await;
+    let member = &combos[index];
+    let key = cell_key(case, member);
+
+    let slugs = vec![case.slug.clone()];
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let retries = state
+        .db
+        .coverage_plan_cell_retries(&id)
+        .await
+        .map_err(ApiError::from)?;
+    let blocked = ctx
+        .blocked_cells(
+            &state,
+            plan.runs_per_cell,
+            std::slice::from_ref(member),
+            std::slice::from_ref(case),
+            &retries,
+        )
+        .await?;
+    if !blocked.contains(&key) {
+        return Err(ApiError::conflict("that cell is not blocked"));
+    }
+    state
+        .db
+        .record_coverage_plan_cell_retry(&id, &key, &now()?)
+        .await
+        .map_err(ApiError::from)?;
+
+    if out.filling {
+        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0.id, &id);
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    let demand = ctx.demand(plan.runs_per_cell, case, member);
+    let runs = launchable_demand(demand, member).missing();
+    if runs > 0 {
+        let cells = [LaunchCell {
+            rung_id: None,
+            origin: JobOrigin::plan(&id),
+            case,
+            member,
+            runs,
+        }];
+        let enqueued = enqueue_launches(&state, &user.0.id, &cells).await?;
+        if let Some(blocked) = enqueued.blocked.first() {
+            return Err(ApiError::bad_request(format!(
+                "the cell cannot be launched: {}",
+                blocked.reason
+            )));
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ---- Scoped review queue ---------------------------------------------------
 
-/// `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-/// account has not reviewed, **in the plan's own cell order**.
-///
-/// The global Unreviewed page is newest-first, which is right for a worklist and
-/// wrong for a buffer: a plan fills its buffer in a deliberate order so a case's
-/// repeats arrive together and can be judged against each other, and reviewing them
-/// out of order throws that away. 404 when the id is not the caller's.
+/// `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting account
+/// has not reviewed, **in the plan's own cell order**, so a case's repeats sit together.
+/// 404 when the id is not the caller's.
 pub async fn plan_queue(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<CoverageQueue>, ApiError> {
-    let plan = load_plan(&state, &user.0.id, &id).await?;
-    let schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0.id, &id).await?;
+    let plan = &out.plan;
     let groups = group_index(&state, &user.0.id).await?;
     let library = gg_library(&state, &user.0.id).await?;
-    let (combos, cases) = resolve_members(&plan, &groups, &library);
+    let (combos, cases) = resolve_members(plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id, MatrixCounting::Plan).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
 
-    let cells: Vec<QueueCell<'_>> = cells_in_order(schedule.outer_axis, &combos, &cases)
+    let cells: Vec<QueueCell<'_>> = cells_in_order(plan.outer_axis, &combos, &cases)
         .into_iter()
         .map(|(case, member)| QueueCell {
-            rung_id: None,
             case,
             member,
             unreviewed: ctx.unreviewed_for(case, member),
@@ -1467,32 +1655,13 @@ pub async fn plan_queue(
 
 // ---- Halting ---------------------------------------------------------------
 
-/// `POST /coverage-plans/{id}/pause` — suspend (or resume) topping this plan up,
-/// leaving the queue untouched. The mildest of the three halting controls, and the
-/// only one that cancels nothing. 404 when the id is not the caller's.
-pub async fn pause_plan(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-    Json(input): Json<PauseInput>,
-) -> Result<Json<CoverageSchedule>, ApiError> {
-    let mut schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
-    schedule.paused = input.paused;
-    state
-        .db
-        .set_coverage_plan_schedule(&user.0.id, &id, &schedule.to_db())
-        .await
-        .map_err(ApiError::from)?;
-    Ok(Json(schedule))
-}
-
-/// `POST /coverage-plans/{id}/halt` — pause the plan **and** cancel the jobs it
+/// `POST /coverage-plans/{id}/halt` — end filling **and** cancel the jobs the plan
 /// launched that have cost nothing yet (`queued` and `pending`).
 ///
-/// This is the common case, and it needs no confirmation precisely because it throws
-/// nothing away: those jobs have no driver and have spent no tokens. It reaches only
-/// jobs whose `origin` is this plan, so a run launched by hand in another tab is
-/// never swept up. 404 when the id is not the caller's.
+/// It needs no confirmation precisely because it throws nothing away: those jobs have no
+/// driver and have spent no tokens. It reaches only jobs whose `origin` names this plan
+/// (its hand launches and every fill's), so a run launched from the run form is never
+/// swept up. 404 when the id is not the caller's.
 pub async fn halt_plan(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1501,12 +1670,12 @@ pub async fn halt_plan(
     halt_plan_inner(state, user, id, false).await
 }
 
-/// `POST /coverage-plans/{id}/halt-all` — pause the plan and cancel **every** job it
+/// `POST /coverage-plans/{id}/halt-all` — end filling and cancel **every** job the plan
 /// launched, including the ones already dispatched, starting, or running.
 ///
 /// The rare control: those jobs are partly or wholly paid for, so the console must
-/// confirm before calling this and must never make it the default action. 404 when
-/// the id is not the caller's.
+/// confirm before calling this and must never make it the default action. 404 when the
+/// id is not the caller's.
 pub async fn halt_all_plan(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1523,18 +1692,19 @@ async fn halt_plan_inner(
     id: String,
     include_active: bool,
 ) -> Result<Json<HaltResult>, ApiError> {
-    let mut schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
-    // Pause first. A halt that cancelled the queue and left the plan topping itself
-    // up would refill exactly what it just emptied.
-    schedule.paused = true;
-    state
+    // End filling first. A halt that cancelled the queue and left the plan filling would
+    // refill exactly what it just emptied.
+    let found = state
         .db
-        .set_coverage_plan_schedule(&user.0.id, &id, &schedule.to_db())
+        .halt_coverage_plan_fill(&user.0.id, &id)
         .await
         .map_err(ApiError::from)?;
+    if !found {
+        return Err(ApiError::not_found("coverage plan not found"));
+    }
     let canceled = halt_jobs(
         &state,
-        &JobOrigin::Plan(id.clone()),
+        &OriginScope::Prefix(JobOrigin::plan(&id).owner_prefix()),
         include_active,
         "canceled by a coverage plan halt",
     )
@@ -1545,20 +1715,16 @@ async fn halt_plan_inner(
     }))
 }
 
-/// Cancel the waiting (and optionally the already-executing) jobs one plan or ladder
-/// launched, returning how many moved. Shared by both entities' halt controls.
+/// Cancel the waiting (and optionally the already-executing) jobs one plan or one ladder
+/// dispatch launched, returning how many moved. Shared by a plan's halt and a ladder's
+/// stop.
 ///
-/// This is the Runs page's global sweep narrowed to one origin — the *same* body, so
-/// a scoped halt and a global stop can never differ in what they do to a run. That
-/// matters for more than the transition: the sweep also closes the live stream of
-/// every run that actually left the queue, which a `halt all` needs, since the runs
-/// it cancels are executing ones whose monitors somebody is watching.
-///
-/// The `origin` filter is what keeps a halt to this plan's or ladder's own runs and
-/// away from a hand-launched one, which carries no origin at all.
+/// This is the Runs page's global sweep narrowed to one origin scope — the *same* body,
+/// so a scoped halt and a global stop can never differ in what they do to a run. The
+/// sweep also closes the live stream of every run that actually left the queue.
 pub(super) async fn halt_jobs(
     state: &AppState,
-    origin: &JobOrigin,
+    origin: &OriginScope,
     include_active: bool,
     detail: &str,
 ) -> Result<u32, ApiError> {
@@ -1576,6 +1742,7 @@ pub(super) async fn halt_jobs(
             ids: None,
         },
         detail,
+        crate::api::jobs::CancelFeed::Feed,
     )
     .await
 }
@@ -1585,7 +1752,7 @@ pub(super) async fn halt_jobs(
 /// Load one plan, scoped to the requesting account, 404-ing when the id is unknown or
 /// owned by someone else. Both are the same answer on purpose: a plan the caller does
 /// not own must not be distinguishable from one that does not exist.
-async fn load_plan(state: &AppState, user_id: &str, id: &str) -> Result<CoveragePlan, ApiError> {
+async fn load_plan(state: &AppState, user_id: &str, id: &str) -> Result<CoveragePlanOut, ApiError> {
     state
         .db
         .get_coverage_plan(user_id, id)
@@ -1594,43 +1761,28 @@ async fn load_plan(state: &AppState, user_id: &str, id: &str) -> Result<Coverage
         .ok_or_else(|| ApiError::not_found("coverage plan not found"))
 }
 
-/// One plan's schedule, 404-ing when the id is not the caller's.
-async fn plan_schedule_of(
-    state: &AppState,
-    user_id: &str,
-    id: &str,
-) -> Result<CoverageSchedule, ApiError> {
-    state
-        .db
-        .coverage_plan_schedule(user_id, id)
-        .await
-        .map_err(ApiError::from)?
-        .map(CoverageSchedule::from_db)
-        .ok_or_else(|| ApiError::not_found("coverage plan not found"))
-}
-
-/// The review-buffer target in force: the plan's or ladder's own override, else the
+/// The runs-in-flight limit in force: the plan's or ladder's own override, else the
 /// account's setting, else the backend's compiled-in default.
 ///
 /// An account with no stored setting has expressed no opinion, which is deliberately
-/// not the same as an explicit bound of `0` ("never top me up") or an explicit
-/// `unbounded` ("top up everything") — hence the two `Option` layers rather than a
+/// not the same as an explicit bound of `0` ("launch nothing") or an explicit
+/// `unbounded` ("launch everything") — hence the two `Option` layers rather than a
 /// single defaulted value.
-pub(super) async fn resolve_buffer_target(
+pub(super) async fn resolve_in_flight_limit(
     state: &AppState,
     user_id: &str,
-    override_target: Option<BufferTarget>,
-) -> Result<BufferTarget, ApiError> {
-    if let Some(target) = override_target {
-        return Ok(clamp_buffer_target(target));
+    override_limit: Option<InFlightLimit>,
+) -> Result<InFlightLimit, ApiError> {
+    if let Some(limit) = override_limit {
+        return Ok(clamp_in_flight_limit(limit));
     }
     Ok(state
         .db
-        .coverage_buffer_target(user_id)
+        .coverage_in_flight_limit(user_id)
         .await
         .map_err(ApiError::from)?
-        .map(clamp_buffer_target)
-        .unwrap_or(DEFAULT_BUFFER_TARGET))
+        .map(clamp_in_flight_limit)
+        .unwrap_or(DEFAULT_IN_FLIGHT_LIMIT))
 }
 
 /// Build the id → group map the resolver reads, from the account's groups.
@@ -1647,7 +1799,7 @@ pub(super) async fn group_index(
 }
 
 /// One **resolved** member of a plan, a group, or a ladder: the combination as a reader
-/// sees it, plus everything resolving it produced that the matrix, the top-up, and the
+/// sees it, plus everything resolving it produced that the matrix, the launch pass, and the
 /// queue need.
 ///
 /// A member is resolved once, at the top of a request, and the same resolution is threaded
@@ -1671,7 +1823,7 @@ pub(super) struct PlanMember {
     /// What resolving a gg member produced — `None` on a harness member, and on a gg member
     /// that could not be resolved.
     pub gg: Option<ResolvedGg>,
-    /// Why a top-up cannot launch this member, or `None` when it can.
+    /// Why a launch pass cannot launch this member, or `None` when it can.
     ///
     /// A member that cannot be launched is **not dropped**: it keeps its place in the plan's
     /// order, its cells are still counted, and the reason travels with them — because a plan
@@ -1686,7 +1838,7 @@ pub(super) struct PlanMember {
 /// Named because it is compared on its own as well as crossed with a case: two members with
 /// the same identity produce the same cell for *every* case, which is a question about the
 /// members alone.
-type MemberCellIdentity = (String, String, String, String);
+pub(super) type MemberCellIdentity = (String, String, String, String);
 
 impl PlanMember {
     /// This member's [share](MemberCellIdentity) of the cell key it forms with any case.
@@ -1737,7 +1889,7 @@ pub(super) struct ResolvedGg {
     /// They are resolved once per member rather than once per cell, and *before* the
     /// scheduler chooses what to emit, because the resolution can fail: a model the catalog
     /// can resolve no context window for cannot be launched at all, and a cell discovered to
-    /// be unlaunchable only at enqueue has by then already spent the review-buffer slots and
+    /// be unlaunchable only at enqueue has by then already spent the runs-in-flight limit and
     /// the harness capacity the scheduler handed it — leaving the plan permanently
     /// under-filled by one broken member. A read does not resolve them because it does not
     /// launch, and the resolution can reach out to OpenRouter for a model the catalog has
@@ -1784,7 +1936,7 @@ impl GgLibrary {
     /// console re-resolves on every read, so the set the launch form would send is the saved
     /// agent as it stands now; the set stored on the configuration is the resolution as of its
     /// last save. While the two agree — which is exactly while no imported agent has been
-    /// touched since — a plan's top-up and a launch by hand produce the same run. Once they
+    /// touched since — a plan's launch pass and a launch by hand produce the same run. Once they
     /// diverge, the member is reported as unlaunchable rather than quietly launching the older
     /// arm into a cell the console's own launches would miss.
     ///
@@ -1834,7 +1986,7 @@ fn unbound_launch_slot(set: &GgCapabilitySet, models: &BTreeMap<String, String>)
 ///
 /// Split from [`gg_member_defect`] because these are not the author's mistakes: a member that
 /// was written correctly develops this fault later, when something it points at moves. It is
-/// therefore reported on the member — on its cells, and by a top-up that skips it — and never
+/// therefore reported on the member — on its cells, and by a launch pass that skips it — and never
 /// refused at the moment the member is saved.
 fn gg_member_drift(config: &GgConfig, library: &GgLibrary) -> Option<String> {
     let saved = library.stale_import(config)?;
@@ -2108,7 +2260,7 @@ fn resolve_members(
 
 /// Every `case × combination` pair in the order `axis` chooses.
 ///
-/// This ordering is the entire mechanism behind the outer-axis setting: a top-up
+/// This ordering is the entire mechanism behind the outer-axis setting: a launch pass
 /// emits cells in this order, `job.queue_seq` is minted monotonically at enqueue, and
 /// the dispatcher claims in ascending order — so emission order *is* execution order
 /// and nothing in the dispatcher knows the axis exists. Both the matrix and the
@@ -2143,9 +2295,9 @@ pub(super) fn cells_in_order<'a>(
 /// answer for as unlaunchable: a gg member's [per-model catalog facts](super::jobs::GgModelFacts),
 /// and a harness member's model's list price.
 ///
-/// Run by the two paths that are about to **launch** — a plan's top-up and a ladder's — and
+/// Run by the two paths that are about to **launch** — a plan's launch pass and a ladder's — and
 /// before either asks the scheduler what to emit. That ordering is the point. The scheduler
-/// spends a fixed review buffer and a fixed per-harness capacity, and it spends both at the
+/// spends a fixed runs-in-flight limit and a fixed per-harness capacity, and it spends both at the
 /// moment it emits a cell; a cell that then turns out to be unlaunchable at enqueue has
 /// consumed a share of each and enqueued nothing, so every pass leaves the plan short by that
 /// member's whole target — forever, and silently. Resolving first turns that into what the
@@ -2176,7 +2328,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
         let launch_model = member.launch_model.clone();
         let Some(gg) = member.gg.as_mut() else {
             // A harness member is refused at enqueue when its model cannot be priced, so it
-            // is refused here first, before the scheduler spends buffer on it. A missing
+            // is refused here first, before the scheduler spends the limit on it. A missing
             // list price is filled from OpenRouter here, once for the member; the price
             // itself is stamped per cell at enqueue, where the filled entry answers.
             match crate::bootstrap::list_price_for_launch(
@@ -2227,13 +2379,12 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
     }
 }
 
-/// One cell's demand as the top-up walk must see it: its own, unless nothing can launch its
-/// member — in which case it wants nothing.
+/// One cell's demand as the launch walk must see it: its own, unless nothing can launch
+/// its member — in which case it wants nothing.
 ///
-/// The cell is not dropped and its occupancy is not zeroed. A member that broke after its
-/// runs were launched has not un-launched them, so those runs still hold the review-buffer
-/// slots they always held; what changes is only that the walk stops trying to add to them and
-/// spends the rest of the buffer on the members that can still run.
+/// The cell is not dropped and its in-flight count is not zeroed. A member that broke
+/// after its runs were launched has not un-launched them; what changes is only that the
+/// walk stops trying to add to them.
 pub(super) fn launchable_demand(demand: CellDemand, member: &PlanMember) -> CellDemand {
     match member.unlaunchable {
         Some(_) => CellDemand {
@@ -2246,98 +2397,89 @@ pub(super) fn launchable_demand(demand: CellDemand, member: &PlanMember) -> Cell
 
 /// A roll-up of a plan's cells without the per-cell detail.
 struct MatrixRollup {
-    cells_satisfied: u32,
+    cells_filled: u32,
     cells_total: u32,
+    cells_blocked: u32,
+    runs_done: u32,
+    runs_total: u32,
     runs_missing: u32,
     runs_unreviewed: u32,
 }
 
+/// What [`MatrixCtx::matrix`] builds one plan's matrix from.
+struct MatrixInput<'a> {
+    runs_per_cell: u32,
+    axis: CoverageAxis,
+    in_flight_limit: InFlightLimit,
+    runs_in_flight: u32,
+    filling: bool,
+    combos: &'a [PlanMember],
+    cases: &'a [ReviewPlanCase],
+    blocked: &'a HashSet<CellKey>,
+}
+
 /// The run/job counts and latest-version resolution a coverage computation needs,
-/// loaded once so a plan (or every plan, for the summary; or a ladder's whole board)
-/// can be tallied without further DB round-trips. The counts and the per-slug latest
-/// version are the only reads; the cross-product itself is pure.
+/// loaded once so a plan (or every plan, for the summary) can be tallied without further
+/// DB round-trips. A ladder loads only the queue-wide parts ([`Self::load_for_ladder`]):
+/// its counts are its dispatch's own.
 pub(super) struct MatrixCtx {
-    /// Completed runs per cell, counted globally.
-    completed: crate::db::CellCounts,
+    /// Counted runs per cell, counted globally.
+    counted: crate::db::CellCounts,
     /// In-flight jobs per cell, counted globally.
     in_flight: crate::db::CellCounts,
     /// The `pending` subset of [`Self::in_flight`], per cell.
     pending: crate::db::CellCounts,
-    /// Completed runs the requesting account has not reviewed, per cell. The only
-    /// per-account number here.
+    /// Completed runs the requesting account has not reviewed, per cell. Informational.
     unreviewed: crate::db::CellCounts,
     /// How much room each harness has to start another run, indexed by
-    /// [`harness_lane`]. Read by the top-up scheduler so the review buffer is spent
-    /// on work the queue can actually claim rather than deepening one throttled
-    /// harness's backlog; see [`crate::coverage::schedule`].
+    /// [`harness_lane`]; see [`crate::coverage::schedule`].
     harness_capacity: Vec<HarnessCapacity>,
     /// The newest ingested version per case slug.
     latest_by_slug: HashMap<String, String>,
 }
 
-/// Which runs a [`MatrixCtx`] counts, which differs between the two things that read
-/// one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum MatrixCounting {
-    /// A coverage plan: a cell's runs are its evaluable `completed` runs, and every one
-    /// of them its requester has not reviewed occupies the review buffer.
-    Plan,
-    /// A ladder: a cell's runs are every run that says something about its model — the
-    /// completed runs and the model's own failures — because those are the runs its gate
-    /// reads as evidence, so a rung whose runs keep failing uses up its target rather
-    /// than relaunching forever.
-    Ladder {
-        /// The gate's `unloadedCountsAsBroken`. When it is on, a run whose build never
-        /// loaded is left out of the unreviewed count: there is nothing on it to label.
-        unloaded_counts_as_broken: bool,
-    },
-}
-
 impl MatrixCtx {
     /// Load the counts and latest-version map for a set of case slugs (deduped
-    /// internally), from the point of view of `reviewer_user_id`, counted the way
-    /// `counting` says.
+    /// internally), from the point of view of `reviewer_user_id`.
     ///
     /// The latest version per slug honors the deployment's experimental visibility so
     /// "latest" matches what the catalog offers.
     pub(super) async fn load(
         state: &AppState,
-        mut slugs: Vec<String>,
+        slugs: Vec<String>,
         reviewer_user_id: &str,
-        counting: MatrixCounting,
     ) -> Result<Self, ApiError> {
+        let mut ctx = Self::load_for_ladder(state, slugs.clone()).await?;
+        let mut slugs = slugs;
         slugs.sort();
         slugs.dedup();
-        let (completed, exclude_unloaded) = match counting {
-            MatrixCounting::Plan => (
-                state
-                    .db
-                    .count_completed_runs_by_cell(&slugs)
-                    .await
-                    .map_err(ApiError::from)?,
-                false,
-            ),
-            MatrixCounting::Ladder {
-                unloaded_counts_as_broken,
-            } => (
-                state
-                    .db
-                    .count_model_runs_by_cell(&slugs)
-                    .await
-                    .map_err(ApiError::from)?,
-                unloaded_counts_as_broken,
-            ),
-        };
-        let in_flight = state
+        ctx.counted = state
+            .db
+            .count_counted_runs_by_cell(&slugs)
+            .await
+            .map_err(ApiError::from)?;
+        ctx.in_flight = state
             .db
             .count_in_flight_jobs_by_cell(&slugs)
             .await
             .map_err(ApiError::from)?;
-        let unreviewed = state
+        ctx.unreviewed = state
             .db
-            .count_unreviewed_runs_by_cell(&slugs, reviewer_user_id, exclude_unloaded)
+            .count_unreviewed_runs_by_cell(&slugs, reviewer_user_id)
             .await
             .map_err(ApiError::from)?;
+        Ok(ctx)
+    }
+
+    /// Load only what does not depend on whose runs count: the harnesses' capacity, the
+    /// queue's `pending` jobs, and the latest version per slug. What a ladder's board
+    /// reads, since a dispatch counts only its own runs.
+    pub(super) async fn load_for_ladder(
+        state: &AppState,
+        mut slugs: Vec<String>,
+    ) -> Result<Self, ApiError> {
+        slugs.sort();
+        slugs.dedup();
         let queue = queue_snapshot(state).await?;
         let harness_capacity = harness_capacity(state, &queue.in_flight_by_harness).await?;
         let mut latest_by_slug = HashMap::new();
@@ -2351,102 +2493,132 @@ impl MatrixCtx {
             latest_by_slug.insert(slug, version);
         }
         Ok(Self {
-            completed,
-            in_flight,
+            counted: crate::db::CellCounts::new(),
+            in_flight: crate::db::CellCounts::new(),
             pending: queue.pending,
-            unreviewed,
+            unreviewed: crate::db::CellCounts::new(),
             harness_capacity,
             latest_by_slug,
         })
     }
 
-    /// The full coverage matrix for one plan's resolved members, in `axis` order.
-    fn matrix(
+    /// The cells of a plan that are [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
+    /// short of their target with nothing in flight, and whose newest terminal jobs —
+    /// every job of the cell, matching the global counts, since the cell's last retry —
+    /// all failed on infrastructure. Only a short, idle cell can be blocked, which keeps
+    /// the streak reads to the cells that need one.
+    async fn blocked_cells(
         &self,
+        state: &AppState,
         runs_per_cell: u32,
-        axis: CoverageAxis,
-        buffer_target: BufferTarget,
         combos: &[PlanMember],
         cases: &[ReviewPlanCase],
-    ) -> CoverageMatrix {
-        let ordered = cells_in_order(axis, combos, cases);
-        let mut cells = Vec::with_capacity(ordered.len());
-        let mut cells_satisfied = 0u32;
-        let mut runs_missing = 0u32;
-        let mut runs_pending = 0u32;
-        let mut runs_unreviewed = 0u32;
-        let mut runs_outstanding = 0u32;
-        for (case, member) in ordered {
-            let cell = self.cell(runs_per_cell, case, member);
-            if cell.remaining == 0 {
-                cells_satisfied += 1;
+        retries: &HashMap<String, String>,
+    ) -> Result<HashSet<CellKey>, ApiError> {
+        let mut blocked = HashSet::new();
+        for (case, member) in cells_in_order(CoverageAxis::Case, combos, cases) {
+            if member.unlaunchable.is_some() {
+                continue;
             }
-            runs_missing += cell.remaining;
+            let demand = self.demand(runs_per_cell, case, member);
+            if demand.counted >= demand.target || demand.in_flight > 0 {
+                continue;
+            }
+            let key = cell_key(case, member);
+            let since = retries.get(&crate::db::cell_key_text(&key));
+            let jobs = state
+                .db
+                .recent_terminal_jobs(&key, FAILING_STREAK, since.map(String::as_str))
+                .await
+                .map_err(ApiError::from)?;
+            if is_failing_streak(&jobs) {
+                blocked.insert(key);
+            }
+        }
+        Ok(blocked)
+    }
+
+    /// The full coverage matrix for one plan's resolved members, in `axis` order.
+    fn matrix(&self, input: MatrixInput<'_>) -> CoverageMatrix {
+        let ordered = cells_in_order(input.axis, input.combos, input.cases);
+        let mut cells = Vec::with_capacity(ordered.len());
+        let mut runs_pending = 0u32;
+        for (case, member) in ordered {
+            let blocked = input.blocked.contains(&cell_key(case, member));
+            let cell = self.cell(input.runs_per_cell, case, member, blocked);
             runs_pending += cell.pending;
-            runs_unreviewed += cell.unreviewed;
-            runs_outstanding += cell.in_flight + cell.unreviewed;
             cells.push(cell);
         }
+        let roll = self.tally(
+            input.runs_per_cell,
+            input.combos,
+            input.cases,
+            input.blocked,
+        );
         CoverageMatrix {
-            cells_total: cells.len() as u32,
             cells,
-            outer_axis: axis,
-            cells_satisfied,
-            runs_missing,
+            outer_axis: input.axis,
+            cells_filled: roll.cells_filled,
+            cells_total: roll.cells_total,
+            cells_blocked: roll.cells_blocked,
+            runs_done: roll.runs_done,
+            runs_total: roll.runs_total,
+            runs_in_flight: input.runs_in_flight,
+            runs_missing: roll.runs_missing,
             runs_pending,
-            runs_unreviewed,
-            runs_outstanding,
-            buffer_target,
+            runs_unreviewed: roll.runs_unreviewed,
+            in_flight_limit: input.in_flight_limit,
+            filling: input.filling,
         }
     }
 
-    /// The roll-up (satisfied/total/missing/unreviewed) for one plan's resolved
-    /// members, without materializing the per-cell detail.
-    ///
-    /// It walks the same [`cells_in_order`] the matrix does even though a sum does not
-    /// care about order, so the two can never disagree about the cell set.
+    /// The roll-up for one plan's resolved members, without materializing the per-cell
+    /// detail. Walks the same [`cells_in_order`] the matrix does, so the two can never
+    /// disagree about the cell set.
     fn tally(
         &self,
         runs_per_cell: u32,
-        axis: CoverageAxis,
         combos: &[PlanMember],
         cases: &[ReviewPlanCase],
+        blocked: &HashSet<CellKey>,
     ) -> MatrixRollup {
-        let ordered = cells_in_order(axis, combos, cases);
-        let mut cells_satisfied = 0u32;
-        let mut runs_missing = 0u32;
-        let mut runs_unreviewed = 0u32;
+        let ordered = cells_in_order(CoverageAxis::Case, combos, cases);
+        let mut roll = MatrixRollup {
+            cells_filled: 0,
+            cells_total: ordered.len() as u32,
+            cells_blocked: 0,
+            runs_done: 0,
+            runs_total: 0,
+            runs_missing: 0,
+            runs_unreviewed: 0,
+        };
         for (case, member) in &ordered {
             let demand = self.demand(runs_per_cell, case, member);
-            let missing = demand.missing();
-            if missing == 0 {
-                cells_satisfied += 1;
+            if demand.counted >= demand.target {
+                roll.cells_filled += 1;
             }
-            runs_missing += missing;
-            runs_unreviewed += demand.unreviewed;
+            if member.unlaunchable.is_some() || blocked.contains(&cell_key(case, member)) {
+                roll.cells_blocked += 1;
+            }
+            roll.runs_done += demand.counted.min(demand.target);
+            roll.runs_total += demand.target;
+            roll.runs_missing += demand.missing();
+            roll.runs_unreviewed += self.unreviewed_for(case, member);
         }
-        MatrixRollup {
-            cells_satisfied,
-            cells_total: ordered.len() as u32,
-            runs_missing,
-            runs_unreviewed,
-        }
+        roll
     }
 
     /// One cell, fully described.
-    pub(super) fn cell(
+    fn cell(
         &self,
         desired: u32,
         case: &ReviewPlanCase,
         member: &PlanMember,
+        blocked: bool,
     ) -> CoverageCell {
         let key = cell_key(case, member);
         let demand = self.demand(desired, case, member);
-        let latest_version = self
-            .latest_by_slug
-            .get(&case.slug)
-            .cloned()
-            .unwrap_or_default();
+        let latest_version = self.latest_version(&case.slug);
         CoverageCell {
             slug: case.slug.clone(),
             version: case.version.clone(),
@@ -2460,18 +2632,20 @@ impl MatrixCtx {
             gg_slot_models: member.combo.gg_slot_models.clone(),
             unlaunchable: member.unlaunchable.clone(),
             desired,
-            completed: demand.completed,
+            counted: demand.counted,
+            filled: demand.counted >= desired,
+            blocked,
             in_flight: demand.in_flight,
             pending: self.pending.get(&key).copied().unwrap_or(0),
-            unreviewed: demand.unreviewed,
+            unreviewed: self.unreviewed_for(case, member),
             remaining: demand.missing(),
             stale: !latest_version.is_empty() && latest_version != case.version,
             latest_version,
         }
     }
 
-    /// One cell as the shared top-up scheduler sees it: what it wants, what exists,
-    /// and how much of it occupies the requester's review buffer.
+    /// One cell as the shared launch scheduler sees it: what it wants, what counts, and
+    /// what is coming, all counted globally.
     ///
     /// Runs and jobs store the model id they were *launched* with, which for a
     /// provider-routed harness carries the `openrouter/` prefix the plan's canonical
@@ -2486,22 +2660,20 @@ impl MatrixCtx {
         let key = cell_key(case, member);
         CellDemand {
             target,
-            completed: self.completed.get(&key).copied().unwrap_or(0),
+            counted: self.counted.get(&key).copied().unwrap_or(0),
             in_flight: self.in_flight.get(&key).copied().unwrap_or(0),
-            unreviewed: self.unreviewed.get(&key).copied().unwrap_or(0),
             harness: harness_lane(member.combo.harness),
         }
     }
 
     /// How much room each harness has to start another run, in the lane order
-    /// [`CellDemand::harness`] indexes. Handed straight to the top-up scheduler.
+    /// [`CellDemand::harness`] indexes. Handed straight to the launch scheduler.
     pub(super) fn harness_capacity(&self) -> &[HarnessCapacity] {
         &self.harness_capacity
     }
 
     /// The newest ingested version of one case slug, or the empty string when the case
-    /// is not ingested at all. A property of the case alone, so a caller with no
-    /// combination in hand (a ladder describing its rungs) can ask for it directly.
+    /// is not ingested at all.
     pub(super) fn latest_version(&self, slug: &str) -> String {
         self.latest_by_slug.get(slug).cloned().unwrap_or_default()
     }
@@ -2529,7 +2701,13 @@ impl MatrixCtx {
 /// configuration segment is the bare id the account's library is keyed by — the row may
 /// spell that id as the picker's `saved:<id>`, and a run records only the bare one.
 pub(super) fn cell_key(case: &ReviewPlanCase, member: &PlanMember) -> CellKey {
-    let (harness, model, config_id, models) = member.cell_identity();
+    cell_key_of(case, member.cell_identity())
+}
+
+/// The [`CellKey`] a member's `identity` forms with `case` — [`cell_key`] for an identity
+/// held apart from a resolved member, as a ladder dispatch pins each climber's.
+pub(super) fn cell_key_of(case: &ReviewPlanCase, identity: MemberCellIdentity) -> CellKey {
+    let (harness, model, config_id, models) = identity;
     (
         case.slug.clone(),
         case.version.clone(),
@@ -2549,7 +2727,7 @@ struct QueueSnapshot {
     /// In-flight jobs per harness slug — every state, across every plan, ladder, and
     /// hand-launched run, not only the cells being tallied. A harness's parallelism
     /// cap is global, so anything already queued for it consumes the cap ahead of
-    /// whatever a top-up adds.
+    /// whatever a launch pass adds.
     in_flight_by_harness: HashMap<String, u32>,
 }
 
@@ -2560,7 +2738,7 @@ struct QueueSnapshot {
 /// grouped queries, because `pending` is a *display* distinction: the authority for
 /// what counts toward a cell's target is [`crate::db::Db::count_in_flight_jobs_by_cell`],
 /// which includes pending jobs and must keep doing so. Surfacing the subset separately
-/// is what makes "the buffer is full but nothing is running" explicable instead of
+/// is what makes "the limit is full but nothing is running" explicable instead of
 /// looking like a stuck queue. The read is bounded by the queue's actual depth, which
 /// is the same set the console already fetches whole for its in-progress list.
 async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
@@ -2597,7 +2775,7 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
 }
 
 /// Cross the configured per-harness parallelism caps with what is already in flight,
-/// producing the capacity lane the top-up scheduler reads for every harness.
+/// producing the capacity lane the launch-pass scheduler reads for every harness.
 ///
 /// A harness with no `harness_config` row — the default — is unlimited. A stored cap
 /// that is not a sane positive count is treated as zero rather than as unlimited: bad
@@ -2627,27 +2805,30 @@ async fn harness_capacity(
         .collect())
 }
 
-/// The lane a harness occupies in the capacity slice the top-up scheduler walks.
+/// The lane a harness occupies in the capacity slice the launch-pass scheduler walks.
 ///
 /// [`HarnessSlug::RUNNABLE`] rather than the CLI catalog, because what a lane bounds is how
 /// many runs of a harness the queue will start at once and gg's runs occupy the queue like
 /// any other — today they are most of it. It is exhaustive, so the position always resolves;
 /// the fallback only keeps the lookup total, and lands past the end of the slice — which the
 /// scheduler reads as an uncapped harness rather than as some other harness's lane.
-fn harness_lane(harness: HarnessSlug) -> usize {
+pub(super) fn harness_lane(harness: HarnessSlug) -> usize {
     HarnessSlug::RUNNABLE
         .iter()
         .position(|slug| *slug == harness)
         .unwrap_or(HarnessSlug::RUNNABLE.len())
 }
 
-// ---- Shared top-up enqueue + queue assembly --------------------------------
+// ---- Shared launch enqueue + queue assembly --------------------------------
 
-/// One cell a top-up decided to launch, ready to be turned into jobs. Borrowed
+/// One cell a launch pass decided to launch, ready to be turned into jobs. Borrowed
 /// rather than owned so the caller keeps its resolved members as the source of truth.
-pub(super) struct TopUpCell<'a> {
+pub(super) struct LaunchCell<'a> {
     /// The ladder rung this cell belongs to, or `None` for a coverage plan.
     pub rung_id: Option<String>,
+    /// The origin every job of the cell carries: the fill, the dispatch's rung, or a
+    /// plan's hand launch.
+    pub origin: JobOrigin,
     /// The case, at its pinned version.
     pub case: &'a ReviewPlanCase,
     /// The resolved member to run it on.
@@ -2656,16 +2837,16 @@ pub(super) struct TopUpCell<'a> {
     pub runs: u32,
 }
 
-/// What one call to [`enqueue_top_up`] did: the cells it turned into jobs, and the cells it
-/// could not.
+/// What one call to [`enqueue_launches`] did: the cells it turned into jobs, and the cells
+/// it could not.
 ///
-/// The two come back together because a top-up routinely does both, and a caller assembling
-/// its report needs them in the same emission order it handed the cells over in.
-pub(super) struct TopUpEnqueued {
+/// The two come back together because a launch pass routinely does both, and a caller
+/// assembling its report needs them in the same emission order it handed the cells over in.
+pub(super) struct Enqueued {
     /// The cells that became jobs, in emission order.
-    pub launched: Vec<TopUpLaunch>,
+    pub launched: Vec<LaunchedCell>,
     /// The cells that could not, each with its reason.
-    pub blocked: Vec<TopUpBlocked>,
+    pub blocked: Vec<BlockedCell>,
 }
 
 /// One cell reported as unlaunchable: the case, the member, and why.
@@ -2678,8 +2859,8 @@ pub(super) fn blocked_cell(
     case: &ReviewPlanCase,
     member: &PlanMember,
     reason: String,
-) -> TopUpBlocked {
-    TopUpBlocked {
+) -> BlockedCell {
+    BlockedCell {
         rung_id,
         slug: case.slug.clone(),
         version: case.version.clone(),
@@ -2695,7 +2876,7 @@ pub(super) fn blocked_cell(
     }
 }
 
-/// The launch request one top-up cell's runs are enqueued with: the cell's whole case pin
+/// The launch request one launch cell's runs are enqueued with: the cell's whole case pin
 /// crossed with what its resolved member runs.
 ///
 /// The two shapes live here together rather than inline at the enqueue because they must
@@ -2712,7 +2893,7 @@ pub(super) fn blocked_cell(
 ///
 /// A plan pins no orchestrator, runtime ceiling, auth mode, or retry policy, so everything
 /// else is the default a hand-launched run takes.
-fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
+fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
     match &cell.member.gg {
         Some(gg) => super::gg::gg_launch_body(
             super::gg::GgLaunchSubject {
@@ -2746,42 +2927,39 @@ fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
             gg_model_providers: Default::default(),
             gg_model_modalities: Default::default(),
             gg_model_prices: Default::default(),
-            // Stamped by `enqueue_top_up` once the body's model price resolves.
+            // Stamped by `enqueue_launches` once the body's model price resolves.
             model_prices: None,
         },
     }
 }
 
-/// Enqueue a top-up's decided cells, attributing every job to the launching account
-/// and to the plan or ladder that asked for it, and report what was enqueued.
+/// Enqueue a launch pass's decided cells, attributing every job to the launching account
+/// and to the cell's origin, and report what was enqueued.
 ///
-/// The runs are emitted **in cell order, repeats adjacent**, and enqueued as one
-/// batch: the batch takes a contiguous block of `queue_seq` positions in exactly this
-/// order and the dispatcher claims in ascending order, so a cell's repeats start —
-/// and therefore finish — together, which is what makes them reviewable against each
-/// other.
+/// The runs are emitted **in cell order, repeats adjacent**, and enqueued as one batch:
+/// the batch takes a contiguous block of `queue_seq` positions in exactly this order and
+/// the dispatcher claims in ascending order, so a cell's repeats start — and therefore
+/// finish — together.
 ///
 /// A **gg** cell is lowered through the very code `POST /gg/runs` lowers a launch form's
 /// submission with ([`super::gg::gg_launch_body`]) and priced and resolved the same way, so
 /// a run a plan schedules from a configuration and a run an operator launches from the same
 /// configuration and the same models are the same run. A model whose context window the
 /// catalog cannot resolve makes that one cell unlaunchable and is reported: gg assumes no
-/// default window, and refusing the whole top-up would let one bad binding stop a plan being
-/// fed.
+/// default window, and refusing the whole pass would let one bad binding stop a plan being
+/// filled.
 ///
-/// `origin` is what a later scoped [`halt_jobs`] cancels by; without it a halt could
-/// not tell this plan's queued runs from a run someone kicked off by hand.
-pub(super) async fn enqueue_top_up(
+/// The origin is what a later scoped halt or stop cancels by, what a limit counts, and
+/// what a dispatch counts its evidence by.
+pub(super) async fn enqueue_launches(
     state: &AppState,
     user_id: &str,
-    origin: &JobOrigin,
-    cells: &[TopUpCell<'_>],
-) -> Result<TopUpEnqueued, ApiError> {
+    cells: &[LaunchCell<'_>],
+) -> Result<Enqueued, ApiError> {
     let now = now()?;
-    let attribution = super::jobs::JobAttribution::scheduled(user_id, origin);
     let mut jobs: Vec<crate::db::NewJob> = Vec::new();
-    let mut launched: Vec<TopUpLaunch> = Vec::with_capacity(cells.len());
-    let mut blocked: Vec<TopUpBlocked> = Vec::new();
+    let mut launched: Vec<LaunchedCell> = Vec::with_capacity(cells.len());
+    let mut blocked: Vec<BlockedCell> = Vec::new();
     // A list price filled for any cell changes the catalog the public snapshot shows.
     let on_fill = || {
         state.publisher.queue_refresh();
@@ -2802,7 +2980,8 @@ pub(super) async fn enqueue_top_up(
             blocked.push(cell.blocked(reason.clone()));
             continue;
         }
-        let mut body = top_up_launch_body(cell);
+        let attribution = super::jobs::JobAttribution::scheduled(user_id, &cell.origin);
+        let mut body = launch_body(cell);
         match cell.member.gg.as_ref().map(|gg| gg.model_facts.clone()) {
             // The facts a caller about to launch resolved for this member up front (see
             // [`resolve_launch_facts`]) — the same figures a second resolution would
@@ -2810,7 +2989,7 @@ pub(super) async fn enqueue_top_up(
             Some(Some(facts)) => facts.apply(&mut body),
             // A gg cell whose member was never put through that pass: resolve here rather
             // than enqueue a run with no windows on it, which gg would have no way to
-            // measure. It blocks its own cell and never the whole top-up.
+            // measure. It blocks its own cell and never the whole pass.
             Some(None) => {
                 crate::bootstrap::seed_launch_prices(
                     &state.db,
@@ -2850,7 +3029,7 @@ pub(super) async fn enqueue_top_up(
         }
         // The case's type is lifted onto the job so the queue can serialize the run
         // types that must not overlap (a game jam per model). A version that is not
-        // ingested falls back to the default type rather than failing the top-up:
+        // ingested falls back to the default type rather than failing the pass:
         // whether it resolves at all is the driver's call, and it reports that far
         // better than an enqueue-time guess would.
         let test_type = state
@@ -2862,7 +3041,7 @@ pub(super) async fn enqueue_top_up(
         // Built through the very same builder `POST /jobs` and `POST /gg/runs` mint their
         // jobs with, so a scheduled run and a hand-launched one are validated identically
         // and lift the same columns — the gg cell identity included. A body it refuses
-        // blocks its own cell rather than the whole top-up.
+        // blocks its own cell rather than the whole pass.
         let mut cell_jobs: Vec<crate::db::NewJob> = Vec::with_capacity(cell.runs as usize);
         let mut defect: Option<String> = None;
         for _ in 0..cell.runs {
@@ -2887,7 +3066,7 @@ pub(super) async fn enqueue_top_up(
         }
         let job_ids: Vec<String> = cell_jobs.iter().map(|job| job.id.clone()).collect();
         jobs.extend(cell_jobs);
-        launched.push(TopUpLaunch {
+        launched.push(LaunchedCell {
             rung_id: cell.rung_id.clone(),
             slug: cell.case.slug.clone(),
             version: cell.case.version.clone(),
@@ -2904,19 +3083,19 @@ pub(super) async fn enqueue_top_up(
         });
     }
     if jobs.is_empty() {
-        return Ok(TopUpEnqueued { launched, blocked });
+        return Ok(Enqueued { launched, blocked });
     }
     // Price the harness cells' models before the runs exist. Missing-only and best-effort:
     // a model already on record costs nothing, and an unpriced model costs a cost
-    // split, never the top-up.
+    // split, never the pass.
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
     state.db.enqueue_jobs(jobs).await.map_err(ApiError::from)?;
-    Ok(TopUpEnqueued { launched, blocked })
+    Ok(Enqueued { launched, blocked })
 }
 
-impl TopUpCell<'_> {
-    /// This cell, reported as one the top-up could not launch.
-    fn blocked(&self, reason: String) -> TopUpBlocked {
+impl LaunchCell<'_> {
+    /// This cell, reported as one the pass could not launch.
+    fn blocked(&self, reason: String) -> BlockedCell {
         blocked_cell(self.rung_id.clone(), self.case, self.member, reason)
     }
 }
@@ -2924,8 +3103,6 @@ impl TopUpCell<'_> {
 /// One cell of a scoped review queue, with the authoritative count of how many of its
 /// completed runs the requester has not reviewed.
 pub(super) struct QueueCell<'a> {
-    /// The ladder rung this cell belongs to, or `None` for a coverage plan.
-    pub rung_id: Option<String>,
     /// The case, at its pinned version.
     pub case: &'a ReviewPlanCase,
     /// The resolved member.
@@ -3002,7 +3179,7 @@ pub(super) async fn collect_queue(
             })
             .map(|run| CoverageQueueEntry {
                 run_id: run.record.id.clone(),
-                rung_id: cell.rung_id.clone(),
+                rung_id: None,
                 slug: run.record.subject.test_case_slug.clone(),
                 version: run.record.subject.test_case_version.clone(),
                 variant: run.record.subject.variant.clone(),
@@ -3038,7 +3215,7 @@ pub(super) async fn collect_queue(
 /// counts are made of. Those counts group on `run.gg_config_id`, which is
 /// [lifted](crate::db) from this very field, so the two agree by construction — a run
 /// carrying a column its record does not account for would be counted into a cell whose
-/// queue could never offer it, spending a review-buffer slot no reviewer can free.
+/// queue could never offer it.
 ///
 /// Trivially true for a harness member, whose cell those segments are empty for — and true
 /// for nothing at all on a member that never resolved, which has no cell for a run to be in.
@@ -3097,17 +3274,16 @@ pub(super) fn validated_runs_per_cell(target: u32, what: &str) -> Result<u32, Ap
     Ok(target)
 }
 
-/// Clamp a review-buffer target to the range the backend will honour. A bound of `0`
-/// survives — "never top up automatically" is a real instruction, unlike a
-/// runs-per-cell target of zero, which would declare a cell nobody wants — and so
-/// does `unbounded`, which has no number to clamp: the ceiling guards against a
-/// fat-fingered bound, not against a reviewer who chose to have none.
-pub(super) fn clamp_buffer_target(target: BufferTarget) -> BufferTarget {
-    match target {
-        BufferTarget::Bounded { runs } => BufferTarget::Bounded {
-            runs: runs.min(MAX_BUFFER_TARGET),
+/// Clamp a runs-in-flight limit to the range the backend will honour. A bound of `0`
+/// survives — "launch nothing" is a real instruction, unlike a runs-per-cell target of
+/// zero — and so does `unbounded`, which has no number to clamp: the ceiling guards
+/// against a fat-fingered bound, not against an owner who chose to have none.
+pub(super) fn clamp_in_flight_limit(limit: InFlightLimit) -> InFlightLimit {
+    match limit {
+        InFlightLimit::Bounded { runs } => InFlightLimit::Bounded {
+            runs: runs.min(MAX_IN_FLIGHT_LIMIT),
         },
-        BufferTarget::Unbounded => BufferTarget::Unbounded,
+        InFlightLimit::Unbounded => InFlightLimit::Unbounded,
     }
 }
 
@@ -3164,42 +3340,58 @@ fn group_from_input(id: String, input: CoverageGroupInput, updated_at: &str) -> 
     }
 }
 
-/// Build a stored plan from a create/update body, validating the runs-per-cell
-/// target, and hand back the schedule the body asked for (if any) separately — the
-/// split the store keeps.
+/// Build a stored plan from a create/update body, validating the runs-per-cell target
+/// and clamping the limit override.
 fn plan_from_input(
     id: String,
     input: CoveragePlanInput,
     updated_at: &str,
-) -> Result<(CoveragePlan, Option<CoverageSchedule>), ApiError> {
+) -> Result<CoveragePlan, ApiError> {
     let runs_per_cell = validated_runs_per_cell(input.runs_per_cell, "a plan")?;
-    Ok((
-        CoveragePlan {
-            id,
-            name: input.name,
-            runs_per_cell,
-            combo_group_ids: input.combo_group_ids,
-            case_group_ids: input.case_group_ids,
-            combos: for_storage(input.combos),
-            cases: input.cases,
-            updated_at: updated_at.to_string(),
-        },
-        input.schedule,
-    ))
+    Ok(CoveragePlan {
+        id,
+        name: input.name,
+        runs_per_cell,
+        combo_group_ids: input.combo_group_ids,
+        case_group_ids: input.case_group_ids,
+        combos: for_storage(input.combos),
+        cases: input.cases,
+        outer_axis: input.outer_axis,
+        in_flight_limit: input.in_flight_limit.map(clamp_in_flight_limit),
+        updated_at: updated_at.to_string(),
+    })
 }
 
-impl TopUpResult {
-    /// A top-up that never ran, and why. The buffer target is still reported: the
-    /// reviewer's next question after "it did nothing" is "what was it aiming for?".
-    pub(super) fn skipped_by(reason: TopUpSkipped, buffer_target: BufferTarget) -> Self {
+impl LaunchPassResult {
+    /// A launch pass that never ran, and why. The limit is still reported: the owner's
+    /// next question after "it did nothing" is "what was it aiming for?".
+    pub(super) fn skipped_by(reason: LaunchSkipped, in_flight_limit: InFlightLimit) -> Self {
         Self {
             skipped: Some(reason),
-            buffer_target,
-            outstanding: None,
+            in_flight_limit,
+            in_flight: None,
             enqueued: 0,
             cells: Vec::new(),
             unlaunchable: Vec::new(),
             early_stop_canceled: 0,
+        }
+    }
+
+    /// Two passes' results as one: what both enqueued and could not launch, the later
+    /// pass's view of the limit, and every early-stop cancel.
+    pub(super) fn merged_with(self, later: LaunchPassResult) -> LaunchPassResult {
+        let mut cells = self.cells;
+        cells.extend(later.cells);
+        let mut unlaunchable = self.unlaunchable;
+        unlaunchable.extend(later.unlaunchable);
+        LaunchPassResult {
+            skipped: later.skipped,
+            in_flight_limit: later.in_flight_limit,
+            in_flight: later.in_flight.or(self.in_flight),
+            enqueued: self.enqueued + later.enqueued,
+            cells,
+            unlaunchable,
+            early_stop_canceled: self.early_stop_canceled + later.early_stop_canceled,
         }
     }
 }
@@ -3211,3 +3403,7 @@ mod tests;
 #[cfg(test)]
 #[path = "coverage.gg.test.rs"]
 mod gg_tests;
+
+#[cfg(test)]
+#[path = "coverage.flow.test.rs"]
+mod flow_tests;

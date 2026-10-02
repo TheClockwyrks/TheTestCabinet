@@ -1775,58 +1775,6 @@ async fn active_jobs_excludes_terminal_jobs_oldest_first() {
 }
 
 #[tokio::test]
-async fn fail_in_flight_jobs_reaps_only_executing_jobs() {
-    let db = Db::connect_in_memory().await.unwrap();
-    // q stays queued (no driver yet); d is dispatched; r is running; s succeeded.
-    db.enqueue_job(new_job("q", "2026-06-23T00:00:00Z"))
-        .await
-        .unwrap();
-    db.enqueue_job(new_job("d", "2026-06-23T00:01:00Z"))
-        .await
-        .unwrap();
-    db.set_job_state("d", "dispatched", "2026-06-23T00:01:30Z", None, None)
-        .await
-        .unwrap();
-    db.enqueue_job(new_job("r", "2026-06-23T00:02:00Z"))
-        .await
-        .unwrap();
-    db.set_job_state("r", "running", "2026-06-23T00:02:30Z", None, None)
-        .await
-        .unwrap();
-    db.enqueue_job(new_job("s", "2026-06-23T00:03:00Z"))
-        .await
-        .unwrap();
-    db.set_job_state("s", "succeeded", "2026-06-23T00:30:00Z", None, Some("r-s"))
-        .await
-        .unwrap();
-
-    let reaped = db
-        .fail_in_flight_jobs("2026-06-23T01:00:00Z", "interrupted")
-        .await
-        .unwrap();
-    assert_eq!(reaped, 2, "only the dispatched and running jobs are reaped");
-
-    // The two executing jobs are now terminal failures with the stamped detail.
-    for id in ["d", "r"] {
-        let job = db.get_job(id).await.unwrap().expect("the job exists");
-        assert_eq!(job.state, "failed");
-        assert_eq!(job.detail.as_deref(), Some("interrupted"));
-        assert_eq!(job.updated_at, "2026-06-23T01:00:00Z");
-    }
-    // The queued job is untouched, ready for the dispatcher to drain.
-    assert_eq!(db.get_job("q").await.unwrap().unwrap().state, "queued");
-    // The already-terminal succeeded job keeps its outcome.
-    let s = db.get_job("s").await.unwrap().unwrap();
-    assert_eq!(s.state, "succeeded");
-    assert_eq!(s.record_id.as_deref(), Some("r-s"));
-
-    // The active-run list is now just the still-queued job.
-    let active = db.active_jobs().await.unwrap();
-    let ids: Vec<&str> = active.iter().map(|j| j.id.as_str()).collect();
-    assert_eq!(ids, vec!["q"]);
-}
-
-#[tokio::test]
 async fn enqueue_retry_stamps_the_attempt_once_before_its_record_is_stored() {
     // The retry is enqueued before the attempt's record is stored, so the stamp carries
     // the record's id too: the run is a retried attempt's from the moment it exists. A
@@ -1868,21 +1816,6 @@ async fn enqueue_retry_stamps_the_attempt_once_before_its_record_is_stored() {
             .as_deref(),
         Some("retry")
     );
-}
-
-#[tokio::test]
-async fn fail_in_flight_jobs_is_a_noop_with_nothing_executing() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.enqueue_job(new_job("q", "2026-06-23T00:00:00Z"))
-        .await
-        .unwrap();
-
-    let reaped = db
-        .fail_in_flight_jobs("2026-06-23T01:00:00Z", "interrupted")
-        .await
-        .unwrap();
-    assert_eq!(reaped, 0);
-    assert_eq!(db.get_job("q").await.unwrap().unwrap().state, "queued");
 }
 
 #[tokio::test]
@@ -5037,16 +4970,20 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
         case_group_ids: vec![],
         combos: vec![],
         cases: vec![sample_case()],
+        outer_axis: crate::api::CoverageAxis::Combination,
+        in_flight_limit: Some(InFlightLimit::Unbounded),
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     };
-    db.insert_coverage_plan("u1", &plan, &CoveragePlanSchedule::default())
-        .await
-        .unwrap();
+    db.insert_coverage_plan("u1", &plan).await.unwrap();
 
     let got = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
-    assert_eq!(got.name, "Anthropic/E2E");
-    assert_eq!(got.combo_group_ids, vec!["g1".to_string()]);
-    assert_eq!(got.cases.len(), 1);
+    assert_eq!(got.plan.name, "Anthropic/E2E");
+    assert_eq!(got.plan.combo_group_ids, vec!["g1".to_string()]);
+    assert_eq!(got.plan.cases.len(), 1);
+    assert_eq!(got.plan.outer_axis, crate::api::CoverageAxis::Combination);
+    assert_eq!(got.plan.in_flight_limit, Some(InFlightLimit::Unbounded));
+    // A new plan is not filling.
+    assert!(!got.filling);
     // Scoped by account.
     assert!(db.get_coverage_plan("u2", "p1").await.unwrap().is_none());
 
@@ -5060,6 +4997,7 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
             .await
             .unwrap()
             .unwrap()
+            .plan
             .runs_per_cell,
         5
     );
@@ -5101,11 +5039,12 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
     );
     let plans = db.list_coverage_plans("u1").await.unwrap();
     assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0].name, "My coverage plan");
-    assert_eq!(plans[0].runs_per_cell, 4);
-    assert_eq!(plans[0].combos.len(), 1);
-    assert_eq!(plans[0].cases.len(), 1);
-    assert!(plans[0].combo_group_ids.is_empty());
+    assert_eq!(plans[0].plan.name, "My coverage plan");
+    assert_eq!(plans[0].plan.runs_per_cell, 4);
+    assert_eq!(plans[0].plan.combos.len(), 1);
+    assert_eq!(plans[0].plan.cases.len(), 1);
+    assert!(plans[0].plan.combo_group_ids.is_empty());
+    assert!(!plans[0].filling);
 
     // Re-running is a no-op: the migrated flag guards against a duplicate.
     assert_eq!(
@@ -5117,7 +5056,7 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
     assert_eq!(db.list_coverage_plans("u1").await.unwrap().len(), 1);
 
     // A migrated plan the reviewer deletes is not recreated on the next startup.
-    let id = plans[0].id.clone();
+    let id = plans[0].plan.id.clone();
     assert!(db.delete_coverage_plan("u1", &id).await.unwrap());
     assert_eq!(
         crate::bootstrap::backfill_coverage_plans(&db)
@@ -5129,7 +5068,7 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
 }
 
 #[tokio::test]
-async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
+async fn coverage_counts_counted_runs_and_in_flight_jobs_per_cell() {
     let db = Db::connect_in_memory().await.unwrap();
     // A completed run and a queued job for the same cell.
     db.push(&record("r1"), &links(), None, None).await.unwrap();
@@ -5138,7 +5077,7 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
         .unwrap();
 
     let slugs = vec!["pong".to_string()];
-    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let completed = db.count_counted_runs_by_cell(&slugs).await.unwrap();
     let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
     // A harness cell key: the six identity segments plus the empty gg pair. Neither the
     // run nor the job names an engine, so both are counted as the `none` runs they are.
@@ -5189,7 +5128,7 @@ async fn coverage_counts_are_keyed_by_the_engine_and_read_a_missing_one_as_none(
     active.update(&db.connection()).await.unwrap();
 
     let completed = db
-        .count_completed_runs_by_cell(&["pong".to_string()])
+        .count_counted_runs_by_cell(&["pong".to_string()])
         .await
         .unwrap();
     let cell = |engine: &str| {
@@ -5406,7 +5345,7 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
     .unwrap();
 
     let slugs = vec!["pong".to_string()];
-    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let completed = db.count_counted_runs_by_cell(&slugs).await.unwrap();
     let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
     let cell = |model: &str| {
         (
@@ -5891,15 +5830,7 @@ async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() 
     );
 }
 
-// ---- Coverage buffering, ladders, and job attribution ----------------------
-
-/// The default completed run, with control over whether its build loaded — the one
-/// fact a ladder gate is allowed to judge without a reviewer.
-fn record_loaded(id: &str, loaded: bool) -> RunRecord {
-    let mut record = record(id);
-    record.validation.loaded = loaded;
-    record
-}
+// ---- Coverage limits, fills, ladder dispatches, and job attribution ---------
 
 /// The cell key `record`/`new_job` produce: pong v1.0.0 base on the `none` engine on
 /// claude/sonnet, with the empty gg pair every harness cell carries.
@@ -5926,7 +5857,7 @@ async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pas
     // Nobody has reviewed: both runs are outstanding for either account.
     for account in ["u1", "u2"] {
         assert_eq!(
-            db.count_unreviewed_runs_by_cell(&slugs, account, false)
+            db.count_unreviewed_runs_by_cell(&slugs, account)
                 .await
                 .unwrap()
                 .get(&sample_cell())
@@ -5935,13 +5866,13 @@ async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pas
         );
     }
 
-    // `u2` reviews one. That clears it from *their* buffer and nobody else's —
+    // `u2` reviews one. That clears it from *their* count and nobody else's —
     // judgement is per account even though the run counts are global.
     db.add_review("r1", &review_by("u2", Rating::Great), None, None)
         .await
         .unwrap();
     assert_eq!(
-        db.count_unreviewed_runs_by_cell(&slugs, "u2", false)
+        db.count_unreviewed_runs_by_cell(&slugs, "u2")
             .await
             .unwrap()
             .get(&sample_cell())
@@ -5949,13 +5880,13 @@ async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pas
         Some(1),
     );
     assert_eq!(
-        db.count_unreviewed_runs_by_cell(&slugs, "u1", false)
+        db.count_unreviewed_runs_by_cell(&slugs, "u1")
             .await
             .unwrap()
             .get(&sample_cell())
             .copied(),
         Some(2),
-        "another account's review does not empty this account's buffer",
+        "another account's review does not clear this account's count",
     );
 }
 
@@ -6153,48 +6084,16 @@ async fn gg_configs_round_trip_their_agent_sources() {
 }
 
 #[tokio::test]
-async fn unreviewed_cell_counts_can_exclude_a_run_whose_build_never_loaded() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_loaded("loaded", true), &links(), None, None)
-        .await
-        .unwrap();
-    db.push(&record_loaded("dead", false), &links(), None, None)
-        .await
-        .unwrap();
-    let slugs = vec!["pong".to_string()];
-
-    // A coverage plan has no gate: a dead build still wants a human to look at it.
-    assert_eq!(
-        db.count_unreviewed_runs_by_cell(&slugs, "u1", false)
-            .await
-            .unwrap()
-            .get(&sample_cell())
-            .copied(),
-        Some(2),
-    );
-    // A ladder that counts an unloaded build as broken decides it without a
-    // reviewer, so it must not hold a buffer slot waiting for one.
-    assert_eq!(
-        db.count_unreviewed_runs_by_cell(&slugs, "u1", true)
-            .await
-            .unwrap()
-            .get(&sample_cell())
-            .copied(),
-        Some(1),
-    );
-}
-
-#[tokio::test]
 async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut auto = record("perf");
     auto.subject.test_type = TestType::Performance;
     db.push(&auto, &links(), None, None).await.unwrap();
 
-    // No reviewer can ever clear a performance run, so counting it would hold a
-    // buffer slot that never frees — exactly why `list_unreviewed` drops it too.
+    // No reviewer can ever clear a performance run, so counting it would leave a run
+    // nobody can ever review — exactly why `list_unreviewed` drops it too.
     assert!(
-        db.count_unreviewed_runs_by_cell(&["pong".to_string()], "u1", false)
+        db.count_unreviewed_runs_by_cell(&["pong".to_string()], "u1")
             .await
             .unwrap()
             .is_empty(),
@@ -6202,20 +6101,20 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 }
 
 #[tokio::test]
-async fn cell_run_ratings_read_the_validators_rating_and_never_a_review() {
+async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
     use test_cabinet_core::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     // The cosmetic point fails, so the validators rate the run `great`.
-    db.push(
+    finished_dispatch_job(
+        &db,
+        "j1",
+        "rung",
         &validator_record("r1", &[("serve", true), ("hud", false)]),
-        &links(),
-        None,
         Some(&manifest),
     )
-    .await
-    .unwrap();
-    let evidence = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    .await;
+    let evidence = slot_runs(&db, "rung").await;
     assert_eq!(evidence.len(), 1);
     assert_eq!(evidence[0].run_id, "r1");
     assert!(evidence[0].validator_rated);
@@ -6249,20 +6148,17 @@ async fn cell_run_ratings_read_the_validators_rating_and_never_a_review() {
         Some("great"),
         "a review never touches the validators' own rating",
     );
-    assert_eq!(
-        db.cell_run_ratings(&sample_cell()).await.unwrap()[0].rating,
-        Some(Rating::Great),
-    );
+    assert_eq!(slot_runs(&db, "rung").await[0].rating, Some(Rating::Great));
 }
 
 #[tokio::test]
 async fn a_legacy_runs_reviews_never_rate_it_for_a_gate() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    finished_dispatch_job(&db, "j1", "rung", &record("r1"), None).await;
     db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    let evidence = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    let evidence = slot_runs(&db, "rung").await;
     assert!(!evidence[0].validator_rated);
     assert_eq!(
         evidence[0].rating, None,
@@ -6409,23 +6305,24 @@ async fn the_backfill_rates_validator_rated_runs_stored_before_the_column() {
 }
 
 #[tokio::test]
-async fn cell_run_ratings_hold_the_models_outcomes_and_never_infrastructure() {
+async fn a_dispatch_counts_the_models_outcomes_and_never_infrastructure() {
     let db = Db::connect_in_memory().await.unwrap();
-    let mut infra = record("infra");
-    infra.status.state = RunState::Infrastructure;
-    db.push(&infra, &links(), None, None).await.unwrap();
-    let mut canceled = record("canceled");
-    canceled.status.state = RunState::Canceled;
-    db.push(&canceled, &links(), None, None).await.unwrap();
-    let mut timed_out = record("timed-out");
-    timed_out.status.state = RunState::TimedOut;
-    db.push(&timed_out, &links(), None, None).await.unwrap();
-    db.push(&record("ok"), &links(), None, None).await.unwrap();
+    for (id, state) in [
+        ("infra", RunState::Infrastructure),
+        ("harness", RunState::HarnessError),
+        ("canceled", RunState::Canceled),
+        ("timed-out", RunState::TimedOut),
+        ("ok", RunState::Completed),
+    ] {
+        let mut run = record(id);
+        run.status.state = state;
+        finished_dispatch_job(&db, &format!("j-{id}"), "rung", &run, None).await;
+    }
 
-    let mut runs = db.cell_run_ratings(&sample_cell()).await.unwrap();
+    let mut runs = slot_runs(&db, "rung").await;
     runs.sort_by(|a, b| a.run_id.cmp(&b.run_id));
-    // An infrastructure failure retries and a cancel was somebody's decision: neither is
-    // evidence, and neither is ever a wall.
+    // An infrastructure-class failure retries and a cancel was somebody's decision:
+    // neither is the model's result.
     assert_eq!(
         runs.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
         vec!["ok", "timed-out"],
@@ -6441,23 +6338,45 @@ async fn cell_run_ratings_hold_the_models_outcomes_and_never_infrastructure() {
         }
     );
 
-    // The same runs are what a ladder counts against a rung's target; a plan counts
-    // only the completed one.
+    // One counting rule: a plan counts exactly the same runs.
     let slugs = vec![sample_cell().0];
     assert_eq!(
-        db.count_model_runs_by_cell(&slugs)
+        db.count_counted_runs_by_cell(&slugs)
             .await
             .unwrap()
             .get(&sample_cell()),
         Some(&2)
     );
+
+    // A harness error's job succeeded, yet it delivered nothing that counts: it is a
+    // failure on infrastructure for the streak, as an infrastructure run's is. A
+    // canceled job is not.
+    let terminal = db.dispatch_evidence("l1", "d1").await.unwrap().terminal
+        [&("rung".to_string(), sample_cell())]
+        .clone();
+    let failed: usize = terminal
+        .iter()
+        .filter(|job| job.failed_on_infrastructure())
+        .count();
+    assert_eq!(terminal.len(), 5);
     assert_eq!(
-        db.count_completed_runs_by_cell(&slugs)
-            .await
-            .unwrap()
-            .get(&sample_cell()),
-        Some(&1)
+        failed, 3,
+        "infra, harness error, and the canceled run's job"
     );
+}
+
+#[test]
+fn a_canceled_job_breaks_a_failing_streak() {
+    let job = |state: &str, counted: bool| TerminalJob {
+        state: state.to_string(),
+        counted,
+        ended_at: "t".to_string(),
+    };
+    assert!(job("failed", false).failed_on_infrastructure());
+    assert!(job("succeeded", false).failed_on_infrastructure());
+    assert!(!job("succeeded", true).failed_on_infrastructure());
+    assert!(!job("failed", true).failed_on_infrastructure());
+    assert!(!job("canceled", false).failed_on_infrastructure());
 }
 
 /// A queued job attributed to `user_id` and launched by `origin`.
@@ -6471,36 +6390,53 @@ fn attributed_job(id: &str, user_id: &str, origin: Option<JobOrigin>) -> NewJob 
 
 #[tokio::test]
 async fn job_origin_tokens_round_trip_and_never_collide_across_kinds() {
-    assert_eq!(JobOrigin::Plan("x".to_string()).as_token(), "plan:x");
+    for (origin, token) in [
+        (JobOrigin::plan("x"), "plan:x"),
+        (JobOrigin::fill("x", "f"), "plan:x/f"),
+        (JobOrigin::dispatch("x", "d", "r"), "ladder:x/d/r"),
+        (
+            JobOrigin::Ladder {
+                ladder_id: "x".to_string(),
+                dispatch_id: None,
+                rung_id: None,
+            },
+            "ladder:x",
+        ),
+    ] {
+        assert_eq!(origin.as_token(), token);
+        assert_eq!(JobOrigin::parse(token), Some(origin));
+    }
+    assert_eq!(JobOrigin::fill("x", "f").owner_prefix(), "plan:x");
     assert_eq!(
-        JobOrigin::parse("ladder:x"),
-        Some(JobOrigin::Ladder("x".to_string())),
+        JobOrigin::dispatch("x", "d", "r").owner_prefix(),
+        "ladder:x"
     );
     // A plan and a ladder that happen to share an id are still different origins.
     assert_ne!(
-        JobOrigin::Plan("x".to_string()).as_token(),
-        JobOrigin::Ladder("x".to_string()).as_token(),
+        JobOrigin::plan("x").as_token(),
+        JobOrigin::parse("ladder:x").unwrap().as_token(),
     );
     // A manual launch, and anything unrecognized, is simply unattributed.
     assert_eq!(JobOrigin::parse(""), None);
     assert_eq!(JobOrigin::parse("plan:"), None);
+    assert_eq!(JobOrigin::parse("plan:x/"), None);
     assert_eq!(JobOrigin::parse("tournament:x"), None);
 }
 
 #[tokio::test]
 async fn a_scoped_halt_cancels_its_own_waiting_jobs_and_nothing_else() {
     let db = Db::connect_in_memory().await.unwrap();
-    let plan = JobOrigin::Plan("p1".to_string());
     db.enqueue_jobs(vec![
-        attributed_job("mine-1", "u1", Some(plan.clone())),
-        attributed_job("mine-2", "u1", Some(plan.clone())),
-        attributed_job("other-plan", "u1", Some(JobOrigin::Plan("p2".to_string()))),
-        attributed_job("ladder", "u1", Some(JobOrigin::Ladder("p1".to_string()))),
+        attributed_job("by-hand-of-plan", "u1", Some(JobOrigin::plan("p1"))),
+        attributed_job("fill", "u1", Some(JobOrigin::fill("p1", "f1"))),
+        attributed_job("other-plan", "u1", Some(JobOrigin::plan("p10"))),
+        attributed_job("ladder", "u1", Some(JobOrigin::dispatch("p1", "d", "r"))),
         attributed_job("by-hand", "u1", None),
     ])
     .await
     .unwrap();
 
+    let plan = OriginScope::Prefix("plan:p1".to_string());
     let cancelled = db
         .cancel_jobs(
             &JobCancelFilter {
@@ -6513,7 +6449,7 @@ async fn a_scoped_halt_cancels_its_own_waiting_jobs_and_nothing_else() {
         )
         .await
         .unwrap();
-    assert_eq!(cancelled, 2, "the halt reports what it actually cancelled");
+    assert_eq!(cancelled, 2, "the plan's hand launch and its fill's job");
 
     let still_waiting: Vec<String> = db
         .active_jobs()
@@ -6522,17 +6458,29 @@ async fn a_scoped_halt_cancels_its_own_waiting_jobs_and_nothing_else() {
         .into_iter()
         .map(|job| job.id)
         .collect();
-    // Another plan's runs, a ladder that shares the id, and the run someone kicked
-    // off by hand all survive — the last of these is why `origin` exists at all.
+    // Another plan whose id extends this one's, a ladder that shares the id, and the run
+    // someone kicked off by hand all survive.
     assert_eq!(still_waiting, vec!["other-plan", "ladder", "by-hand"]);
     assert_eq!(
-        db.get_job("mine-1")
-            .await
-            .unwrap()
-            .unwrap()
-            .detail
-            .as_deref(),
+        db.get_job("fill").await.unwrap().unwrap().detail.as_deref(),
         Some("halted"),
+    );
+
+    // An exact scope reaches that one origin only.
+    let rung = OriginScope::Exact("ladder:p1/d/r".to_string());
+    assert_eq!(
+        db.cancel_jobs(
+            &JobCancelFilter {
+                states: &CANCELABLE_WAITING_STATES,
+                origin: Some(&rung),
+                ..JobCancelFilter::default()
+            },
+            "2026-08-15T00:02:00Z",
+            "stopped",
+        )
+        .await
+        .unwrap(),
+        1
     );
 }
 
@@ -6594,76 +6542,75 @@ async fn a_bulk_cancel_spares_running_jobs_unless_they_are_asked_for() {
 }
 
 #[tokio::test]
-async fn coverage_buffer_target_is_absent_until_the_account_chooses_one() {
+async fn coverage_in_flight_limit_is_absent_until_the_account_chooses_one() {
     let db = Db::connect_in_memory().await.unwrap();
     // No row means "no opinion", so the caller applies its own default rather than
     // the store inventing a zero.
-    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), None);
+    assert_eq!(db.coverage_in_flight_limit("u1").await.unwrap(), None);
 
-    db.set_coverage_buffer_target(
+    db.set_coverage_in_flight_limit(
         "u1",
-        BufferTarget::Bounded { runs: 10 },
+        InFlightLimit::Bounded { runs: 10 },
         "2026-08-15T00:00:00Z",
     )
     .await
     .unwrap();
     assert_eq!(
-        db.coverage_buffer_target("u1").await.unwrap(),
-        Some(BufferTarget::Bounded { runs: 10 })
+        db.coverage_in_flight_limit("u1").await.unwrap(),
+        Some(InFlightLimit::Bounded { runs: 10 })
     );
-    // An explicit zero is a real instruction — "never top me up" — and is stored.
-    db.set_coverage_buffer_target(
+    // An explicit zero is a real instruction — "launch nothing" — and is stored.
+    db.set_coverage_in_flight_limit(
         "u1",
-        BufferTarget::Bounded { runs: 0 },
+        InFlightLimit::Bounded { runs: 0 },
         "2026-08-15T01:00:00Z",
     )
     .await
     .unwrap();
     assert_eq!(
-        db.coverage_buffer_target("u1").await.unwrap(),
-        Some(BufferTarget::Bounded { runs: 0 })
+        db.coverage_in_flight_limit("u1").await.unwrap(),
+        Some(InFlightLimit::Bounded { runs: 0 })
     );
-    // So is "no bound at all", and it round-trips as itself rather than as some
-    // large number the read would have to reinterpret.
-    db.set_coverage_buffer_target("u1", BufferTarget::Unbounded, "2026-08-15T02:00:00Z")
+    // So is "no bound at all", and it round-trips as itself.
+    db.set_coverage_in_flight_limit("u1", InFlightLimit::Unbounded, "2026-08-15T02:00:00Z")
         .await
         .unwrap();
     assert_eq!(
-        db.coverage_buffer_target("u1").await.unwrap(),
-        Some(BufferTarget::Unbounded)
+        db.coverage_in_flight_limit("u1").await.unwrap(),
+        Some(InFlightLimit::Unbounded)
     );
-    assert_eq!(db.coverage_buffer_target("u2").await.unwrap(), None);
+    assert_eq!(db.coverage_in_flight_limit("u2").await.unwrap(), None);
 }
 
 #[test]
-fn buffer_target_column_encoding_round_trips_every_shape() {
-    for target in [
-        BufferTarget::Bounded { runs: 0 },
-        BufferTarget::Bounded { runs: 10 },
-        BufferTarget::Bounded { runs: 500 },
-        BufferTarget::Unbounded,
+fn in_flight_limit_column_encoding_round_trips_every_shape() {
+    for limit in [
+        InFlightLimit::Bounded { runs: 0 },
+        InFlightLimit::Bounded { runs: 10 },
+        InFlightLimit::Bounded { runs: 500 },
+        InFlightLimit::Unbounded,
     ] {
         assert_eq!(
-            buffer_target_from_column(buffer_target_to_column(target)),
-            target
+            in_flight_limit_from_column(in_flight_limit_to_column(limit)),
+            limit
         );
     }
     // The unbounded marker is negative, so no bound the API can hand the store ever
     // collides with it — a bound too wide for the column saturates rather than wraps.
-    assert!(buffer_target_to_column(BufferTarget::Unbounded) < 0);
+    assert!(in_flight_limit_to_column(InFlightLimit::Unbounded) < 0);
     assert_eq!(
-        buffer_target_from_column(buffer_target_to_column(BufferTarget::Bounded {
+        in_flight_limit_from_column(in_flight_limit_to_column(InFlightLimit::Bounded {
             runs: u32::MAX
         })),
-        BufferTarget::Bounded {
+        InFlightLimit::Bounded {
             runs: i32::MAX as u32
         }
     );
     // Any negative reads as unbounded: there is exactly one such instruction.
-    assert_eq!(buffer_target_from_column(-7), BufferTarget::Unbounded);
+    assert_eq!(in_flight_limit_from_column(-7), InFlightLimit::Unbounded);
 }
 
-/// The minimal plan used by the scheduling/top-up tests.
+/// The minimal plan used by the filling and launch-pass tests.
 fn schedulable_plan(id: &str) -> crate::api::CoveragePlan {
     crate::api::CoveragePlan {
         id: id.to_string(),
@@ -6673,86 +6620,131 @@ fn schedulable_plan(id: &str) -> crate::api::CoveragePlan {
         case_group_ids: vec![],
         combos: vec![sample_combo()],
         cases: vec![sample_case()],
+        outer_axis: crate::api::CoverageAxis::Case,
+        in_flight_limit: None,
         updated_at: "2026-08-15T00:00:00Z".to_string(),
     }
 }
 
 #[tokio::test]
-async fn editing_a_plans_declaration_never_disturbs_its_schedule() {
+async fn a_plan_fills_until_its_fill_ends_and_an_edit_never_disturbs_it() {
     let db = Db::connect_in_memory().await.unwrap();
     let plan = schedulable_plan("p1");
-    db.insert_coverage_plan("u1", &plan, &CoveragePlanSchedule::default())
-        .await
-        .unwrap();
+    db.insert_coverage_plan("u1", &plan).await.unwrap();
+    assert_eq!(db.coverage_plan_fill("p1").await.unwrap(), None);
 
-    let paused = CoveragePlanSchedule {
-        outer_axis: "combination".to_string(),
-        paused: true,
-        auto_top_up: true,
-        buffer_target: Some(BufferTarget::Bounded { runs: 4 }),
-    };
-    assert!(
-        db.set_coverage_plan_schedule("u1", "p1", &paused)
+    // Only the owner starts a fill, and starting one twice keeps the first.
+    assert_eq!(
+        db.start_coverage_plan_fill("u2", "p1", "f0").await.unwrap(),
+        None
+    );
+    assert_eq!(
+        db.start_coverage_plan_fill("u1", "p1", "f1")
             .await
             .unwrap()
+            .as_deref(),
+        Some("f1")
     );
-    assert!(
-        !db.set_coverage_plan_schedule("u2", "p1", &paused)
+    assert_eq!(
+        db.start_coverage_plan_fill("u1", "p1", "f2")
             .await
-            .unwrap(),
-        "the schedule is the owner's to change",
+            .unwrap()
+            .as_deref(),
+        Some("f1")
+    );
+    assert_eq!(
+        db.filling_coverage_plans().await.unwrap(),
+        vec![("p1".to_string(), "u1".to_string())]
     );
 
-    // Saving an edit to the members must not un-pause a plan somebody paused.
+    // Saving an edit to the plan leaves it filling.
     let mut bumped = plan.clone();
     bumped.runs_per_cell = 5;
     assert!(db.update_coverage_plan("u1", &bumped).await.unwrap());
+    assert!(
+        db.get_coverage_plan("u1", "p1")
+            .await
+            .unwrap()
+            .unwrap()
+            .filling
+    );
+
+    // Ending is conditional on the fill, so a stale pass cannot end a newer fill.
+    assert!(!db.end_coverage_plan_fill("p1", "f0").await.unwrap());
+    assert!(db.end_coverage_plan_fill("p1", "f1").await.unwrap());
+    assert_eq!(db.coverage_plan_fill("p1").await.unwrap(), None);
+
+    // A halt ends whatever fill is running, for the owner only.
+    db.start_coverage_plan_fill("u1", "p1", "f3").await.unwrap();
+    assert!(!db.halt_coverage_plan_fill("u2", "p1").await.unwrap());
+    assert!(db.halt_coverage_plan_fill("u1", "p1").await.unwrap());
+    assert!(db.filling_coverage_plans().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_plan_cells_retry_is_recorded_once_per_cell_and_moves_forward() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_coverage_plan("u1", &schedulable_plan("p1"))
+        .await
+        .unwrap();
+    db.record_coverage_plan_cell_retry("p1", &sample_cell(), "t1")
+        .await
+        .unwrap();
+    db.record_coverage_plan_cell_retry("p1", &sample_cell(), "t2")
+        .await
+        .unwrap();
+    let retries = db.coverage_plan_cell_retries("p1").await.unwrap();
+    assert_eq!(retries.len(), 1);
     assert_eq!(
-        db.coverage_plan_schedule("u1", "p1").await.unwrap(),
-        Some(paused),
+        retries
+            .get(&cell_key_text(&sample_cell()))
+            .map(String::as_str),
+        Some("t2")
     );
 }
 
 #[tokio::test]
-async fn a_top_up_claim_is_exclusive_until_it_is_released_or_expires() {
+async fn a_launch_claim_is_exclusive_until_it_is_released_or_expires() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.insert_coverage_plan(
-        "u1",
-        &schedulable_plan("p1"),
-        &CoveragePlanSchedule::default(),
-    )
-    .await
-    .unwrap();
+    db.insert_coverage_plan("u1", &schedulable_plan("p1"))
+        .await
+        .unwrap();
 
     assert!(
-        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:00Z")
+        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T00:00:00Z")
             .await
             .unwrap()
     );
-    // The second console tab observes the same shortfall a moment later and must
-    // not enqueue for it a second time.
+    // A second pass observes the same shortfall a moment later and must not enqueue for
+    // it a second time.
     assert!(
-        !db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:01Z")
+        !db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T00:00:01Z")
             .await
             .unwrap()
     );
-    db.release_coverage_plan_top_up("p1").await.unwrap();
+    db.release_coverage_plan_launch("p1").await.unwrap();
     assert!(
-        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:02Z")
+        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T00:00:02Z")
             .await
             .unwrap()
     );
 
-    // A caller that died mid-top-up expires out of the claim rather than wedging
-    // the plan: the marker is a timestamp precisely so this can recover itself.
+    // A caller that died mid-pass expires out of the claim rather than wedging the plan.
     assert!(
-        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:05:00Z")
+        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T00:05:00Z")
             .await
             .unwrap()
     );
     // Someone else's plan is not claimable at all.
     assert!(
-        !db.claim_coverage_plan_top_up("u2", "p1", "2026-08-15T01:00:00Z")
+        !db.claim_coverage_plan_launch("u2", "p1", "2026-08-15T01:00:00Z")
+            .await
+            .unwrap()
+    );
+    // A restart releases every claim, since no pass survives it.
+    assert!(db.release_all_launch_claims().await.unwrap() >= 1);
+    assert!(
+        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T01:00:01Z")
             .await
             .unwrap()
     );
@@ -6785,6 +6777,8 @@ fn test_ladder(id: &str, name: &str, rungs: Vec<StoredLadderRung>) -> StoredLadd
         combo_group_ids: vec!["g1".to_string()],
         combos: vec![sample_combo()],
         rungs,
+        outer_axis: "rung".to_string(),
+        in_flight_limit: None,
         updated_at: "2026-08-15T00:00:00Z".to_string(),
     }
 }
@@ -6794,33 +6788,36 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     let db = Db::connect_in_memory().await.unwrap();
     assert!(db.list_ladders("u1").await.unwrap().is_empty());
 
-    let ladder = test_ladder(
-        "l1",
-        "E2E difficulty climb",
-        vec![
-            rung("r1", "pong", "v1.0.0"),
-            rung("r2", "carom", "v1.0.0"),
-            // A rung pinned to an engine, so the pin's fourth segment is proved to
-            // survive the round trip rather than silently reverting to the engineless
-            // run every rung written before the column existed asks for.
-            StoredLadderRung {
-                engine: Some("simple-2d".to_string()),
-                ..rung("r3", "caldera", "v1.2.0")
-            },
-        ],
-    );
-    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
-        .await
-        .unwrap();
+    let ladder = StoredLadder {
+        outer_axis: "combination".to_string(),
+        in_flight_limit: Some(InFlightLimit::Unbounded),
+        ..test_ladder(
+            "l1",
+            "E2E difficulty climb",
+            vec![
+                rung("r1", "pong", "v1.0.0"),
+                rung("r2", "carom", "v1.0.0"),
+                // A rung pinned to an engine, so the pin's fourth segment is proved to
+                // survive the round trip.
+                StoredLadderRung {
+                    engine: Some("simple-2d".to_string()),
+                    ..rung("r3", "caldera", "v1.2.0")
+                },
+            ],
+        )
+    };
+    db.insert_ladder("u1", &ladder).await.unwrap();
 
     let got = db.get_ladder("u1", "l1").await.unwrap().unwrap();
     assert_eq!(got.name, "E2E difficulty climb");
     assert_eq!(got.runs_per_cell, 5);
-    // The gate round-trips through its three columns without changing shape.
+    // The gate round-trips through its columns without changing shape.
     assert_eq!(got.gate, ladder.gate);
     assert_eq!(got.combo_group_ids, vec!["g1".to_string()]);
     assert_eq!(got.combos.len(), 1);
     assert_eq!(got.rungs, ladder.rungs);
+    assert_eq!(got.outer_axis, "combination");
+    assert_eq!(got.in_flight_limit, Some(InFlightLimit::Unbounded));
     // Rungs come back in climb order, which is the order they were written in.
     assert_eq!(
         got.rungs
@@ -6831,19 +6828,22 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     );
     assert!(db.get_ladder("u2", "l1").await.unwrap().is_none());
     assert!(db.list_ladders("u2").await.unwrap().is_empty());
+    assert_eq!(db.ladder_owner("l1").await.unwrap().as_deref(), Some("u1"));
 
-    // The schedule is stored apart from the declaration, as a plan's is.
-    assert_eq!(
-        db.ladder_schedule("u1", "l1").await.unwrap(),
-        Some(LadderSchedule::default()),
-    );
-    let steered = LadderSchedule {
-        outer_axis: "combination".to_string(),
-        paused: true,
-        buffer_target: Some(BufferTarget::Unbounded),
+    // An edit writes the axis and the limit with the rest of the configuration.
+    let edited = StoredLadder {
+        outer_axis: "rung".to_string(),
+        in_flight_limit: Some(InFlightLimit::Bounded { runs: 0 }),
+        ..ladder.clone()
     };
-    assert!(db.set_ladder_schedule("u1", "l1", &steered).await.unwrap());
-    assert!(!db.set_ladder_schedule("u2", "l1", &steered).await.unwrap());
+    assert!(db.update_ladder("u1", &edited).await.unwrap());
+    assert!(!db.update_ladder("u2", &edited).await.unwrap());
+    let got = db.get_ladder("u1", "l1").await.unwrap().unwrap();
+    assert_eq!(got.outer_axis, "rung");
+    assert_eq!(
+        got.in_flight_limit,
+        Some(InFlightLimit::Bounded { runs: 0 })
+    );
 
     assert!(!db.delete_ladder("u2", "l1").await.unwrap());
     assert!(db.delete_ladder("u1", "l1").await.unwrap());
@@ -6853,31 +6853,15 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
 }
 
 #[tokio::test]
-async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
+async fn reordering_a_ladder_reconciles_its_rungs_by_id() {
     let db = Db::connect_in_memory().await.unwrap();
     let ladder = test_ladder(
         "l1",
         "Climb",
         vec![rung("r1", "pong", "v1.0.0"), rung("r2", "carom", "v1.0.0")],
     );
-    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
-        .await
-        .unwrap();
-    let combo = combination_key(&sample_combo());
-    db.record_ladder_outcome(
-        "l1",
-        "r1",
-        &combo,
-        "v1.0.0",
-        LadderOutcomeKind::Passed,
-        "2026-08-15T01:00:00Z",
-    )
-    .await
-    .unwrap();
+    db.insert_ladder("u1", &ladder).await.unwrap();
 
-    // Swap the two rungs and add a third. Rungs are reconciled under their stable
-    // ids, so nothing is deleted — which matters because outcomes cascade from
-    // `ladder_rung`, and a delete-and-reinsert would silently erase the climb.
     let mut reordered = ladder.clone();
     reordered.rungs = vec![
         rung("r2", "carom", "v1.0.0"),
@@ -6885,7 +6869,6 @@ async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
         rung("r3", "caldera", "v1.2.0"),
     ];
     assert!(db.update_ladder("u1", &reordered).await.unwrap());
-
     assert_eq!(
         db.list_ladder_rungs("l1")
             .await
@@ -6895,287 +6878,410 @@ async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
             .collect::<Vec<_>>(),
         vec!["r2", "r1", "r3"],
     );
-    let outcomes = db.list_ladder_outcomes("l1").await.unwrap();
-    assert_eq!(outcomes.len(), 1, "the verdict survived the reorder");
-    assert_eq!(outcomes[0].rung_id, "r1");
-    assert_eq!(outcomes[0].outcome, LadderOutcomeKind::Passed);
+}
 
-    // Dropping a rung from the climb does take its verdicts with it — that is what
-    // removing it means.
-    let mut trimmed = ladder.clone();
-    trimmed.rungs = vec![rung("r2", "carom", "v1.0.0")];
-    assert!(db.update_ladder("u1", &trimmed).await.unwrap());
-    assert!(db.list_ladder_outcomes("l1").await.unwrap().is_empty());
+/// A running dispatch `d` of ladder `l1`, with the snapshot left opaque.
+fn test_dispatch(id: &str) -> StoredDispatch {
+    StoredDispatch {
+        ladder_id: "l1".to_string(),
+        id: id.to_string(),
+        status: "running".to_string(),
+        started_at: "2026-10-02T00:00:00Z".to_string(),
+        ended_at: None,
+        snapshot_json: "{}".to_string(),
+    }
+}
+
+/// One climber of a dispatch.
+fn test_climber(key: &str, position: u32) -> StoredDispatchClimber {
+    StoredDispatchClimber {
+        climber_key: key.to_string(),
+        position,
+        combo_json: "{}".to_string(),
+        cell_json: None,
+        retried_at: None,
+    }
 }
 
 #[tokio::test]
-async fn the_plain_flow_migration_renames_verdicts_and_drops_overrides_both_ways() {
-    // A ladder as a deployment holds it before the migration: verdicts spelled
-    // `advanced`/`walled`, a hand override on one of them, a held climber, and the
-    // `auto_top_up` switch. After it, the verdicts read in the plain words, the override is
-    // gone and never read, and the hold is a pause.
+async fn a_ladder_holds_one_dispatch_and_a_new_run_replaces_an_ended_one() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_ladder(
+        "u1",
+        &test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(db.ladder_dispatch("l1").await.unwrap(), None);
+
+    assert!(
+        db.start_ladder_dispatch(
+            &test_dispatch("d1"),
+            &[test_climber("b", 1), test_climber("a", 0)]
+        )
+        .await
+        .unwrap()
+    );
+    assert_eq!(
+        db.running_dispatches().await.unwrap(),
+        vec![("l1".to_string(), "u1".to_string())]
+    );
+    // Climbers come back in their resolved order.
+    assert_eq!(
+        db.dispatch_climbers("d1")
+            .await
+            .unwrap()
+            .iter()
+            .map(|climber| climber.climber_key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b"]
+    );
+    db.record_dispatch_outcome("d1", "r1", "a", LadderOutcomeKind::Passed, "t1")
+        .await
+        .unwrap();
+    // A verdict stands once recorded: a second write of the slot changes nothing.
+    db.record_dispatch_outcome("d1", "r1", "a", LadderOutcomeKind::Failed, "t2")
+        .await
+        .unwrap();
+    let outcomes = db.dispatch_outcomes("d1").await.unwrap();
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].outcome, LadderOutcomeKind::Passed);
+    assert_eq!(outcomes[0].decided_at, "t1");
+    assert!(
+        db.record_dispatch_climber_retry("d1", "a", "t3")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !db.record_dispatch_climber_retry("d1", "nobody", "t3")
+            .await
+            .unwrap()
+    );
+
+    // Only one dispatch runs at a time.
+    assert!(
+        !db.start_ladder_dispatch(&test_dispatch("d2"), &[test_climber("a", 0)])
+            .await
+            .unwrap()
+    );
+    assert_eq!(db.ladder_dispatch("l1").await.unwrap().unwrap().id, "d1");
+
+    // Ending it is conditional on its id and on it running.
+    assert_eq!(
+        db.end_ladder_dispatch("l1", Some("other"), "finished", "t4")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.end_ladder_dispatch("l1", None, "stopped", "t4")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("d1")
+    );
+    assert_eq!(
+        db.end_ladder_dispatch("l1", None, "finished", "t5")
+            .await
+            .unwrap(),
+        None,
+        "an ended dispatch is not ended twice"
+    );
+    let ended = db.ladder_dispatch("l1").await.unwrap().unwrap();
+    assert_eq!(ended.status, "stopped");
+    assert_eq!(ended.ended_at.as_deref(), Some("t4"));
+    assert!(db.running_dispatches().await.unwrap().is_empty());
+
+    // A Run after it ended replaces it, its climbers and verdicts with it.
+    assert!(
+        db.start_ladder_dispatch(&test_dispatch("d2"), &[test_climber("a", 0)])
+            .await
+            .unwrap()
+    );
+    assert_eq!(db.ladder_dispatch("l1").await.unwrap().unwrap().id, "d2");
+    assert!(db.dispatch_climbers("d1").await.unwrap().is_empty());
+    assert!(db.dispatch_outcomes("d1").await.unwrap().is_empty());
+
+    // Deleting the ladder deletes its dispatch.
+    assert!(db.delete_ladder("u1", "l1").await.unwrap());
+    assert_eq!(db.ladder_dispatch("l1").await.unwrap(), None);
+    assert!(db.dispatch_climbers("d2").await.unwrap().is_empty());
+}
+
+/// A job of dispatch `d1` of ladder `l1` on rung `rung`, of the `new_job` cell.
+fn dispatch_job(id: &str, rung: &str) -> NewJob {
+    attributed_job(id, "u1", Some(JobOrigin::dispatch("l1", "d1", rung)))
+}
+
+/// A job of the dispatch that finished with `record` as its run.
+async fn finished_dispatch_job(
+    db: &Db,
+    id: &str,
+    rung: &str,
+    record: &RunRecord,
+    manifest: Option<&crate::store::StoredManifest>,
+) {
+    db.enqueue_job(dispatch_job(id, rung)).await.unwrap();
+    db.push(record, &links(), None, manifest).await.unwrap();
+    db.set_job_state(
+        id,
+        "succeeded",
+        "2026-10-02T01:00:00Z",
+        None,
+        Some(&record.id),
+    )
+    .await
+    .unwrap();
+}
+
+/// The dispatch's counted runs of one rung's [`sample_cell`] slot.
+async fn slot_runs(db: &Db, rung: &str) -> Vec<CellRunRating> {
+    db.dispatch_evidence("l1", "d1")
+        .await
+        .unwrap()
+        .runs
+        .remove(&(rung.to_string(), sample_cell()))
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn dispatch_evidence_reads_only_the_dispatchs_own_jobs_grouped_by_rung() {
+    let db = Db::connect_in_memory().await.unwrap();
+    finished_dispatch_job(&db, "j1", "r1", &record("run-1"), None).await;
+    finished_dispatch_job(&db, "j2", "r2", &record("run-2"), None).await;
+    // The same cell launched by hand, by a plan, and by another dispatch: none of it is
+    // this dispatch's evidence.
+    db.push(&record("by-hand"), &links(), None, None)
+        .await
+        .unwrap();
+    db.enqueue_jobs(vec![
+        attributed_job("plan", "u1", Some(JobOrigin::plan("p1"))),
+        attributed_job("other", "u1", Some(JobOrigin::dispatch("l1", "d0", "r1"))),
+        dispatch_job("waiting", "r1"),
+        dispatch_job("running", "r2"),
+    ])
+    .await
+    .unwrap();
+    db.set_job_state("running", "running", "2026-10-02T00:30:00Z", None, None)
+        .await
+        .unwrap();
+
+    let evidence = db.dispatch_evidence("l1", "d1").await.unwrap();
+    let r1 = ("r1".to_string(), sample_cell());
+    let r2 = ("r2".to_string(), sample_cell());
+    // One case pinned on two rungs is two slots that share nothing.
+    assert_eq!(
+        evidence.runs[&r1]
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["run-1"]
+    );
+    assert_eq!(
+        evidence.runs[&r2]
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["run-2"]
+    );
+    assert_eq!(evidence.in_flight[&r1], vec!["waiting".to_string()]);
+    assert_eq!(evidence.in_flight[&r2], vec!["running".to_string()]);
+    assert_eq!(evidence.waiting.get(&r1).copied(), Some(1));
+    assert_eq!(
+        evidence.waiting.get(&r2),
+        None,
+        "a running job is not waiting"
+    );
+    assert_eq!(evidence.terminal[&r1].len(), 1);
+    assert!(evidence.terminal[&r1][0].counted);
+
+    // What the dispatch's limit and a plan's limit count.
+    assert_eq!(
+        db.count_in_flight_jobs_by_origin_prefix("ladder:l1/d1")
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_by_origin_prefix("plan:p1")
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_by_plan("u1")
+            .await
+            .unwrap()
+            .get("p1"),
+        None,
+        "the plan is not one of the account's"
+    );
+}
+
+#[tokio::test]
+async fn a_retried_attempts_run_counts_once_through_its_retry() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // The attempt failed on infrastructure and was retried; its run never counts, and
+    // the retry's completed run does, once.
+    db.enqueue_job(dispatch_job("attempt", "r1")).await.unwrap();
+    let mut infra = record("attempt-run");
+    infra.status.state = RunState::Infrastructure;
+    assert!(
+        db.enqueue_retry(
+            "attempt",
+            Some("attempt-run"),
+            NewJob {
+                attempt: 1,
+                ..dispatch_job("retry", "r1")
+            }
+        )
+        .await
+        .unwrap()
+    );
+    db.push(&infra, &links(), None, None).await.unwrap();
+    db.set_job_state(
+        "attempt",
+        "failed",
+        "2026-10-02T00:10:00Z",
+        None,
+        Some("attempt-run"),
+    )
+    .await
+    .unwrap();
+    db.push(&record("retry-run"), &links(), None, None)
+        .await
+        .unwrap();
+    db.set_job_state(
+        "retry",
+        "succeeded",
+        "2026-10-02T00:20:00Z",
+        None,
+        Some("retry-run"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        slot_runs(&db, "r1")
+            .await
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["retry-run"]
+    );
+    assert_eq!(
+        db.count_counted_runs_by_cell(&["pong".to_string()])
+            .await
+            .unwrap()
+            .get(&sample_cell()),
+        Some(&1)
+    );
+}
+
+#[tokio::test]
+async fn the_dispatch_migration_round_trips_down_and_up() {
     use sea_orm::{ConnectionTrait, Statement};
     use test_cabinet_migration::MigratorTrait;
 
     let db = Db::connect_in_memory().await.unwrap();
-    db.insert_ladder(
+    db.insert_coverage_plan(
         "u1",
-        &test_ladder(
-            "l1",
-            "Climb",
-            vec![rung("r1", "pong", "v1.0.0"), rung("r2", "carom", "v1.0.0")],
-        ),
-        &LadderSchedule::default(),
-    )
-    .await
-    .unwrap();
-    let combo = combination_key(&sample_combo());
-    db.record_ladder_outcome(
-        "l1",
-        "r1",
-        &combo,
-        "v1.0.0",
-        LadderOutcomeKind::Passed,
-        "t1",
-    )
-    .await
-    .unwrap();
-    db.record_ladder_outcome(
-        "l1",
-        "r2",
-        &combo,
-        "v1.0.0",
-        LadderOutcomeKind::Failed,
-        "t2",
-    )
-    .await
-    .unwrap();
-    db.set_ladder_climber(
-        "l1",
-        &StoredLadderClimber {
-            combination_key: combo.clone(),
-            priority: 2,
-            focused: true,
-            paused: true,
-            updated_at: "t3".to_string(),
-            retried_at: None,
+        &crate::api::CoveragePlan {
+            in_flight_limit: Some(InFlightLimit::Bounded { runs: 4 }),
+            ..schedulable_plan("p1")
         },
     )
     .await
     .unwrap();
+    db.set_coverage_in_flight_limit("u1", InFlightLimit::Unbounded, "t0")
+        .await
+        .unwrap();
+    db.insert_ladder(
+        "u1",
+        &StoredLadder {
+            in_flight_limit: Some(InFlightLimit::Bounded { runs: 7 }),
+            ..test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")])
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        db.start_ladder_dispatch(&test_dispatch("d1"), &[test_climber("a", 0)])
+            .await
+            .unwrap()
+    );
 
     let conn = db.connection();
-    let migrations = test_cabinet_migration::Migrator::migrations();
-    let index = migrations
-        .iter()
-        .position(|migration| migration.name() == "m20261002_000054_ladder_plain_flow")
-        .expect("the plain-flow migration is registered");
-    let steps = (migrations.len() - index) as u32;
     let rows = async |sql: &str| {
         conn.query_all(Statement::from_string(conn.get_database_backend(), sql))
             .await
             .unwrap()
     };
-
-    // Down: the old spellings and columns come back.
-    test_cabinet_migration::Migrator::down(&conn, Some(steps))
-        .await
-        .unwrap();
-    let outcomes: Vec<String> = rows("SELECT outcome FROM ladder_outcome ORDER BY rung_id")
-        .await
-        .iter()
-        .map(|row| row.try_get("", "outcome").unwrap())
-        .collect();
-    assert_eq!(outcomes, vec!["advanced", "walled"]);
-    let held: bool = rows("SELECT held FROM ladder_climber").await[0]
-        .try_get("", "held")
-        .unwrap();
-    assert!(held, "a pause rolls back to a hold");
-    let auto: bool = rows("SELECT auto_top_up FROM ladder").await[0]
-        .try_get("", "auto_top_up")
-        .unwrap();
-    assert!(
-        auto,
-        "an enabled ladder climbed by itself, so the switch comes back on"
-    );
-    // A stored override, as an owner's "promote" left one.
-    conn.execute_unprepared(
-        "UPDATE ladder_outcome SET override_outcome = 'advanced', override_at = 't4' \
-         WHERE rung_id = 'r2'",
-    )
-    .await
-    .unwrap();
-
-    // Up: the plain words, no override, and the hold kept as a pause.
-    test_cabinet_migration::Migrator::up(&conn, Some(steps))
-        .await
-        .unwrap();
-    let outcomes = db.list_ladder_outcomes("l1").await.unwrap();
-    assert_eq!(
-        outcomes
+    let columns = async |table: &str| -> Vec<String> {
+        rows(&format!("SELECT name FROM pragma_table_info('{table}')"))
+            .await
             .iter()
-            .map(|outcome| (outcome.rung_id.as_str(), outcome.outcome))
-            .collect::<Vec<_>>(),
-        vec![
-            ("r1", LadderOutcomeKind::Passed),
-            ("r2", LadderOutcomeKind::Failed),
-        ],
-        "the gate's verdict governs; the override is gone"
-    );
-    let columns: Vec<String> = rows("SELECT name FROM pragma_table_info('ladder_outcome')")
-        .await
-        .iter()
-        .map(|row| row.try_get("", "name").unwrap())
-        .collect();
-    assert!(!columns.iter().any(|name| name.starts_with("override")));
-    let columns: Vec<String> = rows("SELECT name FROM pragma_table_info('ladder')")
-        .await
-        .iter()
-        .map(|row| row.try_get("", "name").unwrap())
-        .collect();
-    assert!(!columns.contains(&"auto_top_up".to_string()));
-    assert!(!columns.contains(&"top_up_requested".to_string()));
-    let climbers = db.list_ladder_climbers("l1").await.unwrap();
-    assert!(climbers[0].paused);
-    assert_eq!(climbers[0].priority, 2);
-    assert_eq!(climbers[0].retried_at, None);
-    assert_eq!(
-        db.ladder_schedule("u1", "l1").await.unwrap(),
-        Some(LadderSchedule::default())
-    );
-}
+            .map(|row| row.try_get("", "name").unwrap())
+            .collect()
+    };
 
-#[tokio::test]
-async fn bumping_a_rungs_version_neither_erases_nor_inherits_the_old_verdict() {
-    let db = Db::connect_in_memory().await.unwrap();
-    let ladder = test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]);
-    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
+    // Down: the old columns and tables come back, the limits under their old names.
+    test_cabinet_migration::Migrator::down(&conn, Some(1))
         .await
         .unwrap();
-    let combo = combination_key(&sample_combo());
-    db.record_ladder_outcome(
-        "l1",
-        "r1",
-        &combo,
-        "v1.0.0",
-        LadderOutcomeKind::Passed,
-        "2026-08-15T01:00:00Z",
-    )
-    .await
-    .unwrap();
+    let plan = columns("coverage_plan").await;
+    for column in ["buffer_target", "topping_up_at", "paused", "auto_top_up"] {
+        assert!(plan.contains(&column.to_string()), "plan.{column}");
+    }
+    assert!(!plan.contains(&"fill_id".to_string()));
+    let ladder = columns("ladder").await;
+    for column in ["buffer_target", "topping_up_at", "top_up_pending", "paused"] {
+        assert!(ladder.contains(&column.to_string()), "ladder.{column}");
+    }
+    assert!(!columns("ladder_outcome").await.is_empty());
+    assert!(!columns("ladder_climber").await.is_empty());
+    assert!(columns("ladder_dispatch").await.is_empty());
+    assert!(columns("coverage_plan_cell_retry").await.is_empty());
+    let paused: bool = rows("SELECT paused FROM ladder").await[0]
+        .try_get("", "paused")
+        .unwrap();
+    assert!(paused, "a ladder comes back disabled");
+    let target: i32 = rows("SELECT buffer_target FROM ladder").await[0]
+        .try_get("", "buffer_target")
+        .unwrap();
+    assert_eq!(target, 7);
 
-    // Re-pin the rung to a newer case version, keeping its stable id.
-    let mut bumped = ladder.clone();
-    bumped.rungs = vec![rung("r1", "pong", "v2.0.0")];
-    assert!(db.update_ladder("u1", &bumped).await.unwrap());
-
-    let versions: Vec<String> = db
-        .list_ladder_outcomes("l1")
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|o| o.decided_version)
-        .collect();
-    assert_eq!(
-        versions,
-        vec!["v1.0.0"],
-        "the verdict stays recorded against the version that earned it",
-    );
-
-    // The new pin starts undecided, and deciding it leaves both on the books.
-    db.record_ladder_outcome(
-        "l1",
-        "r1",
-        &combo,
-        "v2.0.0",
-        LadderOutcomeKind::Failed,
-        "2026-08-15T02:00:00Z",
-    )
-    .await
-    .unwrap();
-    assert_eq!(db.list_ladder_outcomes("l1").await.unwrap().len(), 2);
-}
-
-#[tokio::test]
-async fn ladder_climbers_carry_steering_only_and_are_optional() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.insert_ladder(
-        "u1",
-        &test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]),
-        &LadderSchedule::default(),
-    )
-    .await
-    .unwrap();
-    // An un-steered combination writes nothing, which is how a model added to a
-    // standing ladder simply starts at rung 1.
-    assert!(db.list_ladder_climbers("l1").await.unwrap().is_empty());
-
-    let combo = combination_key(&sample_combo());
-    db.set_ladder_climber(
-        "l1",
-        &StoredLadderClimber {
-            combination_key: combo.clone(),
-            priority: 5,
-            focused: true,
-            paused: false,
-            updated_at: "2026-08-15T01:00:00Z".to_string(),
-            retried_at: None,
-        },
-    )
-    .await
-    .unwrap();
-    // A retry is recorded on the climber's row and touches none of its steering.
-    db.record_ladder_climber_retry("l1", &combo, "2026-08-15T01:30:00Z")
+    // Up: the new shape, the limits kept, the dispatch state gone (it never existed
+    // before), and nothing filling.
+    test_cabinet_migration::Migrator::up(&conn, Some(1))
         .await
         .unwrap();
-    let climbers = db.list_ladder_climbers("l1").await.unwrap();
-    assert_eq!(climbers[0].priority, 5);
-    assert!(climbers[0].focused);
     assert_eq!(
-        climbers[0].retried_at.as_deref(),
-        Some("2026-08-15T01:30:00Z")
+        db.coverage_in_flight_limit("u1").await.unwrap(),
+        Some(InFlightLimit::Unbounded)
     );
-    // Re-steering the same combination updates it rather than adding a second row, and
-    // keeps the retry, which is not steering.
-    db.set_ladder_climber(
-        "l1",
-        &StoredLadderClimber {
-            combination_key: combo.clone(),
-            priority: 5,
-            focused: true,
-            paused: true,
-            updated_at: "2026-08-15T02:00:00Z".to_string(),
-            retried_at: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    let climbers = db.list_ladder_climbers("l1").await.unwrap();
-    assert_eq!(climbers.len(), 1);
-    assert!(climbers[0].paused);
-    assert_eq!(climbers[0].updated_at, "2026-08-15T02:00:00Z");
+    let plan = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
     assert_eq!(
-        climbers[0].retried_at.as_deref(),
-        Some("2026-08-15T01:30:00Z")
+        plan.plan.in_flight_limit,
+        Some(InFlightLimit::Bounded { runs: 4 })
     );
-
-    // A retry of a climber nobody has steered creates its row un-steered.
-    db.record_ladder_climber_retry("l1", "claude|opus|", "2026-08-15T03:00:00Z")
-        .await
-        .unwrap();
-    let opus = db
-        .list_ladder_climbers("l1")
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|climber| climber.combination_key == "claude|opus|")
-        .unwrap();
+    assert!(!plan.filling);
     assert_eq!(
-        (opus.priority, opus.focused, opus.paused),
-        (0, false, false)
+        db.get_ladder("u1", "l1")
+            .await
+            .unwrap()
+            .unwrap()
+            .in_flight_limit,
+        Some(InFlightLimit::Bounded { runs: 7 })
     );
-    assert_eq!(opus.retried_at.as_deref(), Some("2026-08-15T03:00:00Z"));
+    assert_eq!(db.ladder_dispatch("l1").await.unwrap(), None);
+    assert!(columns("ladder_outcome").await.is_empty());
+    assert!(columns("ladder_climber").await.is_empty());
+    assert!(
+        db.claim_ladder_launch("u1", "l1", "2026-10-02T00:00:00Z")
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -7285,7 +7391,7 @@ async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
         .unwrap();
 
     let slugs = vec!["pong".to_string()];
-    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let completed = db.count_counted_runs_by_cell(&slugs).await.unwrap();
     assert_eq!(
         completed.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
         Some(1),
@@ -7351,7 +7457,7 @@ async fn a_renamed_configuration_keeps_its_cell_and_the_counts_under_it() {
     .unwrap();
 
     let completed = db
-        .count_completed_runs_by_cell(&["pong".to_string()])
+        .count_counted_runs_by_cell(&["pong".to_string()])
         .await
         .unwrap();
     assert_eq!(
@@ -7380,7 +7486,7 @@ async fn two_configurations_sharing_a_name_are_two_cells() {
     }
 
     let completed = db
-        .count_completed_runs_by_cell(&["pong".to_string()])
+        .count_counted_runs_by_cell(&["pong".to_string()])
         .await
         .unwrap();
     assert_eq!(
@@ -7417,7 +7523,7 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
         .unwrap();
 
     let unreviewed = db
-        .count_unreviewed_runs_by_cell(&["pong".to_string()], "u1", false)
+        .count_unreviewed_runs_by_cell(&["pong".to_string()], "u1")
         .await
         .unwrap();
     assert_eq!(unreviewed.get(&gg_cell("cfg-a", "root=mock/echo")), None);
@@ -7425,52 +7531,6 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
         unreviewed.get(&gg_cell("cfg-b", "root=mock/echo")).copied(),
         Some(1),
         "reviewing one configuration's run says nothing about another's",
-    );
-}
-
-#[tokio::test]
-async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.push(
-        &gg_record_config("a", "cfg-a", "planning-A", &["mock/echo"]),
-        &links(),
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    db.push(
-        &gg_record_config("b", "cfg-b", "planning-B", &["mock/echo"]),
-        &links(),
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-    db.push(&record("harness"), &links(), None, None)
-        .await
-        .unwrap();
-
-    // A gate reads the runs of the configuration its climber names — not every gg run
-    // of the case, which would let one arm's failures wall another's climb.
-    let a = db
-        .cell_run_ratings(&gg_cell("cfg-a", "root=mock/echo"))
-        .await
-        .unwrap();
-    assert_eq!(
-        a.iter().map(|run| run.run_id.as_str()).collect::<Vec<_>>(),
-        vec!["a"],
-    );
-
-    // And the harness cell's empty pair selects the runs that carry no configuration,
-    // rather than matching nothing at all.
-    let harness = db.cell_run_ratings(&sample_cell()).await.unwrap();
-    assert_eq!(
-        harness
-            .iter()
-            .map(|run| run.run_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["harness"],
     );
 }
 
@@ -7543,7 +7603,7 @@ async fn the_gg_configuration_backfill_resolves_a_run_through_the_job_that_produ
     // And the run now counts toward the same cell a fresh run of that configuration
     // lands in, which is the whole point of resolving it.
     let completed = db
-        .count_completed_runs_by_cell(&["pong".to_string()])
+        .count_counted_runs_by_cell(&["pong".to_string()])
         .await
         .unwrap();
     assert_eq!(
