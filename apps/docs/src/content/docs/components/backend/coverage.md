@@ -18,9 +18,10 @@ unioned.
 
 A plan answers "have I run this yet?". Its sibling, the
 [ladder](/components/backend/ladders/), answers "how far does this model get?"
-using the same buffer, counting rules, and halting controls applied to an ordered
-series of cases. Everything below about counting, buffering, and halting is
-shared by both.
+using the same buffer target, counting rules, and halting controls applied to an
+ordered series of cases. Everything below about counting and halting is shared by
+both, and so is the buffer target's shape; what a ladder's buffer counts is on
+the [ladder page](/components/backend/ladders/#runs-in-flight).
 
 ## Counts are global, judgement is yours
 
@@ -31,10 +32,11 @@ rather than owning them.
 
 **Judgement is per account.** "Unreviewed" means there is no
 [review](/components/core/results/#reviews) row for the requesting account, and
-every gate and buffer decision reads only that account's own review. A run's
-stored `rating` is the worst domain across every reviewer, so a plan or ladder
-must never read it. Two reviewers pointed at the same cabinet therefore share its
-runs and keep separate worklists.
+a plan's buffer reads only that account's own reviews. Two reviewers pointed at
+the same cabinet therefore share its runs and keep separate worklists. A
+ladder's gate reads no review at all: it reads each run's
+[validator rating](/components/backend/ladders/#what-the-gate-reads), which is
+the same for every account.
 
 ## Pinned cases
 
@@ -194,6 +196,10 @@ bound is clamped to a ceiling of 500 runs. An **unbounded** target switches the
 reviewer-backlog check off; the per-cell target, the harness parallelism
 preference, and a ladder's gate still apply.
 
+On a ladder the same setting bounds the runs in flight rather than the runs
+outstanding, because a ladder's runs are rated without a review. See
+[runs in flight](/components/backend/ladders/#runs-in-flight).
+
 The override is nullable, and null is not zero. Null means "inherit the account's
 setting", a bound of `0` means "never top this up automatically", and unbounded
 means "top up everything". Each is a distinct instruction.
@@ -204,9 +210,10 @@ Top-up is a server endpoint rather than a background daemon. A plan enqueues whe
 a top-up is requested and, with `autoTopUp` on, when it is opened and when a
 review is submitted.
 
-A [ladder](/components/backend/ladders/#a-ladder-starts-disabled) is fed by the
-same endpoint at different moments: it is created disabled, opening it enqueues
-nothing, and enabling it starts the climb.
+A [ladder](/components/backend/ladders/#feeding-a-ladder) is fed by the same
+algorithm at different moments: it is created disabled, opening it enqueues
+nothing, enabling it starts the climb, and from then on the backend tops it up
+itself whenever a run of one of its cells finishes.
 
 The algorithm is the same for plans and ladders:
 
@@ -218,8 +225,9 @@ The algorithm is the same for plans and ladders:
 4. Defer any cell whose harness is already at its
    [parallelism cap](#harness-parallelism-comes-first).
 5. Emit whole cells, all of a cell's missing repeats together, until
-   `outstanding` reaches the buffer target. An unbounded target is never
-   reached, so every missing cell is emitted in one pass.
+   `outstanding` (in flight, on a ladder) reaches the buffer target. An
+   unbounded target is never reached, so every missing cell is emitted in one
+   pass.
 6. Walk the deferred cells, in the same order, until the buffer target is
    reached.
 

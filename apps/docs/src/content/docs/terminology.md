@@ -44,9 +44,10 @@ A climber is one [combination](#combination) enrolled on a [ladder](#ladder),
 the thing that actually does the climbing. Each climber's progress is tracked
 separately, so a model added to a standing ladder starts at [rung](#rung) one
 while the others carry on from wherever they had reached. A climber is climbing,
-awaiting review, [walled](#wall), held (stopped by hand), or [topped
-out](#topped-out). Climber and combination name the same thing: the first is the
-role it plays on a ladder, the second is what it is.
+blocked (it cannot progress until something is fixed), [walled](#wall), held
+(stopped by hand), or [topped out](#topped-out). Climber and combination name
+the same thing: the first is the role it plays on a ladder, the second is what
+it is.
 
 ## Combination
 
@@ -172,9 +173,12 @@ A ladder is an ordered series of test cases that [climbers](#climber) ascend one
 rung a model stops at is the result. Where a [coverage](#coverage) plan asks
 whether a cell has been run yet and treats its cells as an unordered set, a
 ladder asks how far a model gets and treats its steps as a sequence in which
-each is harder than the last. Whether a climber advances is decided by the
-ladder's gate, a single rule parameterised by a [rating](#rating) floor and a
-threshold. See [Ladders](/components/backend/ladders/).
+each is harder than the last. The climb is automated: whether a climber advances
+is decided by the ladder's gate, a single rule parameterised by a
+[rating](#rating) floor and a threshold and applied to the ratings the
+validators decided for a rung's runs, and the backend launches the next rung as
+soon as the gate clears. Every rung is a [validator-rated](#validator-rated) case
+version, and reviews never move a climb. See [Ladders](/components/backend/ladders/).
 
 ## Leaderboard
 
@@ -275,10 +279,11 @@ people other than the operator who produced it.
 
 ## Review buffer
 
-The review buffer is how many runs a [coverage](#coverage) plan or
-[ladder](#ladder) may leave waiting on you before it stops enqueueing:
-everything in flight, plus everything finished that you have not
-[reviewed](#review). Its size is a property of the reviewer, an account-wide
+The review buffer is how many runs a [coverage](#coverage) plan may leave
+waiting on you before it stops enqueueing: everything in flight, plus everything
+finished that you have not [reviewed](#review). On a [ladder](#ladder), whose
+runs are rated without a review, the same setting bounds only the runs in
+flight. Its size is a property of the reviewer, an account-wide
 setting overridable per plan or ladder, rather than of any one plan, because it
 describes how much work you want to come back to. It exists so the first few
 reviews can still steer a plan, where firing an entire matrix at once spends the
@@ -376,7 +381,7 @@ A [climber](#climber) has topped out when it has cleared every [rung](#rung) of
 its [ladder](#ladder): there is nothing left to climb, and the ladder has no
 further question to ask of that [combination](#combination). It is the only one
 of the five climber states that is nobody's move, the opposite end of the ladder
-from a [wall](#wall), and distinct from held, which is a stop the reviewer
+from a [wall](#wall), and distinct from held, which is a stop the ladder's owner
 chose.
 
 ## User account
@@ -437,12 +442,13 @@ frontend renders an interactive 3D model with three.js.
 
 A wall is the [rung](#rung) a [climber](#climber) failed and therefore stopped
 at, so "walled at rung four" is a ladder's headline result for one model. It is
-a verdict the gate computed from your [reviews](#review) of that rung's runs, so
-it is an opinion rather than a fact about the model: a reviewer can promote a
-climber past a wall by hand, and the automatic verdict is kept underneath rather
+a verdict the gate computed from the validator ratings of that rung's runs, so
+it is an opinion rather than a fact about the model: the ladder's owner can
+promote a climber past a wall by hand, and the automatic verdict is kept underneath rather
 than overwritten, so clearing the override restores exactly what the gate said.
-A failed or canceled job is never a wall, because infrastructure failures are
-retried and only completed runs are evidence.
+An infrastructure failure or a canceled run is never a wall, because neither
+says anything about the model. A run that ended on the model's own failure, such
+as a timeout, counts as a broken run.
 
 ## Web console
 

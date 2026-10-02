@@ -924,30 +924,38 @@ before calling it and must never make it the default.
 
 A [ladder](/components/backend/ladders/) is a sibling of the coverage plan: an
 ordered list of rungs (one [pinned case](#pinned-cases) each, addressed by a
-stable opaque id) that climbers ascend until a gate stops them. It reuses the
-plan's `kind: "combo"` groups, buffer, top-up, queue, and halting verbatim, so
-only its own endpoints are listed here.
+stable opaque id) that climbers ascend automatically until a gate over their
+runs' validator ratings stops them. It reuses the plan's `kind: "combo"` groups,
+buffer target, top-up, queue, and halting, so only its own endpoints and
+differences are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
   `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
   takes the ladder default, `paused: true, autoTopUp: true`: a new ladder
-  enqueues nothing until it is enabled, and from then on each review feeds it
-  (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
+  enqueues nothing until it is enabled, and from then on the backend tops it up
+  each time one of its runs finishes
+  (see [Feeding a ladder](/components/backend/ladders/#feeding-a-ladder)).
   Rungs are matched on their stable ids and reconciled rather than replaced, so a
   reorder, a version bump, or an engine re-pin keeps every climber's recorded
-  verdicts. A rung holding a
+  verdicts. A rung whose case version is not
+  [validator-rated](/terminology/#validator-rated), or is a
   [performance](/testing/performance/overview/) or
-  [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
-  ever produce a rating for the gate to read, so it would stall the climb silently.
+  [game jam](/testing/game-jam/overview/) case, is refused with `400` naming the
+  rung: its runs never carry a validator rating for the gate to read, so it
+  would stall the climb.
   Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
 - `GET /ladders/{id}/progress` — the board: every climber's status
-  (`climbing` / `awaitingReview` / `walled` / `held` / `toppedOut`), the rung it
-  stands on with the gate tally behind that answer, and its verdicts. It is a read:
-  verdicts the gate has resolved but nobody has recorded are computed live and
-  flagged `recorded: false`, then persisted by the next top-up, and a `GET` never
+  (`climbing` / `blocked` / `walled` / `held` / `toppedOut`), the rung it
+  stands on with the gate tally behind that answer, and its verdicts. A `blocked`
+  climber carries its reason in `blocked` (`unsupportedRung`, `unlaunchable`,
+  `failing`, or `unrated`), and every rung carries `supported`, false for a
+  stored rung whose case version is not validator-rated. It is a read: verdicts the gate
+  has resolved but nobody has recorded are computed live and flagged
+  `recorded: false`, then persisted by the next top-up, and a `GET` never
   advances a climber. A climber whose combination cannot be launched carries the
-  reason in `unlaunchable`. Schema:
+  reason in `unlaunchable`. `runsInFlight` is the occupancy the buffer target
+  caps, and `runsUnreviewed` counts the queue. Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
 - `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
   a permutation of the ladder's current rungs; adding or dropping one is an edit and
@@ -963,14 +971,18 @@ only its own endpoints are listed here.
   past and the control for "stop here regardless" is a hold.
 - `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
   `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
-  `.../halt-all` — the plan endpoints above, with two differences. A top-up only
-  ever launches a climber's current rung, while the queue and the buffer cover
-  every rung a climber has reached, so a rung the gate has decided keeps
-  offering the runs nobody reviewed
-  ([why](/components/backend/ladders/#feeding-and-reviewing-are-different-sets-of-rungs)).
-  And `pause` is the ladder's enable/disable switch: a ladder starts on its paused
-  side, and `{ "paused": false }` only permits spending, so the caller that enables
-  follows with a `topup`.
+  `.../halt-all` — the plan endpoints above, with four differences. A top-up only
+  ever launches a climber's current rung, while the queue covers every rung a
+  climber has reached, so a rung the gate has decided keeps offering the runs
+  nobody reviewed. A ladder's buffer target caps its runs in flight, and the
+  top-up's `outstanding` reports that count
+  ([runs in flight](/components/backend/ladders/#runs-in-flight)). `autoTopUp`
+  means the backend tops the ladder up whenever one of its runs finishes, its
+  owner edits it, or the backend starts
+  ([feeding a ladder](/components/backend/ladders/#feeding-a-ladder)), and a
+  review never does. And `pause` is the ladder's enable/disable switch: a ladder
+  starts on its paused side, and `{ "paused": false }` only permits spending, so
+  the caller that enables follows with a `topup`.
 
 ## Stopping runs in bulk
 

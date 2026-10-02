@@ -145,10 +145,11 @@ The console's Account section is where a reviewer declares what they want run
 and how fast: [coverage plans](/components/backend/coverage/), which are cases
 against combinations with a target per cell, and
 [ladders](/components/backend/ladders/), an ordered climb each combination
-ascends until it fails a rung. Both read the backend's derived board and offer
-the same actions: an auto top-up setting, top up now, halt, and halt all. Both
-serve the plan's or ladder's own unreviewed queue in its own order rather than
-newest-first.
+ascends automatically until it fails a rung. Both read the backend's derived
+board and offer the same actions: an auto top-up setting, top up now, halt, and
+halt all. Both serve the plan's or ladder's own unreviewed queue in its own order
+rather than newest-first. A ladder's queue is for labelling runs after the fact,
+and nothing on it moves the climb.
 
 A plan's auto top-up setting drives the backend's
 [`paused`](/components/backend/coverage/#pausing-and-halting) and `autoTopUp`
@@ -157,14 +158,17 @@ therefore turns auto top-up off, turning it back on clears the halt and tops up
 at once, and a top-up requested by hand on a halted plan clears the halt without
 turning auto top-up on. A ladder's setting is whether it is enabled, because a
 ladder [starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)
-and enabling it starts the climb; whether it tops up on review is a separate
-setting.
+and enabling it starts the climb; whether it keeps climbing as runs finish is a
+separate setting.
 
 A control carries its own state, so nothing beside it restates that state. A
-ladder's status note explains only what no control shows: a full review buffer,
-runs the queue is holding back, climbers nothing can launch, or a climb that is
-finished. A plan carries no such note, because its Dashboard already states each
-of those as a count. A halt reports what it cancelled.
+ladder's status note explains only what no control shows: runs the queue is
+holding back, climbers that are blocked and the fix for each, an enabled ladder
+with runs to launch and none in flight, or a climb that is finished. A climber
+blocked on a rung that is not validator-rated names that rung and offers to
+replace it. A plan carries no such note, because its
+Dashboard already states each of those as a count. A halt reports what it
+cancelled.
 
 A plan opens on three tabs, each its own URL so a reviewer can link and return
 to the one they are working from. Dashboard carries where the plan stands and
@@ -191,10 +195,12 @@ Each cell of the Tests matrix offers two launches: one more run, or the cell's
 whole shortfall. Both launch the cell's own pin, engine included, so a run
 bought by hand counts against the cell it came from.
 
-Nothing here polls in the background. A top-up happens when the console asks:
-opening a plan with auto top-up on, turning a plan's auto top-up or a ladder on,
-asking for one by hand, or, where the plan or ladder tops up on review,
-submitting a review, which is exactly when a buffer slot frees.
+Nothing here polls in the background. A plan's top-up happens when the console
+asks: opening a plan with auto top-up on, turning its auto top-up on, asking for
+one by hand, or, where the plan tops up on review, submitting a review, which is
+exactly when a buffer slot frees. A ladder's happens when the console turns it
+on or asks for one by hand, and otherwise the backend runs it as each run
+finishes, so a review never tops a ladder up.
 
 A plan and a ladder pin a case coordinate of test type, case, version, variant,
 and engine, held to what the resolved version declares. The engine is part of
@@ -204,7 +210,9 @@ slots, so two members of one configuration that bind different models are two
 cells the plan will run. A plan also sets runs per cell, the run order, the
 buffer-target override, and auto top-up. The buffer target may be set to no
 limit, as may the account-wide default it overrides, so a plan or ladder can run
-with no review buffer.
+with no review buffer. A ladder's editor labels the same override as the runs in
+flight at once, which is what it bounds there, and offers only validator-rated
+case versions as rungs.
 
 Launching a cell's runs by hand uses the cell's own engine, in both combination
 shapes, exactly as that plan's own top-up does. A run launched on another engine

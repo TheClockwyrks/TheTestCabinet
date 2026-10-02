@@ -74,10 +74,12 @@ the same choice between advancing every climber one rung and taking one climber
 as far as it gets. Both settings are purely a decision about the order cells are
 handed to `POST /jobs/batch`, and the dispatcher behaves identically either way.
 
-A plan or ladder keeps a [review
+A plan keeps a [review
 buffer](/components/backend/coverage/#the-review-buffer) of outstanding runs and
-refills it as they are reviewed, so the queue this dispatcher drains is normally
-a short, deliberately ordered slice rather than an entire sweep. The buffer is
+refills it as they are reviewed, and a ladder caps its
+[runs in flight](/components/backend/ladders/#runs-in-flight) and refills as they
+finish, so the queue this dispatcher drains is normally a short, deliberately
+ordered slice rather than an entire sweep. The buffer is
 bounded by default; an unbounded buffer enqueues every missing cell at once, and
 the queue then holds the whole sweep.
 

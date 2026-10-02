@@ -162,19 +162,23 @@ the public snapshot.
   per cell. The backend expands the declaration into a matrix, counts what
   exists against it, and enqueues what is missing.
 - A [ladder](/components/backend/ladders/) applies the same machinery to an
-  ordered series of cases, which each combination climbs until a gate stops it.
+  ordered series of cases, which each combination climbs automatically until a
+  gate over its runs' validator ratings stops it.
 
 Run counts stay global while judgement stays per-account. A run someone else
-produced satisfies a plan's target, while "unreviewed" means unreviewed by the
-requesting account and a ladder's gate reads only that account's own review, so
-two reviewers share the cabinet's runs while keeping separate worklists.
+produced satisfies a plan's target, and "unreviewed" means unreviewed by the
+requesting account, so two reviewers share the cabinet's runs while keeping
+separate worklists. A ladder's gate reads no review: it reads the rating the
+validators decided for each run.
 
 Enqueueing is buffered and serialized. A plan holds a review buffer rather than
-firing its whole matrix, refilling it is an endpoint a caller invokes rather
-than a background daemon, and each plan's or ladder's top-up claims its row
-first, so two concurrent callers cannot both enqueue for one shortfall. The
-buffer is bounded unless the plan's or ladder's buffer target is unbounded, in
-which case a top-up enqueues the whole matrix.
+firing its whole matrix, and a ladder caps its runs in flight. Refilling either
+is a top-up rather than a background daemon: a caller invokes a plan's, and the
+backend runs an enabled ladder's itself whenever one of its runs finishes. Each
+plan's or ladder's top-up claims its row first, so two concurrent callers cannot
+both enqueue for one shortfall. The buffer is bounded unless the plan's or
+ladder's buffer target is unbounded, in which case a top-up enqueues everything
+it is allowed to.
 
 ## Public snapshot
 
