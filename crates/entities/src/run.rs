@@ -115,9 +115,18 @@ pub struct Model {
     /// (`flawless`/`great`/`passable`/`scuffed`/`broken`). On a legacy run the worst
     /// rating any reviewer gave any domain, or `NULL` while it carries no reviews,
     /// maintained on review-add; on a [validator-rated](Self::validator_rated) run
-    /// the validator-decided rating, written at push time and untouched by reviews.
+    /// the validator-decided rating as overridden by the run's reviews, written at
+    /// push time and recomputed on review-add.
     #[sea_orm(nullable)]
     pub rating: Option<String>,
+    /// The validators' own functional rating for a
+    /// [validator-rated](Self::validator_rated) run, as its lowercase wire token, with
+    /// no review overrides folded in. It is what a ladder's gate reads. Written at push
+    /// time (and filled at startup for rows stored before the column existed), never
+    /// touched by a review. `NULL` on a legacy run, on a run whose state is not scored,
+    /// and on a run pushed while the backend did not hold its case version.
+    #[sea_orm(nullable)]
+    pub validator_rating: Option<String>,
     /// The run's aggregate **aesthetic** rating — the worst aesthetic rating any
     /// reviewer gave any domain — as its lowercase wire token
     /// (`legendary`/`amazing`/`good`/`okay`/`slop`), or `NULL` when no review has

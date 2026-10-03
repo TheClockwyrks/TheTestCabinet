@@ -27,6 +27,10 @@ use crate::store::DefinitionStore;
 #[path = "api.test.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "api/flow_harness.test.rs"]
+mod flow_harness;
+
 mod comparisons;
 mod coverage;
 mod game_jams;
@@ -40,6 +44,7 @@ mod harness_config;
 mod ingest_api;
 mod jobs;
 mod ladders;
+mod launch;
 mod model_candidates;
 mod model_probes;
 mod models;
@@ -58,11 +63,11 @@ pub use comparisons::ComparisonInput;
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
-    CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
-    CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
-    CoverageQueue, CoverageQueueEntry, CoverageSchedule, CoverageSettings, CoverageSettingsInput,
-    HaltResult, PauseInput, ReviewPlanCase, ReviewPlanCombo, TopUpBlocked, TopUpLaunch,
-    TopUpResult, TopUpSkipped,
+    BlockedCell, CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
+    CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanRuns,
+    CoveragePlanSummary, CoverageQueue, CoverageQueueEntry, CoverageSettings,
+    CoverageSettingsInput, HaltResult, LaunchPassResult, LaunchSkipped, LaunchedCell,
+    PlanCellRetryInput, ReviewPlanCase, ReviewPlanCombo,
 };
 pub use gg::GgRunRequest;
 pub use gg_agent::{GgSavedAgent, GgSavedAgentInput};
@@ -77,12 +82,15 @@ pub use jobs::{
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
     StreamResync, StreamTopicsBody,
 };
+// The backend's boot runs a launch pass of every running ladder dispatch and every filling
+// plan, so a restart never strands one.
 pub use ladders::{
-    ClimberStatus, Ladder, LadderAxis, LadderCell, LadderClimber, LadderClimberInput, LadderInput,
-    LadderOut, LadderOutcome, LadderOverrideInput, LadderProgress, LadderProgressRung, LadderRung,
-    LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule, RungTally,
-    StoredClimberOut,
+    ClimberBlock, ClimberStatus, DispatchRuns, DispatchStatus, Ladder, LadderAxis, LadderClimber,
+    LadderDispatch, LadderDispatchSummary, LadderInput, LadderProgress, LadderProgressRung,
+    LadderRetryInput, LadderRung, LadderRungInput, LadderRungOrderInput, LadderSlot,
+    LadderStopInput, LadderSummary, RungTally, SlotCounts, SlotStatus,
 };
+pub(crate) use launch::spawn_startup_passes;
 pub use model_candidates::{CandidateOut, ModelCandidatesOut};
 pub use model_probes::{
     ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
@@ -548,6 +556,9 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/{id}/events", post(jobs::ingest_events))
         .route("/jobs/{id}/preview", post(jobs::ingest_preview))
         .route("/jobs/{id}/status", post(jobs::update_status))
+        // The dispatcher's report of a job whose driver is gone without reporting
+        // (service token): it fails the job as the driver's own `failed` report would.
+        .route("/jobs/{id}/lost", post(jobs::report_lost))
         // The artifact service's internal job-token verify call: it forwards the
         // driver's per-job token here (the backend is the token authority) before
         // accepting an upload. The presented token is the secret, so this needs no
@@ -584,10 +595,9 @@ pub fn router(state: AppState) -> Router {
             "/notifications/{stream}/topics",
             put(jobs::set_stream_topics),
         )
-        // Reviewer coverage tooling (auth-gated; keyed to the token's account):
-        // reusable groups, multiple declarative plans, and the coverage matrix a plan
-        // expands into. Console-only — the public site carries no token and never
-        // calls these.
+        // Coverage tooling (auth-gated; keyed to the token's account): reusable
+        // groups, multiple declarative plans, and the coverage matrix a plan expands
+        // into. Console-only — the public site carries no token and never calls these.
         .route(
             "/coverage-groups",
             get(coverage::list_groups).post(coverage::create_group),
@@ -609,74 +619,52 @@ pub fn router(state: AppState) -> Router {
             "/coverage-plans/{id}/coverage",
             get(coverage::plan_coverage),
         )
-        // The account's review-buffer target: how many runs it wants outstanding
-        // (in flight, or completed and not yet reviewed by it) across a plan or ladder
-        // before topping up stops, or no limit at all. One setting per account,
-        // overridable per plan and per ladder below.
+        // The account's runs-in-flight limit: how many of one plan's or one ladder
+        // dispatch's jobs may be in flight at once, or no limit. Overridable per plan
+        // and per ladder.
         .route(
             "/coverage-settings",
             get(coverage::settings).put(coverage::set_settings),
         )
-        // How a plan is *fed*, held apart from what it declares: its emission axis,
-        // whether it is paused, whether reviewing triggers a top-up, and its buffer
-        // override. Split from `PUT /coverage-plans/{id}` on purpose — saving an
-        // edited model list must not be able to un-pause a plan.
+        // Start filling the plan and run a launch pass: whole missing cells, in the
+        // plan's order, under its runs-in-flight limit. Every finished run of a filling
+        // plan runs another pass, until every launchable cell is filled.
+        .route("/coverage-plans/{id}/fill", post(coverage::fill_plan))
+        // Retry a cell blocked on infrastructure failures.
         .route(
-            "/coverage-plans/{id}/schedule",
-            get(coverage::plan_schedule).put(coverage::set_plan_schedule),
+            "/coverage-plans/{id}/cells/retry",
+            post(coverage::retry_plan_cell),
         )
-        // Enqueue the plan's next slice of missing runs, whole cells at a time, until
-        // the review buffer is full. Serialized per plan by a leased claim marker, so
-        // two console tabs cannot both observe the same shortfall and both enqueue;
-        // otherwise idempotent, since it recomputes what is outstanding every call.
-        .route("/coverage-plans/{id}/topup", post(coverage::top_up_plan))
-        // The plan's own unreviewed-by-me runs **in the plan's order** — not
-        // newest-first like the global Unreviewed page — so reviewing walks the buffer
-        // in the order it was deliberately filled.
+        // The plan's own unreviewed-by-me runs in the plan's order.
         .route("/coverage-plans/{id}/queue", get(coverage::plan_queue))
-        // The three halting controls, in increasing order of destruction: stop topping
-        // up and leave the queue alone (`pause`); that plus cancel this plan's runs
-        // that have cost nothing yet (`halt`, the common case); that plus the ones
-        // already executing (`halt-all`, rare, must be confirmed). Each cancels only
-        // jobs whose `origin` is this plan, so a run launched by hand is never swept
-        // up, and each reports how many it stopped.
-        .route("/coverage-plans/{id}/pause", post(coverage::pause_plan))
+        .route("/coverage-plans/{id}/runs", get(coverage::plan_runs))
+        // End filling, and cancel this plan's runs that have cost nothing yet
+        // (`halt`), or every run it launched (`halt-all`, rare, must be confirmed).
         .route("/coverage-plans/{id}/halt", post(coverage::halt_plan))
         .route("/coverage-plans/{id}/halt-all", post(coverage::halt_all_plan))
-        // Ladders: the plan's sibling, an **ordered, gated** climb. Same groups, same
-        // resolver, same counts, same buffer, same halting controls; the difference is
-        // that a combination only reaches the next rung by clearing the current one,
-        // and progress is stored per combination rather than as one ladder-wide
-        // pointer. Auth-gated and console-only, like the rest of the coverage surface.
+        // Ladders: an ordered, gated climb. The ladder is a configuration; Run starts a
+        // dispatch of it, which owns its runs and its standing, and Stop ends it.
+        // `/ladders/summary` is registered before `/ladders/{id}` so it is not read as
+        // an id.
         .route("/ladders", get(ladders::list).post(ladders::create))
+        .route("/ladders/summary", get(ladders::summary))
         .route(
             "/ladders/{id}",
             get(ladders::get).put(ladders::update).delete(ladders::delete),
         )
-        .route(
-            "/ladders/{id}/schedule",
-            get(ladders::schedule).put(ladders::set_schedule),
-        )
-        // The board: every climber's position, the tally behind each gate verdict, and
-        // the rung each is stuck on. A pure read — a verdict the gate has resolved but
-        // nobody has recorded is computed live and flagged as unrecorded; the top-up is
-        // what persists it.
+        .route("/ladders/{id}/run", post(ladders::run))
+        .route("/ladders/{id}/stop", post(ladders::stop))
+        // The board: the latest dispatch, every climber's status, and each rung slot's
+        // status and tally. A read — a verdict the gate has resolved but nobody has
+        // recorded is computed live, and the next launch pass persists it. The backend
+        // runs every launch pass itself, prompted by Run, a Retry and the dispatch's
+        // finishing runs.
         .route("/ladders/{id}/progress", get(ladders::progress))
-        .route("/ladders/{id}/topup", post(ladders::top_up))
         .route("/ladders/{id}/queue", get(ladders::queue))
-        .route("/ladders/{id}/pause", post(ladders::pause))
-        .route("/ladders/{id}/halt", post(ladders::halt))
-        .route("/ladders/{id}/halt-all", post(ladders::halt_all))
-        // Steering one climber (hold it here, climb it first, focus it) — never its
-        // progress, which is derived from its outcomes and has exactly one source.
-        .route("/ladders/{id}/climbers", post(ladders::set_climber))
-        // A reviewer's manual verdict override in either direction — `promote` past a
-        // gate a combination failed, or wall it early. Recorded beside the automatic
-        // outcome rather than replacing it, so a recompute can never quietly undo it
-        // and clearing the override (`outcome: null`) reverses exactly.
-        .route("/ladders/{id}/outcomes", post(ladders::set_outcome))
-        // Reorder the rungs. Rungs carry stable opaque ids, so a reorder moves
-        // positions without disturbing any climber's recorded progress.
+        // Retry a climber of the running dispatch blocked on infrastructure failures or
+        // an unlaunchable combination.
+        .route("/ladders/{id}/climbers/retry", post(ladders::retry_climber))
+        // Reorder the configuration's rungs by their stable ids.
         .route("/ladders/{id}/rungs/order", post(ladders::reorder_rungs))
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)

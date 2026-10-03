@@ -1,17 +1,17 @@
 {
   "$defs": {
-    "BufferTarget": {
-      "description": "How deep a plan's or ladder's review buffer may go: the most runs the requesting\naccount may have outstanding (in flight, or finished and unreviewed by them)\nbefore a top-up stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the\nreviewer types can be mistaken for it.",
+    "InFlightLimit": {
+      "description": "How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a\nlaunch pass stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the owner\ntypes can be mistaken for it.",
       "oneOf": [
         {
-          "description": "Keep at most `runs` runs outstanding. `0` is a legitimate bound — \"never top\nthis up automatically\" — and is not the same instruction as no bound.",
+          "description": "Keep at most `runs` jobs in flight. `0` is a legitimate bound — \"launch nothing\"\n— and is not the same instruction as no bound.",
           "properties": {
             "kind": {
               "const": "bounded",
               "type": "string"
             },
             "runs": {
-              "description": "The most runs the requester may have outstanding before a top-up stops.",
+              "description": "The most jobs that may be in flight before a launch pass stops.",
               "format": "uint32",
               "minimum": 0,
               "type": "integer"
@@ -21,7 +21,7 @@
           "type": "object"
         },
         {
-          "description": "No bound: a top-up emits every missing cell it can, however many runs are\nalready waiting on the reviewer. The per-cell target and the harness\nparallelism cap still apply; only the reviewer-backlog check is gone.",
+          "description": "No bound: a launch pass emits every missing cell it can. The per-cell target and\nthe harness parallelism cap still apply.",
           "properties": {
             "kind": {
               "const": "unbounded",
@@ -36,18 +36,18 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write.\nOne setting today; the resource exists because the review buffer is a property of\nthe *reviewer* (how much work they want waiting on them) rather than of any one\nplan, with a per-plan override for the exceptions.",
+  "description": "The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write: the\naccount's default runs-in-flight limit, which a plan or ladder may override.",
   "properties": {
-    "bufferTarget": {
-      "$ref": "#/$defs/BufferTarget",
-      "description": "The account's default review-buffer target: how many runs a top-up may leave\noutstanding (in flight, or finished and unreviewed) before it stops, or\n`unbounded` for a reviewer who wants every plan to run through everything\nunless it says otherwise."
+    "inFlightLimit": {
+      "$ref": "#/$defs/InFlightLimit",
+      "description": "How many of one plan's or one ladder dispatch's jobs may be in flight at once, or\n`unbounded`."
     },
     "isDefault": {
-      "description": "Whether [`Self::buffer_target`] is the account's own choice or the backend's\ncompiled-in default because they have never chosen one. A `PUT` always makes\nit a choice.",
+      "description": "Whether [`Self::in_flight_limit`] is the account's own choice or the backend's\ncompiled-in default because they have never chosen one. A `PUT` always makes it\na choice.",
       "type": "boolean"
     }
   },
-  "required": ["bufferTarget", "isDefault"],
+  "required": ["inFlightLimit", "isDefault"],
   "title": "CoverageSettings",
   "type": "object"
 }

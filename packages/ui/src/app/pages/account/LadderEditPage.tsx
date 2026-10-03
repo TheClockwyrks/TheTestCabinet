@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type {
-  BufferTarget,
   CoverageGroup,
+  InFlightLimit,
   ReviewPlanCombo,
 } from "@clockwyrks/run-record/coverage";
 import type {
@@ -20,10 +20,9 @@ import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { SettingRow } from "../../components/SettingRow";
-import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
-import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
-import { BufferTargetField, ComboPicker } from "./coveragePickers";
+import { DEFAULT_IN_FLIGHT_LIMIT } from "./inFlightLimit";
+import { ComboPicker, InFlightLimitField } from "./coveragePickers";
 import {
   DEFAULT_GATE,
   GateEditor,
@@ -32,6 +31,7 @@ import {
   rungInput,
 } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { isIneligible, useVersionEligibility } from "./rungEligibility";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -41,15 +41,19 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // The ladder editor (`/account/ladders/new` and `/account/ladders/:ladderId/edit`):
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
 // reusable combination groups a coverage plan references, plus one-offs), the single
-// gate every rung is judged by, and how the ladder is fed (climb order, review
-// buffer, auto-top-up).
+// gate every rung is decided by, and how a dispatch of it launches its runs (climb
+// order and runs in flight at once).
 //
-// Rungs are reconciled on their stable ids by the save, so reordering the climb or
-// bumping a rung's version here keeps every climber's recorded verdicts attached to
-// the case that earned them. Enabling and halting — the two controls that decide
-// whether the ladder spends anything — are deliberately not here: they belong beside
-// the board that shows what would be started or cancelled. Saving here never enqueues,
-// and a ladder created here is created disabled.
+// A rung must pin a validator-rated case version, because the gate reads validator
+// ratings and nothing else: the rung picker never offers a legacy version, and a rung
+// the ladder already holds that is one is marked, with the save refused until it is
+// replaced (the backend refuses it too, and its message is shown as it comes).
+//
+// A ladder is a configuration: saving it never launches or changes anything that is
+// running. Run ladder, on the ladder's dashboard, starts a dispatch of the
+// configuration as it stands at that moment, and an edit applies to the next Run. A
+// rung whose case has a newer ingested version is flagged; a Run climbs the version
+// the rung pins.
 // Console-only; gated on a signed-in account.
 export function LadderEditPage() {
   const { ladderId } = useParams();
@@ -78,19 +82,18 @@ export function LadderEditPage() {
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [rungs, setRungs] = useState<LadderRungInput[]>([]);
-  // How the ladder is fed. The defaults match the wire's, so a ladder created here is
-  // fed exactly as one created by any other client.
+  // How a dispatch launches its runs. The defaults match the wire's, so a ladder
+  // created here launches exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
-  const [autoTopUp, setAutoTopUp] = useState(true);
-  const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
-  const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
-    DEFAULT_BUFFER_TARGET,
+  const [inFlightLimit, setInFlightLimit] = useState<InFlightLimit | null>(
+    null,
   );
-  // Whether the ladder was enabled when this form loaded. Not state, because nothing
-  // here renders or edits it: it is only the fallback for the save's read-back below,
-  // for a transport that cannot re-read a schedule on its own. A ladder being created
-  // has none, and is created disabled.
-  const loadedPaused = useRef(true);
+  const [accountLimit, setAccountLimit] = useState<InFlightLimit>(
+    DEFAULT_IN_FLIGHT_LIMIT,
+  );
+  // Whether a dispatch of this ladder is running, so the page can say an edit applies
+  // to the next Run rather than to it.
+  const [dispatchRunning, setDispatchRunning] = useState(false);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -123,9 +126,7 @@ export function LadderEditPage() {
           // from being a field the ladder loses on the next save.
           setRungs(existing.rungs.map(rungInput));
           setOuterAxis(existing.outerAxis);
-          setAutoTopUp(existing.autoTopUp);
-          setBufferTarget(existing.bufferTarget ?? null);
-          loadedPaused.current = existing.paused;
+          setInFlightLimit(existing.inFlightLimit ?? null);
         }
         setLoading(false);
       })
@@ -140,12 +141,23 @@ export function LadderEditPage() {
       .catch(() => {
         /* optional; the model field stays free-text */
       });
-    // The account default the buffer override falls back to, fetched only so the field
+    if (editing && ladderId) {
+      backend
+        .getLadderProgress?.(ladderId, token)
+        .then(
+          (board) =>
+            active && setDispatchRunning(board.dispatch?.status === "running"),
+        )
+        .catch(() => {
+          /* optional; the note simply stays away */
+        });
+    }
+    // The account default the limit override falls back to, fetched only so the field
     // can *show* what an empty value inherits. Failing to read it must not block
     // editing the ladder, so the placeholder keeps the compiled-in fallback.
     backend
       .getCoverageSettings?.(token)
-      .then((s) => active && setAccountBuffer(s.bufferTarget))
+      .then((s) => active && setAccountLimit(s.inFlightLimit))
       .catch(() => {
         /* optional; the placeholder stays the compiled-in default */
       });
@@ -154,6 +166,14 @@ export function LadderEditPage() {
     };
     // `runsPerCellField.set` is referentially stable (see components/NumberField).
   }, [backend, token, editing, ladderId, runsPerCellField.set]);
+
+  // Which rungs of the climb a ladder cannot climb at all. Known only once each rung's
+  // version has resolved; one the backend does not hold is allowed, as the backend
+  // allows it.
+  const eligibilityOf = useVersionEligibility(rungs);
+  const unclimbable = rungs.filter((r) =>
+    isIneligible(eligibilityOf(r)),
+  ).length;
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -173,25 +193,16 @@ export function LadderEditPage() {
     (comboGroupIds.length > 0 || combos.length > 0) &&
     // A ladder with no run target has no climb to measure, so an emptied or
     // out-of-range field refuses the save rather than being corrected in place.
-    runsPerCellField.valid;
+    runsPerCellField.valid &&
+    // The backend refuses a rung that is not validator-rated, so the save is refused
+    // here first, with the rung marked in the climb above.
+    unclimbable === 0;
 
   async function onSave() {
     if (!token || !savable) return;
     setBusy(true);
     setError(null);
     try {
-      // Whether the ladder is enabled is not a setting of this page — it is the
-      // dashboard's control, beside the board that shows what enabling would start —
-      // but the schedule is written whole, so the flag has to be carried. It is read
-      // back **here**, at save time, rather than held from the load: an edit that
-      // takes ten minutes must not re-assert the state the ladder was in when the
-      // form opened, and so quietly re-enable a ladder its reviewer has since
-      // disabled. A new ladder is always created disabled.
-      const paused =
-        editing && ladderId
-          ? ((await backend?.getLadderSchedule?.(ladderId, token))?.paused ??
-            loadedPaused.current)
-          : true;
       const input: LadderInput = {
         name: name.trim(),
         runsPerCell,
@@ -199,15 +210,11 @@ export function LadderEditPage() {
         comboGroupIds,
         combos,
         rungs,
-        schedule: {
-          outerAxis,
-          paused,
-          autoTopUp,
-          // Omitted when there is no override — null means "inherit my account
-          // default", a bound of 0 means "never top this ladder up", and no limit
-          // means "everything".
-          ...(bufferTarget === null ? {} : { bufferTarget }),
-        },
+        outerAxis,
+        // Omitted when there is no override — absent means "inherit my account
+        // default", a bound of 0 means "launch nothing", and no limit means "launch
+        // every rung as soon as it is reached".
+        ...(inFlightLimit === null ? {} : { inFlightLimit }),
       };
       if (editing && ladderId && backend?.updateLadder) {
         await backend.updateLadder(ladderId, input, token);
@@ -254,6 +261,12 @@ export function LadderEditPage() {
         <LoadingState label="Loading…" />
       ) : (
         <section className={styles.editor}>
+          {dispatchRunning && (
+            <p className={exec.notice}>
+              A dispatch of this ladder is running. Edits apply to the next Run;
+              the running dispatch keeps the configuration it started with.
+            </p>
+          )}
           <label className={styles.nameField}>
             <span className={exec.fieldLabel}>Ladder name</span>
             <input
@@ -265,7 +278,9 @@ export function LadderEditPage() {
             />
           </label>
 
-          <p className={exec.sectionLabel}>The climb</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            The climb
+          </p>
           <RungListEditor
             rungs={rungs}
             runsPerCell={runsPerCell}
@@ -294,42 +309,35 @@ export function LadderEditPage() {
             )}
           </SettingRow>
 
-          <p className={exec.sectionLabel}>The gate</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            The gate
+          </p>
           <GateEditor
             gate={gate}
             runsPerCell={runsPerCell}
             onChange={setGate}
           />
 
-          <p className={exec.sectionLabel}>Feeding the ladder</p>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
+            Launching runs
+          </p>
           <LadderAxisPicker value={outerAxis} onChange={setOuterAxis} />
-          <BufferTargetField
-            value={bufferTarget}
-            accountDefault={accountBuffer}
-            onChange={setBufferTarget}
+          <InFlightLimitField
+            value={inFlightLimit}
+            accountDefault={accountLimit}
+            onChange={setInFlightLimit}
             subject="ladder"
           />
-          <SettingRow
-            label="Top this ladder up when I submit a review"
-            description="Each review submitted enqueues more of the rung every climber is currently on, up to the review buffer."
-            help="On by default, and it only applies once the ladder is enabled: a review is the verdict that decides a rung, so it is the moment the next runs should be asked for. Turn it off to feed the ladder only with “Top up now”."
-            modified={!autoTopUp}
-            onReset={() => setAutoTopUp(true)}
-          >
-            {(id) => (
-              <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
-            )}
-          </SettingRow>
           {!editing && (
             <p className={styles.empty}>
-              A new ladder starts disabled and enqueues nothing. Enable it from
-              its dashboard when you want the climb to start.
+              Saving launches nothing. Open the ladder and press Run ladder when
+              you want the climb to start.
             </p>
           )}
 
-          <p className={exec.sectionLabel}>
+          <p className={`${exec.sectionLabel} ${styles.sectionBreak}`}>
             Climbers{" "}
-            <HelpTip text="Groups are shared with your coverage plans, so editing one reshapes both. A climber added to a standing ladder starts at rung one while the others carry on from where they had got to." />
+            <HelpTip text="Groups are shared with your coverage plans, so editing one reshapes both. Climbers are resolved when the ladder is run: a climber added later joins the next Run." />
           </p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
@@ -368,6 +376,18 @@ export function LadderEditPage() {
           {runsPerCellField.message && (
             <p className={`${exec.notice} ${exec.warn}`}>
               {runsPerCellField.message}
+            </p>
+          )}
+          {unclimbable > 0 && (
+            <p className={`${exec.notice} ${exec.warn}`}>
+              {unclimbable === 1
+                ? "One rung is not validator-rated"
+                : `${unclimbable} rungs are not validator-rated`}
+              , so this ladder cannot climb {unclimbable === 1 ? "it" : "them"}:
+              a ladder&rsquo;s gate reads validator ratings, and moves on
+              without anyone reviewing. Remove{" "}
+              {unclimbable === 1 ? "the marked rung" : "each marked rung"} and
+              add a validator-rated version of the case in its place to save.
             </p>
           )}
 

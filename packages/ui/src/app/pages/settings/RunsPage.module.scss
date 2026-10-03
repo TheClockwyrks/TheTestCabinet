@@ -1,6 +1,6 @@
 @use "../../styles/tokens" as t;
 
-// The Reviewing settings surface: one panel stacking the account-wide reviewing
+// The Runs settings surface: one panel stacking the account-wide run
 // preferences, each a label block over its control (the Appearance tab's shape).
 .panel {
   display: flex;

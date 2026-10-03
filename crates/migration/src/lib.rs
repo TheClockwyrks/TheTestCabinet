@@ -73,6 +73,12 @@ mod m20260923_000046_add_model_list_price;
 mod m20260923_000047_add_model_provider_policy;
 mod m20260928_000048_widen_model_list_price;
 mod m20260929_000049_add_model_quantization_filter;
+mod m20261002_000050_add_run_validator_rating;
+mod m20261002_000051_add_ladder_top_up_pending;
+mod m20261002_000052_add_job_retried_by;
+mod m20261002_000053_add_ladder_top_up_requested;
+mod m20261002_000054_ladder_plain_flow;
+mod m20261002_000055_ladder_dispatch;
 
 pub struct Migrator;
 
@@ -133,6 +139,12 @@ impl MigratorTrait for Migrator {
             Box::new(m20260923_000047_add_model_provider_policy::Migration),
             Box::new(m20260928_000048_widen_model_list_price::Migration),
             Box::new(m20260929_000049_add_model_quantization_filter::Migration),
+            Box::new(m20261002_000050_add_run_validator_rating::Migration),
+            Box::new(m20261002_000051_add_ladder_top_up_pending::Migration),
+            Box::new(m20261002_000052_add_job_retried_by::Migration),
+            Box::new(m20261002_000053_add_ladder_top_up_requested::Migration),
+            Box::new(m20261002_000054_ladder_plain_flow::Migration),
+            Box::new(m20261002_000055_ladder_dispatch::Migration),
         ]
     }
 }

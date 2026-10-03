@@ -43,9 +43,6 @@ pub mod store;
 
 use std::sync::Arc;
 
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
-
 use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
@@ -128,6 +125,17 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
     }
 
+    // The validators' own rating a ladder's gate reads, for the validator-rated runs
+    // stored before the column existed. Deciding it needs each version's checklist, so it
+    // reads the definition store; a run whose version the store does not hold yet (a
+    // deployment whose store starts empty) is left for the gate to rate when it next
+    // reads it. Idempotent, best-effort, never blocks startup.
+    match db.backfill_validator_rating(&store, None).await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run validator ratings"),
+        Err(err) => tracing::warn!(error = %err, "skipping run validator-rating backfill"),
+    }
+
     // The static analyzer's generation, lifted out of records that already carry a code
     // analysis but were stored before the column existed. This lifts a number the record
     // blob already holds — it never *analyses* anything, because a historical run's tree
@@ -160,7 +168,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // only the configuration's name, so the account that launched it is traced through the
     // job that produced it and the name matched against that account's configurations. A run
     // that resolves to no configuration, or to two, keeps its `NULL` and counts toward no gg
-    // cell — an under-count the next top-up fills, where a guess would merge two
+    // cell — an under-count the next launch pass fills, where a guess would merge two
     // configurations' histories for good. Best-effort and never blocks startup, as the
     // backfills above are, and unlike them it runs exactly once: the name it resolves
     // through belongs to a library the operator keeps editing, so a later pass would answer
@@ -230,27 +238,26 @@ pub async fn build(config: Config) -> error::Result<Backend> {
 
     let db = Arc::new(db);
 
-    // Reconcile orphaned in-flight jobs before serving — but only single-box,
-    // where a backend restart means the whole stack (dispatcher + every driver)
-    // went down together, so any job the store still believes is `dispatched`/
-    // `running` is dead and can never reach a terminal state on its own. Running
-    // this before the router serves is race-free: no driver can be mid-report and
-    // the dispatcher cannot claim work until `/jobs/next` is up. A remote backend
-    // can restart while drivers keep running, so it must not reap (the gate).
-    if config.is_single_box() {
-        let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
-        let reaped = db
-            .fail_in_flight_jobs(
-                &now,
-                "interrupted: the backend restarted while this run was in flight",
-            )
-            .await?;
-        if reaped > 0 {
-            tracing::info!(
-                reaped,
-                "reaped in-flight jobs orphaned by a backend restart"
-            );
-        }
+    // In-flight jobs are never reaped at startup. No deployment runs drivers inside the
+    // backend's lifecycle: the dispatcher creates a Kubernetes Job per run, which keeps
+    // running across a backend restart and reports when it is done. A driver that dies
+    // without reporting — one `Job` or, after a whole-machine restart, all of them — is
+    // found by the dispatcher, which compares the jobs this backend holds in flight with
+    // the driver `Job`s the cluster actually runs and reports each lost one
+    // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
+    // are still executing.
+    //
+    // A launch-pass claim still held at startup, on a plan or a ladder, was held by a pass
+    // that died with the previous process: the backend is the single coordinator, so
+    // nothing else can hold one. Left in place it would turn the startup passes away as
+    // busy until its lease ran out, with no holder left to serve the request that leaves
+    // behind.
+    let released = db.release_all_launch_claims().await?;
+    if released > 0 {
+        tracing::info!(
+            released,
+            "released launch-pass claims left by the previous process"
+        );
     }
 
     let r2 = config.r2.clone().map(R2Client::new);
@@ -371,6 +378,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
+    // A running ladder dispatch and a filling plan are fed when one of their runs
+    // finishes, and a restart loses some of those moments: a feed that was spawned but had
+    // not finished dies with the process. Run a launch pass of each once, as soon as the
+    // store can be served.
+    api::spawn_startup_passes(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -381,3 +393,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         artifact_sweeper,
     })
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

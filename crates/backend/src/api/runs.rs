@@ -507,7 +507,7 @@ impl ManifestCache {
 /// resolved manifest is cached per `(slug, version)` so a case is read once per
 /// page rather than once per run; a run whose case isn't ingested keeps
 /// `score = None`.
-fn summary_cards(
+pub(super) fn summary_cards(
     store: &DefinitionStore,
     case_names: &CaseNames,
     runs: &[StoredRun],

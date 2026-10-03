@@ -141,30 +141,30 @@ fails after starting arrives as a
 
 ## Planning and steering runs
 
-The console's Account section is where a reviewer declares what they want run
-and how fast: [coverage plans](/components/backend/coverage/), which are cases
-against combinations with a target per cell, and
-[ladders](/components/backend/ladders/), an ordered climb each combination
-ascends until it fails a rung. Both read the backend's derived board and offer
-the same actions: an auto top-up setting, top up now, halt, and halt all. Both
-serve the plan's or ladder's own unreviewed queue in its own order rather than
-newest-first.
+The console's Account section is where a reviewer declares what they want run:
+[coverage plans](/components/backend/coverage/), which are cases against
+combinations with a target per cell, and [ladders](/components/backend/ladders/),
+an ordered climb each combination ascends automatically until it fails a rung.
+Both serve their own unreviewed queue in their own order rather than
+newest-first. A review queue is for labelling runs after the fact, and nothing on
+it launches or holds back a run.
 
-A plan's auto top-up setting drives the backend's
-[`paused`](/components/backend/coverage/#pausing-and-halting) and `autoTopUp`
-together, because a halt sets `paused` and that blocks every top-up. A halt
-therefore turns auto top-up off, turning it back on clears the halt and tops up
-at once, and a top-up requested by hand on a halted plan clears the halt without
-turning auto top-up on. A ladder's setting is whether it is enabled, because a
-ladder [starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)
-and enabling it starts the climb; whether it tops up on review is a separate
-setting.
+The account-wide runs-in-flight limit lives in Settings → Runs. A plan and a
+ladder may override it, and either may be set to no limit.
 
-A control carries its own state, so nothing beside it restates that state. A
-ladder's status note explains only what no control shows: a full review buffer,
-runs the queue is holding back, climbers nothing can launch, or a climb that is
-finished. A plan carries no such note, because its Dashboard already states each
-of those as a count. A halt reports what it cancelled.
+A control carries its own state, so nothing beside it restates that state. Every
+figure on a card or a dashboard sits in a fixed slot with tabular numerals, so a
+number changing never moves anything else.
+
+### The plans list
+
+Each plan's card shows its name and, below it, its runs per cell. A progress bar
+measures runs: the runs that count, capped at each cell's target, out of every
+cell's target. The text beside the bar is the cells filled, for example
+"5/8 cells". The bar's hover text gives the run detail: runs done of the total,
+runs in flight, and runs still to launch.
+
+### A plan
 
 A plan opens on three tabs, each its own URL so a reviewer can link and return
 to the one they are working from. Dashboard carries where the plan stands and
@@ -173,49 +173,110 @@ run, each row opening that run's verdict. Tests is the matrix of what the plan
 still needs, grouped and ordered exactly as the plan runs it.
 
 The three tabs are one surface with three bodies. They share one read of the
-board, one set of controls, and one on-open top-up, so pressing a tab moves only
-the body and the report of what a control just did survives the press.
+board and one set of controls, so pressing a tab moves only the body and the
+report of what a control just did survives the press.
 
-Every figure and control sits inside a panel. The Dashboard states the plan's
-position as counts: cells covered, runs missing, buffer occupancy, runs awaiting
-the reviewer, runs the queue is holding back, and cells nothing can launch.
+The Dashboard states the plan's position as counts: cells filled, runs done of
+the total, runs in flight against the limit, runs to review, and blocked cells.
+To review is informational. Its controls are All missing, which starts
+[filling](/components/backend/coverage/#filling-a-plan) the plan, Halt, and Halt
+all, which is confirmed. While the plan is filling, the control line says so and
+Halt stops it. All missing stays available, and pressing it runs another launch
+pass, which resumes a fill left with nothing in flight. Under a runs-in-flight
+limit of 0 the plan says it launches nothing, and All missing is unavailable.
 
 The Dashboard also breaks the plan's runs down by model, by combination, by test
 case, and by rating, and charts the rating mix per combination. The board's
 counts say how many runs a cell has; the breakdowns say what those runs were,
 which is what tells a covered plan apart from a covered plan whose runs are all
-broken. They are derived from the recorded runs matching the plan's cells, so a
-rating that moves under a review is reflected on the next read.
+broken. The breakdowns read [the plan's runs](/components/backend/coverage/#the-plans-runs),
+so they describe the same runs the counts do (less any run whose record this build
+can no longer decode), and a run beyond a cell's target appears in neither. The In
+flight figure is the one exception: it is the plan's own jobs against its limit,
+which can include a job whose cell other runs have since filled, and its tooltip
+says so.
 
-Each cell of the Tests matrix offers two launches: one more run, or the cell's
-whole shortfall. Both launch the cell's own pin, engine included, so a run
-bought by hand counts against the cell it came from.
+Each cell of the Tests matrix links to the run listing narrowed to that cell's
+case, version, harness, and model. The listing cannot be narrowed to the plan's
+runs alone, so the link is named All runs and says that it includes runs beyond
+the cell's target.
 
-Nothing here polls in the background. A top-up happens when the console asks:
-opening a plan with auto top-up on, turning a plan's auto top-up or a ladder on,
-asking for one by hand, or, where the plan or ladder tops up on review,
-submitting a review, which is exactly when a buffer slot frees.
+Each cell of the Tests matrix offers two launches by hand: one more run, or the
+cell's whole shortfall. Both launch the cell's own pin, engine included, so a run
+bought by hand counts against the cell it came from. A
+[blocked](/components/backend/coverage/#a-blocked-cell) cell shows as blocked
+with a Retry action.
 
-A plan and a ladder pin a case coordinate of test type, case, version, variant,
-and engine, held to what the resolved version declares. The engine is part of
-what the pin commits to. A combination takes either shape: a harness with its
-model, or a saved gg configuration with a model bound to each of its launch
-slots, so two members of one configuration that bind different models are two
-cells the plan will run. A plan also sets runs per cell, the run order, the
-buffer-target override, and auto top-up. The buffer target may be set to no
-limit, as may the account-wide default it overrides, so a plan or ladder can run
-with no review buffer.
+A plan's editor sets its members, runs per cell, the run order, and the
+runs-in-flight override. The pickers pin a case coordinate of test type, case,
+version, variant, and engine, held to what the resolved version declares. A
+combination takes either shape: a harness with its model, or a saved gg
+configuration with a model bound to each of its launch slots, so two members of
+one configuration that bind different models are two cells the plan will run.
 
-Launching a cell's runs by hand uses the cell's own engine, in both combination
-shapes, exactly as that plan's own top-up does. A run launched on another engine
-is counted against another cell.
+### The ladders list
 
-A rung's runs are narrowed by the whole cell the gate counted: the rung's pin,
-engine included, crossed with the climber's combination. An in-flight run is
-narrowed the same way, off the engine its job records when it is enqueued. A
+Each ladder's card is laid out in two rows, so its right side lines up with the
+name and the description on its left:
+
+| row | left                                            | right                    |
+| --- | ----------------------------------------------- | ------------------------ |
+| 1   | the name                                        | the status, then the bar |
+| 2   | "N rungs · N runs/rung · N climbers"            | the rung-slot totals     |
+
+The status is one of Not run yet, Running, Finished, or Stopped. The bar measures
+the latest dispatch's
+[runs done of its total](/components/backend/ladders/#progress), so a full bar
+means nothing is left to execute. Its hover text gives the run detail, and names
+the blocked and pending slots when there are any. The rung-slot totals cover the
+whole ladder, never one climber: running, passed, failed, and skipped. A
+[blocked](/components/backend/ladders/#rung-slots) slot is still the dispatch's
+unfinished work, so it is counted in the running total. A ladder never run shows
+an empty bar and zero totals in the same slots, so a first Run moves nothing.
+
+### A ladder
+
+A ladder's dashboard heads with its status, Run ladder, Stop, and Stop and cancel
+running, which is confirmed. Run is unavailable while a dispatch is running.
+
+Its summary counts the climbers as Climbers, Running, Completed, and Failed, then
+the rung slots skipped, the runs in flight against the limit, and the runs to
+review. Blocked follows only when a climber is blocked, last, so a figure
+appearing never moves the others.
+
+Each climber's card heads with its identity, its status, and its rung track in
+fixed slots, so a status changing during a climb never moves the track. A
+blocked climber's reason and its fix take a line of their own under the header,
+and a climber blocked as failing or unlaunchable offers Retry. Every status names
+its rung: "Running rung 2", "Failed at rung 3", "Blocked at rung 4" with the
+reason, and "Completed". Once a dispatch is stopped, a climber that was running
+or blocked reads "Stopped at rung 2".
+
+Expanded, a climber lists every rung with its slot status: Running, Blocked,
+Passed, Failed, Pending, or Skipped. Only a running climber's current rung is
+highlighted, and the highlight changes no row's layout. A rung's evidence reads
+as its tally, for example "2 of 3 runs passed (1 needed)".
+
+A ladder's status note states only what the summary figures cannot: the blocked
+climbers and the fix for each, or a dispatch that cannot climb because its
+runs-in-flight limit is zero.
+
+A ladder's editor sets its rungs, its climbers, runs per rung, the gate, the run
+order, and the runs-in-flight override, and offers only validator-rated case
+versions as rungs. It flags a rung whose pinned version is no longer the newest
+ingested one, and says that an edit applies to the next Run.
+
+A rung's runs are narrowed by the dispatch's own jobs of that rung and climber. A
 ladder's board holds the console stream's [`runs`
 topic](/components/backend/api/#topics) open while it is on screen, which keeps
-the tallies and verdicts moving as runs finish under it.
+the tallies and statuses moving as runs finish under it.
+
+### Polling
+
+Nothing here polls in the background. Every launch of a plan's fill or a
+ladder's dispatch happens in the backend, prompted by the owner's control and by
+each run that finishes, so a page being open or a review being submitted never
+launches a run.
 
 The runs section offers the cabinet-wide counterparts to a plan's halt: clear
 pending, kill active, and stop all. These are scoped to nothing, stopping the

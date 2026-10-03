@@ -11,12 +11,13 @@ import styles from "./Coverage.module.scss";
 
 // The plan's own review queue: the completed runs of this plan the signed-in account
 // has not reviewed, listed in the plan's emission order rather than newest-first like
-// the global Unreviewed page. That order is the whole point — the buffer was filled
-// deliberately so a cell's repeats arrive adjacent, and walking them in arrival order
-// is what lets them be judged against each other.
+// the global Unreviewed page. That order is the whole point — a plan launches a cell's
+// repeats together, so they finish adjacent, and walking them in that order is what
+// lets them be judged against each other. The queue is informational: reviews are
+// optional labelling, and nothing a plan or a ladder does waits on them.
 //
-// It is a panelled widget whose entries are whole rows: a queue is a worklist, and a
-// worklist is read by scanning down a column of identical rows and pressing one. Each
+// It is a panelled widget whose entries are whole rows, read by scanning down a column
+// of identical rows and pressing one. Each
 // row is itself the link, so the press target is the row rather than a word inside it.
 //
 // Each row claims the coverage back-return before it navigates, so reviewing a run
@@ -29,16 +30,22 @@ import styles from "./Coverage.module.scss";
 // this queue (the plan's Reviews tab) passes one and gets the widget with the message
 // inside it; a surface that stacks the queue among others (the ladder board) passes
 // none and the widget disappears rather than occupying a panel to say nothing.
+//
+// `intro` is a line under the heading saying what the queue is *for*: optional
+// labelling after the fact, so a list of runs is never read as something the plan or
+// the climb waits on.
 export function CoverageReviewQueue({
   queue,
   returnLabel = "Back to the coverage plan",
-  title = "Waiting on your review",
+  title = "Label runs (optional)",
   emptyMessage,
+  intro,
 }: {
   queue: CoverageQueue;
   returnLabel?: string;
   title?: string;
   emptyMessage?: string;
+  intro?: string;
 }) {
   const testCaseName = useTestCaseName();
   if (queue.runs.length === 0) {
@@ -61,6 +68,7 @@ export function CoverageReviewQueue({
           {queue.truncated ? "+" : ""}
         </span>
       </header>
+      {intro && <p className={styles.queueIntro}>{intro}</p>}
       <ol className={styles.queueList}>
         {queue.runs.map((entry) => (
           <li key={entry.runId}>

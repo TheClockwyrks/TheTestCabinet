@@ -83,8 +83,7 @@ function plan(over: Partial<CoveragePlanOut> = {}): CoveragePlanOut {
     cases: [],
     updatedAt: "2026-01-01T00:00:00Z",
     outerAxis: "case",
-    paused: false,
-    autoTopUp: false,
+    filling: false,
     ...over,
   };
 }
@@ -101,7 +100,7 @@ function backendValue(existing: CoveragePlanOut) {
       listCoveragePlans: async () => [existing],
       listModels: async () => [],
       getCoverageSettings: async () => ({
-        bufferTarget: { kind: "bounded", runs: 10 },
+        inFlightLimit: { kind: "bounded", runs: 10 },
       }),
       updateCoveragePlan: async (_id: string, input: CoveragePlanInput) => {
         saved = input;
@@ -206,33 +205,16 @@ describe("CoveragePlanEditPage settings", () => {
     expect(screen.getByRole("button", { name: /plan$/ })).not.toBeDisabled();
   });
 
-  it("states the auto-top-up setting as a switch, not a ticked box", async () => {
+  it("offers no auto top-up setting: reviews and edits never launch runs", async () => {
     await renderEditor();
-    const toggle = screen.getByRole("switch", {
-      name: "Auto top-up",
-    });
-    expect((toggle as HTMLInputElement).checked).toBe(false);
-    expect(screen.queryByRole("checkbox")).toBeNull();
-  });
-
-  // How a top-up walks the cells is context a reviewer can set the switch without,
-  // so it belongs behind the tip rather than in a paragraph under the control.
-  it("keeps the long top-up explanation in the help tip", async () => {
-    await renderEditor();
-    expect(
-      screen.getByRole("img", { name: /walks the cells in the run order/i }),
-    ).toBeTruthy();
-    expect(screen.getByText(/up to the review buffer/i)).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: /top.up/i })).toBeNull();
+    expect(screen.queryByText(/review buffer/i)).toBeNull();
+    expect(screen.getByText("Runs in flight at once")).toBeTruthy();
   });
 
   it("saves the settings the rows were left showing", async () => {
     await renderEditor();
     fireEvent.change(runsPerCell(), { target: { value: "4" } });
-    fireEvent.click(
-      screen.getByRole("switch", {
-        name: "Auto top-up",
-      }),
-    );
     fireEvent.change(screen.getByLabelText("Run order"), {
       target: { value: "combination" },
     });
@@ -240,8 +222,8 @@ describe("CoveragePlanEditPage settings", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
     });
     expect(saved?.runsPerCell).toBe(4);
-    expect(saved?.schedule?.autoTopUp).toBe(true);
-    expect(saved?.schedule?.outerAxis).toBe("combination");
+    expect(saved?.outerAxis).toBe("combination");
+    expect(saved).not.toHaveProperty("schedule");
   });
 
   it("saves no limit as the unbounded shape, not as a large bound", async () => {
@@ -250,45 +232,20 @@ describe("CoveragePlanEditPage settings", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
     });
-    expect(saved?.schedule?.bufferTarget).toEqual({ kind: "unbounded" });
+    expect(saved?.inFlightLimit).toEqual({ kind: "unbounded" });
   });
 
   it("loads an unbounded override back as the switch, and drops it on reset", async () => {
-    await renderEditor(plan({ bufferTarget: { kind: "unbounded" } }));
+    await renderEditor(plan({ inFlightLimit: { kind: "unbounded" } }));
     const toggle = screen.getByRole("switch", { name: "No limit" });
     expect((toggle as HTMLInputElement).checked).toBe(true);
     fireEvent.click(
-      screen.getByRole("button", { name: "Reset Review buffer" }),
+      screen.getByRole("button", { name: "Reset Runs in flight at once" }),
     );
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
     });
-    expect(saved?.schedule?.bufferTarget).toBeUndefined();
-  });
-
-  // A halt sets `paused`, which blocks every top-up, so a halted plan is shown as
-  // not topping itself up whatever its flag says — and a member edit that leaves the
-  // switch alone is not a decision to run again.
-  it("shows a halted plan as auto top-up off, and leaves the halt standing on save", async () => {
-    await renderEditor(plan({ paused: true, autoTopUp: true }));
-    const toggle = screen.getByRole("switch", { name: "Auto top-up" });
-    expect((toggle as HTMLInputElement).checked).toBe(false);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
-    });
-    expect(saved?.schedule?.paused).toBe(true);
-    expect(saved?.schedule?.autoTopUp).toBe(false);
-  });
-
-  // Switching it on is that decision, and the one way this page clears a halt.
-  it("clears the halt when auto top-up is switched on", async () => {
-    await renderEditor(plan({ paused: true, autoTopUp: false }));
-    fireEvent.click(screen.getByRole("switch", { name: "Auto top-up" }));
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
-    });
-    expect(saved?.schedule?.paused).toBe(false);
-    expect(saved?.schedule?.autoTopUp).toBe(true);
+    expect(saved?.inFlightLimit).toBeUndefined();
   });
 });
 

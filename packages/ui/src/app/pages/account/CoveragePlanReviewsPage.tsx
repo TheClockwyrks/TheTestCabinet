@@ -2,13 +2,13 @@ import { useCoveragePlan } from "./CoveragePlanLayout";
 import { CoverageReviewQueue } from "./CoverageReviewQueue";
 
 // The plan's Reviews tab (`/account/coverage/:planId/reviews`): the completed runs of
-// this plan waiting on the signed-in reviewer, each row opening straight into its
-// verdict.
+// this plan the signed-in reviewer has not reviewed, each row opening straight into its
+// verdict. Informational: a review is optional labelling and never launches or holds
+// back a run.
 //
-// The order is the plan's own emission order rather than newest-first: the buffer was
-// filled deliberately so a cell's repeats arrive adjacent, and walking them in that
-// order is what lets them be judged against each other. Reviewing a run and pressing
-// back returns to this tab, so the loop is open, review, back, repeat.
+// The order is the plan's own emission order rather than newest-first: a plan launches
+// a cell's repeats together, so walking them in that order is what lets them be judged
+// against each other. Reviewing a run and pressing back returns to this tab.
 export function CoveragePlanReviewsPage() {
   const { queue } = useCoveragePlan();
   return (
@@ -18,7 +18,8 @@ export function CoveragePlanReviewsPage() {
       // that renders nothing at all cannot be told from a bug.
       queue={queue ?? { runs: [], truncated: false }}
       returnLabel="Back to the plan's reviews"
-      emptyMessage="Nothing is waiting on you. Runs land here as this plan's cells complete, in the order the plan ran them."
+      intro="Completed runs of this plan you have not reviewed, in the order the plan runs them. A review adds an aesthetic rating and a writeup after the fact; it never launches or holds back a run."
+      emptyMessage="No unreviewed runs. Completed runs of this plan land here, in the order the plan runs them."
     />
   );
 }

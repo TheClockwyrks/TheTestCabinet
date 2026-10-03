@@ -134,8 +134,8 @@ impl GgRunRequest {
 /// what it is run **on**, and the per-run overrides.
 ///
 /// A launch is exactly this plus a [`GgLaunchIdentity`], which is what lets a run
-/// launched by hand through [`launch_gg`] and one a coverage plan's top-up enqueues
-/// ([`super::coverage::enqueue_top_up`]) be assembled by the same code rather than by two
+/// launched by hand through [`launch_gg`] and one a launch pass enqueues
+/// ([`super::coverage::enqueue_launches`]) be assembled by the same code rather than by two
 /// copies that drift.
 pub(super) struct GgLaunchSubject {
     /// Test-case slug to run.
@@ -261,7 +261,7 @@ pub(super) fn bind_launch_configuration(
 /// against, or say why it cannot be launched.
 ///
 /// This is the whole of gg's launch-time judgement, in one place because two callers make
-/// that judgement — the by-hand [`launch_gg`] and a coverage plan's or ladder's top-up —
+/// that judgement — the by-hand [`launch_gg`] and a coverage plan's or ladder's launch pass —
 /// and a member a plan accepts must be a member `POST /gg/runs` would accept. It reads
 /// the set as the console **authored** it: the internal ids are still on the document, so
 /// this is the last place a reference can be judged against the ids it names.

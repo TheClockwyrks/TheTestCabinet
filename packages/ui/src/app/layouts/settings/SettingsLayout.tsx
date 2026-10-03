@@ -9,11 +9,7 @@ import styles from "./SettingsLayout.module.scss";
 // The Settings section's tabs. Each is its own route, so which tab reads as
 // active is driven by the page that rendered the layout. The static site mounts
 // only the Appearance tab; the rest are for the web console.
-export type SettingsTab =
-  | "appearance"
-  | "connections"
-  | "harnesses"
-  | "reviewing";
+export type SettingsTab = "appearance" | "connections" | "harnesses" | "runs";
 
 interface SettingsLayoutProps {
   /** Which tab the rendering page represents. */
@@ -25,8 +21,8 @@ interface SettingsLayoutProps {
 // Shared chrome for the Settings section: the tab navigation, mirrored from the
 // About / test-case detail pages. Each tab is a distinct URL so a section is
 // linkable, so the bar uses NavLink rather than in-page state. The tab pages
-// stay thin and never duplicate this. The Connections, Harnesses, and Reviewing
-// tabs are shown only where the host can execute runs (Reviewing edits account-wide settings the
+// stay thin and never duplicate this. The Connections, Harnesses, and Runs
+// tabs are shown only where the host can execute runs (Runs edits account-wide settings the
 // backend holds); the static site has Appearance alone, so no tab bar would be
 // redundant there — but the layout still renders consistently.
 export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
@@ -46,9 +42,9 @@ export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
             to: routes.settingsHarnesses(),
           },
           {
-            key: "reviewing" as const,
-            label: "Reviewing",
-            to: routes.settingsReviewing(),
+            key: "runs" as const,
+            label: "Runs",
+            to: routes.settingsRuns(),
           },
         ]
       : []),

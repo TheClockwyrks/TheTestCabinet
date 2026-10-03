@@ -95,9 +95,8 @@
   }
 }
 
-// The plan's feeding controls, between the roll-up stats and the matrix: what order
-// its runs arrive in and whether a review tops it up on the left, the actions
-// (top up / pause / halt) pushed to the right. Wraps rather than scrolls, so a
+// The plan's and the ladder's control strip: a statement of what the controls do on
+// the left, the actions (All missing / halt, Run / stop) pushed to the right. Wraps rather than scrolls, so a
 // narrow viewport stacks the actions under the state they act on instead of
 // pushing the page sideways.
 .controls {
@@ -124,26 +123,9 @@
   }
 }
 
-// A checkbox + label pair (auto-top-up), laid out inline so the label reads as one
-// sentence with its box rather than as a stray caption. Only the plan and ladder
-// dashboards carry it, inside their control strip: an editor's settings are rows, and
-// a strip's are a line of controls beside the statement they act on, which is why the
-// alignment below is a separate class.
-.controlToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: t.$space-xs;
-  color: t.$color-text-muted;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  cursor: pointer;
-}
-
 // Starts the control strip's right-hand cluster: this item and everything after it are
 // pushed to the strip's trailing edge, leaving only the "runs in this order" statement
-// on the left. Carried by the auto-top-up toggle, so the setting sits with the buttons
-// that act on the same thing rather than trailing the statement it has nothing to do
-// with. Exactly one item in a strip may carry it — two auto margins split the free
+// on the left. Carried by the actions cluster. Exactly one item in a strip may carry it — two auto margins split the free
 // space between them instead of collecting it at one end, which is why `.controlActions`
 // no longer sets its own.
 .controlEnd {
@@ -159,21 +141,7 @@
   gap: t.$space-sm;
 }
 
-// The "paused" pill beside a plan's title, in the same warning colour the
-// stale-version pill uses for "you may want to look at this".
-.pausedBadge {
-  flex: none;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-bg;
-  background: t.$color-warning;
-  border-radius: t.$radius-sm;
-  padding: t.$space-2xs t.$space-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-// A plan card's title beside its paused pill.
+// A plan card's title row.
 .rowTitleRow {
   display: flex;
   align-items: center;
@@ -181,8 +149,8 @@
   min-width: 0;
 }
 
-// The "N to review" pill on a block header: runs that are done and counted, but
-// still sitting in the reviewer's buffer.
+// The "N to review" pill on a block header: runs that are done and counted, and not
+// reviewed yet. Informational.
 .waitingBadge {
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -231,7 +199,7 @@
 }
 
 // The row's left half: the case name followed by the qualifiers that tell it apart
-// from its siblings in the buffer.
+// from its siblings in the queue.
 .queueIdentity {
   display: flex;
   flex-wrap: wrap;
@@ -286,8 +254,8 @@
   width: 6rem;
 }
 
-// The buffer field's number beside its no-limit switch, wrapping on narrow viewports.
-.settingBuffer {
+// The runs-in-flight limit's number beside its no-limit switch, wrapping on narrow viewports.
+.settingLimit {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -544,6 +512,26 @@
   font-size: t.$font-sm;
 }
 
+// A blocked cell's reason beside its Retry, on the row of its own.
+.cellRetry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+}
+
+// The "N blocked" pill on a block header, so a blocked cell is found without
+// expanding every block.
+.blockedBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-negative;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}
+
 // The cell's "Runs" link: a quiet text control into the runs listing narrowed to
 // this cell — half of the review loop (see the run, review it, come back).
 .cellLink {
@@ -607,6 +595,14 @@
   margin-bottom: t.$space-xl;
 }
 
+// A top-level section label in the ladder editor (The climb, The gate, Feeding the
+// ladder, Climbers): a little more room above it than a section label's own, so the
+// editor's sections read apart. Scoped under `.editor` to outrank `sectionLabel`'s
+// margin whichever stylesheet loads last.
+.editor .sectionBreak {
+  margin-top: calc(#{t.$space-lg} + #{t.$space-sm});
+}
+
 // The plan editor's action row — its own, not the shared new-run `.actions`, so
 // its spacing can be tuned for this widget. The gap above the buttons is double
 // the standard row gap (so the buttons sit clear of the test-case row), and the
@@ -622,13 +618,20 @@
 
 // The member sections stacked as a column of groups, each a labelled header +
 // divider over its own list. A section is a harness, a test-case category, or the
-// one gg Configurations section — and that last one lists rows rather than pills,
-// because a gg member is more than a pill holds (see `.ggMemberList`).
+// one gg Configurations section — and that last one lists rows rather than tags,
+// because a gg member is more than a tag holds (see `.ggMemberList`). Sits under
+// the add-row, so its gap is above it.
 .chipGroups {
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
-  margin-bottom: t.$space-md;
+  margin-top: t.$space-lg;
+}
+
+// A picker's own members heading (the group editor's) already carries a section
+// label's top margin, so the list under it drops its own.
+.membersLabel + .chipGroups {
+  margin-top: 0;
 }
 
 // A group's header row: the section title on the left, the "Clear all" action on
@@ -652,7 +655,7 @@
 }
 
 // The group's "Clear all": a bare text control (no border or fill) that brightens
-// to the negative cue on hover, matching the per-pill remove glyph's affordance.
+// to the negative cue on hover, matching the per-tag remove glyph's affordance.
 .chipGroupClear {
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -681,30 +684,30 @@
   gap: t.$space-sm;
 }
 
-// Inside a group the surrounding column controls spacing, so the pill row drops
+// Inside a group the surrounding column controls spacing, so the tag row drops
 // its own bottom margin.
 .chipGroup .chipList {
   margin-bottom: 0;
 }
 
-// An added combination/case reads as a pill: fully-rounded ends (a large radius
-// resolves to the pill shape at any height), so a row of them looks like tags
-// rather than boxed cards.
+// An added combination/case reads as a tag: a rectangle with softly rounded
+// corners, so a row of them looks like labels rather than pill buttons or boxed
+// cards. With no curved end to clear, the leading padding shrinks to match.
 .chip {
   display: inline-flex;
   align-items: center;
   gap: t.$space-xs;
-  padding: t.$space-2xs t.$space-sm t.$space-2xs t.$space-md;
+  padding: t.$space-2xs t.$space-xs t.$space-2xs t.$space-sm;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: 999px;
+  border-radius: t.$radius-sm;
   color: t.$color-text;
   font-size: t.$font-sm;
 }
 
 // The chip's remove control: a bare glyph (no border or fill of its own) that
 // brightens to the negative cue on hover, so it reads as an inline "x" on the
-// pill rather than a nested button.
+// tag rather than a nested button.
 .chipRemove {
   display: inline-flex;
   align-items: center;
@@ -728,8 +731,8 @@
   }
 }
 
-// The gg members, as rows rather than pills. A gg member carries a configuration, the
-// models it binds and the slot each is bound to, which is more than fits a pill: the
+// The gg members, as rows rather than tags. A gg member carries a configuration, the
+// models it binds and the slot each is bound to, which is more than fits a tag: the
 // third of those is what tells two arms of one study apart, so it is disclosed under the
 // row instead of crowding it or being dropped.
 .ggMemberList {
@@ -994,8 +997,8 @@
   gap: t.$space-md;
 }
 
-// The pick-a-group toggle pills on the plan editor: a wrapping row of selectable
-// chips, one per existing group, with the selected ones filled in the accent.
+// The pick-a-group toggle tags on the plan and ladder editors: a wrapping row of
+// selectable tags, one per existing group, with the selected ones filled in the accent.
 .groupPicks {
   display: flex;
   flex-wrap: wrap;
@@ -1007,10 +1010,14 @@
   display: inline-flex;
   align-items: center;
   gap: t.$space-xs;
-  padding: t.$space-2xs t.$space-md;
+  // A step roomier than a member tag (`.chip`): these are buttons to press, not
+  // labels to read.
+  padding: t.$space-xs calc(#{t.$space-sm} + #{t.$space-2xs});
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: 999px;
+  // The same tag shape as a chosen member (`.chip`), so a group offered here and a
+  // member listed under it read as one family.
+  border-radius: t.$radius-sm;
   color: t.$color-text;
   font-size: t.$font-sm;
   cursor: pointer;
@@ -1021,14 +1028,14 @@
   }
 }
 
-// A selected group pill: filled in the accent to read as "included in this plan".
+// A selected group tag: filled in the accent to read as "included in this plan".
 .groupPickOn {
   background: t.$color-accent;
   border-color: t.$color-accent;
   color: t.$color-bg;
 }
 
-// The muted member count trailing a group pill / card subtitle.
+// The muted member count trailing a group tag / card subtitle.
 .groupPickCount {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
@@ -1047,11 +1054,10 @@
   max-width: 28rem;
 }
 
-// The kind selector on the group editor: two radio pills (Combinations / Test cases),
-// locked once the group exists (a group's kind is fixed after create).
+// The kind selector on the group editor: a segmented control (Combinations / Test
+// cases), locked once the group exists (a group's kind is fixed after create).
 .kindRow {
   display: flex;
-  gap: t.$space-sm;
   margin-bottom: t.$space-lg;
 }
 
@@ -1218,6 +1224,7 @@
 }
 
 .queueEmpty,
+.queueIntro,
 .queueMore {
   margin: 0;
   color: t.$color-text-muted;

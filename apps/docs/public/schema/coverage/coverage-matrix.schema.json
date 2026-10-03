@@ -1,40 +1,7 @@
 {
   "$defs": {
-    "BufferTarget": {
-      "description": "How deep a plan's or ladder's review buffer may go: the most runs the requesting\naccount may have outstanding (in flight, or finished and unreviewed by them)\nbefore a top-up stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the\nreviewer types can be mistaken for it.",
-      "oneOf": [
-        {
-          "description": "Keep at most `runs` runs outstanding. `0` is a legitimate bound — \"never top\nthis up automatically\" — and is not the same instruction as no bound.",
-          "properties": {
-            "kind": {
-              "const": "bounded",
-              "type": "string"
-            },
-            "runs": {
-              "description": "The most runs the requester may have outstanding before a top-up stops.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": ["kind", "runs"],
-          "type": "object"
-        },
-        {
-          "description": "No bound: a top-up emits every missing cell it can, however many runs are\nalready waiting on the reviewer. The per-cell target and the harness\nparallelism cap still apply; only the reviewer-backlog check is gone.",
-          "properties": {
-            "kind": {
-              "const": "unbounded",
-              "type": "string"
-            }
-          },
-          "required": ["kind"],
-          "type": "object"
-        }
-      ]
-    },
     "CoverageAxis": {
-      "description": "Which axis a coverage plan's cell loop nests on — and therefore the order its\nruns execute in, since a top-up emits cells in this order, `job.queue_seq` is\nmonotonic, and the dispatcher claims in ascending order.\n\nThe console labels these \"One case at a time\" and \"One model at a time\". They are\ndeliberately *not* described to reviewers as depth- or breadth-first: the choice\nis about what you want to be able to review together, not about tree traversal.",
+      "description": "Which axis a coverage plan's cell loop nests on — and therefore the order its\nruns execute in, since a launch pass emits cells in this order, `job.queue_seq` is\nmonotonic, and the dispatcher claims in ascending order.\n\nThe console labels these \"One case at a time\" and \"One model at a time\".",
       "oneOf": [
         {
           "const": "case",
@@ -49,10 +16,14 @@
       ]
     },
     "CoverageCell": {
-      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target and how much of it is waiting on the requester.",
+      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target.",
       "properties": {
-        "completed": {
-          "description": "Completed runs for this cell, counted globally.",
+        "blocked": {
+          "description": "Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):\nits last three finished jobs failed on infrastructure, and a launch pass skips it\nuntil its owner retries it.",
+          "type": "boolean"
+        },
+        "counted": {
+          "description": "How many runs the cell holds — the length of [`Self::run_ids`], so never more than\n`desired`. A counted run is the model's own result, a retried attempt once.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -66,6 +37,10 @@
         "engine": {
           "description": "The engine this cell counts against, resolved: `none` where the pin names none.\nAlways concrete, because a run recorded with no engine is a `none` run and the\ntwo must land in one cell.",
           "type": "string"
+        },
+        "filled": {
+          "description": "Whether the cell is filled: `counted >= desired`. Runs in flight do not fill it.",
+          "type": "boolean"
         },
         "ggConfigId": {
           "description": "The gg configuration this cell's runs are launched from, as the member names it, or\nnull on a harness cell.",
@@ -87,7 +62,7 @@
           "description": "The harness — `gg` on a gg cell."
         },
         "inFlight": {
-          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally.",
+          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally and read only up to what the cell still needs\n(`desired - counted`), so a filled cell has none.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -101,7 +76,7 @@
           "type": "string"
         },
         "pending": {
-          "description": "How many of [`Self::in_flight`] are `pending` — deliberately held back rather\nthan merely waiting to be claimed, because their harness is at its parallelism\ncap or (for a game jam) another run of the same jam is already going on that\nmodel.\n\nSurfaced separately because it is the answer to \"why is my buffer full but\nnothing running?\", which is otherwise indistinguishable from a stuck queue. It\nis a **subset** of `inFlight`, not an addition to it.",
+          "description": "How many of [`Self::in_flight`] are `pending` — deliberately held back rather\nthan merely waiting to be claimed, because their harness is at its parallelism\ncap or (for a game jam) another run of the same jam is already going on that\nmodel. A **subset** of `inFlight`, not an addition to it.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -111,10 +86,17 @@
           "type": ["string", "null"]
         },
         "remaining": {
-          "description": "How many more runs to trigger: `max(0, desired - (completed + in_flight))`.",
+          "description": "How many more runs to launch: `max(0, desired - (counted + in_flight))`.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
+        },
+        "runIds": {
+          "description": "The [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs):\nthe first `desired` counted runs of the cell to land, whoever launched them, in the\norder they landed. Every other figure on the cell is computed over these.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "slug": {
           "description": "The test-case slug.",
@@ -125,11 +107,11 @@
           "type": "boolean"
         },
         "unlaunchable": {
-          "description": "Why a top-up cannot launch this cell, or null when it can.\n\nA cell whose member cannot be resolved is still counted and still reported — it keeps\nits place in the matrix carrying the reason — because a plan that silently got\nsmaller is a plan whose missing runs nobody can explain.",
+          "description": "Why a launch pass cannot launch this cell, or null when it can.\n\nA cell whose member cannot be resolved is still counted and still reported — it keeps\nits place in the matrix carrying the reason — because a plan that silently got\nsmaller is a plan whose missing runs nobody can explain.",
           "type": ["string", "null"]
         },
         "unreviewed": {
-          "description": "How many of [`Self::completed`] the **requesting account** has not reviewed.\nThe only per-account number on the cell: it changes nothing about what the\ncell needs, but it occupies the review buffer, which is what makes an\notherwise mysteriously idle plan explicable.",
+          "description": "How many of the cell's runs are completed and not reviewed by the **requesting\naccount**. Informational: it changes nothing about what the cell needs.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -151,7 +133,10 @@
         "harness",
         "model",
         "desired",
-        "completed",
+        "runIds",
+        "counted",
+        "filled",
+        "blocked",
         "inFlight",
         "pending",
         "unreviewed",
@@ -160,25 +145,60 @@
         "stale"
       ],
       "type": "object"
+    },
+    "InFlightLimit": {
+      "description": "How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a\nlaunch pass stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the owner\ntypes can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` jobs in flight. `0` is a legitimate bound — \"launch nothing\"\n— and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most jobs that may be in flight before a launch pass stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a launch pass emits every missing cell it can. The per-cell target and\nthe harness parallelism cap still apply.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The coverage matrix `GET /coverage-plans/{id}/coverage` returns: every cell plus\nthe rollups the plan dashboard header shows.",
   "properties": {
-    "bufferTarget": {
-      "$ref": "#/$defs/BufferTarget",
-      "description": "The buffer target in force for this plan (its own override, else the\naccount's setting, else the backend default). When it is `unbounded`,\n`runsOutstanding` never stops a top-up."
-    },
     "cells": {
-      "description": "Every `case × combination` cell, in the plan's own emission order — which\naxis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so\na reader knows what the order means without fetching the plan again.",
+      "description": "Every `case × combination` cell, in the plan's own emission order — which\naxis is outer is the plan's [`CoveragePlan::outer_axis`], echoed below so\na reader knows what the order means without fetching the plan again.",
       "items": {
         "$ref": "#/$defs/CoverageCell"
       },
       "type": "array"
     },
-    "cellsSatisfied": {
-      "description": "How many cells have met their target (`remaining == 0`).",
+    "cellsBlocked": {
+      "description": "How many cells are blocked on infrastructure failures.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cellsFilled": {
+      "description": "How many cells are filled (`counted >= desired`; runs in flight do not count).",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -189,18 +209,32 @@
       "minimum": 0,
       "type": "integer"
     },
+    "filling": {
+      "description": "Whether the plan is filling.",
+      "type": "boolean"
+    },
+    "inFlightLimit": {
+      "$ref": "#/$defs/InFlightLimit",
+      "description": "The runs-in-flight limit in force for this plan (its own override, else the\naccount's setting, else the backend default)."
+    },
     "outerAxis": {
       "$ref": "#/$defs/CoverageAxis",
       "description": "The axis the cells above are ordered on."
     },
-    "runsMissing": {
-      "description": "The sum of every cell's `remaining` — the total runs still to trigger.",
+    "runsDone": {
+      "description": "The plan's progress in runs: the sum of every cell's `counted`.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
     },
-    "runsOutstanding": {
-      "description": "The plan's review-buffer occupancy: in-flight jobs plus unreviewed runs. When\nthis has reached `bufferTarget`, a top-up will deliberately enqueue nothing,\nwhich is the difference between a finished plan and a full one.",
+    "runsInFlight": {
+      "description": "The plan's own jobs in flight — every job whose origin names the plan — which is\nwhat its limit counts.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsMissing": {
+      "description": "The sum of every cell's `remaining` — the total runs still to launch.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -211,8 +245,14 @@
       "minimum": 0,
       "type": "integer"
     },
+    "runsTotal": {
+      "description": "The runs the plan asks for: the sum of every cell's `desired`.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
     "runsUnreviewed": {
-      "description": "The sum of every cell's `unreviewed` — completed runs waiting on *you*.",
+      "description": "The sum of every cell's `unreviewed` — completed runs the requester has not\nreviewed. Informational.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -221,13 +261,17 @@
   "required": [
     "cells",
     "outerAxis",
-    "cellsSatisfied",
+    "cellsFilled",
     "cellsTotal",
+    "cellsBlocked",
+    "runsDone",
+    "runsTotal",
+    "runsInFlight",
     "runsMissing",
     "runsPending",
     "runsUnreviewed",
-    "runsOutstanding",
-    "bufferTarget"
+    "inFlightLimit",
+    "filling"
   ],
   "title": "CoverageMatrix",
   "type": "object"

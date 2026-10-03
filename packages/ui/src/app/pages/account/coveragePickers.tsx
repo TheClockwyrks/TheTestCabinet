@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import type {
-  BufferTarget,
+  InFlightLimit,
   CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
@@ -31,11 +31,11 @@ import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import {
-  BUFFER_TARGET_CEILING,
-  UNBOUNDED_BUFFER,
-  boundedBuffer,
-  describeBufferTarget,
-} from "./bufferTarget";
+  IN_FLIGHT_LIMIT_CEILING,
+  UNBOUNDED_LIMIT,
+  boundedLimit,
+  describeInFlightLimit,
+} from "./inFlightLimit";
 import { CaseEngineField } from "./CaseEngineField";
 import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
@@ -113,10 +113,10 @@ export const DEFAULT_COVERAGE_AXIS: CoverageAxis = "case";
  *
  * A dropdown rather than a pair of pills, for the reason `LadderAxisPicker` gives:
  * this is one setting with one answer sitting in a column of other settings, so its
- * control column should read as a value ("One case at a time") the way the review
- * buffer's reads as a number, not as two buttons of which one happens to be lit.
+ * control column should read as a value ("One case at a time") the way the
+ * runs-in-flight limit's reads as a number, not as two buttons of which one happens to be lit.
  *
- * The choice is real and not cosmetic — a top-up emits whole cells in this order,
+ * The choice is real and not cosmetic — a launch pass emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
  * order shown here *is* the order the runs execute and therefore the order they
  * become reviewable in.
@@ -159,34 +159,51 @@ export function AxisPicker({
   );
 }
 
+/** What the runs-in-flight row says, naming the thing it caps. */
+function limitDescription(
+  subject: "plan" | "ladder",
+  value: InFlightLimit | null,
+  accountDefault: InFlightLimit,
+): string {
+  if (value === null)
+    return `Empty inherits your account default of ${describeInFlightLimit(accountDefault)}.`;
+  if (value.kind === "unbounded")
+    return subject === "plan"
+      ? "No limit: filling launches every missing run of this plan at once. Only the harness caps hold it back."
+      : "No limit: a dispatch launches every climber's current rung as soon as it is reached. Only the harness caps hold it back.";
+  if (value.runs === 0)
+    return `0 stops this ${subject} launching runs at all, which is different from empty, where it inherits your account default.`;
+  return `This ${subject} keeps at most ${value.runs} run${value.runs === 1 ? "" : "s"} queued or running, launching more as they finish.`;
+}
+
+const LIMIT_HELP =
+  "Counts the runs it launched that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not. The limit keeps one plan or ladder from taking over the shared queue.";
+
 /**
- * The review-buffer override: how many runs this plan or ladder may leave outstanding
- * (in flight, or finished and unreviewed by you) before a top-up stops — or no limit
- * at all.
+ * The runs-in-flight override: how many of this plan's or ladder dispatch's runs may
+ * be queued or running at once — or no limit at all.
  *
  * Empty is not zero, and the field is built around that distinction: empty means
- * "no opinion — use my account default", while `0` means "never top this one up",
- * which is a different instruction the reviewer is entitled to give. So the value is
- * a nullable target, the placeholder shows the account default that an empty field
- * inherits, and the row's reset control drops the override rather than making the
- * reviewer delete digits until the input happens to be blank.
+ * "no opinion — use my account default", while `0` means "launch nothing", which is a
+ * different instruction the owner is entitled to give. So the value is a nullable
+ * limit, the placeholder shows the account default that an empty field inherits, and
+ * the row's reset control drops the override rather than making the owner delete
+ * digits until the input happens to be blank.
  *
  * "No limit" is a third instruction with a switch of its own rather than a large
- * number typed into the field: it tells the backend to run through every missing
- * cell whatever is outstanding, and it reads back as what it is instead of as a
- * figure that merely exceeds the plan today.
+ * number typed into the field, so it reads back as what it is.
  */
-export function BufferTargetField({
+export function InFlightLimitField({
   value,
   accountDefault,
   onChange,
   subject = "plan",
 }: {
   /** The override, or null to inherit the account default. */
-  value: BufferTarget | null;
+  value: InFlightLimit | null;
   /** The account-wide default an empty field falls back to. */
-  accountDefault: BufferTarget;
-  onChange: (next: BufferTarget | null) => void;
+  accountDefault: InFlightLimit;
+  onChange: (next: InFlightLimit | null) => void;
   /** What the override belongs to, so the row names it. */
   subject?: "plan" | "ladder";
 }) {
@@ -197,26 +214,19 @@ export function BufferTargetField({
   const [lastBound, setLastBound] = useState<number | null>(
     value?.kind === "bounded" ? value.runs : null,
   );
-  const inherited = describeBufferTarget(accountDefault);
-  const description =
-    value === null
-      ? `Empty inherits your account default of ${inherited}.`
-      : value.kind === "unbounded"
-        ? `No limit: a top-up enqueues every missing run of this ${subject} at once, however many are already waiting on you. Only its per-cell targets and the harness caps hold it back.`
-        : value.runs === 0
-          ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
-          : `This ${subject} keeps ${value.runs} run${value.runs === 1 ? "" : "s"} outstanding before a top-up stops.`;
+  const description = limitDescription(subject, value, accountDefault);
   const placeholder =
     accountDefault.kind === "bounded" ? String(accountDefault.runs) : "";
   return (
     <SettingRow
-      label="Review buffer"
+      label="Runs in flight at once"
       description={description}
+      help={LIMIT_HELP}
       modified={value !== null}
       onReset={() => onChange(null)}
     >
       {(id) => (
-        <span className={styles.settingBuffer}>
+        <span className={styles.settingLimit}>
           <span className={styles.settingNumber}>
             {/* Optional: empty is the answer "inherit my account default", so
                 clearing it drops the override rather than being read as a zero.
@@ -226,17 +236,17 @@ export function BufferTargetField({
               id={id}
               className={exec.input}
               optional
-              label="The review buffer"
+              label="Runs in flight at once"
               min={0}
-              max={BUFFER_TARGET_CEILING}
+              max={IN_FLIGHT_LIMIT_CEILING}
               integer
               showProblem={false}
-              title={`Between 0 and ${BUFFER_TARGET_CEILING} runs, or empty to inherit your account default.`}
+              title={`Between 0 and ${IN_FLIGHT_LIMIT_CEILING} runs, or empty to inherit your account default.`}
               value={unbounded || value === null ? undefined : value.runs}
               placeholder={unbounded ? "" : placeholder}
               disabled={unbounded}
               onCommit={(n) => {
-                const next = boundedBuffer(n);
+                const next = boundedLimit(n);
                 setLastBound(next.kind === "bounded" ? next.runs : null);
                 onChange(next);
               }}
@@ -250,10 +260,10 @@ export function BufferTargetField({
               onChange={(next) =>
                 onChange(
                   next
-                    ? UNBOUNDED_BUFFER
+                    ? UNBOUNDED_LIMIT
                     : lastBound === null
                       ? null
-                      : boundedBuffer(lastBound),
+                      : boundedLimit(lastBound),
                 )
               }
             />
@@ -482,8 +492,9 @@ function comboIdentity(combo: ReviewPlanCombo): string {
 }
 
 /**
- * The member editor shared by the group, plan and ladder editors: the combinations
- * already chosen, over an add-row that builds the next one.
+ * The member editor shared by the group, plan and ladder editors: an add-row that
+ * builds the next combination, over the combinations already chosen — so what is
+ * being assembled accumulates at the foot of the editor, above its Save.
  *
  * The add-row asks for a kind because a combination has two shapes — a harness and the
  * model it runs, or a saved [gg configuration](../runs/gg/useGgConfigs) and a model for
@@ -497,10 +508,17 @@ export function ComboPicker({
   combos,
   onChange,
   models,
+  membersLabel,
 }: {
   combos: ReviewPlanCombo[];
   onChange: (next: ReviewPlanCombo[]) => void;
   models: Model[];
+  /**
+   * A heading for the chosen members, set where they are the thing the editor makes
+   * (a group) rather than one input among several (a plan's one-offs). With it, an
+   * empty list says so instead of rendering nothing.
+   */
+  membersLabel?: string;
 }) {
   const { token } = useAuth();
   const {
@@ -737,83 +755,9 @@ export function ComboPicker({
 
   return (
     <>
-      {(comboGroups.length > 0 || ggMembers.length > 0) && (
-        <div className={styles.chipGroups}>
-          {comboGroups.map((group) => (
-            <div key={group.key} className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>{group.title}</span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  // Scoped by the indices the block actually holds, so clearing one
-                  // harness leaves every other harness's members alone.
-                  onClick={() => {
-                    const dropped = new Set(group.items.map((item) => item.i));
-                    onChange(combos.filter((_, j) => !dropped.has(j)));
-                  }}
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.chipList}>
-                {group.items.map(({ combo, i, label }) => (
-                  <li
-                    key={`${comboIdentity(combo)}:${i}`}
-                    className={styles.chip}
-                  >
-                    <span>{label}</span>
-                    <button
-                      type="button"
-                      className={styles.chipRemove}
-                      aria-label="Remove combination"
-                      onClick={() => onChange(combos.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          {/* One section for every gg member, under the same divided heading a harness
-              block carries. The heading names the shape rather than a configuration
-              because the configuration names each row: one block per configuration made
-              a heading and a divider out of a single entry, and stacked several of them
-              between the reviewer and the add-row. */}
-          {ggMembers.length > 0 && (
-            <div className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>gg Configurations</span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  // Every gg member, since the section is every gg member. Decided on
-                  // what makes a member a gg member rather than on the row list, so a
-                  // member the rows could not name is still cleared.
-                  onClick={() => onChange(combos.filter((c) => !isGgCombo(c)))}
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.ggMemberList}>
-                {ggMembers.map((entry) => (
-                  <GgMemberRow
-                    key={`${comboIdentity(entry.combo)}:${entry.i}`}
-                    entry={entry}
-                    onRemove={() =>
-                      onChange(combos.filter((_, j) => j !== entry.i))
-                    }
-                  />
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
       {/* One labelled field rather than two lit pills: the shape is a choice from a
           fixed set, which is what a select is for, and a pair of filled pills directly
-          under a list of member pills read as members of it. Matches the comparison
+          over a list of member pills read as members of it. Matches the comparison
           editor's own Kind field, which offers this same choice. */}
       <label className={`${exec.field} ${styles.kindField}`}>
         <span className={exec.fieldLabel}>Combination kind</span>
@@ -1026,6 +970,86 @@ export function ComboPicker({
           </div>
         </div>
       )}
+      {membersLabel && (
+        <MembersHeading
+          label={membersLabel}
+          empty={comboGroups.length === 0 && ggMembers.length === 0}
+        />
+      )}
+      {(comboGroups.length > 0 || ggMembers.length > 0) && (
+        <div className={styles.chipGroups}>
+          {comboGroups.map((group) => (
+            <div key={group.key} className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>{group.title}</span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  // Scoped by the indices the block actually holds, so clearing one
+                  // harness leaves every other harness's members alone.
+                  onClick={() => {
+                    const dropped = new Set(group.items.map((item) => item.i));
+                    onChange(combos.filter((_, j) => !dropped.has(j)));
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.chipList}>
+                {group.items.map(({ combo, i, label }) => (
+                  <li
+                    key={`${comboIdentity(combo)}:${i}`}
+                    className={styles.chip}
+                  >
+                    <span>{label}</span>
+                    <button
+                      type="button"
+                      className={styles.chipRemove}
+                      aria-label="Remove combination"
+                      onClick={() => onChange(combos.filter((_, j) => j !== i))}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {/* One section for every gg member, under the same divided heading a harness
+              block carries. The heading names the shape rather than a configuration
+              because the configuration names each row: one block per configuration made
+              a heading and a divider out of a single entry, and stacked several of them
+              between the reviewer and the add-row. */}
+          {ggMembers.length > 0 && (
+            <div className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>gg Configurations</span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  // Every gg member, since the section is every gg member. Decided on
+                  // what makes a member a gg member rather than on the row list, so a
+                  // member the rows could not name is still cleared.
+                  onClick={() => onChange(combos.filter((c) => !isGgCombo(c)))}
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.ggMemberList}>
+                {ggMembers.map((entry) => (
+                  <GgMemberRow
+                    key={`${comboIdentity(entry.combo)}:${entry.i}`}
+                    entry={entry}
+                    onRemove={() =>
+                      onChange(combos.filter((_, j) => j !== entry.i))
+                    }
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -1033,9 +1057,16 @@ export function ComboPicker({
 export function CasePicker({
   cases,
   onChange,
+  membersLabel,
 }: {
   cases: ReviewPlanCase[];
   onChange: (next: ReviewPlanCase[]) => void;
+  /**
+   * A heading for the chosen members, set where they are the thing the editor makes
+   * (a group) rather than one input among several (a plan's one-offs). With it, an
+   * empty list says so instead of rendering nothing.
+   */
+  membersLabel?: string;
 }) {
   const testCaseName = useTestCaseName();
   const sel = useCatalog();
@@ -1165,53 +1196,6 @@ export function CasePicker({
 
   return (
     <>
-      {caseGroups.length > 0 && (
-        <div className={styles.chipGroups}>
-          {caseGroups.map((group) => (
-            <div key={group.category ?? "other"} className={styles.chipGroup}>
-              <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>
-                  {group.category ? categoryLabel(group.category) : "Other"}
-                </span>
-                <button
-                  type="button"
-                  className={styles.chipGroupClear}
-                  onClick={() =>
-                    onChange(
-                      cases.filter(
-                        (c) => slugCategory(c.slug) !== group.category,
-                      ),
-                    )
-                  }
-                >
-                  Clear all
-                </button>
-              </div>
-              <ul className={styles.chipList}>
-                {group.items.map(({ c, i }) => (
-                  <li
-                    key={`${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}`}
-                    className={styles.chip}
-                  >
-                    {/* Through the shared pin label, so a pill spells the engine the
-                        same way the matrix and the review queue do — and so two pills
-                        differing only on engine are not the same line of text. */}
-                    <span>{caseLabel(testCaseName(c.slug), c)}</span>
-                    <button
-                      type="button"
-                      className={styles.chipRemove}
-                      aria-label="Remove case"
-                      onClick={() => onChange(cases.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
       {/* The new-run form's Test grid, so choosing a case reads the same wherever it
           is done: the type, case and version on the first row, and the variant, the
           engine and the add control — everything the resolved version decides, plus
@@ -1296,6 +1280,67 @@ export function CasePicker({
           + Add
         </button>
       </div>
+      {membersLabel && (
+        <MembersHeading label={membersLabel} empty={caseGroups.length === 0} />
+      )}
+      {caseGroups.length > 0 && (
+        <div className={styles.chipGroups}>
+          {caseGroups.map((group) => (
+            <div key={group.category ?? "other"} className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>
+                  {group.category ? categoryLabel(group.category) : "Other"}
+                </span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  onClick={() =>
+                    onChange(
+                      cases.filter(
+                        (c) => slugCategory(c.slug) !== group.category,
+                      ),
+                    )
+                  }
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.chipList}>
+                {group.items.map(({ c, i }) => (
+                  <li
+                    key={`${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}`}
+                    className={styles.chip}
+                  >
+                    {/* Through the shared pin label, so a pill spells the engine the
+                        same way the matrix and the review queue do — and so two pills
+                        differing only on engine are not the same line of text. */}
+                    <span>{caseLabel(testCaseName(c.slug), c)}</span>
+                    <button
+                      type="button"
+                      className={styles.chipRemove}
+                      aria-label="Remove case"
+                      onClick={() => onChange(cases.filter((_, j) => j !== i))}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// The heading over a picker's chosen members, with a placeholder line while there
+// are none so the section reads as the (still empty) thing being built.
+function MembersHeading({ label, empty }: { label: string; empty: boolean }) {
+  return (
+    <>
+      <p className={`${exec.sectionLabel} ${styles.membersLabel}`}>{label}</p>
+      {empty && <p className={styles.fieldHint}>No members yet.</p>}
     </>
   );
 }
