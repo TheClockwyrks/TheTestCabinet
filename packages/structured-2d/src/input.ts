@@ -1,6 +1,8 @@
 /**
  * Input: named actions over keyboard bindings and a closed catalogue of touch
- * layouts, with a pointer mapped into the game's logical coordinates.
+ * layouts, with a pointer mapped into the game's logical coordinates. The
+ * on-screen controls a layout draws live in `touch-controls.ts` and drive the
+ * actions here through {@link InputSystem.drive}.
  *
  * A game registers its actions once, from `InitApi.input` during the game
  * instance's `initialize`, and reads them through a player controller's
@@ -36,9 +38,10 @@ import type {
 /**
  * The four menu actions, appended to every layout's own vocabulary in this
  * order. They are part of the catalogue rather than a convention a game keeps,
- * so every layout answers the same menu vocabulary.
+ * so every layout answers the same menu vocabulary, and every layout's
+ * on-screen controls draw the same four menu buttons.
  */
-const MENU_ACTIONS = ["confirm", "back", "pause", "mute"] as const;
+export const MENU_ACTIONS = ["confirm", "back", "pause", "mute"] as const;
 
 /** One catalogue entry: the layout's own vocabulary plus the menu actions. */
 function layout(name: string, own: readonly string[]): TouchLayout {
@@ -52,10 +55,11 @@ function layout(name: string, own: readonly string[]): TouchLayout {
  * The touch-layout catalogue, exported from the package root as a read-only
  * record.
  *
- * A closed catalogue rather than a game-supplied description, so a reviewer's
- * touch chrome is drawn by the host from a vocabulary it already knows.
- * `EngineOptions.layout` names an entry; a name outside the catalogue is
- * refused at `createEngine`, naming every valid layout.
+ * A closed catalogue rather than a game-supplied description, so the engine
+ * draws each entry's on-screen controls from a vocabulary it already knows
+ * (see `touch-controls.ts`). `EngineOptions.layout` names an entry; a name
+ * outside the catalogue is refused at `createEngine`, naming every valid
+ * layout.
  */
 export const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>> =
   Object.freeze({
@@ -476,9 +480,9 @@ export class InputSystem {
 
   /**
    * Drives an action's magnitude directly, with no key event involved — the
-   * seam a host's touch chrome pushes a slider's deflection through. Internal:
-   * the documented sources are keys and touch controls, and a game reads the
-   * one resolved number whichever moved it.
+   * seam the on-screen touch controls push a slider's deflection or a button's
+   * hold through. Internal: the documented sources are keys and touch
+   * controls, and a game reads the one resolved number whichever moved it.
    *
    * The change takes the same path a key does, so crossing from rest into
    * motion arms the edge exactly as a keypress would. A held key wins over the

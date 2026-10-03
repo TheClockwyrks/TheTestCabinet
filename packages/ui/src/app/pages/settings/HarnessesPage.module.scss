@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 // The Harnesses settings surface. An intro panel followed by one card per
 // harness, each stacking its setting rows.
@@ -47,14 +48,15 @@
   letter-spacing: 0.05em;
 }
 
-// A setting row: a label block beside its control. Stacks on narrow viewports.
+// A setting row: a label block beside its control. Stacks at tablet width, where
+// every setting row does.
 .row {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) 2fr;
   gap: t.$space-lg;
   align-items: start;
 
-  @media (max-width: 40rem) {
+  @include bp.below(t.$bp-md) {
     grid-template-columns: 1fr;
     gap: t.$space-sm;
   }
@@ -76,54 +78,4 @@
   color: t.$color-text-muted;
   max-width: 48ch;
   @include h.halo;
-}
-
-// The limit entry: a number field with Save.
-.limitForm {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm;
-  align-items: center;
-}
-
-.input {
-  flex: 1 1 16rem;
-  min-width: 0;
-  padding: t.$space-sm t.$space-md;
-  font: inherit;
-  color: t.$color-text;
-  background: t.$color-surface;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    outline-offset: 2px;
-  }
-
-  &:disabled {
-    opacity: 0.6;
-  }
-}
-
-.primary {
-  padding: t.$space-sm t.$space-md;
-  font: inherit;
-  color: t.$color-accent;
-  background: t.$color-surface;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  border: t.$border-hairline solid t.$color-border;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-
-  &:hover:not(:disabled) {
-    border-color: t.$color-accent;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
 }

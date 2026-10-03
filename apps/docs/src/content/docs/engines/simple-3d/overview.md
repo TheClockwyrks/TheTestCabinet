@@ -19,7 +19,8 @@ that decides what each frame's delta time is, the fit from the logical design
 size to the canvas, the renderer over the canvas, the scene object and the
 camera it renders through, the screen layer a game draws its readouts on, the
 input action registry and its bindings, the pointer mapped into the game's
-logical coordinates, the audio bus with its positional cues, the asset loader
+logical coordinates, the on-screen touch controls a layout draws, the audio bus
+with its positional cues, the asset loader
 with its texture and model decoders, the debug overlay together with the frame
 metrics it reports, the recorder that captures the picture it drew as video,
 frame by frame, and the debug surface the game returned beside its state, held

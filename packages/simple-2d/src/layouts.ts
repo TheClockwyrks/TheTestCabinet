@@ -1,12 +1,15 @@
 /**
  * The closed catalogue of touch layouts and the action vocabulary each one brings.
  *
- * A layout is a *vocabulary contract*, not a widget. Naming `dual-vertical` says
- * "the control scheme is two vertical sliders, and the actions in play are
- * `p1-up`, `p1-down`, `p2-up`, `p2-down`". Selecting one registers nothing and
- * draws nothing — the game still registers each action with its own binding — but
- * it fixes the vocabulary, which is what lets a driver read back what the build is
- * meant to speak as a static fact instead of inferring it from behaviour.
+ * A layout names a control scheme, and with it two things. Naming `dual-vertical`
+ * says "the control scheme is two vertical sliders, and the actions in play are
+ * `p1-up`, `p1-down`, `p2-up`, `p2-down`". Selecting one fixes the vocabulary,
+ * which is what lets a driver read back what the build is meant to speak as a
+ * static fact instead of inferring it from behaviour, and it is what the engine
+ * draws the on-screen controls for (see `touch-controls.ts`): the two sliders a
+ * touchscreen player is given. Selection registers nothing — the game still
+ * registers each action with its own key binding — so one vocabulary is playable
+ * from a keyboard and from the screen alike.
  *
  * The catalogue is **closed**, and an unknown name throws rather than falling back
  * to a default. A silent fallback would let a game be configured for one control

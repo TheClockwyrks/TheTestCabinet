@@ -68,44 +68,7 @@
   cursor: pointer;
 }
 
+// The number field's own width: a limit is a handful of digits.
 .input {
   width: 8rem;
-  min-width: 0;
-  padding: t.$space-sm t.$space-md;
-  font: inherit;
-  color: t.$color-text;
-  background: t.$color-surface;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    outline-offset: 2px;
-  }
-
-  &:disabled {
-    opacity: 0.6;
-  }
-}
-
-.primary {
-  padding: t.$space-sm t.$space-md;
-  font: inherit;
-  color: t.$color-accent;
-  background: t.$color-surface;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-
-  &:hover:not(:disabled) {
-    border-color: t.$color-accent;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
 }

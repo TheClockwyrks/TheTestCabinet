@@ -21,6 +21,13 @@ import { useModelConfig } from "../../data/useModelConfig";
 import { useModels } from "../../data/useModels";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { routes } from "../../routes";
+import {
+  Button,
+  ControlRow,
+  Input,
+  Select,
+  Textarea,
+} from "../../../primitives";
 import styles from "./ModelConfigPage.module.scss";
 
 // The catalog slug the backend derives from a name when the form doesn't carry a
@@ -492,23 +499,21 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control wide>
-                <div className={styles.fillRow}>
-                  <input
+                <ControlRow>
+                  <Input
                     id={id}
-                    className={styles.input}
                     value={openrouterSlug}
                     onChange={(e) => setOpenrouterSlug(e.target.value)}
                     placeholder="e.g. anthropic/claude-opus-4.8"
                   />
-                  <button
-                    type="button"
-                    className={styles.fill}
+                  <Button
+                    size="small"
                     onClick={onFill}
                     disabled={!openrouterSlug.trim() || filling}
                   >
                     {filling ? "Filling…" : "Fill from OpenRouter"}
-                  </button>
-                </div>
+                  </Button>
+                </ControlRow>
                 {fillError && (
                   <span className={styles.fillError} role="alert">
                     {fillError}
@@ -521,9 +526,8 @@ export function ModelConfigPage() {
           <SettingRow label="Name" description="Required.">
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Claude Opus 4.8"
@@ -535,9 +539,8 @@ export function ModelConfigPage() {
           <SettingRow label="Provider">
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                   placeholder="e.g. Anthropic"
@@ -569,9 +572,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control wide>
-                <textarea
+                <Textarea
                   id={id}
-                  className={styles.textarea}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="What the model is, when to reach for it…"
@@ -591,48 +593,50 @@ export function ModelConfigPage() {
             <Control wide>
               <ul className={styles.aliasList}>
                 {aliases.map((entry, index) => (
-                  <li key={index} className={styles.aliasRow}>
-                    <input
-                      className={styles.input}
-                      value={entry.slug}
-                      onChange={(e) => setAliasSlug(index, e.target.value)}
-                      placeholder="e.g. claude-opus-4-8"
-                      aria-label={`Model id ${index + 1}`}
-                    />
-                    <select
-                      className={styles.aliasFamily}
-                      value={entry.harnessFamily}
-                      onChange={(e) =>
-                        setAliasFamily(index, e.target.value as HarnessFamily)
-                      }
-                      aria-label={`Harness family for model id ${index + 1}`}
-                    >
-                      {FAMILIES.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={styles.aliasRemove}
-                      onClick={() => removeAlias(index)}
-                      disabled={aliases.length <= 1}
-                      title="Remove this id"
-                      aria-label="Remove this id"
-                    >
-                      &times;
-                    </button>
+                  <li key={index}>
+                    <ControlRow>
+                      <Input
+                        value={entry.slug}
+                        onChange={(e) => setAliasSlug(index, e.target.value)}
+                        placeholder="e.g. claude-opus-4-8"
+                        aria-label={`Model id ${index + 1}`}
+                      />
+                      <Select
+                        className={styles.aliasFamily}
+                        value={entry.harnessFamily}
+                        onChange={(e) =>
+                          setAliasFamily(index, e.target.value as HarnessFamily)
+                        }
+                        aria-label={`Harness family for model id ${index + 1}`}
+                      >
+                        {FAMILIES.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.displayName}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        variant="danger"
+                        size="small"
+                        className={styles.aliasRemove}
+                        onClick={() => removeAlias(index)}
+                        disabled={aliases.length <= 1}
+                        title="Remove this id"
+                        aria-label="Remove this id"
+                      >
+                        &times;
+                      </Button>
+                    </ControlRow>
                   </li>
                 ))}
               </ul>
-              <button
-                type="button"
+              <Button
+                size="small"
                 className={styles.aliasAdd}
                 onClick={addAlias}
               >
                 + Add id
-              </button>
+              </Button>
             </Control>
           </SettingRow>
         </div>
@@ -652,9 +656,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={listPriceInput}
                   onChange={(e) => setListPriceInput(e.target.value)}
                   inputMode="decimal"
@@ -667,9 +670,8 @@ export function ModelConfigPage() {
           <SettingRow label="Cached input / Mtok">
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={listPriceCachedInput}
                   onChange={(e) => setListPriceCachedInput(e.target.value)}
                   inputMode="decimal"
@@ -682,9 +684,8 @@ export function ModelConfigPage() {
           <SettingRow label="Output / Mtok">
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={listPriceOutput}
                   onChange={(e) => setListPriceOutput(e.target.value)}
                   inputMode="decimal"
@@ -700,9 +701,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   type="date"
                   value={listPriceAsOf}
                   onChange={(e) => setListPriceAsOf(e.target.value)}
@@ -728,9 +728,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={providerPin}
                   onChange={(e) => setProviderPin(e.target.value)}
                   placeholder="e.g. Alibaba"
@@ -762,9 +761,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   value={nativeQuantization}
                   onChange={(e) => setNativeQuantization(e.target.value)}
                   placeholder="e.g. fp8"
@@ -787,9 +785,8 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   type="number"
                   min="0"
                   step="any"
@@ -805,9 +802,8 @@ export function ModelConfigPage() {
           <SettingRow label="Price ceiling, output / Mtok" description="USD.">
             {(id) => (
               <Control>
-                <input
+                <Input
                   id={id}
-                  className={styles.input}
                   type="number"
                   min="0"
                   step="any"
@@ -826,9 +822,9 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <textarea
+                <Textarea
                   id={id}
-                  className={`${styles.textarea} ${styles.textareaShort}`}
+                  className={styles.textareaShort}
                   value={bannedProviders}
                   onChange={(e) => setBannedProviders(e.target.value)}
                   placeholder="One provider per line"
@@ -844,9 +840,9 @@ export function ModelConfigPage() {
           >
             {(id) => (
               <Control>
-                <textarea
+                <Textarea
                   id={id}
-                  className={`${styles.textarea} ${styles.textareaShort}`}
+                  className={styles.textareaShort}
                   value={unknownQuantizationProviders}
                   onChange={(e) =>
                     setUnknownQuantizationProviders(e.target.value)
@@ -861,24 +857,20 @@ export function ModelConfigPage() {
         <SubmitNotice message={error} />
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onSave}
-            disabled={!canSave}
-          >
+          <Button variant="primary" onClick={onSave} disabled={!canSave}>
             {busy ? "Saving…" : editing ? "Save changes" : "Create model"}
-          </button>
+          </Button>
           {editing && (
-            <button
-              type="button"
+            <Button
+              variant="danger"
+              size="small"
               className={styles.deleteButton}
               onClick={onDelete}
               disabled={busy}
               title="Delete this model configuration"
             >
               Delete
-            </button>
+            </Button>
           )}
         </div>
       </div>

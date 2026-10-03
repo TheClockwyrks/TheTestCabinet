@@ -22,6 +22,7 @@ import {
 import { formatCompact, formatTimestamp } from "../../../format";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
 import { PROGRAM_LANGUAGE_NAMES } from "../../gg/programLanguages";
+import { Button, Input, Select } from "../../../../primitives";
 import styles from "./ModelProbesPage.module.scss";
 
 // The sampling defaults the backend applies to an empty trigger body — seeded
@@ -241,7 +242,7 @@ function ProbeTriggerForm({
           onReset={() => setProvider("")}
         >
           {(id) => (
-            <select
+            <Select
               id={id}
               className={styles.select}
               value={provider}
@@ -255,7 +256,7 @@ function ProbeTriggerForm({
                     : `${p.name} · ${formatCompact(p.contextLength)} ctx`}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <Field
@@ -264,7 +265,7 @@ function ProbeTriggerForm({
           onReset={() => setLanguage("")}
         >
           {(id) => (
-            <select
+            <Select
               id={id}
               className={styles.select}
               value={language}
@@ -276,7 +277,7 @@ function ProbeTriggerForm({
                   {name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <Field
@@ -285,7 +286,7 @@ function ProbeTriggerForm({
           onReset={() => setSamples(String(DEFAULT_SAMPLES))}
         >
           {(id) => (
-            <input
+            <Input
               id={id}
               className={styles.number}
               type="number"
@@ -302,7 +303,7 @@ function ProbeTriggerForm({
           onReset={() => setMaxTokens(String(DEFAULT_MAX_TOKENS))}
         >
           {(id) => (
-            <input
+            <Input
               id={id}
               className={styles.number}
               type="number"
@@ -314,9 +315,8 @@ function ProbeTriggerForm({
             />
           )}
         </Field>
-        <button
-          type="button"
-          className={styles.run}
+        <Button
+          variant="primary"
           onClick={onRun}
           disabled={!canRun}
           title={
@@ -328,7 +328,7 @@ function ProbeTriggerForm({
           }
         >
           {busy ? "Starting…" : "Run probe"}
-        </button>
+        </Button>
       </div>
       <SubmitNotice message={error} />
     </div>
@@ -669,7 +669,7 @@ function ProbeRequests({ requests }: { requests: ModelProbeRequest[] }) {
     <div className={styles.request}>
       <label className={styles.requestPick}>
         Case{" "}
-        <select
+        <Select
           className={styles.select}
           value={String(Math.min(picked, requests.length - 1))}
           onChange={(e) => setPicked(Number.parseInt(e.target.value, 10))}
@@ -682,7 +682,7 @@ function ProbeRequests({ requests }: { requests: ModelProbeRequest[] }) {
               {languageLabel(r.language)} · {r.scenario} · {r.prompt}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {request.messages.map((message, index) => (
         <div key={index}>

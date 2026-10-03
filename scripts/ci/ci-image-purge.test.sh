@@ -81,9 +81,11 @@ readonly STALE="c0ffee0000000000000000000000000000000005"
 readonly OWN="c0ffee0000000000000000000000000000000006"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
-# answered with the status STUB_DELETE_STATUS names and logged; the catalogue
-# of a repository is <repository>.manifests.json; the token endpoint mints a
-# token naming the scope it was asked for.
+# answered with the status STUB_DELETE_STATUS names and logged; a GET of a
+# manifest is answered from <repository>@<digest>.json, a plain image when no
+# such file exists, or refused for the digest STUB_UNREADABLE names; the
+# catalogue of a repository is <repository>.manifests.json; the token endpoint
+# mints a token naming the scope it was asked for.
 cat >"$repo/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -120,9 +122,19 @@ case "$url" in
 		fi
 		;;
 	*/v2/*/manifests/*)
-		[ "$method" = DELETE ] || exit 22
 		path="${url#*/v2/}"
-		echo "${path%%/manifests/*}@${path##*/manifests/}" >>"$STUB_DIR/deleted.log"
+		reference="${path%%/manifests/*}@${path##*/manifests/}"
+		if [ "$method" = GET ]; then
+			[ "${path##*/manifests/}" != "${STUB_UNREADABLE:-}" ] || exit 22
+			if [ -f "$STUB_DIR/$reference.json" ]; then
+				cat "$STUB_DIR/$reference.json"
+			else
+				echo '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","layers":[]}'
+			fi
+			exit 0
+		fi
+		[ "$method" = DELETE ] || exit 22
+		echo "$reference" >>"$STUB_DIR/deleted.log"
 		printf '%s' "${STUB_DELETE_STATUS:-202}"
 		;;
 	*)
@@ -190,6 +202,14 @@ manifest() { # digest when [tag...]
 		  tags: ($ARGS.positional | if length == 0 then null else . end)}' "$@"
 }
 
+index() { # repository digest child...
+	local repository="$1" digest="$2"
+	shift 2
+	jq -n --args '{schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json",
+		manifests: ($ARGS.positional | map({digest: ., mediaType: "application/vnd.oci.image.manifest.v1+json"}))}' "$@" \
+		>"$stub/$repository@$digest.json"
+}
+
 basic_config() { # user password
 	printf '{"auths":{"%s":{"auth":"%s"}}}\n' "$REGISTRY" "$(printf '%s:%s' "$1" "$2" | base64 -w0)" \
 		>"$docker/config.json"
@@ -219,8 +239,19 @@ write_fixtures() {
 		manifest sha256:untagged-old "$(at '2 hours ago')"
 		echo ,
 		manifest sha256:untagged-young "$(at '10 minutes ago')"
+		echo ,
+		manifest sha256:staging-image "$(at '2 days ago')"
+		echo ,
+		manifest sha256:staging-attestation "$(at '2 days ago')"
+		echo ,
+		manifest sha256:stale-attestation "$(at '10 days ago')"
 		echo ']}'
 	} >"$stub/$REPOSITORY.manifests.json"
+	# The staging pin and the stale tag are indexes. Both name the image the
+	# staging tag's build pushed, which the stale tag's build had pushed first
+	# with the same content; each names an attestation of its own.
+	index "$REPOSITORY" sha256:staging sha256:staging-image sha256:staging-attestation
+	index "$REPOSITORY" sha256:stale sha256:staging-image sha256:stale-attestation
 	{
 		echo '{"manifests":['
 		manifest sha256:cache-tag "$(at '10 days ago')" buildcache
@@ -248,6 +279,9 @@ check_equal "keeps the checkout's pin and the three live branches'" \
 check_contains "deletes an unkept tag" "deleted ${REPOSITORY}@sha256:stale" "$out"
 check_contains "deletes an untagged manifest older than an hour" "deleted ${REPOSITORY}@sha256:untagged-old" "$out"
 check_lacks "keeps a young untagged one" "sha256:untagged-young" "$out"
+check_lacks "keeps the image a kept index names, though it is old and untagged" "sha256:staging-image" "$out"
+check_lacks "and its attestation" "sha256:staging-attestation" "$out"
+check_contains "deletes an unkept index's own attestation" "deleted ${REPOSITORY}@sha256:stale-attestation" "$out"
 check_lacks "keeps the cache repository's tag" "sha256:cache-tag" "$out"
 check_contains "deletes the cache repository's old untagged manifests" "deleted ${REPOSITORY}-cache@sha256:cache-old" "$out"
 check_lacks "not its young one" "sha256:cache-young" "$out"
@@ -255,7 +289,12 @@ check_equal "the deletes, in order" \
 	"${REPOSITORY}@sha256:stale
 ${REPOSITORY}@sha256:own
 ${REPOSITORY}@sha256:untagged-old
+${REPOSITORY}@sha256:stale-attestation
 ${REPOSITORY}-cache@sha256:cache-old" "$(deleted)"
+check_contains "reads back each kept tag's manifest" \
+	"GET https://${REGISTRY}/v2/${REPOSITORY}/manifests/sha256:staging Basic" "$(cat "$stub/curl.log")"
+check_lacks "and not an unkept one's" \
+	"GET https://${REGISTRY}/v2/${REPOSITORY}/manifests/sha256:stale " "$(cat "$stub/curl.log")"
 check_contains "fetches master" "fetch --quiet origin master" "$(cat "$stub/git.log")"
 check_contains "staging" "fetch --quiet origin staging" "$(cat "$stub/git.log")"
 check_contains "and nightly" "fetch --quiet origin nightly" "$(cat "$stub/git.log")"
@@ -356,6 +395,13 @@ out="$(run rust)"
 check_equal "exits 0" "0" "$?"
 check_contains "keeps the live branches' pins" "${REPOSITORY}: keeping $MASTER $STAGING $NIGHTLY" "$out"
 check_contains "and deletes the checkout's former image" "${REPOSITORY}@sha256:checkout" "$(deleted)"
+
+echo "--- a kept index that cannot be read back ---"
+write_fixtures
+out="$(STUB_UNREADABLE=sha256:staging run rust)"
+check_equal "exits 1" "1" "$?"
+check_contains "refuses" "cannot read ${REPOSITORY}@sha256:staging, which a kept tag names; refusing to purge" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
 
 echo "--- a delete that fails ---"
 write_fixtures

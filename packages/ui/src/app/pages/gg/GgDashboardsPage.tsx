@@ -33,6 +33,8 @@ import { OVERVIEW_DASHBOARD } from "./dashboards/overviewDashboard";
 import { TIME_RANGES } from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
 import styles from "./dashboards/GgDashboards.module.scss";
+import { Input } from "../../../primitives/Input";
+import { Select } from "../../../primitives/Select";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 
@@ -231,16 +233,14 @@ export function GgDashboardsPage() {
         <div className={styles.form}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Name</span>
-            <input
-              className={styles.input}
+            <Input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
           </label>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Description</span>
-            <input
-              className={styles.input}
+            <Input
               value={draft.description}
               onChange={(e) =>
                 setDraft({ ...draft, description: e.target.value })
@@ -249,8 +249,7 @@ export function GgDashboardsPage() {
           </label>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Range (the whole board's)</span>
-            <select
-              className={styles.select}
+            <Select
               value={draft.rangeId}
               onChange={(e) => setDraft({ ...draft, rangeId: e.target.value })}
             >
@@ -259,7 +258,7 @@ export function GgDashboardsPage() {
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <p className={styles.fieldLabel}>
@@ -268,15 +267,13 @@ export function GgDashboardsPage() {
           </p>
           {draft.panels.map((panel, index) => (
             <div className={styles.panelRow} key={index}>
-              <input
-                className={styles.input}
+              <Input
                 aria-label={`Panel ${index + 1} title`}
                 placeholder="Title"
                 value={panel.title}
                 onChange={(e) => patchPanel(index, { title: e.target.value })}
               />
-              <input
-                className={styles.queryInput}
+              <Input
                 aria-label={`Panel ${index + 1} query`}
                 placeholder="| stats count() by model"
                 value={panel.query}
@@ -285,7 +282,6 @@ export function GgDashboardsPage() {
               {/* The row is one grid line, with no room under it for a sentence;
                   the action row below says why a board will not save. */}
               <NumberField
-                className={styles.input}
                 ariaLabel={`Panel ${index + 1} width`}
                 showProblem={false}
                 title="How many of the twelve columns the panel spans, 1 to 12."

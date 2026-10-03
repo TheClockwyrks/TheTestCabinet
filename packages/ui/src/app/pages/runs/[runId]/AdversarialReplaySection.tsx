@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Panel } from "@clockwyrks/ui";
+import { Select } from "../../../../primitives";
 import type { RunRecord } from "@clockwyrks/run-record";
 import {
   useGalleryData,
@@ -468,7 +469,7 @@ export function ReplayOverlay({
               <label className={styles.controlLabel} htmlFor="replay-speed">
                 speed
               </label>
-              <select
+              <Select
                 id="replay-speed"
                 className={styles.speed}
                 value={speed}
@@ -479,7 +480,7 @@ export function ReplayOverlay({
                     {s}×
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {result ? (

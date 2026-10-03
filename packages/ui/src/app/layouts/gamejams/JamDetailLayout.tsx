@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { Panel } from "@clockwyrks/ui";
+import { Select } from "../../../primitives";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { LoadFailureState } from "../../components/LoadFailureState";
@@ -165,7 +166,7 @@ export function JamDetailLayout({
           <div className={styles.coordinateRow}>
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
-              <select
+              <Select
                 className={styles.variantSelect}
                 value={coordinate.variant.slug}
                 onChange={(event) => coordinate.setVariant(event.target.value)}
@@ -175,7 +176,7 @@ export function JamDetailLayout({
                     {entry.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </div>

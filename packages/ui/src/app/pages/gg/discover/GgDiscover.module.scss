@@ -2,6 +2,7 @@
 @use "../../../styles/halo" as h;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/breakpoints" as bp;
+@use "../../../styles/forms" as f;
 
 // Discover — the TCQ query surface: the field sidebar, the editor with its highlight
 // layer and completion popup, and the result tables.
@@ -71,16 +72,9 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Layout only: the search is the shared `Input`, set off from the title and the list.
 .sidebarSearch {
-  width: 100%;
   margin: t.$space-sm 0;
-  padding: t.$space-xs t.$space-sm;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: inherit;
-  font-size: t.$font-sm;
 }
 
 .sidebarEmpty {
@@ -228,14 +222,10 @@
   font-size: t.$font-sm;
 }
 
+// Layout only: the shared `Select` fills its box, and here the box is the label's
+// row, so the dropdown keeps its own width beside the "Range" caption.
 .rangeSelect {
-  padding: t.$space-xs t.$space-sm;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: inherit;
-  font-size: t.$font-sm;
+  width: auto;
 }
 
 // --- The editor -------------------------------------------------------------------
@@ -246,25 +236,29 @@
   gap: t.$space-sm;
 }
 
+// The editor box beside its actions. The box takes a fixed basis rather than `auto`,
+// so it grows into the row's spare width and the actions drop under it only when the
+// row is genuinely cramped — never because the query text happens to be long.
 .editorRow {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: t.$space-sm;
 }
 
 .editorBox {
   position: relative;
-  flex: 1 1 auto;
+  flex: 1 1 12rem;
   min-width: 0;
 }
 
 // The shared text metrics. Both layers include this, so the painted glyphs and the typed
-// ones land on exactly the same pixels — the whole technique depends on it.
+// ones land on exactly the same pixels — the whole technique depends on it. Only the
+// metrics live here: the surface, border and focus cue are the shared text-control
+// treatment (`f.text-control`), which both layers include first.
 @mixin editor-text {
   margin: 0;
   padding: t.$space-sm;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   line-height: 1.5;
@@ -275,43 +269,34 @@
 }
 
 .highlight {
+  @include f.text-control;
   @include editor-text;
 
   min-height: 2.75rem;
-  background: t.$color-bg;
-  color: t.$color-text;
   overflow: hidden;
   // Purely decorative: the textarea above carries the real text and the real caret.
   pointer-events: none;
 }
 
 .input {
+  @include f.text-control;
   @include editor-text;
 
   position: absolute;
   inset: 0;
-  width: 100%;
   height: 100%;
   min-height: 2.75rem;
   resize: none;
   background: transparent;
   // Transparent text over the painted layer, but a visible caret and a visible
-  // selection — the two things the layer underneath cannot render.
+  // selection — the two things the layer underneath cannot render. The painted
+  // layer carries the visible border; this one shows only the shared focus cue.
   color: transparent;
   caret-color: t.$color-accent;
   border-color: transparent;
 
   &::selection {
     background: color-mix(in srgb, t.$color-accent 30%, transparent);
-  }
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
   }
 }
 
@@ -346,27 +331,10 @@
   text-underline-offset: 0.2em;
 }
 
+// Layout only: the actions are the shared `Button`, and keep their own width.
 .run,
 .examplesToggle {
   flex: 0 0 auto;
-  padding: t.$space-sm t.$space-md;
-  background: t.$color-surface-2;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-family: inherit;
-  font-size: t.$font-sm;
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    border-color: t.$color-accent;
-    color: t.$color-accent;
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
 }
 
 .completions {

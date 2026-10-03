@@ -216,6 +216,12 @@ statement fixes both the on-screen controls and the set of actions a build is
 expected to register. A game that needs actions beyond its layout's vocabulary
 has those named by the case.
 
+A layout names both the vocabulary and the controls the engine draws for it, so
+a build on a touchscreen is playable with nothing beyond the layout the case
+names. The controls are hidden until the surface receives its first touch, and
+a keyboard, mouse, or pen input hides them again until the next touch, so a
+device carrying both shows them exactly while the screen is in use.
+
 ## Audio
 
 A game plays audio through the engine's bus. The engine owns synthesis and

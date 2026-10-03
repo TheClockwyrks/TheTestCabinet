@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Actor, Pawn } from "./actors";
 import { WorldCamera } from "./camera";
 import { ConstantClock } from "./clocks";
 import { ColliderComponent } from "./collision";
 import { ShapeComponent } from "./components";
+import { PlayerController } from "./controllers";
 import type {
   DiagnosticValue,
   EndPlayReason,
@@ -162,6 +163,7 @@ function fakes(log: string[] = []): Fakes {
     input: {
       register: (name, binding) => registered.push([name, binding]),
       layout: () => null,
+      drive: (name, value) => log.push(`input.drive:${name}=${value}`),
       endFrame: () => log.push("input.endFrame"),
       detach: () => log.push("input.detach"),
     },
@@ -1439,6 +1441,170 @@ describe("end to end over the real subsystems", () => {
     await engine.advance(3);
     expect(hits).toBe(3);
     engine.destroy();
+  });
+});
+
+describe("touch controls over the real subsystems", () => {
+  /** A touch-shaped plain event, dispatched at the document as a player's would be. */
+  const touch = (): void => {
+    document.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+  };
+
+  /** The overlay, found the way a driver finds it. */
+  const overlay = (): HTMLElement | null =>
+    document.querySelector<HTMLElement>("[data-touch-controls]");
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    document.head.replaceChildren();
+  });
+
+  it("reports null and draws nothing when no layout was selected", () => {
+    const engine = real({ surface: fakeSurface(document) });
+
+    expect(engine.touchControls()).toBeNull();
+    expect(overlay()).toBeNull();
+    engine.destroy();
+  });
+
+  it("draws the selected layout's controls in the document, hidden", () => {
+    const engine = real({
+      layout: "dpad-4-two-buttons",
+      surface: fakeSurface(document),
+    });
+
+    expect(engine.touchControls()).toEqual({
+      layout: "dpad-4-two-buttons",
+      visible: false,
+    });
+    expect(overlay()?.getAttribute("data-touch-controls")).toBe(
+      "dpad-4-two-buttons",
+    );
+    expect(overlay()?.hidden).toBe(true);
+    engine.destroy();
+  });
+
+  it("shows them on a touch and reports it through the engine's events", () => {
+    const engine = real({
+      layout: "single-vertical",
+      surface: fakeSurface(document),
+    });
+    const seen: unknown[] = [];
+    engine.events.on("touch-controls:shown", (payload) => seen.push(payload));
+    engine.events.on("touch-controls:hidden", (payload) => seen.push(payload));
+
+    touch();
+    expect(engine.touchControls()?.visible).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(engine.touchControls()?.visible).toBe(false);
+
+    expect(seen).toEqual([
+      { layout: "single-vertical" },
+      { layout: "single-vertical", reason: "keyboard" },
+    ]);
+    engine.destroy();
+  });
+
+  it("reports null over a surface whose target has no document", () => {
+    const engine = real({ layout: "dpad-4", surface: fakeSurface() });
+
+    expect(engine.touchControls()).toBeNull();
+    expect(overlay()).toBeNull();
+    engine.destroy();
+  });
+
+  it("drives a registered action a player controller reads on its next frame", async () => {
+    const read: Array<[number, boolean]> = [];
+    class Confirmer extends PlayerController {
+      override tick(): void {
+        read.push([this.input.value("confirm"), this.input.pressed("confirm")]);
+      }
+    }
+    class ConfirmMode extends GameMode {
+      override playerControllerClass = Confirmer;
+      override beginPlay(): void {
+        this.addPlayer();
+      }
+    }
+    class ConfirmGame extends GameInstance<null> {
+      override initialize(api: InitApi): null {
+        api.input.register("confirm", { keys: ["Enter"] });
+        return null;
+      }
+    }
+    const engine = real({
+      layout: "single-vertical",
+      surface: fakeSurface(document),
+      game: {
+        instance: ConfirmGame,
+        levels: { main: { mode: ConfirmMode } },
+        startLevel: "main",
+      },
+    });
+    await engine.initialize();
+    touch();
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="confirm"]',
+    );
+    if (button === null) throw new Error("no confirm button was drawn");
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(read.at(-1)).toEqual([1, true]);
+
+    await engine.advance(1);
+    // Held, and the edge was news for exactly one frame.
+    expect(read.at(-1)).toEqual([1, false]);
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerup", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(read.at(-1)).toEqual([0, false]);
+    engine.destroy();
+  });
+
+  it("is removed by destroy, which reports no controls from then on", () => {
+    const engine = real({
+      layout: "dual-vertical",
+      surface: fakeSurface(document),
+    });
+
+    engine.destroy();
+
+    expect(overlay()).toBeNull();
+    expect(engine.touchControls()).toBeNull();
+  });
+
+  it("detaches the listeners it attached when the overlay cannot be built", () => {
+    vi.spyOn(document.body, "append").mockImplementationOnce(() => {
+      throw new Error("no room for an overlay");
+    });
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+
+    expect(() =>
+      real({ layout: "dpad-4", surface: fakeSurface(document) }),
+    ).toThrow(/no room/);
+
+    const types = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0])).sort();
+    expect(types(added).length).toBeGreaterThan(0);
+    expect(types(removed)).toEqual(types(added));
+    vi.restoreAllMocks();
   });
 });
 

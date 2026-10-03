@@ -13,6 +13,7 @@
 // sensible bucket width instead of a guess.
 import type { GgFilter, GgInterval } from "@clockwyrks/run-record/gg-query";
 import styles from "./GgDiscover.module.scss";
+import { Select } from "../../../../primitives/Select";
 
 /** One offered range. */
 export interface TimeRange {
@@ -114,7 +115,7 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
   return (
     <label className={styles.rangeField}>
       <span className={styles.rangeLabel}>Range</span>
-      <select
+      <Select
         className={styles.rangeSelect}
         value={value.id}
         aria-label="Time range"
@@ -125,7 +126,7 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
             {range.label}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

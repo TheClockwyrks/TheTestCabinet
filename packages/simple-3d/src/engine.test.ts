@@ -2237,6 +2237,199 @@ function recordingRig(
   };
 }
 
+describe("touch controls", () => {
+  /** A surface over the document, where the overlay has a body to be drawn in. */
+  const documentSurface = (): SurfaceMetrics =>
+    createSurface({ events: document }).surface;
+
+  /** A touch-shaped plain event, dispatched at the document as a player's would be. */
+  const touch = (): void => {
+    document.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+  };
+
+  it("reports null and draws nothing when no layout was selected", () => {
+    const { engine } = build({ surface: documentSurface() });
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("draws the selected layout's controls in the document, hidden", () => {
+    const { engine } = build({
+      layout: "dual-stick-two-buttons",
+      surface: documentSurface(),
+    });
+
+    expect(engine.touchControls()).toEqual({
+      layout: "dual-stick-two-buttons",
+      visible: false,
+    });
+    const container = document.querySelector<HTMLElement>(
+      "[data-touch-controls]",
+    );
+    expect(container?.getAttribute("data-touch-controls")).toBe(
+      "dual-stick-two-buttons",
+    );
+    expect(container?.hidden).toBe(true);
+  });
+
+  it("shows them on a touch and reports it through the engine's events", () => {
+    const { engine } = build({
+      layout: "single-stick",
+      surface: documentSurface(),
+    });
+    const seen: unknown[] = [];
+    engine.events.on("touch-controls:shown", (payload) => seen.push(payload));
+    engine.events.on("touch-controls:hidden", (payload) => seen.push(payload));
+
+    touch();
+    expect(engine.touchControls()?.visible).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(engine.touchControls()?.visible).toBe(false);
+
+    expect(seen).toEqual([
+      { layout: "single-stick" },
+      { layout: "single-stick", reason: "keyboard" },
+    ]);
+  });
+
+  it("reports null over a surface whose target has no document", () => {
+    // The harness's default surface listens on a bare target, the headless case.
+    const { engine } = build({ layout: "dpad-4" });
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("drives a registered action the game reads on its next update", async () => {
+    let confirm = -1;
+    let pressed = false;
+    const game = testGame({
+      initialize: (api) => {
+        api.input.register("confirm", { keys: ["Enter"] });
+      },
+      update: (next, api) => {
+        confirm = api.input.value("confirm");
+        pressed = api.input.pressed("confirm");
+        return next;
+      },
+    });
+    const { engine } = build({
+      game,
+      layout: "single-stick",
+      surface: documentSurface(),
+    });
+    await engine.initialize();
+    touch();
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="confirm"]',
+    );
+    if (button === null) throw new Error("no confirm button was drawn");
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(confirm).toBe(1);
+    expect(pressed).toBe(true);
+
+    button.dispatchEvent(
+      Object.assign(new Event("pointerup", { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+    await engine.advance(1);
+    expect(confirm).toBe(0);
+    expect(pressed).toBe(false);
+  });
+
+  it("hands an analog move action a stick's partial deflection", async () => {
+    let forward = -1;
+    const game = testGame({
+      initialize: (api) => {
+        api.input.register("move-up", { keys: ["KeyW"], kind: "analog" });
+        api.input.register("move-down", { keys: ["KeyS"], kind: "analog" });
+      },
+      update: (next, api) => {
+        forward = api.input.value("move-up") - api.input.value("move-down");
+        return next;
+      },
+    });
+    const { engine } = build({
+      game,
+      layout: "single-stick",
+      surface: documentSurface(),
+    });
+    await engine.initialize();
+    touch();
+    const stick = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="move-up"]',
+    );
+    if (stick === null) throw new Error("no move stick was drawn");
+    const rect = { left: 0, top: 0, width: 200, height: 200 };
+    stick.getBoundingClientRect = (): DOMRect =>
+      ({
+        ...rect,
+        x: 0,
+        y: 0,
+        right: 200,
+        bottom: 200,
+        toJSON: () => rect,
+      }) as DOMRect;
+
+    // Straight up, 60 of the 100 half-height above centre: past the dead zone
+    // and short of the rim, so an analog action reads a fraction.
+    stick.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+        clientX: 100,
+        clientY: 40,
+      }),
+    );
+    await engine.advance(1);
+    expect(forward).toBeGreaterThan(0);
+    expect(forward).toBeLessThan(1);
+  });
+
+  it("is removed by destroy, which reports no controls from then on", () => {
+    const { engine } = build({
+      layout: "dual-stick",
+      surface: documentSurface(),
+    });
+
+    engine.destroy();
+
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+    expect(engine.touchControls()).toBeNull();
+  });
+
+  it("detaches the listeners it attached when the overlay cannot be built", () => {
+    vi.spyOn(document.body, "append").mockImplementationOnce(() => {
+      throw new Error("no room for an overlay");
+    });
+    const added = vi.spyOn(document, "addEventListener");
+    const removed = vi.spyOn(document, "removeEventListener");
+
+    expect(() =>
+      build({ layout: "dpad-4", surface: documentSurface() }),
+    ).toThrow(/no room/);
+
+    const types = (spy: { mock: { calls: unknown[][] } }): string[] =>
+      spy.mock.calls.map((call) => String(call[0])).sort();
+    expect(types(added).length).toBeGreaterThan(0);
+    expect(types(removed)).toEqual(types(added));
+  });
+});
+
 describe("recording", () => {
   it("refuses to arm where the host has no VideoEncoder, naming WebCodecs", async () => {
     const { engine } = build();
