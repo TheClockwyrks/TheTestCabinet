@@ -109,15 +109,26 @@ fn plan(
 /// A context whose counts are all empty — every cell reads zero of everything.
 pub(super) fn empty_ctx() -> MatrixCtx {
     MatrixCtx {
-        counted: crate::db::CellCounts::new(),
+        runs: crate::db::CellRuns::new(),
         in_flight: crate::db::CellCounts::new(),
         pending: crate::db::CellCounts::new(),
-        unreviewed: crate::db::CellCounts::new(),
         // Every harness idle and unthrottled, which is the default deployment and
         // the state in which a launch pass walks its cells in plain order.
         harness_capacity: vec![HarnessCapacity::UNLIMITED; HarnessSlug::RUNNABLE.len()],
         latest_by_slug: HashMap::new(),
     }
+}
+
+/// `n` counted runs of one cell in the order they landed, `r0` first, of which the first
+/// `unreviewed` are completed runs the requester has not reviewed.
+pub(super) fn landed(n: usize, unreviewed: usize) -> Vec<crate::db::CellRun> {
+    (0..n)
+        .map(|i| crate::db::CellRun {
+            id: format!("r{i}"),
+            finished_at: format!("2026-09-01T00:00:{i:02}Z"),
+            unreviewed: i < unreviewed,
+        })
+        .collect()
 }
 
 /// The cell ordering, rendered as `slug/member` strings so an assertion reads as the
@@ -429,15 +440,15 @@ fn a_cell_reports_the_requesters_unreviewed_runs_alongside_the_global_counts() {
     let m = member(combo("opus"));
     let key = cell_key(&c, &m);
     let mut ctx = empty_ctx();
-    ctx.counted.insert(key.clone(), 5);
+    ctx.runs.insert(key.clone(), landed(5, 3));
     ctx.in_flight.insert(key.clone(), 2);
-    ctx.pending.insert(key.clone(), 1);
-    ctx.unreviewed.insert(key, 3);
+    ctx.pending.insert(key, 1);
 
-    let cell = ctx.cell(5, &c, &m, false);
-    // Counts stay global: five runs exist, so the target is met whoever produced them.
+    let cell = ctx.cell(7, &c, &m, false);
+    // Counts stay global: five runs exist, whoever produced them, and two more are coming.
     assert_eq!(cell.counted, 5);
-    assert!(cell.filled);
+    assert_eq!(cell.run_ids, vec!["r0", "r1", "r2", "r3", "r4"]);
+    assert!(!cell.filled);
     assert!(!cell.blocked);
     assert_eq!(cell.remaining, 0);
     // `pending` is a subset of `inFlight`, never an addition to it.
@@ -452,8 +463,8 @@ fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
-    ctx.counted.insert(cell_key(&cases[0], &combos[0]), 5);
-    ctx.unreviewed.insert(cell_key(&cases[0], &combos[0]), 2);
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(5, 2));
     ctx.in_flight.insert(cell_key(&cases[1], &combos[0]), 1);
 
     let blocked = HashSet::new();
@@ -488,7 +499,8 @@ fn runs_beyond_a_cells_target_do_not_overfill_the_progress_bar() {
     let cases = vec![case("pong")];
     let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
-    ctx.counted.insert(cell_key(&cases[0], &combos[0]), 7);
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(7, 0));
     let roll = ctx.tally(3, &combos, &cases, &HashSet::new());
     assert_eq!(roll.runs_done, 3);
     assert_eq!(roll.runs_total, 3);
@@ -656,7 +668,8 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
-    ctx.counted.insert(cell_key(&cases[0], &combos[0]), 5);
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(5, 0));
 
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
@@ -861,4 +874,81 @@ fn two_launch_passes_merge_into_one_report() {
     assert_eq!(merged.in_flight, Some(5));
     assert_eq!(merged.in_flight_limit, InFlightLimit::Unbounded);
     assert_eq!(merged.skipped, None);
+}
+
+#[test]
+fn a_cell_holds_the_first_runs_to_land_up_to_its_target_and_reads_no_further() {
+    let c = case("carom");
+    let m = member(combo("opus"));
+    let key = cell_key(&c, &m);
+    let mut ctx = empty_ctx();
+    // Four counted runs, every one unreviewed, and two more of the cell in flight elsewhere,
+    // one of them held back by the queue.
+    ctx.runs.insert(key.clone(), landed(4, 4));
+    ctx.in_flight.insert(key.clone(), 2);
+    ctx.pending.insert(key, 1);
+
+    let cell = ctx.cell(3, &c, &m, false);
+    assert_eq!(cell.run_ids, vec!["r0", "r1", "r2"]);
+    assert_eq!((cell.counted, cell.desired), (3, 3));
+    assert!(cell.filled);
+    // Nothing in flight is wanted by a filled cell, so none is shown: it reads 3/3, never 5/3.
+    assert_eq!(cell.in_flight, 0);
+    assert_eq!(cell.pending, 0);
+    assert_eq!(cell.remaining, 0);
+    // The fourth run is not the plan's, so it is not waiting on its reviewer either.
+    assert_eq!(cell.unreviewed, 3);
+
+    // Raising the target takes in the next run in landing order, and the job in flight
+    // fills the room left.
+    let raised = ctx.cell(5, &c, &m, false);
+    assert_eq!(raised.run_ids, vec!["r0", "r1", "r2", "r3"]);
+    assert_eq!(raised.counted, 4);
+    assert_eq!(raised.in_flight, 1);
+    assert_eq!(raised.pending, 1);
+    assert_eq!(raised.unreviewed, 4);
+    assert_eq!(raised.remaining, 0);
+}
+
+#[test]
+fn a_plan_of_overfilled_cells_rolls_up_and_queues_only_its_own_runs() {
+    let cases = vec![case("pong"), case("carom")];
+    let combos = members(vec![combo("opus"), combo("sonnet")]);
+    let mut ctx = empty_ctx();
+    // Four cells of three; carom has two extras on one cell and pong one on each.
+    for (case, member, runs) in [
+        (&cases[0], &combos[0], 4),
+        (&cases[0], &combos[1], 4),
+        (&cases[1], &combos[0], 5),
+        (&cases[1], &combos[1], 3),
+    ] {
+        ctx.runs.insert(cell_key(case, member), landed(runs, runs));
+    }
+
+    let roll = ctx.tally(3, &combos, &cases, &HashSet::new());
+    assert_eq!((roll.cells_filled, roll.cells_total), (4, 4));
+    assert_eq!((roll.runs_done, roll.runs_total), (12, 12));
+    assert_eq!(roll.runs_unreviewed, 12);
+    assert_eq!(roll.runs_missing, 0);
+
+    let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
+    let queue = plan_queue_of(&ctx, 3, &ordered);
+    assert_eq!(queue.runs.len(), 12);
+    assert!(!queue.truncated);
+    assert!(
+        queue
+            .runs
+            .iter()
+            .all(|run| ["r0", "r1", "r2"].contains(&run.run_id.as_str()))
+    );
+    // In the plan's order, each cell's runs oldest first.
+    assert_eq!(
+        queue.runs[..3]
+            .iter()
+            .map(|run| (run.slug.as_str(), run.run_id.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("pong", "r0"), ("pong", "r1"), ("pong", "r2")]
+    );
+    // A raised target queues the run it takes in.
+    assert_eq!(plan_queue_of(&ctx, 4, &ordered).runs.len(), 15);
 }

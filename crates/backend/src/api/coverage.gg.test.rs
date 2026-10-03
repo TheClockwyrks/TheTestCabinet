@@ -12,7 +12,7 @@ use test_cabinet_core::gg::{
     GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
 };
 
-use super::tests::{case, combo, combo_group, empty_ctx, member, order};
+use super::tests::{case, combo, combo_group, empty_ctx, landed, member, order};
 
 /// The internal id a fixture profile carries.
 ///
@@ -307,7 +307,7 @@ fn two_configurations_sharing_a_name_are_two_cells() {
     assert!(resolved[1].unlaunchable.is_none());
     // And a run of one is never counted toward the other, however the two are labelled.
     let mut ctx = empty_ctx();
-    ctx.counted.insert(cell_key(&c, &resolved[0]), 4);
+    ctx.runs.insert(cell_key(&c, &resolved[0]), landed(4, 0));
     assert_eq!(ctx.demand(5, &c, &resolved[0]).counted, 4);
     assert_eq!(ctx.demand(5, &c, &resolved[1]).counted, 0);
 }
@@ -318,7 +318,7 @@ fn renaming_a_configuration_keeps_its_cell_and_its_counts() {
     let before = gg_member("opus", "haiku");
     let key = cell_key(&c, &before);
     let mut ctx = empty_ctx();
-    ctx.counted.insert(key.clone(), 4);
+    ctx.runs.insert(key.clone(), landed(4, 0));
 
     // The same configuration, renamed in the account's library. A rename rewrites display
     // text and nothing else, so the member re-points at nothing.
@@ -606,42 +606,6 @@ fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
     assert_eq!(job.gg_models.as_deref(), Some(models.as_str()));
     // The name rides along for the run log, and is no part of the identity.
     assert_eq!(job.gg_preset.as_deref(), Some("Critic sweep"));
-}
-
-#[test]
-fn a_cells_queue_offers_exactly_the_runs_its_counts_are_made_of() {
-    let member = gg_member("opus", "haiku");
-    let bound = gg_config("cfg-1", "Critic sweep")
-        .capability_set
-        .bind_launch_slots(&BTreeMap::from([
-            ("primary".to_string(), "opus".to_string()),
-            ("reviewer.critic".to_string(), "haiku".to_string()),
-        ]));
-
-    // What a run of this member records: the configuration's id, and the models it bound.
-    let mut recorded = bound.clone();
-    recorded.preset = Some("Critic sweep".to_string());
-    recorded.preset_id = Some("cfg-1".to_string());
-    assert!(in_gg_cell(Some(&recorded), &member));
-
-    // A set naming the configuration only by name is in no configuration's cell. That is the
-    // same answer the counts give — they group on the column lifted from this field — so a
-    // run is either counted and offered or neither, never counted and unreachable.
-    let mut by_name_only = recorded.clone();
-    by_name_only.preset_id = None;
-    assert!(!in_gg_cell(Some(&by_name_only), &member));
-    assert!(!in_gg_cell(None, &member));
-
-    // Another configuration of the account, binding the same models to the same agents, is a
-    // cell of its own however it is named.
-    let mut twin = recorded.clone();
-    twin.preset_id = Some("cfg-2".to_string());
-    assert!(!in_gg_cell(Some(&twin), &member));
-
-    // And so is the same configuration run on another model.
-    let mut other_models = recorded.clone();
-    other_models.agents[0].model_id = "sonnet".to_string();
-    assert!(!in_gg_cell(Some(&other_models), &member));
 }
 
 #[test]

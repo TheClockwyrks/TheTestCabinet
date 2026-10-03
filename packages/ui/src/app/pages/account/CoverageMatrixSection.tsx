@@ -215,8 +215,15 @@ export function MatrixSection({
                     </span>
                   )}
                 </span>
-                <Link className={styles.cellLink} to={cellRunsHref(cell)}>
-                  Runs
+                {/* The run listing cannot be narrowed to the runs this cell holds, so
+                    the link says it reaches every run of the cell's combination,
+                    including runs beyond the plan's target. */}
+                <Link
+                  className={styles.cellLink}
+                  to={cellRunsHref(cell)}
+                  title="Every run of this case and combination, including runs beyond this plan's target. The plan counts only the first runs to land, up to its target."
+                >
+                  All runs
                 </Link>
                 {/* Two presses, because a reviewer wants both: one more run of a
                     cell they are still judging, and the cell's whole shortfall once

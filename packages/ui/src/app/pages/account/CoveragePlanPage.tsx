@@ -30,7 +30,7 @@ export function CoveragePlanPage() {
   const { client: backend } = useBackend();
   const testCaseName = useTestCaseName();
   const { coverage, plan, busy, filling } = state;
-  const runs = useCoverageRunMetrics(coverage, testCaseName);
+  const runs = useCoverageRunMetrics(state.planId, coverage, testCaseName);
   // Cells that cannot be filled as things stand: an unlaunchable combination, or a
   // cell blocked on repeated infrastructure failures (which offers Retry).
   const blockedCells = coverage.cells.filter(

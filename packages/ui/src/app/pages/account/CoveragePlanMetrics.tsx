@@ -89,8 +89,8 @@ export function CoveragePlanMetrics({
       <Panel className={styles.metricsPanel}>
         <h2 className={styles.metricsTitle}>Runs covered</h2>
         <p className={styles.metricsEmpty}>
-          No recorded runs match this plan&rsquo;s cells yet. Top it up, or
-          trigger a cell by hand, and the breakdowns appear here as runs land.
+          This plan&rsquo;s cells hold no runs yet. Press All missing, or launch
+          a cell by hand, and the breakdowns appear here as runs land.
         </p>
       </Panel>
     );
@@ -107,12 +107,6 @@ export function CoveragePlanMetrics({
     <>
       <Panel className={styles.metricsPanel}>
         <h2 className={styles.metricsTitle}>Runs covered</h2>
-        {metrics.truncated && (
-          <p className={styles.metricsEmpty}>
-            These figures cover the newest runs of this plan&rsquo;s cases
-            rather than every one of them.
-          </p>
-        )}
         <div className={styles.metricTiles}>
           <MetricTile label="Runs" value={formatInteger(metrics.total)} />
           <MetricTile

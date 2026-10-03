@@ -267,10 +267,12 @@ export async function launchGgCells(
   return failures;
 }
 
-// The runs listing narrowed to exactly this cell — the link that turns a progress
-// bar into the runs behind it, which is half of the review loop this page exists to
-// serve. The keys mirror the run filters' URL params (`useRunFilters`), which is
-// what makes a narrowed listing linkable at all.
+// The runs listing narrowed to this cell's case and combination — the link that turns
+// a progress bar into the runs behind it. The keys mirror the run filters' URL params
+// (`useRunFilters`), which is what makes a narrowed listing linkable at all.
+//
+// The listing has no filter for the runs a cell holds, so it also lists the cell's runs
+// beyond the plan's target, and the cell's link is named for that (All runs).
 //
 // `latest=0` because a cell pins an exact version: the listing's "current versions
 // only" default is on, and would filter a deliberately-pinned older version's runs
@@ -279,8 +281,7 @@ export async function launchGgCells(
 // one of those share a link.
 //
 // A gg cell adds the configuration's id as the listing's `ggConfigId` filter, the
-// same value the cell's own counts group on, so the rows behind the figure are exactly
-// the rows the link lands on. The id and never the name: the runs recorded before a
+// same value the cell's own counts group on. The id and never the name: the runs recorded before a
 // rename carry the old name, and another account's same-named configuration carries
 // this one, so a name narrows to a set the count was never made of.
 export function cellRunsHref(cell: CoverageCell): string {

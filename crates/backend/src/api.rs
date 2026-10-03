@@ -64,10 +64,10 @@ pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFu
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     BlockedCell, CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
-    CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
-    CoverageQueue, CoverageQueueEntry, CoverageSettings, CoverageSettingsInput, HaltResult,
-    LaunchPassResult, LaunchSkipped, LaunchedCell, PlanCellRetryInput, ReviewPlanCase,
-    ReviewPlanCombo,
+    CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanRuns,
+    CoveragePlanSummary, CoverageQueue, CoverageQueueEntry, CoverageSettings,
+    CoverageSettingsInput, HaltResult, LaunchPassResult, LaunchSkipped, LaunchedCell,
+    PlanCellRetryInput, ReviewPlanCase, ReviewPlanCombo,
 };
 pub use gg::GgRunRequest;
 pub use gg_agent::{GgSavedAgent, GgSavedAgentInput};
@@ -637,6 +637,7 @@ pub fn router(state: AppState) -> Router {
         )
         // The plan's own unreviewed-by-me runs in the plan's order.
         .route("/coverage-plans/{id}/queue", get(coverage::plan_queue))
+        .route("/coverage-plans/{id}/runs", get(coverage::plan_runs))
         // End filling, and cancel this plan's runs that have cost nothing yet
         // (`halt`), or every run it launched (`halt-all`, rare, must be confirmed).
         .route("/coverage-plans/{id}/halt", post(coverage::halt_plan))

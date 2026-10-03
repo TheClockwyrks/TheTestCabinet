@@ -103,6 +103,7 @@ function cell(over: Partial<CoverageCell> = {}): CoverageCell {
     harness: "claude",
     model: "claude-sonnet-4-5",
     desired: 3,
+    runIds: ["r0"],
     counted: 1,
     filled: false,
     blocked: false,
@@ -260,7 +261,7 @@ describe("MatrixSection collapse", () => {
   it("links each cell to the runs behind it, pinned to the cell's own version", () => {
     renderSection();
     fireEvent.click(screen.getByRole("button", { expanded: false }));
-    const link = screen.getByRole("link", { name: "Runs" });
+    const link = screen.getByRole("link", { name: "All runs" });
     const href = link.getAttribute("href") ?? "";
     expect(href.startsWith("/runs?")).toBe(true);
     const params = new URLSearchParams(href.slice(href.indexOf("?")));
@@ -310,7 +311,7 @@ describe("MatrixSection collapse", () => {
     renderSection({ cells: [ggCell()] });
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     const href = screen
-      .getByRole("link", { name: "Runs" })
+      .getByRole("link", { name: "All runs" })
       .getAttribute("href");
     const params = new URLSearchParams(href!.slice(href!.indexOf("?")));
     expect(params.get("harness")).toBe("gg");
@@ -1159,6 +1160,8 @@ const worker = {
 // call tally.
 let fills = 0;
 let retried: unknown[] = [];
+// The run cards `GET /coverage-plans/{id}/runs` answers with.
+let planRunCards: unknown[] = [];
 
 function backendValue(
   cells: CoverageCell[],
@@ -1169,6 +1172,7 @@ function backendValue(
     client: {
       getCoveragePlanCoverage: async () => matrix(cells, over),
       getCoveragePlanQueue: async () => planQueue,
+      getCoveragePlanRuns: async () => ({ runs: planRunCards }),
       listCoveragePlans: async () => [
         {
           id: "p1",
@@ -1312,6 +1316,45 @@ describe("CoveragePlanPage All missing", () => {
         /All missing launches the runs this plan still needs, up to 10 runs in flight/,
       ),
     ).toBeTruthy();
+  });
+
+  // The report: a cell of three whose combination other launches ran a fourth time. The
+  // breakdowns read the runs the cell holds, so they say three, as the board does.
+  it("breaks down only the runs the cells hold", async () => {
+    const card = (id: string) => ({
+      id,
+      subject: {
+        testCaseSlug: "pong",
+        testCaseVersion: "v1.0.0",
+        variant: "base",
+        harnessSlug: "claude",
+        engineSlug: "none",
+        modelId: "claude-sonnet-4-5",
+      },
+      state: "completed",
+      rating: null,
+      reviewCount: 0,
+    });
+    planRunCards = ["a", "b", "c", "extra"].map(card);
+    try {
+      renderPlanPage([
+        cell({
+          runIds: ["a", "b", "c"],
+          counted: 3,
+          filled: true,
+          remaining: 0,
+        }),
+      ]);
+      const heading = await screen.findByRole("heading", {
+        name: "Runs covered",
+      });
+      const panel = heading.parentElement!;
+      await within(panel).findByText("Rated");
+      const runs = within(panel).getByText("Runs");
+      expect(runs.nextElementSibling?.textContent).toBe("3");
+    } finally {
+      planRunCards = [];
+    }
   });
 
   it("offers no top-up controls", async () => {

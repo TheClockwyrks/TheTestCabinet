@@ -888,6 +888,15 @@ Each cell reports `inFlight` and, separately, the `pending` subset of it: jobs t
 queue is deliberately holding back behind a harness parallelism cap or a same-model
 game jam.
 
+Each cell also lists its `runIds`, the [runs the plan holds for
+it](/components/backend/coverage/#a-cells-runs): the first `runsPerCell` counted runs
+of the cell to land. Every count on the cell, and every roll-up, is computed over
+those runs, so a cell never reads more than its target.
+
+- `GET /coverage-plans/{id}/runs` — `{ "runs": [...] }`, the run summary card of
+  every run the plan's cells hold, in the matrix's cell order. The console's
+  dashboard breakdowns read it.
+
 ### Filling a plan
 
 - `POST /coverage-plans/{id}/fill` — start
@@ -905,9 +914,9 @@ game jam.
   cell's shortfall. Answers `204`; `404` when the cell is not one of the plan's,
   and `409` when it is not blocked.
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-  account has not reviewed, in the plan's own order rather than newest-first like
-  the global unreviewed listing. Capped rather than paginated, with `truncated`
-  set when there is more behind it.
+  account has not reviewed, among the runs its cells hold, in the plan's own
+  order rather than newest-first like the global unreviewed listing. Capped rather
+  than paginated, with `truncated` set when there is more behind it.
 
 ### Halting a plan
 

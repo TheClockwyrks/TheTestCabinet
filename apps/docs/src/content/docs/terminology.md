@@ -75,8 +75,9 @@ thing:
 1. The measurement: how much of a declared matrix actually has runs. A coverage
    plan declares test cases pinned to a version, variant and engine, crossed
    with [combinations](#combination) and a target run count per cell, and its
-   coverage is how many of those cells have met their target. This is the older
-   and narrower sense. See [Coverage plans](/components/backend/coverage/).
+   coverage is how many of those cells have met their target. A cell holds the
+   first runs to land up to its target, and a run beyond that is not the plan's.
+   This is the older and narrower sense. See [Coverage plans](/components/backend/coverage/).
 2. The feature area: the reviewer scheduling surface as a whole, which is plans,
    [ladders](#ladder), the reusable groups both draw their members from, the
    account-wide [runs-in-flight limit](#runs-in-flight-limit), and the halt and

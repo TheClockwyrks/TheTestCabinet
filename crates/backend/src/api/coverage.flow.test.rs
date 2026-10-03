@@ -481,3 +481,227 @@ async fn a_job_whose_driver_is_lost_fails_and_its_retry_keeps_the_plan_filling()
     .unwrap_err();
     assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+/// Push a run of one cell straight into the store, as another launch's driver would, that
+/// finished at `finished_at`.
+async fn landed_run(state: &AppState, id: &str, slug: &str, model: &str, finished_at: &str) {
+    landed_as(state, id, slug, model, finished_at, RunState::Completed).await;
+}
+
+async fn landed_as(
+    state: &AppState,
+    id: &str,
+    slug: &str,
+    model: &str,
+    finished_at: &str,
+    run_state: RunState,
+) {
+    let mut record = run_of(id, slug, GREAT);
+    record.subject.model_id = model.to_string();
+    record.finished_at = finished_at.to_string();
+    record.status.state = run_state;
+    let manifest = state.store.read_manifest(slug, "v1.0.0").ok();
+    state
+        .db
+        .push(&record, &crate::db::tests::links(), None, manifest.as_ref())
+        .await
+        .unwrap();
+}
+
+fn cell_of<'a>(matrix: &'a CoverageMatrix, slug: &str, model: &str) -> &'a CoverageCell {
+    matrix
+        .cells
+        .iter()
+        .find(|cell| cell.slug == slug && cell.model == model)
+        .expect("the cell is on the plan")
+}
+
+/// The report: a plan of 4 cells × 3 runs whose cells other launches overfilled. Each cell
+/// holds the first 3 counted runs to land, and nothing on the plan reads the rest.
+#[tokio::test]
+async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_target() {
+    let (_dir, state) = test_state().await;
+    price_opus(&state).await;
+    let mut input = plan_input(&["pong", "carom"], 3, InFlightLimit::Bounded { runs: 10 });
+    input.combos = vec![harness_combo(SONNET), harness_combo(OPUS)];
+    let id = plan_id(&state, input.clone()).await;
+
+    for (slug, model) in [
+        ("pong", SONNET),
+        ("pong", OPUS),
+        ("carom", SONNET),
+        ("carom", OPUS),
+    ] {
+        for i in 1..=3 {
+            // carom × opus has an infrastructure failure landing among its runs; it takes
+            // no place in the order, so the cell still holds its first three counted runs.
+            if slug == "carom" && model == OPUS && i == 2 {
+                landed_as(
+                    &state,
+                    "carom-opus-infra",
+                    slug,
+                    model,
+                    "2026-09-01T00:00:02.500Z",
+                    RunState::Infrastructure,
+                )
+                .await;
+            }
+            landed_run(
+                &state,
+                &format!("{slug}-{model}-{i}"),
+                slug,
+                model,
+                &format!("2026-09-01T00:00:0{i}Z"),
+            )
+            .await;
+        }
+    }
+    // The extras: two on carom × sonnet, and one each on pong × sonnet and carom × opus.
+    // The first lands half a second after carom × sonnet's third run, with an id that sorts
+    // before it: read as text, `03.500Z` sorts before `03Z`, so only reading the finish as a
+    // time keeps it out.
+    landed_run(
+        &state,
+        "a-extra-1",
+        "carom",
+        SONNET,
+        "2026-09-01T00:00:03.500Z",
+    )
+    .await;
+    landed_run(
+        &state,
+        "carom-extra-2",
+        "carom",
+        SONNET,
+        "2026-09-03T00:00:00Z",
+    )
+    .await;
+    landed_run(&state, "pong-extra", "pong", SONNET, "2026-09-02T00:00:00Z").await;
+    landed_run(
+        &state,
+        "carom-opus-extra",
+        "carom",
+        OPUS,
+        "2026-09-02T00:00:00Z",
+    )
+    .await;
+    // And a job of a filled cell still in flight elsewhere.
+    enqueue_other(&state, "elsewhere", "pong", None).await;
+
+    let board = matrix(&state, &id).await;
+    for cell in &board.cells {
+        assert_eq!(cell.counted, 3, "{} × {}", cell.slug, cell.model);
+        assert!(cell.filled);
+        assert_eq!(cell.in_flight, 0, "a filled cell shows nothing in flight");
+        assert_eq!(cell.pending, 0);
+        assert_eq!(cell.remaining, 0);
+        assert_eq!(cell.unreviewed, 3);
+    }
+    assert_eq!(
+        cell_of(&board, "carom", SONNET).run_ids,
+        vec![
+            "carom-claude-sonnet-4-5-1",
+            "carom-claude-sonnet-4-5-2",
+            "carom-claude-sonnet-4-5-3"
+        ]
+    );
+    assert_eq!(
+        cell_of(&board, "carom", OPUS).run_ids,
+        vec![
+            "carom-claude-opus-4-8-1",
+            "carom-claude-opus-4-8-2",
+            "carom-claude-opus-4-8-3"
+        ]
+    );
+    assert_eq!((board.cells_filled, board.cells_total), (4, 4));
+    assert_eq!((board.runs_done, board.runs_total), (12, 12));
+    assert_eq!(board.runs_unreviewed, 12);
+    assert_eq!(board.runs_missing, 0);
+
+    // The plans list reads the same.
+    let Json(summaries) = plans_summary(State(state.clone()), owner()).await.unwrap();
+    let summary = summaries.iter().find(|s| s.id == id).unwrap();
+    assert_eq!((summary.runs_done, summary.runs_total), (12, 12));
+    assert_eq!(summary.runs_unreviewed, 12);
+
+    let plan_run_ids: Vec<String> = board
+        .cells
+        .iter()
+        .flat_map(|cell| cell.run_ids.clone())
+        .collect();
+    let extras = [
+        "a-extra-1",
+        "carom-extra-2",
+        "pong-extra",
+        "carom-opus-extra",
+    ];
+
+    // The review queue offers the plan's runs and none of the extras.
+    let Json(queue) = plan_queue(State(state.clone()), owner(), Path(id.clone()))
+        .await
+        .unwrap();
+    let queued: Vec<String> = queue.runs.iter().map(|run| run.run_id.clone()).collect();
+    assert_eq!(queued, plan_run_ids);
+    assert!(!queue.truncated);
+
+    // A reviewed run leaves the queue and the count; an extra's review changes nothing.
+    for run in ["pong-claude-sonnet-4-5-1", "pong-extra"] {
+        state
+            .db
+            .add_review(
+                run,
+                &crate::db::tests::review_by(OWNER, test_cabinet_core::review::Rating::Great),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(matrix(&state, &id).await.runs_unreviewed, 11);
+
+    // The run cards the dashboard's breakdowns read are the plan's runs, in cell order.
+    let Json(runs) = plan_runs(State(state.clone()), owner(), Path(id.clone()))
+        .await
+        .unwrap();
+    let carded: Vec<String> = runs.runs.iter().map(|run| run.id.clone()).collect();
+    assert_eq!(carded, plan_run_ids);
+    assert!(
+        extras
+            .iter()
+            .all(|extra| !carded.contains(&extra.to_string()))
+    );
+
+    // Raising the target takes in the next run to land on each cell, and only that one.
+    input.runs_per_cell = 4;
+    let _ = update_plan(State(state.clone()), owner(), Path(id.clone()), Json(input))
+        .await
+        .unwrap();
+    let board = matrix(&state, &id).await;
+    assert_eq!(
+        cell_of(&board, "carom", SONNET)
+            .run_ids
+            .last()
+            .map(String::as_str),
+        Some("a-extra-1")
+    );
+    assert_eq!(
+        cell_of(&board, "carom", OPUS)
+            .run_ids
+            .last()
+            .map(String::as_str),
+        Some("carom-opus-extra")
+    );
+    assert_eq!(
+        cell_of(&board, "pong", SONNET)
+            .run_ids
+            .last()
+            .map(String::as_str),
+        Some("pong-extra")
+    );
+    // pong × opus has no fourth run; the job in flight on pong × sonnet's cell is now
+    // wanted by nothing (the cell holds 4), so it still shows none.
+    assert_eq!(cell_of(&board, "pong", OPUS).counted, 3);
+    assert_eq!(cell_of(&board, "pong", SONNET).in_flight, 0);
+    assert_eq!((board.runs_done, board.runs_total), (15, 16));
+    assert_eq!(board.cells_filled, 3);
+}

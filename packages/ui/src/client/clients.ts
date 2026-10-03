@@ -88,6 +88,7 @@ import type {
   CoveragePlanOut,
   CoveragePlanSummary,
   CoverageQueue,
+  CoveragePlanRuns,
   CoverageSettings,
   CoverageSettingsInput,
   HaltResult,
@@ -497,6 +498,14 @@ export interface BackendClient {
    * Information only: reviews never launch or hold back runs.
    */
   getCoveragePlanQueue?(id: string, token: string): Promise<CoverageQueue>;
+
+  /**
+   * The run summary cards of every run a plan's cells hold
+   * (`GET /coverage-plans/{id}/runs`, Bearer): each cell's `runIds`, the first runs to
+   * land up to its target, in the matrix's order. A run beyond a cell's target is not
+   * among them. What the dashboard's breakdowns are computed from.
+   */
+  getCoveragePlanRuns?(id: string, token: string): Promise<CoveragePlanRuns>;
 
   /**
    * Stop filling a plan **and** cancel the jobs it launched that have not started

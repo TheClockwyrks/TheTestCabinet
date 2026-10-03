@@ -8,6 +8,7 @@
 // in the same pass.
 
 import type { HarnessSlug } from "./index";
+import type { RunSummary } from "./snapshot";
 
 /**
  * One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
@@ -359,7 +360,7 @@ export type CoveragePlanSummary = {
    */
   cellsBlocked: number;
   /**
-   * The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+   * The plan's progress in runs: the sum of every cell's `counted`.
    */
   runsDone: number;
   /**
@@ -449,8 +450,14 @@ export type CoverageCell = {
    */
   desired: number;
   /**
-   * Counted runs for this cell — the model's own results — counted globally, a
-   * retried attempt once.
+   * The [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs):
+   * the first `desired` counted runs of the cell to land, whoever launched them, in the
+   * order they landed. Every other figure on the cell is computed over these.
+   */
+  runIds: Array<string>;
+  /**
+   * How many runs the cell holds — the length of [`Self::run_ids`], so never more than
+   * `desired`. A counted run is the model's own result, a retried attempt once.
    */
   counted: number;
   /**
@@ -465,7 +472,8 @@ export type CoverageCell = {
   blocked: boolean;
   /**
    * In-flight jobs (queued / pending / dispatched / starting / running) for this
-   * cell, counted globally.
+   * cell, counted globally and read only up to what the cell still needs
+   * (`desired - counted`), so a filled cell has none.
    */
   inFlight: number;
   /**
@@ -476,8 +484,8 @@ export type CoverageCell = {
    */
   pending: number;
   /**
-   * How many of the cell's completed runs the **requesting account** has not
-   * reviewed. Informational: it changes nothing about what the cell needs.
+   * How many of the cell's runs are completed and not reviewed by the **requesting
+   * account**. Informational: it changes nothing about what the cell needs.
    */
   unreviewed: number;
   /**
@@ -524,7 +532,7 @@ export type CoverageMatrix = {
    */
   cellsBlocked: number;
   /**
-   * The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+   * The plan's progress in runs: the sum of every cell's `counted`.
    */
   runsDone: number;
   /**
@@ -857,6 +865,18 @@ export type CoverageQueue = {
    * cursor.
    */
   truncated: boolean;
+};
+
+/**
+ * The runs a plan's cells hold, as `GET /coverage-plans/{id}/runs` returns them.
+ */
+export type CoveragePlanRuns = {
+  /**
+   * The summary card of every run the plan's cells hold — each cell's
+   * [`CoverageCell::run_ids`] — in the matrix's cell order, and in the order the runs
+   * landed within a cell. A run beyond a cell's target is not here.
+   */
+  runs: Array<RunSummary>;
 };
 
 /**

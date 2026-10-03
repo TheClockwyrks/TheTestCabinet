@@ -112,6 +112,7 @@ import type {
   CoveragePlanOut,
   CoveragePlanSummary,
   CoverageQueue,
+  CoveragePlanRuns,
   CoverageSettings,
   CoverageSettingsInput,
   HaltResult,
@@ -951,6 +952,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       token: string,
     ): Promise<CoverageQueue> {
       return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"), token);
+    },
+
+    async getCoveragePlanRuns(
+      id: string,
+      token: string,
+    ): Promise<CoveragePlanRuns> {
+      return getJson<CoveragePlanRuns>(baseUrl, planPath(id, "/runs"), token);
     },
 
     async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {

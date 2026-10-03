@@ -73,10 +73,10 @@ describe("planProgress", () => {
 
   it("puts the run detail in the hover text, blocked cells only when any", () => {
     expect(planProgress(WORKED).title).toBe(
-      "17 of 24 runs done · 4 in flight · 3 to launch · 1 blocked",
+      "17 of 24 runs done · 4 launched and in flight · 3 to launch · 1 blocked",
     );
     expect(planProgress({ ...WORKED, cellsBlocked: 0 }).title).toBe(
-      "17 of 24 runs done · 4 in flight · 3 to launch",
+      "17 of 24 runs done · 4 launched and in flight · 3 to launch",
     );
   });
 
@@ -134,7 +134,7 @@ describe("CoveragePlansPage", () => {
     expect(screen.getByText("3 runs/cell")).toBeTruthy();
     expect(
       container.querySelector(
-        '[title="17 of 24 runs done · 4 in flight · 3 to launch · 1 blocked"]',
+        '[title="17 of 24 runs done · 4 launched and in flight · 3 to launch · 1 blocked"]',
       ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/waiting on you|top-up|missing/i);

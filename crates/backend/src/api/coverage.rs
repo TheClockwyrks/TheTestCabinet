@@ -46,11 +46,10 @@ use test_cabinet_core::run_record::HarnessSlug;
 use crate::auth::AuthUser;
 use crate::coverage::schedule::{CellDemand, HarnessCapacity, InFlightLimit, launch_pass};
 use crate::db::{
-    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin,
-    OriginScope, SortDir, SummaryFilter, SummarySort, SummaryState, TerminalJob, combination_key,
+    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, CellRun, JobCancelFilter,
+    JobOrigin, OriginScope, TerminalJob, combination_key,
 };
 use crate::error::ApiError;
-use crate::store::CaseNames;
 
 use super::AppState;
 use super::GgConfig;
@@ -85,15 +84,6 @@ pub(super) const MAX_QUEUE_RUNS: usize = 600;
 /// How many consecutive infrastructure-class failures block a cell or a climber: its
 /// newest this-many finished jobs all failed with no counted run.
 pub(super) const FAILING_STREAK: u64 = 3;
-
-/// How many of a cell's completed runs the queue inspects when picking out the
-/// unreviewed ones, newest first.
-///
-/// A cell's *target* is capped at [`MAX_RUNS_PER_CELL`], so a cell holding more
-/// completed runs than this has accumulated them across many plans and hand-launches
-/// over a long period; its unreviewed ones are the recent ones. Bounding the read
-/// keeps a queue over a wide plan from assembling every run the cabinet ever ran.
-const QUEUE_CELL_SCAN: usize = 100;
 
 /// One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
 /// and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
@@ -492,8 +482,12 @@ pub struct CoverageCell {
     pub unlaunchable: Option<String>,
     /// The target run count (the plan's `runs_per_cell`).
     pub desired: u32,
-    /// Counted runs for this cell — the model's own results — counted globally, a
-    /// retried attempt once.
+    /// The [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs):
+    /// the first `desired` counted runs of the cell to land, whoever launched them, in the
+    /// order they landed. Every other figure on the cell is computed over these.
+    pub run_ids: Vec<String>,
+    /// How many runs the cell holds — the length of [`Self::run_ids`], so never more than
+    /// `desired`. A counted run is the model's own result, a retried attempt once.
     pub counted: u32,
     /// Whether the cell is filled: `counted >= desired`. Runs in flight do not fill it.
     pub filled: bool,
@@ -502,15 +496,16 @@ pub struct CoverageCell {
     /// until its owner retries it.
     pub blocked: bool,
     /// In-flight jobs (queued / pending / dispatched / starting / running) for this
-    /// cell, counted globally.
+    /// cell, counted globally and read only up to what the cell still needs
+    /// (`desired - counted`), so a filled cell has none.
     pub in_flight: u32,
     /// How many of [`Self::in_flight`] are `pending` — deliberately held back rather
     /// than merely waiting to be claimed, because their harness is at its parallelism
     /// cap or (for a game jam) another run of the same jam is already going on that
     /// model. A **subset** of `inFlight`, not an addition to it.
     pub pending: u32,
-    /// How many of the cell's completed runs the **requesting account** has not
-    /// reviewed. Informational: it changes nothing about what the cell needs.
+    /// How many of the cell's runs are completed and not reviewed by the **requesting
+    /// account**. Informational: it changes nothing about what the cell needs.
     pub unreviewed: u32,
     /// How many more runs to launch: `max(0, desired - (counted + in_flight))`.
     pub remaining: u32,
@@ -540,7 +535,7 @@ pub struct CoverageMatrix {
     pub cells_total: u32,
     /// How many cells are blocked on infrastructure failures.
     pub cells_blocked: u32,
-    /// The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+    /// The plan's progress in runs: the sum of every cell's `counted`.
     pub runs_done: u32,
     /// The runs the plan asks for: the sum of every cell's `desired`.
     pub runs_total: u32,
@@ -579,7 +574,7 @@ pub struct CoveragePlanSummary {
     pub cells_total: u32,
     /// How many cells are blocked on infrastructure failures.
     pub cells_blocked: u32,
-    /// The plan's progress in runs: the sum over cells of `min(counted, desired)`.
+    /// The plan's progress in runs: the sum of every cell's `counted`.
     pub runs_done: u32,
     /// The runs the plan asks for.
     pub runs_total: u32,
@@ -823,6 +818,17 @@ pub struct CoverageQueue {
     /// front, not paged, so this is a "there is more behind this" flag rather than a
     /// cursor.
     pub truncated: bool,
+}
+
+/// The runs a plan's cells hold, as `GET /coverage-plans/{id}/runs` returns them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CoveragePlanRuns {
+    /// The summary card of every run the plan's cells hold — each cell's
+    /// [`CoverageCell::run_ids`] — in the matrix's cell order, and in the order the runs
+    /// landed within a cell. A run beyond a cell's target is not here.
+    pub runs: Vec<crate::snapshot::RunSummary>,
 }
 
 /// The `POST /coverage-plans/{id}/cells/retry` body: the blocked cell to retry.
@@ -1641,16 +1647,91 @@ pub async fn plan_queue(
     let (combos, cases) = resolve_members(plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
     let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    Ok(Json(plan_queue_of(
+        &ctx,
+        plan.runs_per_cell,
+        &cells_in_order(plan.outer_axis, &combos, &cases),
+    )))
+}
 
-    let cells: Vec<QueueCell<'_>> = cells_in_order(plan.outer_axis, &combos, &cases)
+/// Assemble a plan's review queue: walk `cells` in the plan's order and list each cell's
+/// unreviewed runs in the order they landed, up to [`MAX_QUEUE_RUNS`].
+///
+/// Only the [cell's runs](MatrixCtx::plan_runs) are offered, so a run beyond a cell's
+/// target never reaches the queue, and the queue holds exactly the runs the matrix's
+/// `unreviewed` counts are made of. Each entry is labelled off the cell rather than off
+/// the run: the cell's runs are its key's runs by construction, so the run's harness,
+/// launched model, and engine are the cell's, and the member carries the gg identity a
+/// reviewer tells the arms of one configuration apart by.
+fn plan_queue_of(
+    ctx: &MatrixCtx,
+    runs_per_cell: u32,
+    cells: &[(&ReviewPlanCase, &PlanMember)],
+) -> CoverageQueue {
+    let mut runs: Vec<CoverageQueueEntry> = Vec::new();
+    for (case, member) in cells {
+        for run in ctx.plan_runs(runs_per_cell, case, member) {
+            if !run.unreviewed {
+                continue;
+            }
+            if runs.len() >= MAX_QUEUE_RUNS {
+                return CoverageQueue {
+                    runs,
+                    truncated: true,
+                };
+            }
+            runs.push(CoverageQueueEntry {
+                run_id: run.id.clone(),
+                rung_id: None,
+                slug: case.slug.clone(),
+                version: case.version.clone(),
+                variant: case.variant.clone(),
+                engine: case.engine_slug(),
+                harness: member.combo.harness,
+                model: member.launch_model.clone(),
+                gg_config_id: member.combo.gg_config_id.clone(),
+                gg_config_name: member.combo.gg_config_name.clone(),
+                gg_slot_models: member.combo.gg_slot_models.clone(),
+                finished_at: run.finished_at.clone(),
+            });
+        }
+    }
+    CoverageQueue {
+        runs,
+        truncated: false,
+    }
+}
+
+// ---- The plan's runs ------------------------------------------------------
+
+/// `GET /coverage-plans/{id}/runs` — the summary card of every run the plan's cells hold,
+/// in the plan's own cell order. What the console's run breakdowns are computed from, so
+/// they describe exactly the runs the matrix counts. 404 when the id is not the caller's.
+pub async fn plan_runs(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<CoveragePlanRuns>, ApiError> {
+    let out = load_plan(&state, &user.0.id, &id).await?;
+    let plan = &out.plan;
+    let groups = group_index(&state, &user.0.id).await?;
+    let library = gg_library(&state, &user.0.id).await?;
+    let (combos, cases) = resolve_members(plan, &groups, &library);
+    let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
+    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    // Two members resolving to one cell hold the same runs, which are listed once.
+    let mut seen = HashSet::new();
+    let ids: Vec<String> = cells_in_order(plan.outer_axis, &combos, &cases)
         .into_iter()
-        .map(|(case, member)| QueueCell {
-            case,
-            member,
-            unreviewed: ctx.unreviewed_for(case, member),
-        })
+        .flat_map(|(case, member)| ctx.plan_runs(plan.runs_per_cell, case, member))
+        .filter(|run| seen.insert(run.id.clone()))
+        .map(|run| run.id.clone())
         .collect();
-    Ok(Json(collect_queue(&state, &user.0.id, &cells).await?))
+    let runs = state.db.get_runs(&ids).await.map_err(ApiError::from)?;
+    let case_names = state.store.case_names().map_err(ApiError::from)?;
+    Ok(Json(CoveragePlanRuns {
+        runs: super::runs::summary_cards(&state.store, &case_names, &runs),
+    }))
 }
 
 // ---- Halting ---------------------------------------------------------------
@@ -2423,14 +2504,15 @@ struct MatrixInput<'a> {
 /// DB round-trips. A ladder loads only the queue-wide parts ([`Self::load_for_ladder`]):
 /// its counts are its dispatch's own.
 pub(super) struct MatrixCtx {
-    /// Counted runs per cell, counted globally.
-    counted: crate::db::CellCounts,
+    /// Every counted run per cell, globally, in the order the runs landed. A plan's
+    /// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
+    /// are the first `runsPerCell` of each list ([`Self::plan_runs`]); each says whether
+    /// the requesting account has reviewed it.
+    runs: crate::db::CellRuns,
     /// In-flight jobs per cell, counted globally.
     in_flight: crate::db::CellCounts,
     /// The `pending` subset of [`Self::in_flight`], per cell.
     pending: crate::db::CellCounts,
-    /// Completed runs the requesting account has not reviewed, per cell. Informational.
-    unreviewed: crate::db::CellCounts,
     /// How much room each harness has to start another run, indexed by
     /// [`harness_lane`]; see [`crate::coverage::schedule`].
     harness_capacity: Vec<HarnessCapacity>,
@@ -2453,19 +2535,14 @@ impl MatrixCtx {
         let mut slugs = slugs;
         slugs.sort();
         slugs.dedup();
-        ctx.counted = state
+        ctx.runs = state
             .db
-            .count_counted_runs_by_cell(&slugs)
+            .counted_runs_by_cell(&slugs, Some(reviewer_user_id))
             .await
             .map_err(ApiError::from)?;
         ctx.in_flight = state
             .db
             .count_in_flight_jobs_by_cell(&slugs)
-            .await
-            .map_err(ApiError::from)?;
-        ctx.unreviewed = state
-            .db
-            .count_unreviewed_runs_by_cell(&slugs, reviewer_user_id)
             .await
             .map_err(ApiError::from)?;
         Ok(ctx)
@@ -2493,10 +2570,9 @@ impl MatrixCtx {
             latest_by_slug.insert(slug, version);
         }
         Ok(Self {
-            counted: crate::db::CellCounts::new(),
+            runs: crate::db::CellRuns::new(),
             in_flight: crate::db::CellCounts::new(),
             pending: queue.pending,
-            unreviewed: crate::db::CellCounts::new(),
             harness_capacity,
             latest_by_slug,
         })
@@ -2600,10 +2676,10 @@ impl MatrixCtx {
             if member.unlaunchable.is_some() || blocked.contains(&cell_key(case, member)) {
                 roll.cells_blocked += 1;
             }
-            roll.runs_done += demand.counted.min(demand.target);
+            roll.runs_done += demand.counted;
             roll.runs_total += demand.target;
             roll.runs_missing += demand.missing();
-            roll.runs_unreviewed += self.unreviewed_for(case, member);
+            roll.runs_unreviewed += self.unreviewed_for(runs_per_cell, case, member);
         }
         roll
     }
@@ -2619,6 +2695,11 @@ impl MatrixCtx {
         let key = cell_key(case, member);
         let demand = self.demand(desired, case, member);
         let latest_version = self.latest_version(&case.slug);
+        let run_ids = self
+            .plan_runs(desired, case, member)
+            .iter()
+            .map(|run| run.id.clone())
+            .collect();
         CoverageCell {
             slug: case.slug.clone(),
             version: case.version.clone(),
@@ -2632,20 +2713,35 @@ impl MatrixCtx {
             gg_slot_models: member.combo.gg_slot_models.clone(),
             unlaunchable: member.unlaunchable.clone(),
             desired,
+            run_ids,
             counted: demand.counted,
             filled: demand.counted >= desired,
             blocked,
             in_flight: demand.in_flight,
-            pending: self.pending.get(&key).copied().unwrap_or(0),
-            unreviewed: self.unreviewed_for(case, member),
+            // A subset of the cell's in-flight jobs, so it shares their cap: the queue may
+            // be holding back a job the cell no longer needs.
+            pending: self
+                .pending
+                .get(&key)
+                .copied()
+                .unwrap_or(0)
+                .min(demand.in_flight),
+            unreviewed: self.unreviewed_for(desired, case, member),
             remaining: demand.missing(),
             stale: !latest_version.is_empty() && latest_version != case.version,
             latest_version,
         }
     }
 
-    /// One cell as the shared launch scheduler sees it: what it wants, what counts, and
-    /// what is coming, all counted globally.
+    /// One cell as the shared launch scheduler sees it: what it wants, the runs it holds,
+    /// and what is coming.
+    ///
+    /// The runs are the [cell's runs](Self::plan_runs), so `counted` never exceeds the
+    /// target. The jobs in flight are counted globally and read only up to what the cell
+    /// still needs, so a filled cell has none: a run that would land beyond the target is
+    /// not the plan's, and showing it in flight would have the cell read more than its
+    /// target. The launch arithmetic is unchanged by the cap, since a cell's shortfall is
+    /// `target - counted - in_flight` either way.
     ///
     /// Runs and jobs store the model id they were *launched* with, which for a
     /// provider-routed harness carries the `openrouter/` prefix the plan's canonical
@@ -2658,12 +2754,31 @@ impl MatrixCtx {
         member: &PlanMember,
     ) -> CellDemand {
         let key = cell_key(case, member);
+        let counted = self.plan_runs(target, case, member).len() as u32;
+        let in_flight = self.in_flight.get(&key).copied().unwrap_or(0);
         CellDemand {
             target,
-            counted: self.counted.get(&key).copied().unwrap_or(0),
-            in_flight: self.in_flight.get(&key).copied().unwrap_or(0),
+            counted,
+            in_flight: in_flight.min(target.saturating_sub(counted)),
             harness: harness_lane(member.combo.harness),
         }
+    }
+
+    /// The runs a plan with a target of `target` holds for one cell: the first `target`
+    /// counted runs of the cell to land. A run beyond them is not the plan's, and every
+    /// figure the plan reports is computed over these alone.
+    pub(super) fn plan_runs(
+        &self,
+        target: u32,
+        case: &ReviewPlanCase,
+        member: &PlanMember,
+    ) -> &[CellRun] {
+        let runs = self
+            .runs
+            .get(&cell_key(case, member))
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        &runs[..runs.len().min(target as usize)]
     }
 
     /// How much room each harness has to start another run, in the lane order
@@ -2678,12 +2793,18 @@ impl MatrixCtx {
         self.latest_by_slug.get(slug).cloned().unwrap_or_default()
     }
 
-    /// How many of one cell's completed runs the requesting account has not reviewed.
-    pub(super) fn unreviewed_for(&self, case: &ReviewPlanCase, member: &PlanMember) -> u32 {
-        self.unreviewed
-            .get(&cell_key(case, member))
-            .copied()
-            .unwrap_or(0)
+    /// How many of the [cell's runs](Self::plan_runs) under `target` the requesting account
+    /// has not reviewed.
+    pub(super) fn unreviewed_for(
+        &self,
+        target: u32,
+        case: &ReviewPlanCase,
+        member: &PlanMember,
+    ) -> u32 {
+        self.plan_runs(target, case, member)
+            .iter()
+            .filter(|run| run.unreviewed)
+            .count() as u32
     }
 }
 
@@ -3098,135 +3219,6 @@ impl LaunchCell<'_> {
     fn blocked(&self, reason: String) -> BlockedCell {
         blocked_cell(self.rung_id.clone(), self.case, self.member, reason)
     }
-}
-
-/// One cell of a scoped review queue, with the authoritative count of how many of its
-/// completed runs the requester has not reviewed.
-pub(super) struct QueueCell<'a> {
-    /// The case, at its pinned version.
-    pub case: &'a ReviewPlanCase,
-    /// The resolved member.
-    pub member: &'a PlanMember,
-    /// How many of the cell's completed runs the requester has not reviewed.
-    pub unreviewed: u32,
-}
-
-/// Assemble a scoped review queue: walk `cells` in the caller's order and, for each
-/// that has unreviewed runs, list them oldest-first.
-///
-/// Two properties are worth stating because they are easy to get subtly wrong:
-///
-/// - The **grouped unreviewed count** decides which cells are visited at all, and it
-///   is the per-account, auto-graded-excluding count. That is what keeps a
-///   [performance](test_cabinet_core::test_case::TestType::Performance) case — which
-///   no reviewer can ever clear — out of a queue it would otherwise sit in forever.
-/// - Within a cell the runs are read newest-first and then reversed, so a cell that
-///   has accumulated many hundreds of runs over its lifetime still surfaces its
-///   recent unreviewed ones, while the queue itself still reads oldest-first.
-pub(super) async fn collect_queue(
-    state: &AppState,
-    user_id: &str,
-    cells: &[QueueCell<'_>],
-) -> Result<CoverageQueue, ApiError> {
-    let mut runs: Vec<CoverageQueueEntry> = Vec::new();
-    let mut truncated = false;
-    for cell in cells {
-        if cell.unreviewed == 0 {
-            continue;
-        }
-        if runs.len() >= MAX_QUEUE_RUNS {
-            truncated = true;
-            break;
-        }
-        let filter = SummaryFilter {
-            state: SummaryState::Review,
-            test_case: Some(cell.case.slug.clone()),
-            model: Some(cell.member.launch_model.clone()),
-            harness: Some(cell.member.combo.harness.as_str().to_string()),
-            variant: Some(cell.case.variant.clone()),
-            version: Some(cell.case.version.clone()),
-            // Resolved, so a cell pinned to no engine asks for `none` — the one filter
-            // value that also matches the rows whose slug was never lifted, which are
-            // engineless runs. Without it a queue would offer another engine's runs for a
-            // cell that never counted them.
-            engine: Some(cell.case.engine_slug()),
-            ..SummaryFilter::default()
-        };
-        let (found, _total) = state
-            .db
-            .list_summaries(
-                &filter,
-                SummarySort::Date,
-                SortDir::Desc,
-                &CaseNames::new(),
-                QUEUE_CELL_SCAN,
-                0,
-            )
-            .await
-            .map_err(ApiError::from)?;
-        let mut mine: Vec<CoverageQueueEntry> = found
-            .into_iter()
-            // The listing filters on the columns it has — case, version, variant, harness,
-            // and launched model — which for a gg cell is every gg run of that root model,
-            // configuration and subagent models included. The remaining two segments of the
-            // cell are read off each run's own capability set, so one configuration's runs
-            // never appear in another's queue.
-            .filter(|run| in_gg_cell(run.record.subject.gg_capability_set.as_ref(), cell.member))
-            .filter(|run| {
-                !run.reviews
-                    .iter()
-                    .any(|review| review.reviewer.user_id == user_id)
-            })
-            .map(|run| CoverageQueueEntry {
-                run_id: run.record.id.clone(),
-                rung_id: None,
-                slug: run.record.subject.test_case_slug.clone(),
-                version: run.record.subject.test_case_version.clone(),
-                variant: run.record.subject.variant.clone(),
-                engine: run.record.subject.engine_slug.clone(),
-                harness: run.record.subject.harness_slug,
-                model: run.record.subject.model_id.clone(),
-                // Off the member rather than off the run: the run records the set it ran,
-                // which is the same cell by construction (`in_gg_cell` has just proved it),
-                // and the member is the thing the rest of the page labels.
-                gg_config_id: cell.member.combo.gg_config_id.clone(),
-                gg_config_name: cell.member.combo.gg_config_name.clone(),
-                gg_slot_models: cell.member.combo.gg_slot_models.clone(),
-                finished_at: run.record.finished_at.clone(),
-            })
-            .collect();
-        mine.reverse();
-        for entry in mine {
-            if runs.len() >= MAX_QUEUE_RUNS {
-                truncated = true;
-                break;
-            }
-            runs.push(entry);
-        }
-    }
-    Ok(CoverageQueue { runs, truncated })
-}
-
-/// Whether one completed run belongs to a member's cell on the two segments a run listing
-/// cannot filter on: the gg configuration's id and the models its set bound.
-///
-/// Read off the capability set the run recorded, and matched against the same two values
-/// [`cell_key`] builds its gg segments from, so the queue offers exactly the runs the cell's
-/// counts are made of. Those counts group on `run.gg_config_id`, which is
-/// [lifted](crate::db) from this very field, so the two agree by construction — a run
-/// carrying a column its record does not account for would be counted into a cell whose
-/// queue could never offer it.
-///
-/// Trivially true for a harness member, whose cell those segments are empty for — and true
-/// for nothing at all on a member that never resolved, which has no cell for a run to be in.
-fn in_gg_cell(set: Option<&GgCapabilitySet>, member: &PlanMember) -> bool {
-    let Some(gg) = &member.gg else {
-        return member.unlaunchable.is_none();
-    };
-    let Some(set) = set else {
-        return false;
-    };
-    set.preset_id.as_deref() == Some(gg.config_id.as_str()) && set.bound_model_key() == gg.models
 }
 
 // ---- Small constructors ---------------------------------------------------

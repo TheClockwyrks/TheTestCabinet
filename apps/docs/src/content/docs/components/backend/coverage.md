@@ -24,9 +24,10 @@ the two share; the ladder page covers only the difference.
 
 ## Counts are global, reviews are labels
 
-A cell's counts include every run of that exact cell, whoever launched it and for
+A cell is filled by runs of that exact cell, whoever launched them and for
 whatever reason. A run someone else produced satisfies the target and is never
-re-requested. A plan observes runs rather than owning them.
+re-requested. A plan observes runs rather than owning them, and it takes only as
+many as its target asks for (see [a cell's runs](#a-cells-runs)).
 
 The validation scripts are assumed correct, so a run's result is known the moment
 it finishes. Reviews never gate, meter, or trigger the launching of runs on a plan
@@ -135,6 +136,41 @@ counts: the attempt and its retry count once, as whatever the last attempt
 became. The retry is enqueued, and the attempt stamped, before the attempt's run
 is stored, so no launch pass ever sees that run without the stamp.
 
+### A cell's runs
+
+A plan cell's runs are the first `runsPerCell` counted runs of the cell to land,
+ordered by when each run finished, with the run id breaking a tie. A counted run
+beyond that number is not the plan's. It stays an ordinary run everywhere else,
+and nothing on the plan counts it, shows it, or queues it for review.
+
+Taking the first to finish keeps a filled cell's runs stable: a run that
+finishes later never changes which runs the cell holds. The order is by finish
+time rather than by when the backend stored the run, so a run whose record
+reaches the backend late, after a run that finished after it, takes its place
+ahead of that run, and the cell's latest run drops out. A run that does not count,
+such as an infrastructure failure, takes no place in the order, so the next
+counted run takes the place instead. Raising `runsPerCell` takes in the next runs
+in the same order, and lowering it lets go of the latest.
+
+A run whose stored record this build can no longer decode still counts and keeps
+its place, since it is the model's result all the same, and dropping it would
+relaunch the cell. It cannot be opened, though, so it is never in the
+[review queue](#the-scoped-review-queue) or in a cell's `unreviewed`, and
+[the plan's runs](#the-plans-runs) leave it out, so the run breakdowns can total
+fewer runs than the matrix counts.
+
+A cell's jobs in flight are shown only while the cell still needs them, up to its
+target less its runs. A cell holding its target shows none, so a cell never
+reads more runs than its target. The jobs still occupy the limit of the plan or
+ladder whose [origin](#attribution-which-plan-or-ladder-launched-a-run) they
+carry, because the limit counts what that plan or ladder launched.
+
+Every figure a plan reports is computed over the plan's runs: the matrix and its
+roll-ups, the summary, the [review queue](#the-scoped-review-queue), and the run
+breakdowns on the console's dashboard, which read
+[the plan's runs](#the-plans-runs). A ladder dispatch counts only the runs it
+launched, so a ladder has no runs beyond its own to leave out.
+
 ### A blocked cell
 
 A cell whose runs keep failing on infrastructure would otherwise be relaunched by
@@ -157,12 +193,13 @@ the cases with the combinations, and returns one cell per pair:
 | field                     | meaning                                                          |
 | ------------------------- | ---------------------------------------------------------------- |
 | `desired`                 | the target, from the plan's `runsPerCell`                        |
-| `counted`                 | runs of the cell that [count](#which-runs-count), globally       |
-| `inFlight`                | jobs queued, pending, dispatched, starting, or running, globally |
+| `runIds`                  | the [cell's runs](#a-cells-runs), in the order they finished     |
+| `counted`                 | how many runs the cell holds, at most `desired`                  |
+| `inFlight`                | jobs of the cell in flight globally, at most `desired - counted` |
 | `pending`                 | the subset of `inFlight` the queue is deliberately holding back  |
-| `unreviewed`              | completed runs you have not reviewed                             |
-| `remaining`               | `max(0, desired - (counted + inFlight))`                         |
-| `filled`                  | whether `counted >= desired`                                     |
+| `unreviewed`              | the cell's completed runs you have not reviewed                  |
+| `remaining`               | `desired - (counted + inFlight)`                                 |
+| `filled`                  | whether `counted` has reached `desired`                          |
 | `blocked`                 | whether the cell is [blocked](#a-blocked-cell)                   |
 | `latestVersion` / `stale` | whether a newer version of the case has been ingested            |
 | `unlaunchable`            | why no launch pass can launch this cell, or null                 |
@@ -185,8 +222,21 @@ built against another runtime. `stale` flags that a newer version exists without
 moving the target. A run recorded with no engine counts as a `none` run.
 
 The matrix also reports the plan's roll-ups: cells filled, cells total, runs
-done (the sum over cells of `min(counted, desired)`), runs total, runs in flight
-against the plan's limit, runs pending, runs unreviewed, and cells blocked.
+done (the sum of every cell's `counted`), runs total, runs in flight against the
+plan's limit, runs pending, runs unreviewed, and cells blocked. Runs in flight
+against the limit are the plan's own jobs, which the limit counts until they
+finish. It is the one figure that can include runs beyond the plan's: a job
+whose cell other runs filled in the meantime is still in flight against the
+limit, though its run will not be one of the cell's runs, so the figure can
+exceed the sum of the cells' `inFlight`, and the console says so beside it.
+
+### The plan's runs
+
+`GET /coverage-plans/{id}/runs` returns the summary card of every run the plan's
+cells hold, in the matrix's cell order and in landing order within a cell. It is
+what the console's run breakdowns are computed from, so they describe exactly the
+runs the matrix counts, less any run this build can no longer decode (see
+[a cell's runs](#a-cells-runs)).
 
 ## Emission order is execution order
 
@@ -359,7 +409,9 @@ a halt reaches it.
 
 `GET /coverage-plans/{id}/queue` returns the plan's completed runs the requesting
 account has not reviewed, in the order its cells are emitted rather than
-newest-first, so a case's repeats can be labelled side by side. The queue is
+newest-first, so a case's repeats can be labelled side by side. Only the
+[cell's runs](#a-cells-runs) are offered, so a run beyond a cell's target never
+reaches the queue. The queue is
 capped rather than paginated, because it exists to be walked from the front, and
 reports `truncated` when there is more behind it.
 

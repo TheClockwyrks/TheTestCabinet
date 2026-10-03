@@ -189,7 +189,17 @@ The Dashboard also breaks the plan's runs down by model, by combination, by test
 case, and by rating, and charts the rating mix per combination. The board's
 counts say how many runs a cell has; the breakdowns say what those runs were,
 which is what tells a covered plan apart from a covered plan whose runs are all
-broken.
+broken. The breakdowns read [the plan's runs](/components/backend/coverage/#the-plans-runs),
+so they describe the same runs the counts do (less any run whose record this build
+can no longer decode), and a run beyond a cell's target appears in neither. The In
+flight figure is the one exception: it is the plan's own jobs against its limit,
+which can include a job whose cell other runs have since filled, and its tooltip
+says so.
+
+Each cell of the Tests matrix links to the run listing narrowed to that cell's
+case, version, harness, and model. The listing cannot be narrowed to the plan's
+runs alone, so the link is named All runs and says that it includes runs beyond
+the cell's target.
 
 Each cell of the Tests matrix offers two launches by hand: one more run, or the
 cell's whole shortfall. Both launch the cell's own pin, engine included, so a run

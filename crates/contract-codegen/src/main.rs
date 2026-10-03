@@ -703,7 +703,8 @@ fn main() -> Result<()> {
         // override included) and `CoveragePlanOut`, the shape the console reads, which
         // adds whether it is filling. The rest are the controls around a fill: the
         // account-wide runs-in-flight limit, one launch pass's report, a blocked cell's
-        // retry, the plan-scoped review queue, and what a halt or a stop cancelled.
+        // retry, the plan-scoped review queue, the runs the plan's cells hold, and what a
+        // halt or a stop cancelled.
         TsModule {
             package: RUN_RECORD_PKG,
             reexports: &[],
@@ -719,7 +720,7 @@ fn main() -> Result<()> {
                 bapi::CoverageSettings, bapi::CoverageSettingsInput,
                 bapi::LaunchSkipped, bapi::LaunchedCell, bapi::BlockedCell,
                 bapi::LaunchPassResult, bapi::PlanCellRetryInput,
-                bapi::CoverageQueueEntry, bapi::CoverageQueue,
+                bapi::CoverageQueueEntry, bapi::CoverageQueue, bapi::CoveragePlanRuns,
                 bapi::HaltResult,
             ],
         },

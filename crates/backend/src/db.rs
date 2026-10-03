@@ -1007,6 +1007,25 @@ impl Db {
         Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
+    /// Fetch the stored runs with the given ids, in the order the ids are given. An id
+    /// with no readable run is left out, as every listing leaves out a run this build
+    /// cannot decode.
+    pub async fn get_runs(&self, ids: &[String]) -> Result<Vec<StoredRun>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // A `WHERE id IN` query does not preserve the list's order, so it is restored here.
+        let mut by_id: HashMap<String, run::Model> = readable_runs()
+            .filter(run::Column::Id.is_in(ids.iter().map(String::as_str)))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|run| (run.id.clone(), run))
+            .collect();
+        let ordered: Vec<run::Model> = ids.iter().filter_map(|id| by_id.remove(id)).collect();
+        self.assemble(ordered).await
+    }
+
     /// Fetch one run's **row** by id — the lifted columns only, without decoding
     /// its `record_json` blob or joining its reviews and links. For a caller that
     /// needs a run's identity rather than its record (the publish-failure
@@ -3558,9 +3577,9 @@ impl Db {
         Ok(())
     }
 
-    /// Count the **counted** runs — the model's own results — for every coverage cell
-    /// whose case slug is in `slugs`, in a single grouped query. The result is keyed by
-    /// the cell's [`CellKey`] identity; a cell with none is simply absent.
+    /// Every **counted** run — the model's own results — of every coverage cell whose case
+    /// slug is in `slugs`, keyed by the cell's [`CellKey`] and listed in the order the runs
+    /// landed: by when each finished, then by run id. A cell with none is simply absent.
     ///
     /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
     /// `limit_exceeded` or `hung` ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)): each is the model's result
@@ -3569,13 +3588,29 @@ impl Db {
     /// never counts. Nor does the run of a job that was automatically retried
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
     ///
-    /// This computes a whole coverage matrix's counts at once, so the `coverage` handler
-    /// does not fan out into a per-cell `COUNT(*)`.
-    pub async fn count_counted_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+    /// The order is what a plan takes its [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
+    /// from: the first `runsPerCell` of each list. It is read as instants rather than as
+    /// text, since RFC 3339 text with and without a fractional second does not sort as
+    /// time; a finish time that does not parse sorts after every one that does.
+    ///
+    /// A run this build cannot decode ([`Self::list_unreadable_runs`]) still counts and takes its
+    /// place: it is the model's result all the same, and dropping it would relaunch the
+    /// cell every time a contract change left old records behind. It is only never
+    /// [unreviewed](CellRun::unreviewed), since it cannot be opened to review.
+    ///
+    /// With `reviewer_user_id`, each run also says whether it is
+    /// [unreviewed](CellRun::unreviewed) by that account. One query reads the runs, one the
+    /// account's reviewed run ids, and one the slugs' unreadable run ids, so a whole
+    /// coverage matrix costs three round trips rather than one per cell.
+    pub async fn counted_runs_by_cell(
+        &self,
+        slugs: &[String],
+        reviewer_user_id: Option<&str>,
+    ) -> Result<CellRuns> {
         if slugs.is_empty() {
-            return Ok(CellCounts::new());
+            return Ok(CellRuns::new());
         }
-        let rows: Vec<CellCountRow> = run::Entity::find()
+        let rows: Vec<CellRunRow> = run::Entity::find()
             .filter(not_a_retried_attempt())
             .select_only()
             .column(run::Column::TestCaseSlug)
@@ -3586,21 +3621,100 @@ impl Db {
             .column(run::Column::ModelId)
             .column(run::Column::GgConfigId)
             .column(run::Column::GgModels)
-            .column_as(run::Column::Id.count(), "cnt")
+            .column(run::Column::Id)
+            .column(run::Column::FinishedAt)
+            .column(run::Column::RunState)
+            .column(run::Column::TestType)
             .filter(run::Column::RunState.is_in(counted_run_states()))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
-            .group_by(run::Column::TestCaseSlug)
-            .group_by(run::Column::TestCaseVersion)
-            .group_by(run::Column::Variant)
-            .group_by(run::Column::EngineSlug)
-            .group_by(run::Column::HarnessSlug)
-            .group_by(run::Column::ModelId)
-            .group_by(run::Column::GgConfigId)
-            .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
-        Ok(cell_counts(rows))
+        let reviewed: std::collections::HashSet<String> = match reviewer_user_id {
+            Some(reviewer) => review::Entity::find()
+                .select_only()
+                .column(review::Column::RunId)
+                .filter(review::Column::ReviewerUserId.eq(reviewer))
+                .into_tuple::<String>()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+        // Read apart from the rows, which already select the twelve columns a tuple can
+        // hold. Only the review flag needs it, and unreadable rows are few.
+        let unreadable: std::collections::HashSet<String> = match reviewer_user_id {
+            Some(_) => run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .filter(run::Column::RecordReadable.eq(false))
+                .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
+                .into_tuple::<String>()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+        let mut cells = CellRuns::new();
+        for (
+            slug,
+            version,
+            variant,
+            engine,
+            harness,
+            model,
+            gg_config_id,
+            gg_models,
+            id,
+            finished_at,
+            run_state,
+            test_type,
+        ) in rows
+        {
+            let unreviewed = reviewer_user_id.is_some()
+                && !unreadable.contains(&id)
+                && run_state == "completed"
+                && !AUTO_GRADED_TEST_TYPES.contains(&test_type.as_str())
+                && !reviewed.contains(&id);
+            cells
+                .entry((
+                    slug,
+                    version,
+                    variant,
+                    cell_engine(engine),
+                    harness,
+                    model,
+                    gg_config_id.unwrap_or_default(),
+                    gg_models.unwrap_or_default(),
+                ))
+                .or_default()
+                .push(CellRun {
+                    id,
+                    finished_at,
+                    unreviewed,
+                });
+        }
+        for runs in cells.values_mut() {
+            runs.sort_by_cached_key(|run| {
+                let at = OffsetDateTime::parse(&run.finished_at, &Rfc3339).ok();
+                (at.is_none(), at, run.id.clone())
+            });
+        }
+        Ok(cells)
+    }
+
+    /// Count the **counted** runs for every coverage cell whose case slug is in `slugs`:
+    /// the length of each cell's [`Self::counted_runs_by_cell`] list, every run the cell
+    /// has whatever any plan's target, so the counting rule has one definition.
+    pub async fn count_counted_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        Ok(self
+            .counted_runs_by_cell(slugs, None)
+            .await?
+            .into_iter()
+            .map(|(cell, runs)| (cell, runs.len() as u32))
+            .collect())
     }
 
     /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
@@ -3641,65 +3755,28 @@ impl Db {
     }
 
     /// Count, per coverage cell, the completed runs **the given account has not
-    /// reviewed** — keyed exactly like the other grouped counts, absent for a cell with
-    /// none.
+    /// reviewed** — every such run of the cell, whatever any plan's target — keyed exactly
+    /// like the other grouped counts, absent for a cell with none.
     ///
-    /// Informational only: a plan reports it as the work waiting on its owner. Reviews
-    /// never launch, gate or hold back anything.
-    ///
-    /// The automatically graded types are excluded on the same grounds
-    /// [`Self::list_unreviewed`] excludes them: no reviewer can ever clear them.
+    /// Read off [`Self::counted_runs_by_cell`], so it is that function's
+    /// [`CellRun::unreviewed`] rule: the automatically graded types are excluded on the same
+    /// grounds [`Self::list_unreviewed`] excludes them, since no reviewer can ever clear
+    /// them. A completed run is never a retried attempt (only a failed one is retried), so
+    /// reading it off the counted runs leaves none out.
     pub async fn count_unreviewed_runs_by_cell(
         &self,
         slugs: &[String],
         reviewer_user_id: &str,
     ) -> Result<CellCounts> {
-        if slugs.is_empty() {
-            return Ok(CellCounts::new());
-        }
-        let query = run::Entity::find()
-            .select_only()
-            .column(run::Column::TestCaseSlug)
-            .column(run::Column::TestCaseVersion)
-            .column(run::Column::Variant)
-            .column(run::Column::EngineSlug)
-            .column(run::Column::HarnessSlug)
-            .column(run::Column::ModelId)
-            .column(run::Column::GgConfigId)
-            .column(run::Column::GgModels)
-            .column_as(run::Column::Id.count(), "cnt")
-            // Left-join *this account's* review and keep the rows that found none.
-            // Narrowing on the join rather than in the `WHERE` is what makes it "no
-            // review by this reviewer" instead of "no review by anyone": a run another
-            // account has reviewed still has no row on this side of the join.
-            .join(
-                JoinType::LeftJoin,
-                run::Relation::Review.def().on_condition({
-                    let reviewer = reviewer_user_id.to_string();
-                    move |_run, review| {
-                        Expr::col((review, review::Column::ReviewerUserId))
-                            .eq(reviewer.clone())
-                            .into_condition()
-                    }
-                }),
-            )
-            .filter(review::Column::Id.is_null())
-            .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES))
-            .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)));
-        let rows: Vec<CellCountRow> = query
-            .group_by(run::Column::TestCaseSlug)
-            .group_by(run::Column::TestCaseVersion)
-            .group_by(run::Column::Variant)
-            .group_by(run::Column::EngineSlug)
-            .group_by(run::Column::HarnessSlug)
-            .group_by(run::Column::ModelId)
-            .group_by(run::Column::GgConfigId)
-            .group_by(run::Column::GgModels)
-            .into_tuple()
-            .all(&self.conn())
-            .await?;
-        Ok(cell_counts(rows))
+        Ok(self
+            .counted_runs_by_cell(slugs, Some(reviewer_user_id))
+            .await?
+            .into_iter()
+            .filter_map(|(cell, runs)| {
+                let unreviewed = runs.iter().filter(|run| run.unreviewed).count() as u32;
+                (unreviewed > 0).then_some((cell, unreviewed))
+            })
+            .collect())
     }
 
     /// One cell's most recent **terminal** jobs (`succeeded`, `failed`, `canceled`),
@@ -3959,6 +4036,43 @@ pub type CellKey = (
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
 
+/// Per-cell counted runs, keyed by [`CellKey`], each list in the order its runs landed
+/// ([`Db::counted_runs_by_cell`]).
+pub type CellRuns = HashMap<CellKey, Vec<CellRun>>;
+
+/// One counted run of a coverage cell, reduced to what a plan reads to take its
+/// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CellRun {
+    /// The run's id.
+    pub id: String,
+    /// RFC 3339 of when the run finished — what the cell's runs are ordered by.
+    pub finished_at: String,
+    /// Whether the run is `completed`, of a type a reviewer can review (not
+    /// auto-graded), readable by this build (a run whose record no longer decodes cannot
+    /// be opened, so it is never offered for review), and has no review by the account
+    /// the runs were read for. Always `false` when they were read for no account.
+    pub unreviewed: bool,
+}
+
+/// One row of [`Db::counted_runs_by_cell`]: a [`CellKey`]'s eight segments (the engine one
+/// and the two gg ones still nullable, as the columns are), then the run's id, finish
+/// time, state, and test type.
+type CellRunRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
+);
+
 /// A [`CellKey`] as one stored string: its eight segments joined with the unit
 /// separator (`U+001F`), which no segment can contain. What
 /// `coverage_plan_cell_retry.cell_key` holds.
@@ -4009,8 +4123,7 @@ fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
 }
 
 /// One row of a grouped coverage count: a [`CellKey`]'s eight segments (the engine one and
-/// the two gg ones still nullable, as the columns are) followed by the tally. Named because
-/// all three grouped queries select it and the tuple is otherwise spelled out four times.
+/// the two gg ones still nullable, as the columns are) followed by the tally.
 type CellCountRow = (
     String,
     String,

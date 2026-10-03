@@ -217,7 +217,7 @@ fn review() -> StoredReview {
 }
 
 /// A review from `account` giving `rating` to the `gameplay` domain.
-pub(super) fn review_by(account: &str, rating: Rating) -> StoredReview {
+pub(crate) fn review_by(account: &str, rating: Rating) -> StoredReview {
     use test_cabinet_core::review::VerdictStatus;
     StoredReview {
         reviewer: reviewer(account),
@@ -5845,6 +5845,38 @@ fn sample_cell() -> CellKey {
         String::new(),
         String::new(),
     )
+}
+
+#[tokio::test]
+async fn an_unreadable_run_keeps_its_place_in_a_cell_but_is_never_unreviewed() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
+    run::Entity::update_many()
+        .col_expr(run::Column::RecordReadable, Expr::value(false))
+        .filter(run::Column::Id.eq("r1"))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+    let slugs = vec!["pong".to_string()];
+
+    // It is still the model's result, so it still fills the cell.
+    let runs = db.counted_runs_by_cell(&slugs, Some("u1")).await.unwrap();
+    let cell = &runs[&sample_cell()];
+    assert_eq!(cell.len(), 2);
+    // But it cannot be opened, so it is never offered for review.
+    let r1 = cell.iter().find(|run| run.id == "r1").unwrap();
+    let r2 = cell.iter().find(|run| run.id == "r2").unwrap();
+    assert!(!r1.unreviewed);
+    assert!(r2.unreviewed);
+    assert_eq!(
+        db.count_unreviewed_runs_by_cell(&slugs, "u1")
+            .await
+            .unwrap()
+            .get(&sample_cell())
+            .copied(),
+        Some(1),
+    );
 }
 
 #[tokio::test]

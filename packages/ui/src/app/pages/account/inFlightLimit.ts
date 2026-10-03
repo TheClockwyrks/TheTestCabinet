@@ -79,7 +79,11 @@ export function inFlightStatTitle(
   limit: InFlightLimit,
   owner: "plan" | "ladder",
 ): string {
-  const occupancy = `Runs this ${owner} launched that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not.`;
+  const beyond =
+    owner === "plan"
+      ? " A job still counts here when other runs have filled its cell meanwhile, though its run will not be one of the plan's."
+      : "";
+  const occupancy = `Runs this ${owner} launched that are queued, pending, dispatched, starting, or running. Completed runs never count, reviewed or not.${beyond}`;
   const more = owner === "plan" ? "fills on" : "climbs on";
   return limit.kind === "bounded"
     ? `${occupancy} Nothing more is launched once this reaches the limit; the ${owner} ${more} as these finish.`

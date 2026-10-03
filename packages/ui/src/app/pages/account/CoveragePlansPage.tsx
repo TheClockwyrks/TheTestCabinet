@@ -32,7 +32,7 @@ export interface PlanProgress {
 export function planProgress(plan: CoveragePlanSummary): PlanProgress {
   const { runsDone, runsTotal } = plan;
   let title =
-    `${runsDone} of ${runsTotal} runs done · ${plan.runsInFlight} in flight · ` +
+    `${runsDone} of ${runsTotal} runs done · ${plan.runsInFlight} launched and in flight · ` +
     `${plan.runsMissing} to launch`;
   if (plan.cellsBlocked > 0) title += ` · ${plan.cellsBlocked} blocked`;
   return {

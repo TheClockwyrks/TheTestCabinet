@@ -23,7 +23,7 @@
           "type": "boolean"
         },
         "counted": {
-          "description": "Counted runs for this cell — the model's own results — counted globally, a\nretried attempt once.",
+          "description": "How many runs the cell holds — the length of [`Self::run_ids`], so never more than\n`desired`. A counted run is the model's own result, a retried attempt once.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -62,7 +62,7 @@
           "description": "The harness — `gg` on a gg cell."
         },
         "inFlight": {
-          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally.",
+          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally and read only up to what the cell still needs\n(`desired - counted`), so a filled cell has none.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -91,6 +91,13 @@
           "minimum": 0,
           "type": "integer"
         },
+        "runIds": {
+          "description": "The [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs):\nthe first `desired` counted runs of the cell to land, whoever launched them, in the\norder they landed. Every other figure on the cell is computed over these.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "slug": {
           "description": "The test-case slug.",
           "type": "string"
@@ -104,7 +111,7 @@
           "type": ["string", "null"]
         },
         "unreviewed": {
-          "description": "How many of the cell's completed runs the **requesting account** has not\nreviewed. Informational: it changes nothing about what the cell needs.",
+          "description": "How many of the cell's runs are completed and not reviewed by the **requesting\naccount**. Informational: it changes nothing about what the cell needs.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -126,6 +133,7 @@
         "harness",
         "model",
         "desired",
+        "runIds",
         "counted",
         "filled",
         "blocked",
@@ -214,7 +222,7 @@
       "description": "The axis the cells above are ordered on."
     },
     "runsDone": {
-      "description": "The plan's progress in runs: the sum over cells of `min(counted, desired)`.",
+      "description": "The plan's progress in runs: the sum of every cell's `counted`.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
