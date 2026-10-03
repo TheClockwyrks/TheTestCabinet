@@ -1,5 +1,53 @@
 {
   "$defs": {
+    "CoverageAxis": {
+      "description": "Which axis a coverage plan's cell loop nests on — and therefore the order its\nruns execute in, since a launch pass emits cells in this order, `job.queue_seq` is\nmonotonic, and the dispatcher claims in ascending order.\n\nThe console labels these \"One case at a time\" and \"One model at a time\".",
+      "oneOf": [
+        {
+          "const": "case",
+          "description": "Finish one case across every combination before starting the next case. The\ndefault, and what every plan did before the axis was selectable.",
+          "type": "string"
+        },
+        {
+          "const": "combination",
+          "description": "Finish one combination across every case before starting the next\ncombination — \"take this model all the way through the plan\".",
+          "type": "string"
+        }
+      ]
+    },
+    "InFlightLimit": {
+      "description": "How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a\nlaunch pass stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the owner\ntypes can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` jobs in flight. `0` is a legitimate bound — \"launch nothing\"\n— and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most jobs that may be in flight before a launch pass stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a launch pass emits every missing cell it can. The per-cell target and\nthe harness parallelism cap still apply.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
+    },
     "ReviewPlanCase": {
       "description": "One **pinned case** in a plan or a case group: a slug, an exact version, a variant,\nand the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted\nagainst exactly this pin; the matrix flags it when a newer version has since been\ningested.",
       "properties": {
@@ -61,7 +109,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A reviewer's named coverage plan **as declared**: the groups it references, any\none-off members, and the target runs-per-cell. Persisted whole; one account may\nhold many.\n\nHow the plan is *fed* is [`CoverageSchedule`], stored beside this and never\nwritten by a declaration save. Handlers return the two flattened together as\n[`CoveragePlanOut`].",
+  "description": "An owner's named coverage plan: the groups it references, any one-off members, the\ntarget runs-per-cell, the order it launches in, and its runs-in-flight limit\noverride. Persisted whole; one account may hold many.",
   "properties": {
     "caseGroupIds": {
       "description": "The referenced case groups' ids.",
@@ -95,9 +143,25 @@
       "description": "The plan's opaque id (minted on create).",
       "type": "string"
     },
+    "inFlightLimit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InFlightLimit"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "This plan's override of the account's runs-in-flight limit, or null to inherit\nit. Null, a bound of `0`, and `unbounded` are three different instructions."
+    },
     "name": {
-      "description": "The reviewer-chosen display name.",
+      "description": "The owner-chosen display name.",
       "type": "string"
+    },
+    "outerAxis": {
+      "$ref": "#/$defs/CoverageAxis",
+      "default": "case",
+      "description": "Which axis the cell loop nests on, and therefore the order runs launch in."
     },
     "runsPerCell": {
       "description": "The target number of runs desired for each `case × combination` cell.",

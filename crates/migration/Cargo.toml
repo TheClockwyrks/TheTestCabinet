@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 sea-orm-migration = { workspace = true }
 async-trait = { workspace = true }
+time = { workspace = true }
 
 [lints]
 workspace = true

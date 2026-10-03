@@ -166,6 +166,16 @@ pub struct Model {
     /// on every row that was already in flight when the column was added.
     #[sea_orm(nullable)]
     pub started_at: Option<String>,
+    /// The id of the automatic retry this job enqueued when it ended on a retryable
+    /// failure, or `NULL` when it enqueued none. Written in the same transaction that
+    /// enqueues the retry.
+    ///
+    /// The failed attempt's run is kept, but the retry takes its place: a ladder counts
+    /// a run that ended on the model's own failure as one of its rung's runs, and leaves
+    /// the run of a job that was retried out, so one launch is never counted twice and a
+    /// rung is never decided on an attempt whose retry is still to come.
+    #[sea_orm(nullable)]
+    pub retried_by: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

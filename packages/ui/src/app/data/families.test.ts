@@ -26,6 +26,7 @@ function model(name: string, aliases: ModelAlias[]): Model {
     maxInputPrice: null,
     maxOutputPrice: null,
     bannedProviders: [],
+    quantizationFilter: true,
     unknownQuantizationProviders: [],
     releasedAt: null,
     inputModalities: [],

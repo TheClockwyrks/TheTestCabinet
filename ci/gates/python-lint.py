@@ -21,6 +21,9 @@ from the_test_cabinet_ci import enter_repo_root, fail, succeeded
 # regardless of the caller's working directory.
 enter_repo_root()
 
+# `ci/` alone, as the template renders it. A project keeping Python in a uv
+# project of its own adds its path here and to the hook's `files` in
+# .pre-commit-config.yaml, and a template update carries both edits.
 PROJECTS = ["ci"]
 
 # The gate runs in the `ci` project's environment, which carries ruff, so the

@@ -30,6 +30,7 @@ fn curated(alias: &str, configure: impl FnOnce(&mut model::Model)) -> StoredMode
         description_md: None,
         openrouter_slug: Some(alias.to_string()),
         provider_pin: None,
+        quantization_filter: true,
         native_quantization: None,
         max_input_price: None,
         max_output_price: None,
@@ -78,6 +79,7 @@ fn run(model: &str, provider: &str, calls: u64, stalls: u64) -> Arc<GgRunFacts> 
 fn the_catalog_entry_becomes_the_policy() {
     let stored = curated("qwen/qwen3-coder", |config| {
         config.provider_pin = Some(" Alibaba ".to_string());
+        config.quantization_filter = false;
         config.native_quantization = Some("fp8".to_string());
         config.max_input_price = Some(2.0);
         config.max_output_price = Some(8.0);
@@ -86,6 +88,7 @@ fn the_catalog_entry_becomes_the_policy() {
     });
     let catalog = CatalogCandidates::of(Some(&stored), &["qwen/qwen3-coder"]);
     assert_eq!(catalog.developer.as_deref(), Some("Alibaba"));
+    assert!(!catalog.policy.quantization_filter);
     assert_eq!(catalog.policy.native_quantization.as_deref(), Some("fp8"));
     assert!((catalog.policy.max_input.unwrap() - 2e-6).abs() < 1e-15);
     assert!((catalog.policy.max_output.unwrap() - 8e-6).abs() < 1e-15);

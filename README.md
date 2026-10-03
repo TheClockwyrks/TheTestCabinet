@@ -17,9 +17,8 @@ need. Before its first start, copy your host's file to `.devcontainer/.env`
 (`.env.macos` on a Mac, `.env.podman` on a Linux Podman host; an Ubuntu Docker
 host needs none). See
 [Running](apps/docs/src/content/docs/development/running.md#the-dev-container).
-After the container is created, it provisions gg's program-language toolchains
-in the background; `bash scripts/devcontainer-setup.sh` resumes an interrupted
-provisioning.
+The image carries every toolchain a build needs, gg's program languages
+included, so the whole workspace builds as soon as the container is created.
 
 One command runs every gate:
 
@@ -38,7 +37,8 @@ is the authoritative guide to the layout, the gates and the pipelines.
 This repository is rendered from the k8s standard workspace template, a
 [copier](https://copier.readthedocs.io) template. `.copier-answers.yml` records
 the template's source, the version the repository was last rendered against,
-and every answer. Files the template renders are never edited here; a change one
-needs is made in the template and brought in with `copier update`. This file,
-`CLAUDE.md`, the documentation's pages and the project's own code are seeds the
-template never renders over.
+and the answers it asks. `copier update` is a three-way merge: the recorded
+version is rendered again, what this repository changed in a rendered file
+since is carried onto the new version's render, and a line both changed is
+left with conflict markers to resolve. A rendered file is therefore edited here
+like any other, and the edit survives the next update.

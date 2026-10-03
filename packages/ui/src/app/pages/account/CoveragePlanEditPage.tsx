@@ -3,11 +3,11 @@ import { useNavigate, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
 import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import type {
-  BufferTarget,
   CoverageAxis,
   CoverageGroup,
   CoveragePlanInput,
   CoveragePlanOut,
+  InFlightLimit,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@clockwyrks/run-record/coverage";
@@ -17,16 +17,15 @@ import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { SettingRow } from "../../components/SettingRow";
-import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import {
   AxisPicker,
-  BufferTargetField,
+  InFlightLimitField,
   ComboPicker,
   CasePicker,
   DEFAULT_COVERAGE_AXIS,
 } from "./coveragePickers";
-import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
+import { DEFAULT_IN_FLIGHT_LIMIT } from "./inFlightLimit";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -34,23 +33,16 @@ import styles from "./Coverage.module.scss";
 /** The run target a new plan starts with, and the one its control resets to. */
 const DEFAULT_RUNS_PER_CELL = 3;
 
-// A plan does not top itself up until its reviewer asks it to, which is what the
-// row's reset control points back at.
-const DEFAULT_AUTO_TOP_UP = false;
-
 // The coverage plan editor (`/account/coverage/new` and `/account/coverage/:planId/
-// edit`): name, runs-per-cell, how the plan is fed (run order, review buffer,
-// auto-top-up), the reusable groups the plan references, and any one-off
+// edit`): name, runs-per-cell, how the plan is filled (run order, runs-in-flight
+// limit), the reusable groups the plan references, and any one-off
 // combinations/cases pinned directly. Referenced groups are pointers — editing a
 // group later reshapes this plan — while one-offs live on the plan. Save creates or
 // updates and returns to the plans list. Console-only; gated on a signed-in account.
 //
-// The schedule fields travel in the save body's nested `schedule`. The auto top-up
-// switch here is the same switch the dashboard carries, reading and writing the same
-// pair of flags: `paused` is what a halt sets and it blocks every top-up, so the switch
-// shows on only when the plan is both asked to feed itself and not halted, and turning
-// it on clears the halt. Left off, a halt stands — saving an edited member list must
-// never restart a plan somebody deliberately stopped.
+// A plan is a standing matrix, so a save applies at once: a plan that is filling
+// launches whatever cells the edit added. Saving never starts or stops filling; that
+// is the dashboard's All missing and Halt.
 export function CoveragePlanEditPage() {
   const { planId } = useParams();
   const editing = Boolean(planId);
@@ -78,17 +70,16 @@ export function CoveragePlanEditPage() {
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [cases, setCases] = useState<ReviewPlanCase[]>([]);
-  // How the plan is fed. `outerAxis`/`autoTopUp` default to today's behaviour so a
-  // plan created here is fed exactly as one created before this existed.
+  // How the plan is filled: the order its cells launch in, and its override of the
+  // account's runs-in-flight limit (null inherits it).
   const [outerAxis, setOuterAxis] = useState<CoverageAxis>(
     DEFAULT_COVERAGE_AXIS,
   );
-  const [autoTopUp, setAutoTopUp] = useState(DEFAULT_AUTO_TOP_UP);
-  const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
-  // Whether the plan was loaded halted — see the note on this page's purpose above.
-  const [paused, setPaused] = useState(false);
-  const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
-    DEFAULT_BUFFER_TARGET,
+  const [inFlightLimit, setInFlightLimit] = useState<InFlightLimit | null>(
+    null,
+  );
+  const [accountLimit, setAccountLimit] = useState<InFlightLimit>(
+    DEFAULT_IN_FLIGHT_LIMIT,
   );
 
   useEffect(() => {
@@ -120,9 +111,7 @@ export function CoveragePlanEditPage() {
             setCombos(plan.combos);
             setCases(plan.cases);
             setOuterAxis(plan.outerAxis);
-            setAutoTopUp(plan.autoTopUp && !plan.paused);
-            setBufferTarget(plan.bufferTarget ?? null);
-            setPaused(plan.paused);
+            setInFlightLimit(plan.inFlightLimit ?? null);
           }
         }
         setLoading(false);
@@ -138,13 +127,13 @@ export function CoveragePlanEditPage() {
       .catch(() => {
         /* optional; the model field stays free-text */
       });
-    // The account default the buffer override falls back to, fetched only so the
+    // The account default the limit override falls back to, fetched only so the
     // field can *show* what an empty value inherits. Failing to read it must not
     // block editing the plan, so the placeholder simply keeps the compiled-in
     // fallback.
     backend
       .getCoverageSettings?.(token)
-      .then((s) => active && setAccountBuffer(s.bufferTarget))
+      .then((s) => active && setAccountLimit(s.inFlightLimit))
       .catch(() => {
         /* optional; the placeholder stays the compiled-in default */
       });
@@ -188,17 +177,11 @@ export function CoveragePlanEditPage() {
       caseGroupIds,
       combos,
       cases,
-      schedule: {
-        outerAxis,
-        // Switching auto top-up on is a decision to run again, so it clears a halt;
-        // anything else leaves the halt as it was loaded (false for a new plan).
-        paused: autoTopUp ? false : paused,
-        autoTopUp,
-        // Omitted when there is no override — null means "inherit my account
-        // default", a bound of 0 means "never top this plan up", and no limit means
-        // "everything".
-        ...(bufferTarget === null ? {} : { bufferTarget }),
-      },
+      outerAxis,
+      // Omitted when there is no override — absent means "inherit my account
+      // default", a bound of 0 means "launch nothing", and no limit means
+      // "everything at once".
+      ...(inFlightLimit === null ? {} : { inFlightLimit }),
     };
     setBusy(true);
     setError(null);
@@ -259,15 +242,14 @@ export function CoveragePlanEditPage() {
             />
           </label>
 
-          {/* Runs-per-cell sits with the feed rather than with the members it
-              multiplies: it is the target every top-up fills a cell toward, so it is
-              read alongside the buffer that decides how much of that target is asked
-              for at once. */}
-          <p className={exec.sectionLabel}>Feeding the plan</p>
+          {/* Runs-per-cell sits with the filling rather than with the members it
+              multiplies: it is the target every cell is filled toward, so it is read
+              alongside the limit that decides how much of it runs at once. */}
+          <p className={exec.sectionLabel}>Filling the plan</p>
           <SettingRow
             label="Runs per cell"
             description="How many runs every combination does on every case in the matrix."
-            help="A cell is one combination on one case. Raising this lengthens the plan rather than starting more runs at once — the review buffer is what caps how many are outstanding."
+            help="A cell is one combination on one case. Raising this lengthens the plan rather than starting more runs at once — the runs-in-flight limit is what caps how many run together. Raise it later for more evidence; filling launches only the new shortfall."
             modified={runsPerCellField.raw !== String(DEFAULT_RUNS_PER_CELL)}
             onReset={() => runsPerCellField.set(DEFAULT_RUNS_PER_CELL)}
           >
@@ -286,22 +268,11 @@ export function CoveragePlanEditPage() {
             )}
           </SettingRow>
           <AxisPicker value={outerAxis} onChange={setOuterAxis} />
-          <BufferTargetField
-            value={bufferTarget}
-            accountDefault={accountBuffer}
-            onChange={setBufferTarget}
+          <InFlightLimitField
+            value={inFlightLimit}
+            accountDefault={accountLimit}
+            onChange={setInFlightLimit}
           />
-          <SettingRow
-            label="Auto top-up"
-            description="Tops up when you open the plan and each time you submit a review, up to the review buffer. Off, only Top up now enqueues."
-            help="A top-up walks the cells in the run order above, skips the ones already at their target, and enqueues whole cases at a time until the buffer is full, so a case’s repeats arrive together and can be reviewed against each other. Halting lives on the plan’s dashboard, and switches this off."
-            modified={autoTopUp !== DEFAULT_AUTO_TOP_UP}
-            onReset={() => setAutoTopUp(DEFAULT_AUTO_TOP_UP)}
-          >
-            {(id) => (
-              <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
-            )}
-          </SettingRow>
 
           <p className={exec.sectionLabel}>Combination groups</p>
           {comboGroups.length === 0 ? (

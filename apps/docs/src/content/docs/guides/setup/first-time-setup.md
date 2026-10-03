@@ -23,8 +23,11 @@ guide is the task-oriented path over it.
 Runs are driven by the `tcab` CLI (binary `tcab`, crate `test-cabinet-cli`).
 There are two ways to invoke it:
 
-- A released binary, `tcab run …`. Released binaries are published on GitHub for
-  Linux (static musl, x86_64), Windows (x86_64), and macOS (Apple silicon).
+- A released binary, `tcab run …`. A tag's release-pipeline run publishes the
+  smoke-tested `tcab-linux` (static musl, `x86_64`) and `tcab-windows`
+  artifacts; every other platform, macOS included, builds `tcab` from source
+  with `cargo build --release -p test-cabinet-cli` (see
+  [Releasing `tcab`](/development/releasing/#releasing-tcab)).
 - A source checkout, `cargo run -p test-cabinet-cli -- run …`. Everything after
   `--` is passed to `tcab`. Use this form while working in the repository.
 
@@ -36,12 +39,9 @@ Wherever a guide shows `tcab <args>`, the source-checkout equivalent is
 Work inside the dev container, which carries the pinned toolchains. Before its
 first start, copy your host's file to `.devcontainer/.env` (`.env.macos` on a
 Mac, `.env.podman` on a Linux Podman host, none on an Ubuntu Docker host; see
-[The dev container](/development/running/#the-dev-container)). Once it is
-created, it provisions gg's program-language toolchains in the background, which
-takes up to an hour the first time and is logged to
-`~/.cache/tcab-devcontainer-setup.log`. `cargo build --workspace` builds gg, so
-it waits for `~/.cache/tcab-devcontainer-setup.done`; if that marker never
-appears and no provisioner is running, run `bash scripts/devcontainer-setup.sh`.
+[The dev container](/development/running/#the-dev-container)). The image
+bakes in gg's program-language toolchains, so its first build takes a while and
+the container builds the whole workspace as soon as it is created.
 
 The repository is both a Cargo (Rust) and an npm (TypeScript) workspace. Build
 both once:

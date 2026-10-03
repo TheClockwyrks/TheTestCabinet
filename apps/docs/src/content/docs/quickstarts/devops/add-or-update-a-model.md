@@ -77,6 +77,8 @@ The form's provider fields decide the candidate list:
 - Developer provider, set where OpenRouter's name for the developer's endpoint
   does not match the model id's author segment (`qwen/…` served by `Alibaba`).
   Its endpoint's rates are the billed rate the catalog records.
+- Quantization filter, switched off for a model whose precision no provider
+  discloses, so that every endpoint passes at whatever level it declares.
 - Native quantization, set where the highest level any endpoint declares is
   wrong for the model.
 - Price ceiling, per Mtok, used when OpenRouter lists no developer endpoint.

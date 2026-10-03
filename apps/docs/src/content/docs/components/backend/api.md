@@ -21,7 +21,7 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
   `{ "testCases": [...] }`). The three reads that return a plain list of values
   are bare JSON arrays: the validation-file keys, a run's events, and a jam's
   prior READMEs. The
-  [reviewer scheduling](#coverage-plans-ladders-and-the-review-buffer)
+  [reviewer scheduling](#coverage-plans-and-ladders)
   collections are bare arrays too.
 - Timestamps are RFC 3339 strings.
 - Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
@@ -465,6 +465,13 @@ status. A killed run of any other harness, and a gg run killed before its
 session was launched, is destroyed by its driver, which posts nothing further,
 so the job stays `canceled` with no record attached.
 
+`POST /jobs/{id}/lost` is the dispatcher's report of a job whose driver is
+[gone without reporting](/components/dispatcher/overview/#lost-drivers). It
+requires the service token and takes a `failed` status with a detail and no record
+(`422` otherwise). A job still `dispatched`, `starting`, or `running` is failed
+exactly as the driver's own `failed` report would fail it. A job in any other
+state is left alone. Either way the answer is `204`.
+
 ### `POST /runs/{id}/reviews`
 
 Submit a [review](/components/core/results/#reviews) for a produced run: the
@@ -773,22 +780,18 @@ regeneration, upload, and deploy-hook fire, outside the normal coalescing
 window. The response reports whether the snapshot was refreshed, the run count
 it covers, and whether the deploy hook fired.
 
-## Coverage plans, ladders, and the review buffer
+## Coverage plans and ladders
 
-The reviewer scheduling surface: what runs an account wants to exist, and how fast
-it wants them arriving. Every endpoint here requires a bearer token and is keyed
-to the token's account. There is no path parameter naming a user, and an id that
-belongs to another account answers `404` rather than `403`, so one account cannot
-probe another's plan ids. The concepts live on
+The reviewer scheduling surface: what runs an account wants to exist, and how
+many of them it keeps in flight at once. Every endpoint here requires a bearer
+token and is keyed to the token's account. There is no path parameter naming a
+user, and an id that belongs to another account answers `404` rather than `403`,
+so one account cannot probe another's plan ids. The concepts live on
 [Coverage plans](/components/backend/coverage/) and
 [Ladders](/components/backend/ladders/); this section is the wire contract.
 
-Two conventions differ from the rest of this page. The collections return bare
-JSON arrays rather than the wrapped object [above](#conventions), and a plan's or
-ladder's declaration and its schedule (`outerAxis`, `paused`, `autoTopUp`,
-`bufferTarget`) are flattened into one object on the way out while being written
-separately. An absent `schedule` on a `PUT` leaves the schedule alone, so saving
-an edited model list can never un-pause a running plan.
+The collections return bare JSON arrays rather than the wrapped object
+[above](#conventions).
 
 ### Pinned cases
 
@@ -800,8 +803,8 @@ without the field covers the engineless run.
 A [cell](/components/backend/coverage/#pinned-cases) is that whole pin crossed with
 the combination, so every cell, launch, and queue entry this surface returns names
 its `engine`, and a cell counts only the runs recorded on it. A run recorded with
-no engine counts as a `none` run. A top-up launches each cell's runs on the cell's
-engine, in a harness launch and a gg launch alike.
+no engine counts as a `none` run. A launch pass launches each cell's runs on the
+cell's engine, in a harness launch and a gg launch alike.
 
 A pin naming a version the backend has not ingested, or an engine the pinned
 version does not declare, is accepted and reported by the run rather than refused
@@ -810,8 +813,8 @@ at save time.
 ### Combinations
 
 Every member list on this surface, a `kind: "combo"` group, a plan's or ladder's
-one-off members, and the body of `POST /ladders/{id}/climbers`, carries the same
-member shape, which is one of two:
+one-off members, and the body of `POST /ladders/{id}/climbers/retry`, carries the
+same member shape, which is one of two:
 
 | shape   | fields                                                                |
 | ------- | --------------------------------------------------------------------- |
@@ -838,6 +841,20 @@ own index. The enqueued set records that configuration's current name in
 rather than the one the client last read. A set carrying no `presetId` is enqueued
 as it arrived and belongs to no configuration's cell.
 
+### The runs-in-flight limit
+
+- `GET|PUT /coverage-settings` — the account-wide `inFlightLimit`: how many of a
+  plan's or a ladder's jobs may be in flight at once. It is a
+  [tagged shape](/components/backend/coverage/#the-runs-in-flight-limit),
+  `{ "kind": "bounded", "runs": N }` or `{ "kind": "unbounded" }`: a bound of `0`
+  is a legitimate value that launches nothing, and unbounded launches every
+  missing cell at once. `GET` reports `isDefault` when the account has never
+  chosen one, and no row is materialized on read.
+  Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
+
+A plan's and a ladder's `inFlightLimit` override takes the same shape and is
+nullable: null inherits the account's setting.
+
 ### Groups and plans
 
 - `GET|POST /coverage-groups`, `PUT|DELETE /coverage-groups/{id}` — reusable member
@@ -848,16 +865,21 @@ as it arrived and belongs to no configuration's cell.
   cascade. A `combo` member naming a gg configuration the account does not own is
   refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
-  themselves. Reads return the declaration and schedule flattened.
-  A `runsPerCell` outside `1..=100` is refused with `400` naming the bound and the
-  value received, rather than corrected into range.
-- `GET /coverage-plans/summary` — the roll-up: cell counts, runs missing, runs
-  unreviewed by you, plus `paused` and `autoTopUp`.
+  themselves: members, `runsPerCell`, `outerAxis`, and the optional
+  `inFlightLimit` override. Reads add `filling`, which only the fill and halt
+  endpoints change. A `runsPerCell` outside `1..=100` is refused with `400` naming
+  the bound and the value received, rather than corrected into range. A write to
+  a filling plan runs a launch pass.
+- `GET /coverage-plans/summary` — the roll-up per plan: `cellsFilled`,
+  `cellsTotal`, `cellsBlocked`, `runsDone`, `runsTotal`, `runsInFlight`,
+  `runsMissing`, `runsUnreviewed`, and `filling`.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
   `case × combination` in the plan's own emission order, with the `outerAxis`
-  echoed so a reader knows what that order means, and the `runsPending` /
-  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. A cell whose
-  combination cannot be launched carries the reason in `unlaunchable`. Schemas:
+  echoed so a reader knows what that order means, the same roll-ups as the
+  summary, `runsPending`, and the `inFlightLimit` in force. A cell whose
+  combination cannot be launched carries the reason in `unlaunchable`, and a
+  [blocked](/components/backend/coverage/#a-blocked-cell) cell carries
+  `blocked: true`. Schemas:
   [`coverage/coverage-plan.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json),
   [`coverage/coverage-matrix.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json),
   [`coverage/coverage-group.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json).
@@ -866,111 +888,110 @@ Each cell reports `inFlight` and, separately, the `pending` subset of it: jobs t
 queue is deliberately holding back behind a harness parallelism cap or a same-model
 game jam.
 
-### The review buffer
+Each cell also lists its `runIds`, the [runs the plan holds for
+it](/components/backend/coverage/#a-cells-runs): the first `runsPerCell` counted runs
+of the cell to land. Every count on the cell, and every roll-up, is computed over
+those runs, so a cell never reads more than its target.
 
-- `GET|PUT /coverage-settings` — the account-wide `bufferTarget`: how many runs a
-  top-up may leave outstanding (in flight, or finished and unreviewed by you) before
-  it stops. It is a [tagged shape](/components/backend/coverage/#the-buffer-target),
-  `{ "kind": "bounded", "runs": N }` or `{ "kind": "unbounded" }`: a bound of `0`
-  is a legitimate value meaning "never top up", and unbounded means a top-up runs
-  through everything. `GET` reports `isDefault` when the account has never chosen
-  one, and no row is materialized on read.
-  Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
-- `GET|PUT /coverage-plans/{id}/schedule` — one plan's `outerAxis`, `paused`,
-  `autoTopUp`, and its optional `bufferTarget` override, in the same tagged
-  shape. The override is nullable and null is not zero: null inherits the
-  account's setting, a bound of `0` means never, and unbounded means everything.
-- `POST /coverage-plans/{id}/topup` — walk the plan's cells in its own order, skip
-  the ones already at target (counted globally), and enqueue whole cells until
-  the requester has `bufferTarget` runs outstanding, or every missing cell when
-  the target is unbounded. There is no background daemon; this endpoint is what
-  enqueues. It answers with the buffer target in force, the occupancy it
+- `GET /coverage-plans/{id}/runs` — `{ "runs": [...] }`, the run summary card of
+  every run the plan's cells hold, in the matrix's cell order. The console's
+  dashboard breakdowns read it.
+
+### Filling a plan
+
+- `POST /coverage-plans/{id}/fill` — start
+  [filling](/components/backend/coverage/#filling-a-plan) the plan, then run a
+  launch pass. A plan already filling keeps its fill and runs a pass. Answers with
+  the launch pass's report: the `inFlightLimit` in force, the jobs in flight it
   observed, every cell it launched with its job ids in emission order, and every
-  cell it could not launch with why.
-
-  It is serialized per plan by a claim on the plan row, and reports
-  `skipped: "busy"` rather than waiting when the claim is held, or
-  `skipped: "paused"` when the plan is paused. A top-up that ran and found
-  nothing to do reports neither, with `enqueued: 0`. Otherwise idempotent: it
-  recomputes the shortfall on every call.
-
+  cell it could not launch with why. A pass that found the claim held reports
+  `skipped: "busy"`, and the pass the holder runs for it serves the request.
+- `POST /coverage-plans/{id}/cells/retry` — retry one
+  [blocked cell](/components/backend/coverage/#a-blocked-cell), named by its
+  `case` and `combination` in the body. The retry is recorded, only jobs that
+  ended after it count toward the streak, and the cell is launched again: by a
+  launch pass while the plan is filling, and otherwise as a launch by hand of the
+  cell's shortfall. Answers `204`; `404` when the cell is not one of the plan's,
+  and `409` when it is not blocked.
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-  account has not reviewed, in the plan's own order rather than newest-first
-  like the global unreviewed listing, so reviewing walks the buffer in the order it
-  was deliberately filled. Capped rather than paginated, with `truncated` set when
-  there is more behind it.
+  account has not reviewed, among the runs its cells hold, in the plan's own
+  order rather than newest-first like the global unreviewed listing. Capped rather
+  than paginated, with `truncated` set when there is more behind it.
 
-### Halting
+### Halting a plan
 
-Three controls per plan, and the same three per ladder:
+| endpoint                             | ends filling | cancels                                            |
+| ------------------------------------ | ------------ | -------------------------------------------------- |
+| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                      |
+| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running` |
 
-| endpoint                             | pauses                           | cancels                                            |
-| ------------------------------------ | -------------------------------- | -------------------------------------------------- |
-| `POST /coverage-plans/{id}/pause`    | yes (body: `{ "paused": true }`) | nothing                                            |
-| `POST /coverage-plans/{id}/halt`     | yes                              | its `queued` + `pending` jobs                      |
-| `POST /coverage-plans/{id}/halt-all` | yes                              | the above plus `dispatched`, `starting`, `running` |
-
-`pause` takes the state as a body rather than being two verbs.
-
-Both halts reuse the same atomic cancel transition
+Both reuse the same atomic cancel transition
 [`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
-`origin` is this plan, so a run launched by hand is never swept up. Both answer with
-`{ "canceled": n, "includedActive": bool }`.
+`origin` names this plan, so a run launched from the run form is never swept up.
+Both answer with `{ "canceled": n, "includedActive": bool }`.
 
 `halt-all` discards work that is partly or wholly paid for. A client must confirm
 before calling it and must never make it the default.
 
 ### Ladders
 
-A [ladder](/components/backend/ladders/) is a sibling of the coverage plan: an
-ordered list of rungs (one [pinned case](#pinned-cases) each, addressed by a
-stable opaque id) that climbers ascend until a gate stops them. It reuses the
-plan's `kind: "combo"` groups, buffer, top-up, queue, and halting verbatim, so
-only its own endpoints are listed here.
+A [ladder](/components/backend/ladders/) is a configuration: an ordered list of
+rungs (one [pinned case](#pinned-cases) each, addressed by a stable opaque id),
+its climbers, and the gate their runs' validator ratings are judged by. A Run
+starts a dispatch of it.
 
-- `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
-  climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
-  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
-  takes the ladder default, `paused: true, autoTopUp: true`: a new ladder
-  enqueues nothing until it is enabled, and from then on each review feeds it
-  (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
-  Rungs are matched on their stable ids and reconciled rather than replaced, so a
-  reorder, a version bump, or an engine re-pin keeps every climber's recorded
-  verdicts. A rung holding a
+- `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the configuration: rungs,
+  climbers, `runsPerCell`, `outerAxis`, the optional `inFlightLimit` override,
+  and the single parameterised `gate` (`floor`, `threshold`,
+  `unloadedCountsAsBroken`, `earlyStop`). Saving never touches a running
+  dispatch. Rungs are matched on their stable ids and reconciled rather than
+  replaced. A rung whose case version is not
+  [validator-rated](/terminology/#validator-rated), or is a
   [performance](/testing/performance/overview/) or
-  [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
-  ever produce a rating for the gate to read, so it would stall the climb silently.
+  [game jam](/testing/game-jam/overview/) case, is refused with `400` naming the
+  rung. Deleting a ladder deletes its dispatch and leaves the dispatch's jobs
+  alone.
   Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
-- `GET /ladders/{id}/progress` — the board: every climber's status
-  (`climbing` / `awaitingReview` / `walled` / `held` / `toppedOut`), the rung it
-  stands on with the gate tally behind that answer, and its verdicts. It is a read:
-  verdicts the gate has resolved but nobody has recorded are computed live and
-  flagged `recorded: false`, then persisted by the next top-up, and a `GET` never
-  advances a climber. A climber whose combination cannot be launched carries the
-  reason in `unlaunchable`. Schema:
+- `GET /ladders/summary` — one entry per ladder for the ladders list: its name,
+  rung count, `runsPerCell`, resolved climber count, and its latest dispatch's
+  status, rung-slot counts, and runs (`total`, `done`, `inFlight`), or a null
+  dispatch for a ladder never run.
+- `POST /ladders/{id}/rungs/order` — reorder the configuration by rung id. The
+  body must be a permutation of the ladder's current rungs; adding or dropping one
+  is an edit and goes through `PUT /ladders/{id}`.
+- `POST /ladders/{id}/run` — start a dispatch of the configuration as it stands
+  and run its first launch pass. Answers with the progress board. `409` while a
+  dispatch is running; `400` naming the cause when the configuration has no rungs,
+  resolves no climbers, or holds a rung that is not validator-rated.
+- `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
+  `pending` jobs. With `{ "cancelRunning": true }` it also cancels its
+  `dispatched`, `starting`, and `running` jobs, which a client must confirm first.
+  Answers `{ "canceled": n, "includedActive": bool }`; `409` when no dispatch is
+  running.
+- `GET /ladders/{id}/progress` — the board: the rungs, the latest dispatch (its
+  `status` of `running`, `finished`, or `stopped`, its rung-slot counts, and its
+  runs), and every climber of that dispatch with its status (`running` /
+  `blocked` / `failed` / `completed`), its blocked reason (`unlaunchable`,
+  `failing`, or `unrated`), the rung it stands on with the gate tally behind that
+  answer, and the status of each of its rung slots. A ladder never run reports a
+  null dispatch and no climbers. It is a read: verdicts the gate has resolved but
+  nobody has recorded are computed live, then persisted by the next launch pass.
+  Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
-- `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
-  a permutation of the ladder's current rungs; adding or dropping one is an edit and
-  goes through `PUT /ladders/{id}`.
-- `POST /ladders/{id}/climbers` — one combination's steering, written whole:
-  `priority`, `focused`, and `held`. A hold stops a climber without pretending a
-  rung was decided, so clearing it resumes exactly where the climb left off.
-- `POST /ladders/{id}/outcomes` — apply or clear a manual override of one recorded
-  verdict: promote a climber past a rung its runs failed, or wall one they passed.
-  The override is stored beside the automatic verdict, so a recompute can never
-  silently undo it and `outcome: null` restores exactly what the gate says. `409`
-  when the rung has no verdict yet, since an undecided rung has nothing to promote
-  past and the control for "stop here regardless" is a hold.
-- `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
-  `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
-  `.../halt-all` — the plan endpoints above, with two differences. A top-up only
-  ever launches a climber's current rung, while the queue and the buffer cover
-  every rung a climber has reached, so a rung the gate has decided keeps
-  offering the runs nobody reviewed
-  ([why](/components/backend/ladders/#feeding-and-reviewing-are-different-sets-of-rungs)).
-  And `pause` is the ladder's enable/disable switch: a ladder starts on its paused
-  side, and `{ "paused": false }` only permits spending, so the caller that enables
-  follows with a `topup`.
+- `POST /ladders/{id}/climbers/retry` — retry a climber of the running dispatch
+  that is `blocked` as `failing` or `unlaunchable`, named by its `combination` in
+  the body. The retry is recorded on the dispatch's climber, only jobs that ended
+  after it count toward the failing streak, and the backend runs a launch pass
+  ([a blocked climber](/components/backend/ladders/#a-blocked-climber)). Answers
+  `204`; `404` when the combination is not a climber of the dispatch, and `409`
+  when no dispatch is running or the climber is not blocked for one of those two
+  reasons.
+- `GET /ladders/{id}/queue` — the latest dispatch's completed runs the requesting
+  account has not reviewed, in the ladder's own order.
+
+The backend runs every launch pass of a dispatch itself, prompted by Run, a
+climber's Retry, and the dispatch's finishing runs
+([launching runs](/components/backend/ladders/#launching-runs)).
 
 ## Stopping runs in bulk
 
@@ -986,7 +1007,8 @@ Three global sweeps. All require a bearer token, and all answer
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another
 account. They are the "stop the cabinet" controls; the scoped equivalent is a
-plan's or ladder's [`halt`](#halting). Cancelling a single job by id remains
+plan's [`halt`](#halting-a-plan) or a ladder's
+[`stop`](#ladders). Cancelling a single job by id remains
 `POST /jobs/{id}/cancel`, which these reuse rather than reimplement.
 
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
@@ -1136,9 +1158,10 @@ catalog entry, for an agent that sets no reasoning. Each candidate reports its
 provider, quantization, input, output and cache-read prices per Mtok, whether it
 is the developer's endpoint, and its recorded fault rate, `null` for a provider
 with no recorded calls, which orders as a rate of zero. The response also
-reports the native level the filter used, and a `refusal` naming why the list is
-empty when it is. Requires a bearer token, because it reaches a third party on
-the caller's behalf.
+reports the native level the filter used, null when the catalog entry switches
+the quantization filter off and no endpoint declares a level, and a `refusal`
+naming why the list is empty when it is. Requires a bearer token, because it
+reaches a third party on the caller's behalf.
 
 ```jsonc
 {

@@ -91,6 +91,26 @@ export async function putVoid(
   if (!res.ok) throw await httpError(res, path);
 }
 
+// POST a JSON body to an endpoint that returns no body (`204 No Content`), sending
+// `token` as a bearer. Used by the ladder climber retry, which acknowledges with an
+// empty body. Mirrors {@link postJson} without the response parse.
+export async function postVoid(
+  base: string,
+  path: string,
+  body: unknown,
+  token?: string | null,
+): Promise<void> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...bearer(token),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await httpError(res, path);
+}
+
 // PUT raw bytes (not JSON) with an explicit content type, sending `token` as a
 // bearer, and parse the JSON acknowledgement. Used by the profile-picture upload,
 // whose body is the image bytes themselves and whose `Content-Type` names their

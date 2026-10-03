@@ -14,86 +14,71 @@ neither track.
 
 A gate also has to have a hook, because the hook is what runs it at commit
 time; a gate with none is a check nobody meets until a pipeline run. The
-exceptions are the gates the project answered are too slow for a commit, which
-the template renders no hook for and which are held to having none.
+exceptions are the gates a project has found too slow for a commit, which it
+names in `HOOKLESS` below when it drops their hooks and which are held to
+having none.
 
 The image each track runs inside is read here too. A track names a
-purpose-built CI image by an immutable, content-addressed tag, which
-`scripts/ci/ci-image.sh tag` computes from the checkout and writes into
-`ci/images/tags.yml`, the variables template the pipeline includes. Nothing but
-a test holds the file to the checkout, and the failure when they part is the
-quiet kind: the run pulls the image the previous pin named and every gate
-passes inside a toolchain this commit no longer describes. The other half of the same seam is that script's
-input lists against `azure-pipelines-ci-images.yml`'s trigger paths — a path
-the tag digests but the trigger misses is a pin that moves with no image built
-for it, and one the trigger fires on but the tag ignores is a build queued for
-nothing.
+purpose-built CI image at the commit whose image pipeline run built it, which
+`ci/images/tags.yml`, the variables template the pipeline includes, holds as
+its one variable, `ciImageTag`. The pipeline is held to naming every track's
+image at that variable and writing no tag of its own, and the file to holding
+that one variable as a full commit id, so a pin can name nothing but an image a
+run of the project's own image pipeline pushed.
+
+A gate that calls `artifacts_dir()` writes its test tool's JUnit report there
+when `CI_GATE_ARTIFACTS` names a directory, and only then. Its step is held to
+naming `target/gate-artifacts/<id>`, and the job running it to ending with the
+collection of those reports and their publish as the artifact
+`test-results-<job>-$(System.JobAttempt)`, both whether the tests passed or
+failed, which is what a run's test results are read from.
 """
 
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import pytest
 
-from the_test_cabinet_ci import proc, runner
+from the_test_cabinet_ci import runner
 
 ROOT = Path(__file__).resolve().parents[2]
 GATE_IDS = {gate.id for gate in runner.discover(runner.gates_dir(ROOT))}
 
 CONFIG = ROOT / ".pre-commit-config.yaml"
 PIPELINE = ROOT / "azure-pipelines.yml"
-# The pipeline that builds the CI images, and the script that is the whole of
-# its logic: what each image is built from, and the tag that content names.
-IMAGE_PIPELINE = ROOT / "azure-pipelines-ci-images.yml"
-CI_IMAGE_SCRIPT = ROOT / "scripts" / "ci" / "ci-image.sh"
-# The tag of each CI image, as a variables template the pipeline includes. The
-# script writes it and the template renders it once, with placeholders.
+# The commit the CI images were built from, as a variables template the
+# pipeline includes. The template renders it with a placeholder, and the
+# workspace writes the commit over it.
 TAGS = ROOT / "ci" / "images" / "tags.yml"
 TAGS_TEMPLATE = TAGS.relative_to(ROOT).as_posix()
 CALLERS = [CONFIG.name, PIPELINE.name]
 
-# The gates the project answered are too slow for a commit: they run in the
-# pipeline and in `make gate`, and a commit never waits on them.
-HOOKLESS = {
+# The gates too slow for a commit: they run in the pipeline and in `make gate`,
+# and a commit never waits on them. Each has no hook in
+# `.pre-commit-config.yaml`, and a template update carries both edits.
+HOOKLESS: set[str] = {
+    # Regenerates the contract bindings and schemas from the Rust types, which
+    # is a cargo build of the workspace before the comparison starts.
     "contract-drift",
-    "file-endings",
+    # rustdoc's harness compiles every crate and each doc example in it.
     "rust-doctest",
+    # Compiles every crate's test binary and runs the whole suite.
     "rust-test",
+    # Builds every workspace package the gallery imports, then Vite's
+    # production build of it.
     "site-build",
+    # Builds the workspace packages, then runs tsc over one validator project
+    # per engine of every test-case version.
     "validators-typecheck",
+    # Builds the workspace packages, then runs every npm workspace's vitest
+    # suite.
     "workspace-test",
 }
-# The project's own gates, which the `extra_gates` answer names, each with the
-# track the answer puts its step on.
-PROJECT_GATES = {
-    "frozen-paths": "web",
-    "seeded-contract": "web",
-    "spec-vocabulary": "web",
-    "spec-prose": "web",
-    "audio-packs": "web",
-    "build-context": "web",
-    "k8s-deploy-sets": "web",
-    "ci-image-pins": "web",
-    "scripts-test": "web",
-    "file-endings": "web",
-    "workspace-test": "web",
-    "validators-typecheck": "web",
-    "site-build": "web",
-    "contract-drift": "rust",
-}
 
-# The file a tool's version is written in, which ci/images/build-args.sh reads
-# the pins out of. A tag digests those pins rather than this file, so that
-# bumping one no CI image installs retires no image; the image pipeline's
-# trigger carries it all the same, because a pin an image does install moves
-# its tag and a build has to be queued for it.
-PINS = ".devcontainer/docker-compose.yml"
 # The service connection the agent pulls a CI image with. One connection holds
 # push rights on the registry, so it serves this pipeline's pull and the image
 # pipeline's push; a second one would be a second thing to keep in step.
@@ -102,10 +87,9 @@ ACR_ENDPOINT = "the-test-cabinet-acr"
 TRACKS = ["rust", "web"]
 # The repository each track's image is pushed to, which ci-image.sh names too.
 REPOSITORY = "testcabinet.azurecr.io/ubuntu-the-test-cabinet-{track}-cicd"
-# The tag a fresh render carries, which names no image any registry holds. It
-# is a placeholder rather than a missing line so that the rendered pipeline is
-# valid and this file can say exactly what is wrong with it.
-PLACEHOLDER_TAG = "v1-000000000000"
+# The one variable the tags file holds, and the only way a job names its tag.
+TAG_VARIABLE = "ciImageTag"
+IMAGE_TAG = "${{ variables." + TAG_VARIABLE + " }}"
 
 # `gate run a b c`, up to whatever ends the ids: an option, a quote, `&&`.
 GATE_RUN = re.compile(r"\bgate run((?: +[a-z0-9]+(?:-[a-z0-9]+)*)+)")
@@ -133,14 +117,29 @@ TAGS_INCLUDE = re.compile(
     r"^variables:\n(?:(?:  .*|)\n)*?  - template: " + re.escape(TAGS_TEMPLATE) + r" *$",
     re.MULTILINE,
 )
-# A track's tag in the tags file.
-PINNED_TAG = re.compile(r"^  (?P<track>[a-z]+)ImageTag: (?P<tag>\S+) *$", re.MULTILINE)
-# The schema segment every CI image tag opens with, read from the one place it
-# is written rather than repeated here: bumping it is meant to be one edit.
-IMAGE_SCHEMA = re.compile(r'^readonly IMAGE_SCHEMA="(?P<schema>[^"]+)" *$', re.MULTILINE)
-# The paths a pipeline's trigger fires on: the `- <path>` lines of the
-# `include:` block under `paths:`, comments and all.
-TRIGGER_PATHS = re.compile(r"^  paths:\n    include:\n(?P<block>(?:^ {6}[#-].*\n)+)", re.MULTILINE)
+# A variable of the tags file: a key at the indentation of the `variables:`
+# mapping, and the value written after it.
+TAGS_VARIABLE = re.compile(r"^  (?P<name>\S+?): *(?P<value>.*?) *$", re.MULTILINE)
+# A full commit id, which is the only tag the image pipeline pushes.
+COMMIT = re.compile(r"[0-9a-f]{40}")
+# A tag written literally after an image repository.
+LITERAL_TAG = re.compile(r"-cicd:(?!\$\{\{)\S+")
+# A step of a gates job, at the indentation the pipeline writes one at.
+STEP = re.compile(r"^          - ", re.MULTILINE)
+# The artifact directory a step hands its gate.
+ARTIFACTS = re.compile(r"^ +CI_GATE_ARTIFACTS: *(\S+) *$", re.MULTILINE)
+# What a gate's script calls to learn where its report goes.
+ASKS_FOR_ARTIFACTS = "artifacts_dir("
+# Where the pipeline has each test gate leave its report, which is also where
+# the collection reads it from and the name of its folder in the artifact.
+GATE_ARTIFACTS = "target/gate-artifacts/{gate}"
+# The script collecting a job's reports, and the directory it collects them in.
+COLLECT = "scripts/ci/collect-test-results.sh"
+TEST_RESULTS = "$(Build.SourcesDirectory)/target/test-results"
+# The artifact a job's test results are published as.
+TEST_RESULTS_ARTIFACT = "test-results-{job}-$(System.JobAttempt)"
+# The step's condition keyed by its own line, so a condition is read whole.
+CONDITION = re.compile(r"^ +condition: *(.+?) *$", re.MULTILINE)
 
 
 def _named(text: str) -> set[str]:
@@ -166,6 +165,62 @@ def _gates_jobs() -> dict[str, str]:
 def _gates_by_job() -> dict[str, list[str]]:
     """The gates each job of the gates stage runs, in the order it runs them."""
     return {job: sorted(_named(steps)) for job, steps in _gates_jobs().items()}
+
+
+def _steps(job: str) -> list[str]:
+    """The text of each step a job's text holds, in order."""
+    found = list(STEP.finditer(job))
+    ends = [match.start() for match in found[1:]] + [len(job)]
+    return [job[match.start() : end] for match, end in zip(found, ends, strict=True)]
+
+
+def _test_gates() -> set[str]:
+    """The gates whose script asks where its test report goes."""
+    gates = runner.gates_dir(ROOT)
+    return {gate for gate in GATE_IDS if ASKS_FOR_ARTIFACTS in (gates / f"{gate}.py").read_text(encoding="utf-8")}
+
+
+def _condition(step: str) -> str:
+    found = CONDITION.search(step)
+    return found.group(1) if found else ""
+
+
+def _artifacts_problems(gate: str, steps: list[str]) -> list[str]:
+    """Every way the steps of a job fail to hand a test gate its artifact directory."""
+    running = [step for step in steps if gate in _named(step)]
+    if len(running) != 1:
+        return [f"{gate} is run by {len(running)} steps of its job, expected one"]
+    named = ARTIFACTS.findall(running[0])
+    expected = GATE_ARTIFACTS.format(gate=gate)
+    if named != [expected]:
+        return [f"the {gate} step names CI_GATE_ARTIFACTS {named}, expected [{expected!r}]"]
+    return []
+
+
+def _test_results_problems(job: str, steps: list[str]) -> list[str]:
+    """Every way a job running a test gate fails to end by publishing its test results.
+
+    The last two steps collect the reports and publish them as the job's
+    `test-results-` artifact, each whether the tests passed or failed.
+    """
+    if len(steps) < 2:
+        return [f"the {job} job has {len(steps)} steps, so it cannot end by publishing its test results"]
+    problems: list[str] = []
+    collect, publish = steps[-2], steps[-1]
+    if COLLECT not in collect:
+        problems.append(f"the {job} job's second-to-last step does not run {COLLECT}")
+    elif "succeededOrFailed()" not in _condition(collect):
+        problems.append(
+            f"the {job} job collects its test results under {_condition(collect)!r}, so a failed run collects none"
+        )
+    artifact = TEST_RESULTS_ARTIFACT.format(job=job)
+    if f"- publish: {TEST_RESULTS}\n" not in publish or f"artifact: {artifact}\n" not in publish:
+        problems.append(f"the {job} job's last step does not publish {TEST_RESULTS} as {artifact}")
+    elif "succeededOrFailed()" not in _condition(publish):
+        problems.append(
+            f"the {job} job publishes its test results under {_condition(publish)!r}, so a failed run publishes none"
+        )
+    return problems
 
 
 def _hook_ids() -> list[str]:
@@ -200,57 +255,11 @@ def _job_container(job: str) -> dict[str, str]:
     return {key.group("key"): key.group("value") for key in CONTAINER_KEY.finditer(found.group("block"))}
 
 
-def _pinned_tags() -> dict[str, str]:
-    """Each track's tag, as the tags file holds it."""
-    assert TAGS.is_file(), (
-        f"{TAGS_TEMPLATE} is missing, and the pipeline includes it; run `scripts/ci/ci-image.sh tag` to write it"
-    )
-    return {found.group("track"): found.group("tag") for found in PINNED_TAG.finditer(TAGS.read_text(encoding="utf-8"))}
-
-
-def _image_schema() -> str:
-    """The segment every CI image tag opens with, as ci-image.sh writes it."""
-    found = IMAGE_SCHEMA.search(CI_IMAGE_SCRIPT.read_text(encoding="utf-8"))
-    assert found, f"{CI_IMAGE_SCRIPT.name} sets no IMAGE_SCHEMA, so this test is reading it wrong"
-    return found.group("schema")
-
-
-def _ci_image(*arguments: str) -> list[str]:
-    """What scripts/ci/ci-image.sh prints, as lines, run from the workspace root.
-
-    It needs git, which reads the index for the digest, and it runs
-    ci/images/build-args.sh for the pins. A freshly rendered workspace is not a
-    checkout yet, and a workspace without git is no workspace this test can say
-    anything about, so both are skipped rather than failed.
-    """
-    if shutil.which("git") is None:
-        pytest.skip("git is not on PATH, and an image tag is a digest of what git has staged")
-    inside = proc.git(["rev-parse", "--show-toplevel"], cwd=ROOT, quiet=True)
-    if inside.returncode != 0:
-        pytest.skip("this workspace is not a git checkout yet, so no image tag can be computed for it")
-    if not CI_IMAGE_SCRIPT.exists():
-        pytest.fail(f"{CI_IMAGE_SCRIPT} is missing, and it is what decides which image a gate track runs in")
-    done = subprocess.run(
-        [str(CI_IMAGE_SCRIPT), *arguments],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert done.returncode == 0, (
-        f"`ci-image.sh {' '.join(arguments)}` exited {done.returncode}, so the pin below cannot be checked "
-        f"against anything:\n{done.stderr.strip()}"
-    )
-    return done.stdout.split()
-
-
-def _trigger_paths(pipeline: Path) -> list[str]:
-    """The paths a pipeline's trigger fires on, in the order it writes them."""
-    found = TRIGGER_PATHS.search(pipeline.read_text(encoding="utf-8"))
-    assert found, f"{pipeline.name} filters its trigger on no paths, so this test is reading it wrong"
-    return [
-        line.strip().removeprefix("- ") for line in found.group("block").splitlines() if line.strip().startswith("- ")
-    ]
+def _tags_variables() -> dict[str, str]:
+    """Each variable the tags file sets, with the value written for it."""
+    assert TAGS.is_file(), f"{TAGS_TEMPLATE} is missing, and the pipeline includes it"
+    text = TAGS.read_text(encoding="utf-8")
+    return {found.group("name"): found.group("value") for found in TAGS_VARIABLE.finditer(text)}
 
 
 @pytest.mark.parametrize("caller", CALLERS)
@@ -273,32 +282,24 @@ def test_every_hook_has_the_id_of_the_gate_it_runs() -> None:
 def test_every_gate_but_the_slow_ones_has_a_hook() -> None:
     """A gate with no hook is a check nobody meets before a pipeline run.
 
-    Every gate is cheap enough to run at commit time unless the project
-    answered otherwise, so every other one has a hook. A gate added without one
+    Every gate is cheap enough to run at commit time unless the project named
+    it in `HOOKLESS`, so every other one has a hook. A gate added without one
     fails here, which is the moment to decide whether it is genuinely too slow
-    for a commit — and if it is, to answer so, in `extra_gates` for a gate of
-    the project's or `rust_test_hook` for `rust-test` and `rust-doctest`,
-    rather than to drop the hook by hand.
+    for a commit — and if it is, to name it in `HOOKLESS` beside dropping its
+    hook.
     """
     hooks = set(_hook_ids())
     hookless = GATE_IDS - hooks
     assert hookless == HOOKLESS, (
         f"the gates without a hook in {CONFIG.name} are {sorted(hookless)}, "
-        f"and the ones answered too slow for a commit are {sorted(HOOKLESS)}"
+        f"and the ones named too slow for a commit are {sorted(HOOKLESS)}"
     )
 
 
 def test_a_slow_gate_has_no_hook() -> None:
-    """A gate answered too slow for a commit is one a commit does not wait on."""
+    """A gate named too slow for a commit is one a commit does not wait on."""
     hooked = HOOKLESS & set(_hook_ids())
-    assert hooked == set(), f"these gates were answered too slow for a commit and have a hook: {sorted(hooked)}"
-
-
-@pytest.mark.parametrize("gate", sorted(PROJECT_GATES))
-def test_a_project_gate_runs_on_the_track_it_was_answered(gate: str) -> None:
-    track = PROJECT_GATES[gate]
-    running = sorted(job for job, gates in _gates_by_job().items() if gate in gates)
-    assert running == [track], f"the {gate} gate runs on {running}, and it was answered the {track} track"
+    assert hooked == set(), f"these gates are named too slow for a commit and have a hook: {sorted(hooked)}"
 
 
 def test_the_gates_stage_runs_its_checks_on_two_tracks() -> None:
@@ -357,7 +358,7 @@ def test_the_pipeline_runs_every_gate() -> None:
 
 
 def test_the_pipeline_includes_the_tags() -> None:
-    """The pipeline reads the tags out of the file the script writes, and names none itself.
+    """The pipeline reads the commit out of the tags file, and names no tag itself.
 
     A tag written into the pipeline is a line every workspace edits by hand in a
     file the template renders, so every workspace's pipeline would diverge from
@@ -365,14 +366,13 @@ def test_the_pipeline_includes_the_tags() -> None:
     """
     text = PIPELINE.read_text(encoding="utf-8")
     assert TAGS_INCLUDE.search(text), f"{PIPELINE.name} includes no {TAGS_TEMPLATE} in its variables"
-    assert re.search(r":v\d+-[0-9a-f]{12}\b", text) is None, (
-        f"{PIPELINE.name} writes an image tag itself; the tags belong in {TAGS_TEMPLATE}"
-    )
+    written = LITERAL_TAG.findall(text)
+    assert not written, f"{PIPELINE.name} writes the image tags {written} itself; the commit belongs in {TAGS_TEMPLATE}"
 
 
 @pytest.mark.parametrize("track", TRACKS)
 def test_each_track_runs_in_its_pinned_ci_image(track: str) -> None:
-    """Every track declares its image, by the tag the tags file holds for it.
+    """Every track declares its image, at the commit the tags file pins.
 
     A track with no `container:` runs on the hosted agent, which carries
     neither toolchain and would fail every check in a way that looks like the
@@ -381,92 +381,126 @@ def test_each_track_runs_in_its_pinned_ci_image(track: str) -> None:
     """
     container = _job_container(track)
     assert container, f"the {track} job declares no container, so it would run on the bare agent"
-    expected = REPOSITORY.format(track=track) + ":${{ variables." + track + "ImageTag }}"
+    expected = REPOSITORY.format(track=track) + ":" + IMAGE_TAG
     assert container.get("image") == expected, f"the {track} job runs in {container.get('image')!r}, not {expected!r}"
     assert container.get("endpoint") == ACR_ENDPOINT, (
         f"the {track} job pulls through {container.get('endpoint')!r}, not the {ACR_ENDPOINT!r} service connection"
     )
 
 
-def test_the_tags_file_pins_every_track_and_nothing_else() -> None:
-    """Every track has a tag shaped like one the script prints, and no tag floats.
+def test_the_tags_file_pins_one_commit() -> None:
+    """The tags file holds `ciImageTag` alone, as a full commit id.
 
-    A tag that could be moved — `latest`, or anything not shaped like a digest
-    — would make the reference a statement about whatever was pushed last
-    rather than about this commit, which is the whole property the
-    content-addressed tag exists to give.
+    The image pipeline tags every image with the commit its run is on, so a
+    full commit id is the only tag that can name one. Anything else — `latest`,
+    an abbreviated id, a second variable a job might read instead — would make
+    the reference a statement about something other than the run that built
+    the image. A render writes forty zeros, which is shaped like a commit and
+    names no image, so the pipeline stays valid until the workspace pins one.
     """
-    pinned = _pinned_tags()
-    assert sorted(pinned) == sorted(TRACKS), (
-        f"{TAGS_TEMPLATE} pins {sorted(pinned)}, not every track {sorted(TRACKS)}; "
-        f"run `scripts/ci/ci-image.sh tag` to write it again"
+    variables = _tags_variables()
+    assert sorted(variables) == [TAG_VARIABLE], (
+        f"{TAGS_TEMPLATE} sets {sorted(variables)}, and it holds {TAG_VARIABLE} alone"
     )
-    schema = _image_schema()
-    for track, tag in sorted(pinned.items()):
-        assert re.fullmatch(re.escape(schema) + "-[0-9a-f]{12}", tag), (
-            f"the {track} image is pinned to {tag!r}, which is not a {schema}-<12 hex> tag "
-            f"scripts/ci/ci-image.sh could ever have printed"
-        )
-
-
-@pytest.mark.parametrize("track", TRACKS)
-def test_the_pinned_image_tag_is_the_one_this_checkout_builds(track: str) -> None:
-    """The tag in the tags file is the tag this checkout's inputs digest to.
-
-    This is the whole update mechanism. The tag is content-addressed, so the
-    moment anyone touches a file an image is built from, the pin is a pin at
-    the previous image — and a run under it is the quiet failure, not the loud
-    one: every gate passes, inside a toolchain this commit no longer describes.
-    So this test fails instead, and its message is the instruction. Run the
-    script, commit the file, push, and let the image pipeline build the image
-    before queueing the gates run.
-
-    A fresh render carries a placeholder, because nothing has been pushed for
-    it yet and no tag would be honest. That is reported as a skip naming the
-    command that writes the real one.
-    """
-    pinned = _pinned_tags()
-    assert track in pinned, f"{TAGS_TEMPLATE} pins no tag for the {track} track; run `scripts/ci/ci-image.sh tag`"
-
-    if pinned[track] == PLACEHOLDER_TAG:
-        pytest.skip(
-            f"{TAGS_TEMPLATE} still carries the placeholder tag a render writes for {track}. "
-            f"Run `scripts/ci/ci-image.sh tag`, which writes every track's tag into it."
-        )
-
-    (built,) = _ci_image("tag", track)
-    assert pinned[track] == built, (
-        f"the {track} image is pinned to {pinned[track]}, but this checkout builds {built}.\n"
-        f"Run `scripts/ci/ci-image.sh tag`, which writes it into {TAGS_TEMPLATE}, and commit that file.\n"
-        f"The image has to exist before that run can start: push the branch, let "
-        f"{IMAGE_PIPELINE.name} finish, then queue the gates run."
+    pinned = variables[TAG_VARIABLE]
+    assert COMMIT.fullmatch(pinned), (
+        f"{TAGS_TEMPLATE} pins {TAG_VARIABLE} to {pinned!r}, which is not the forty lowercase hex characters of "
+        "the commit an azure-pipelines-ci-images.yml run built the images on"
     )
 
 
-def test_the_image_pipeline_triggers_on_every_file_the_tags_hash() -> None:
-    """The trigger fires on every file that can move a tag.
+def test_some_gate_asks_where_its_test_report_goes() -> None:
+    assert _test_gates(), f"no gate calls {ASKS_FOR_ARTIFACTS}), so this test is reading the gates wrong"
 
-    The two are written in different languages — a shell heredoc and a
-    trigger's path filter — and they fail in opposite directions, neither
-    loudly. A path that can move a tag but the trigger misses is a pin that
-    moves with no image built for it, which is the ordering rule turned into a
-    permanent failure: the gates run cannot start and nothing will ever push
-    what it wants. A path the trigger fires on that moves no tag is the milder
-    half: a build queued that finds its tag already pushed and does nothing.
 
-    A tag digests the input paths and the pins ci/images/build-args.sh reads,
-    and it reads those out of the compose file, which is deliberately not an
-    input path so that bumping a pin no CI image installs retires no image. A
-    pin an image does install moves its tag, so the trigger has to carry that
-    file even though no tag digests it directly, and it is the one path where
-    the two lists are allowed to differ.
-    """
-    digested: set[str] = set()
-    for track in TRACKS:
-        digested |= set(_ci_image("inputs", track))
-    expected = sorted(digested | {PINS})
-    triggered = _trigger_paths(IMAGE_PIPELINE)
-    assert triggered == expected, (
-        f"{IMAGE_PIPELINE.name} triggers on {triggered}, which is not the sorted union of "
-        f"`ci-image.sh inputs <track>` over every track and {PINS}, {expected}"
-    )
+def test_every_test_gate_step_names_its_artifact_directory() -> None:
+    """A test gate writes its JUnit report only where its step names a directory."""
+    jobs = _gates_jobs()
+    problems = [
+        problem
+        for gate in sorted(_test_gates())
+        for job, steps in jobs.items()
+        if gate in _named(steps)
+        for problem in _artifacts_problems(gate, _steps(steps))
+    ]
+    assert problems == []
+
+
+def test_every_job_running_a_test_gate_publishes_its_test_results() -> None:
+    """Each such job ends with its `test-results-<job>-<attempt>` artifact, pass or fail."""
+    gates = _test_gates()
+    jobs = {job: steps for job, steps in _gates_jobs().items() if gates & _named(steps)}
+    assert jobs, "no job runs a test gate, so this test is reading the pipeline wrong"
+    problems = [
+        problem for job, steps in sorted(jobs.items()) for problem in _test_results_problems(job, _steps(steps))
+    ]
+    assert problems == []
+
+
+GATE_STEP = """\
+          - script: uv run --quiet --project ci gate run web-test
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
+"""
+COLLECT_STEP = """\
+          - script: scripts/ci/collect-test-results.sh
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+"""
+PUBLISH_STEP = (
+    "          - publish: $(Build.SourcesDirectory)/target/test-results\n"
+    "            artifact: test-results-web-$(System.JobAttempt)\n"
+    "            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), "
+    "eq(variables['testResultsCollected'], 'true'))\n"
+)
+
+
+def test_a_wired_job_passes() -> None:
+    steps = _steps(GATE_STEP + COLLECT_STEP + PUBLISH_STEP)
+    assert len(steps) == 3
+    assert _artifacts_problems("web-test", steps) == []
+    assert _test_results_problems("web", steps) == []
+
+
+def test_a_test_gate_step_naming_no_artifact_directory_is_caught() -> None:
+    step = GATE_STEP.replace("            env:\n              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test\n", "")
+    assert _artifacts_problems("web-test", _steps(step)) == [
+        "the web-test step names CI_GATE_ARTIFACTS [], expected ['target/gate-artifacts/web-test']"
+    ]
+
+
+def test_a_test_gate_step_naming_another_directory_is_caught() -> None:
+    step = GATE_STEP.replace("gate-artifacts/web-test", "elsewhere")
+    assert _artifacts_problems("web-test", _steps(step)) == [
+        "the web-test step names CI_GATE_ARTIFACTS ['target/elsewhere'], expected ['target/gate-artifacts/web-test']"
+    ]
+
+
+def test_a_job_publishing_no_test_results_is_caught() -> None:
+    problems = _test_results_problems("web", _steps(GATE_STEP + COLLECT_STEP))
+    assert any("does not publish" in problem for problem in problems), problems
+
+
+def test_a_job_publishing_its_test_results_under_another_name_is_caught() -> None:
+    publish = PUBLISH_STEP.replace("test-results-web-", "test-results-")
+    problems = _test_results_problems("web", _steps(GATE_STEP + COLLECT_STEP + publish))
+    assert problems == [
+        f"the web job's last step does not publish {TEST_RESULTS} as test-results-web-$(System.JobAttempt)"
+    ]
+
+
+def test_test_results_published_on_success_alone_are_caught() -> None:
+    publish = PUBLISH_STEP.replace("succeededOrFailed(), ", "")
+    problems = _test_results_problems("web", _steps(GATE_STEP + COLLECT_STEP + publish))
+    assert len(problems) == 1 and "so a failed run publishes none" in problems[0], problems
+
+
+def test_test_results_collected_on_success_alone_are_caught() -> None:
+    collect = COLLECT_STEP.replace("succeededOrFailed(), ", "")
+    problems = _test_results_problems("web", _steps(GATE_STEP + collect + PUBLISH_STEP))
+    assert len(problems) == 1 and "so a failed run collects none" in problems[0], problems
+
+
+def test_test_results_published_before_the_job_ends_are_caught() -> None:
+    problems = _test_results_problems("web", _steps(COLLECT_STEP + PUBLISH_STEP + GATE_STEP))
+    assert problems, "a job whose test results are published before its last gate passed"

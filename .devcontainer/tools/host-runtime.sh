@@ -29,6 +29,14 @@
 #     (socat's PROXY address), and the host admits only a connection presenting
 #     it. A host stating none is reached directly, as before.
 #
+#     A Mac guarding the endpoint is one the fleet's agent runs on, where the
+#     fleet configuration's bridge holds the port and forwards it to the
+#     agent's runtime socket. The manual tunnel, tools/macos-host-runtime.sh,
+#     is for a Mac with no such agent: on the port in the bridge's place it
+#     answers the CONNECT itself and refuses the credential. So a failure here
+#     points a container stated a credential at the fleet configuration's
+#     bridge, and names the manual tunnel only to a container stated none.
+#
 # A bound path that is not a socket with no DEVCONTAINER_RUNTIME_TCP set is a
 # host offering no runtime, and nothing is published.
 #
@@ -82,6 +90,20 @@ runtime_address() {
 	fi
 }
 
+# What a container stated a credential is told when the runtime is not
+# answering: the port on the Mac belongs to the fleet configuration's bridge,
+# and whatever else holds it is in that bridge's way.
+guarded_endpoint_help() {
+	log "this container was stated a runtime credential, so ${port} on the Mac is"
+	log "expected to be held by the fleet configuration's bridge to the agent's"
+	log "runtime socket, which admits the credential. A manual tunnel on that port"
+	log "answers in the bridge's place and refuses the credential."
+	log "on the Mac, see what holds the port and stop it if it is not that bridge,"
+	log "so the bridge can hold the port again:"
+	log "  lsof -nP -iTCP:${port} -sTCP:LISTEN"
+	log "  kill <pid>"
+}
+
 # The configured host first, then the other names podman machine answers to for
 # the Mac. Trying them in turn means a Podman release that renames or stops
 # injecting one of them costs a slower start rather than the runtime.
@@ -99,9 +121,18 @@ done
 
 if [ -z "$connect_to" ]; then
 	log "cannot reach the host container runtime at ${ENDPOINT}."
-	log "on the Mac, start the bridge and check it is listening:"
-	log "  bash .devcontainer/tools/macos-host-runtime.sh"
-	log "  nc -z 127.0.0.1 ${port} && echo listening"
+	if [ -n "$CREDENTIAL" ]; then
+		log "this container was stated a runtime credential, so ${port} on the Mac is"
+		log "expected to be held by the fleet configuration's bridge to the agent's"
+		log "runtime socket. A manual tunnel started on that port in its place"
+		log "refuses the credential."
+		log "on the Mac, check the bridge is running and listening:"
+		log "  lsof -nP -iTCP:${port} -sTCP:LISTEN"
+	else
+		log "on the Mac, start the bridge and check it is listening:"
+		log "  bash .devcontainer/tools/macos-host-runtime.sh"
+		log "  nc -z 127.0.0.1 ${port} && echo listening"
+	fi
 	exit 1
 fi
 
@@ -128,12 +159,15 @@ if curl -fsS --max-time 5 --unix-socket "$SOCK" http://localhost/_ping >/dev/nul
 else
 	log "the bridge is up but nothing answered as a container runtime on it."
 	if [ -n "$CREDENTIAL" ]; then
-		log "the host may have refused this container's credential, which a"
-		log "container is stated when it is started; starting it again states it anew."
+		guarded_endpoint_help
+		log "with the bridge holding the port, the host may still have refused"
+		log "this container's credential, which a container is stated when it is"
+		log "started; starting it again states it anew."
+	else
+		log "on the Mac, check the tunnel is still attached to a running machine:"
+		log "  podman machine list"
+		log "  bash .devcontainer/tools/macos-host-runtime.sh --stop"
+		log "  bash .devcontainer/tools/macos-host-runtime.sh"
 	fi
-	log "on the Mac, check the tunnel is still attached to a running machine:"
-	log "  podman machine list"
-	log "  bash .devcontainer/tools/macos-host-runtime.sh --stop"
-	log "  bash .devcontainer/tools/macos-host-runtime.sh"
 	exit 1
 fi

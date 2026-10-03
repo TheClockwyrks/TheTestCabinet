@@ -2,12 +2,12 @@ import type {
   CoverageAxis,
   CoverageCell,
   CoverageMatrix,
+  BlockedCell,
   HaltResult,
-  TopUpBlocked,
-  TopUpResult,
+  LaunchPassResult,
 } from "@clockwyrks/run-record/coverage";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
-import type { BackendClient, WorkerClient } from "../../../client/clients";
+import type { WorkerClient } from "../../../client/clients";
 import type { InProgressRun } from "../../../client/types";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
@@ -16,7 +16,11 @@ import { bindModelSlots } from "../runs/gg/ggConfigDraft";
 import { findGgConfig, type GgConfigOption } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import type { LaunchItem } from "../runs/launchBatch";
-import { bufferIsFull, formatBufferTarget } from "./bufferTarget";
+import {
+  formatInFlightLimit,
+  limitIsFull,
+  limitLaunchesNothing,
+} from "./inFlightLimit";
 import {
   comboLabel,
   ggConfigKey,
@@ -97,7 +101,7 @@ function groupKey(cell: CoverageCell, axis: CoverageAxis): string {
  *
  * A cell the matrix marked [unlaunchable](CoverageCell.unlaunchable) is skipped by
  * both. What is broken there is the member, not the trigger, so launching it by hand
- * would fail in exactly the way the top-up already reported.
+ * would fail in exactly the way a launch pass already reported.
  */
 export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
   return cells
@@ -119,8 +123,8 @@ export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
           // segment of the cell's identity, so a run launched engineless from a cell
           // pinned to a runtime is counted against a different cell — leaving the one
           // that asked for it short by exactly the run just paid for, and pressable
-          // again forever. This is the by-hand half of what a top-up does server-side
-          // (`top_up_launch_body`), and the two must agree on the whole pin.
+          // again forever. This is the by-hand half of what a launch pass does
+          // server-side (`launch_body`), and the two must agree on the whole pin.
           engine: caseEngine(cell),
           maxRuntimeOverride: null,
         },
@@ -168,7 +172,7 @@ export interface GgCellPlan {
  * `remaining` per cell, each carrying the cell's own models bound onto its
  * configuration's launch slots.
  *
- * This is the by-hand half of what a top-up does server-side, and it binds through the
+ * This is the by-hand half of what a launch pass does server-side, and it binds through the
  * same {@link bindModelSlots} the new-run form uses, so a cell triggered from the
  * dashboard produces the identical capability set — and therefore the identical cell
  * identity — as one the plan enqueued for itself. Anything less and the run a reviewer
@@ -214,7 +218,7 @@ export function planGgLaunches(
  *
  * **These jobs carry no plan origin.** `POST /gg/runs` takes no `origin` query the way
  * `POST /jobs` does, so a gg run triggered from a plan cell sits outside that plan's
- * scoped halt and must be stopped from the Runs page instead. The plan's own top-up is
+ * scoped halt and must be stopped from the Runs page instead. The plan's own filling is
  * unaffected: it mints its jobs server-side and attributes them itself.
  */
 export async function launchGgCells(
@@ -263,10 +267,12 @@ export async function launchGgCells(
   return failures;
 }
 
-// The runs listing narrowed to exactly this cell — the link that turns a progress
-// bar into the runs behind it, which is half of the review loop this page exists to
-// serve. The keys mirror the run filters' URL params (`useRunFilters`), which is
-// what makes a narrowed listing linkable at all.
+// The runs listing narrowed to this cell's case and combination — the link that turns
+// a progress bar into the runs behind it. The keys mirror the run filters' URL params
+// (`useRunFilters`), which is what makes a narrowed listing linkable at all.
+//
+// The listing has no filter for the runs a cell holds, so it also lists the cell's runs
+// beyond the plan's target, and the cell's link is named for that (All runs).
 //
 // `latest=0` because a cell pins an exact version: the listing's "current versions
 // only" default is on, and would filter a deliberately-pinned older version's runs
@@ -275,8 +281,7 @@ export async function launchGgCells(
 // one of those share a link.
 //
 // A gg cell adds the configuration's id as the listing's `ggConfigId` filter, the
-// same value the cell's own counts group on, so the rows behind the figure are exactly
-// the rows the link lands on. The id and never the name: the runs recorded before a
+// same value the cell's own counts group on. The id and never the name: the runs recorded before a
 // rename carry the old name, and another account's same-named configuration carries
 // this one, so a name narrows to a set the count was never made of.
 export function cellRunsHref(cell: CoverageCell): string {
@@ -304,7 +309,7 @@ export interface MatrixGroup {
   subtitle: string;
   /** The cells in this block, in the plan's own emission order. */
   cells: CoverageCell[];
-  /** Completed plus in-flight runs, the block's "done" count. */
+  /** Counted runs (up to each cell's target) plus in-flight ones: the block's "done". */
   done: number;
   /** The block's target run count. */
   desired: number;
@@ -312,6 +317,8 @@ export interface MatrixGroup {
   pending: number;
   /** Completed runs the signed-in account has not reviewed. */
   unreviewed: number;
+  /** Cells blocked by repeated infrastructure failures, each offering Retry. */
+  blocked: number;
   /** The completed segment's width, as a percentage. */
   donePct: number;
   /** The in-flight segment's width, as a percentage (stacked after `donePct`). */
@@ -339,7 +346,7 @@ export function barWidths(
  * the order the backend emitted them in.
  *
  * The order is not incidental and is deliberately *not* re-sorted alphabetically:
- * the matrix arrives in the plan's emission order, which is the order a top-up
+ * the matrix arrives in the plan's emission order, which is the order a launch pass
  * enqueues cells and therefore — `job.queue_seq` being monotonic and the dispatcher
  * claiming in ascending order — the order the runs execute and land for review. A
  * page sorted by name would describe a different plan than the one running.
@@ -359,7 +366,7 @@ export function buildGroups(
     const cell0 = cells[0]!;
     const sum = (pick: (c: CoverageCell) => number) =>
       cells.reduce((total, c) => total + pick(c), 0);
-    const completed = sum((c) => c.completed);
+    const completed = sum((c) => Math.min(c.counted, c.desired));
     const inFlight = sum((c) => c.inFlight);
     const desired = sum((c) => c.desired);
     return {
@@ -374,23 +381,23 @@ export function buildGroups(
       desired,
       pending: sum((c) => c.pending),
       unreviewed: sum((c) => c.unreviewed),
+      blocked: cells.filter((c) => c.blocked).length,
       ...barWidths(completed, inFlight, desired),
     };
   });
 }
 
 /**
- * The cells a top-up wanted and could not have, as a trailing sentence — shared by the
- * plan's report and the ladder's.
+ * The cells a launch pass wanted and could not have, as a trailing sentence — shared
+ * by the plan's report and the ladder's.
  *
- * It trails whatever else the top-up did rather than replacing it, because one broken
- * member never stops the rest of a plan being fed: "enqueued six runs" and "two cells
- * are broken" are routinely both true, and a reviewer who is told only the first will
- * spend a long time wondering where the other runs went. The first reason is quoted
- * in full because the reasons are usually the same one repeated (a configuration
- * deleted, a slot left unbound), and the count says how far it reaches.
+ * It trails whatever else the pass did rather than replacing it, because one broken
+ * member never stops the rest of a plan being fed: "launched six runs" and "two cells
+ * are broken" are routinely both true. The first reason is quoted in full because the
+ * reasons are usually the same one repeated (a configuration deleted, a slot left
+ * unbound), and the count says how far it reaches.
  */
-export function describeUnlaunchable(blocked: TopUpBlocked[]): string {
+export function describeUnlaunchable(blocked: BlockedCell[]): string {
   const first = blocked[0];
   if (!first) return "";
   const cells = `${blocked.length} cell${blocked.length === 1 ? "" : "s"}`;
@@ -399,45 +406,47 @@ export function describeUnlaunchable(blocked: TopUpBlocked[]): string {
 }
 
 /**
- * What a top-up actually did, in one sentence.
- *
- * Every outcome has to read differently, because the reviewer's next move differs
- * for each: a halted plan wants pressing again, a busy one wants nothing (another tab
- * is already doing the work), a full buffer wants *reviews* rather than more runs, and
- * a satisfied plan wants a bigger target or nothing at all. "Top up did nothing" for
- * all four is the failure mode this exists to avoid — and a plan whose members are
- * broken is a fifth, which is why the blocked cells trail every outcome the scheduler
- * actually reached.
+ * What a plan says when its runs-in-flight limit is 0: it launches nothing at all, so
+ * neither "filling" nor "the rest launch as these finish" would be true.
  */
-export function describeTopUp(result: TopUpResult): string {
-  // Only reachable by a race: the button clears a halt before it tops up, and the
-  // on-open call is not made while one stands. So this is "somebody else, just now".
-  if (result.skipped === "paused") {
-    return (
-      "Nothing was enqueued: this plan was halted from another tab just now. " +
-      "Press Top up now to refill it anyway."
-    );
-  }
+export const ZERO_LIMIT_NOTE =
+  "The runs-in-flight limit is 0, so this plan launches nothing. Raise it in the plan editor or in Settings → Runs.";
+
+/**
+ * What pressing All missing did, in one sentence.
+ *
+ * Every outcome reads differently, because the next move differs for each: a busy
+ * pass wants nothing (another tab already started it), a full limit wants patience
+ * (the plan launches more as its runs finish), and a plan with nothing missing wants a
+ * bigger target or nothing at all. Cells that could not be launched trail every
+ * outcome the pass actually reached.
+ */
+export function describeFill(result: LaunchPassResult): string {
   if (result.skipped === "busy") {
-    return "A top-up for this plan was already running, so nothing was enqueued twice.";
+    return "This plan was already launching runs, so nothing was launched twice. It keeps filling as its runs finish.";
+  }
+  if (result.skipped) {
+    return "Nothing was launched: this plan was halted from another tab just now. Press All missing to fill it again.";
   }
   const blocked = describeUnlaunchable(result.unlaunchable);
   if (result.enqueued > 0) {
     const runs = `${result.enqueued} run${result.enqueued === 1 ? "" : "s"}`;
-    const cells = `${result.cells.length} cell${result.cells.length === 1 ? "" : "s"}`;
-    return `Enqueued ${runs} across ${cells}, in the order this plan runs them.${blocked}`;
+    return `Filling: launched ${runs}; the rest launch as these finish.${blocked}`;
   }
-  const outstanding = result.outstanding ?? 0;
-  if (bufferIsFull(result.bufferTarget, outstanding)) {
+  if (limitLaunchesNothing(result.inFlightLimit)) {
+    return ZERO_LIMIT_NOTE;
+  }
+  const inFlight = result.inFlight ?? 0;
+  if (limitIsFull(result.inFlightLimit, inFlight)) {
     return (
-      `Nothing enqueued: your review buffer is full (${outstanding} of ` +
-      `${formatBufferTarget(result.bufferTarget)} outstanding). Review some runs and top up again.${blocked}`
+      `Filling: ${inFlight} of ${formatInFlightLimit(result.inFlightLimit)} runs are already in flight, ` +
+      `so nothing more was launched yet; the rest launch as these finish.${blocked}`
     );
   }
   if (blocked) {
-    return `Nothing enqueued: every cell is either at its target or unlaunchable.${blocked}`;
+    return `Nothing launched: every cell is either at its target, blocked, or unlaunchable.${blocked}`;
   }
-  return "Nothing left to enqueue: every cell is at its target.";
+  return "Nothing left to launch: every cell is at its target or has runs in flight.";
 }
 
 /**
@@ -466,7 +475,7 @@ export function ggTriggerReadiness(
     notice: error
       ? "Your saved gg configurations could not be loaded, so gg cells cannot be " +
         "triggered by hand and may be reported as unresolved. Harness cells are " +
-        "unaffected, and this plan's own top-up runs on the backend regardless. " +
+        "unaffected, and this plan's own filling runs on the backend regardless. " +
         error
       : null,
   };
@@ -494,8 +503,8 @@ export function unresolvedGgProblem(
  * What a halt cancelled. The count is the point: "the queue was already empty" and
  * "nothing I launched was found" call for opposite next moves and are otherwise
  * indistinguishable, so a halt that merely succeeded quietly is a halt the reviewer
- * cannot act on. That the halt also switched auto top-up off is not restated here:
- * the switch itself moves, and a sentence saying so would say it twice.
+ * cannot act on. That the halt also stopped filling is not restated here: All missing
+ * itself changes back, and a sentence saying so would say it twice.
  */
 export function describeHalt(result: HaltResult): string {
   const scope = result.includedActive
@@ -506,42 +515,4 @@ export function describeHalt(result: HaltResult): string {
   }
   const jobs = `${result.canceled} job${result.canceled === 1 ? "" : "s"}`;
   return `Canceled ${jobs} ${scope}.`;
-}
-
-/**
- * Top up every plan of the signed-in account that asked to be topped up on review.
- *
- * There is no background scheduler, so a review landing is one of the two moments
- * that can refill a buffer (opening a plan is the other) — and it is the one that
- * matters, because the review is exactly what freed a buffer slot. Only plans with
- * `autoTopUp` on and not paused are touched, so an existing plan never silently
- * starts enqueueing.
- *
- * Failures are swallowed on purpose: this runs *after* a review has been accepted,
- * and a scheduling hiccup must never present itself as the review having failed.
- * Resolves how many runs were enqueued in total, for a caller that wants to say so.
- */
-export async function topUpAfterReview(
-  backend: BackendClient | null,
-  token: string | null,
-): Promise<number> {
-  if (
-    !backend?.getCoveragePlansSummary ||
-    !backend.topUpCoveragePlan ||
-    !token
-  ) {
-    return 0;
-  }
-  let enqueued = 0;
-  try {
-    const plans = await backend.getCoveragePlansSummary(token);
-    for (const plan of plans) {
-      if (!plan.autoTopUp || plan.paused) continue;
-      const result = await backend.topUpCoveragePlan(plan.id, token);
-      enqueued += result.enqueued;
-    }
-  } catch {
-    // Deliberately silent — see above.
-  }
-  return enqueued;
 }

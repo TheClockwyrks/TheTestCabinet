@@ -12,7 +12,7 @@ use test_cabinet_core::gg::{
     GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
 };
 
-use super::tests::{case, combo, combo_group, empty_ctx, member, order};
+use super::tests::{case, combo, combo_group, empty_ctx, landed, member, order};
 
 /// The internal id a fixture profile carries.
 ///
@@ -163,13 +163,17 @@ fn a_member_whose_configuration_is_gone_keeps_its_place_and_says_why() {
     // And it is still a cell — in its declared place, carrying the reason.
     let cases = vec![case("pong")];
     let combos = vec![member(combo("opus")), orphan];
-    let matrix = empty_ctx().matrix(
-        3,
-        CoverageAxis::Case,
-        BufferTarget::Bounded { runs: 10 },
-        &combos,
-        &cases,
-    );
+    let blocked = HashSet::new();
+    let matrix = empty_ctx().matrix(MatrixInput {
+        runs_per_cell: 3,
+        axis: CoverageAxis::Case,
+        in_flight_limit: InFlightLimit::Bounded { runs: 10 },
+        runs_in_flight: 0,
+        filling: false,
+        combos: &combos,
+        cases: &cases,
+        blocked: &blocked,
+    });
     assert_eq!(matrix.cells_total, 2);
     assert!(matrix.cells[0].unlaunchable.is_none());
     assert!(matrix.cells[1].unlaunchable.is_some());
@@ -303,9 +307,9 @@ fn two_configurations_sharing_a_name_are_two_cells() {
     assert!(resolved[1].unlaunchable.is_none());
     // And a run of one is never counted toward the other, however the two are labelled.
     let mut ctx = empty_ctx();
-    ctx.completed.insert(cell_key(&c, &resolved[0]), 4);
-    assert_eq!(ctx.demand(5, &c, &resolved[0]).completed, 4);
-    assert_eq!(ctx.demand(5, &c, &resolved[1]).completed, 0);
+    ctx.runs.insert(cell_key(&c, &resolved[0]), landed(4, 0));
+    assert_eq!(ctx.demand(5, &c, &resolved[0]).counted, 4);
+    assert_eq!(ctx.demand(5, &c, &resolved[1]).counted, 0);
 }
 
 #[test]
@@ -314,7 +318,7 @@ fn renaming_a_configuration_keeps_its_cell_and_its_counts() {
     let before = gg_member("opus", "haiku");
     let key = cell_key(&c, &before);
     let mut ctx = empty_ctx();
-    ctx.completed.insert(key.clone(), 4);
+    ctx.runs.insert(key.clone(), landed(4, 0));
 
     // The same configuration, renamed in the account's library. A rename rewrites display
     // text and nothing else, so the member re-points at nothing.
@@ -324,7 +328,7 @@ fn renaming_a_configuration_keeps_its_cell_and_its_counts() {
     assert_eq!(cell_key(&c, &after), key);
     // The runs already recorded against it are still its runs: the plan reads 4/5 and the
     // next top-up buys the one it is short, not five.
-    assert_eq!(ctx.demand(5, &c, &after).completed, 4);
+    assert_eq!(ctx.demand(5, &c, &after).counted, 4);
     assert_eq!(
         launchable_demand(ctx.demand(5, &c, &after), &after).missing(),
         1
@@ -509,11 +513,12 @@ fn a_gg_cell_is_keyed_by_the_configuration_id_and_the_models_it_binds() {
 }
 
 #[test]
-fn a_top_up_launches_a_gg_cell_on_the_cases_pinned_engine() {
+fn a_launch_pass_launches_a_gg_cell_on_the_cases_pinned_engine() {
     let m = gg_member("opus", "haiku");
     let lowered = |case: &ReviewPlanCase| {
-        top_up_launch_body(&TopUpCell {
+        launch_body(&LaunchCell {
             rung_id: None,
+            origin: JobOrigin::plan("p-1"),
             case,
             member: &m,
             runs: 1,
@@ -592,10 +597,7 @@ fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
         "2026-09-01T00:00:00Z",
         // The attribution is not part of a cell — a run counts toward it whoever asked for
         // one — so the by-hand and scheduled forms are interchangeable here.
-        &crate::api::jobs::JobAttribution::scheduled(
-            "u-1",
-            &crate::db::JobOrigin::Plan("p-1".to_string()),
-        ),
+        &crate::api::jobs::JobAttribution::scheduled("u-1", &crate::db::JobOrigin::plan("p-1")),
     )
     .expect("the launch body builds a job");
     assert_eq!(job.harness_slug, harness);
@@ -604,42 +606,6 @@ fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
     assert_eq!(job.gg_models.as_deref(), Some(models.as_str()));
     // The name rides along for the run log, and is no part of the identity.
     assert_eq!(job.gg_preset.as_deref(), Some("Critic sweep"));
-}
-
-#[test]
-fn a_cells_queue_offers_exactly_the_runs_its_counts_are_made_of() {
-    let member = gg_member("opus", "haiku");
-    let bound = gg_config("cfg-1", "Critic sweep")
-        .capability_set
-        .bind_launch_slots(&BTreeMap::from([
-            ("primary".to_string(), "opus".to_string()),
-            ("reviewer.critic".to_string(), "haiku".to_string()),
-        ]));
-
-    // What a run of this member records: the configuration's id, and the models it bound.
-    let mut recorded = bound.clone();
-    recorded.preset = Some("Critic sweep".to_string());
-    recorded.preset_id = Some("cfg-1".to_string());
-    assert!(in_gg_cell(Some(&recorded), &member));
-
-    // A set naming the configuration only by name is in no configuration's cell. That is the
-    // same answer the counts give — they group on the column lifted from this field — so a
-    // run is either counted and offered or neither, never counted and unreachable.
-    let mut by_name_only = recorded.clone();
-    by_name_only.preset_id = None;
-    assert!(!in_gg_cell(Some(&by_name_only), &member));
-    assert!(!in_gg_cell(None, &member));
-
-    // Another configuration of the account, binding the same models to the same agents, is a
-    // cell of its own however it is named.
-    let mut twin = recorded.clone();
-    twin.preset_id = Some("cfg-2".to_string());
-    assert!(!in_gg_cell(Some(&twin), &member));
-
-    // And so is the same configuration run on another model.
-    let mut other_models = recorded.clone();
-    other_models.agents[0].model_id = "sonnet".to_string();
-    assert!(!in_gg_cell(Some(&other_models), &member));
 }
 
 #[test]
@@ -677,13 +643,13 @@ fn a_gg_member_and_a_harness_member_hold_their_declared_order() {
 }
 
 #[test]
-fn an_unlaunchable_member_spends_no_buffer_and_stops_no_walk() {
+fn an_unlaunchable_member_spends_no_room_and_stops_no_walk() {
     let cases = vec![case("pong")];
     let orphan = resolve_member(&gg_combo("opus", "haiku"), &GgLibrary::default());
     let combos = vec![orphan, member(combo("sonnet"))];
     let mut ctx = empty_ctx();
-    // The broken member's cell has runs in flight from before it broke: they still occupy the
-    // reviewer's buffer, because nothing un-launched them.
+    // The broken member's cell has runs in flight from before it broke: they still count
+    // against the limit, because nothing un-launched them.
     ctx.in_flight.insert(cell_key(&cases[0], &combos[0]), 2);
 
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
@@ -691,14 +657,13 @@ fn an_unlaunchable_member_spends_no_buffer_and_stops_no_walk() {
         .iter()
         .map(|(case, member)| launchable_demand(ctx.demand(5, case, member), member))
         .collect();
-    // It wants nothing…
+    // It wants nothing, though its runs in flight are still counted against the limit.
     assert_eq!(demands[0].missing(), 0);
-    // …but its outstanding runs are still counted against the buffer.
-    assert_eq!(demands[0].outstanding(), 2);
-    let launches = top_up(
+    assert_eq!(demands[0].in_flight, 2);
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 10 },
+        InFlightLimit::Bounded { runs: 10 },
         2,
     );
     // The walk carries straight on to the member that can still run.
@@ -727,10 +692,10 @@ fn gg_runs_are_throttled_by_their_own_capacity_lane() {
         .iter()
         .map(|(case, member)| ctx.demand(1, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 2 },
+        InFlightLimit::Bounded { runs: 2 },
         0,
     );
     assert_eq!(

@@ -323,6 +323,25 @@
 # this the COPYs fail with "not found" against the allowlisted context.
 !/deployments/images/web
 
+# The DEVCONTAINER image (.devcontainer/ubuntu.dockerfile) builds from this same
+# context, because its last layer installs gg's program-language toolchains with the
+# repository's own installers (scripts/ci/install-gg-toolchains.sh and
+# install-gg-build-toolchains.sh, admitted with scripts/ci above), which read their
+# pins from beside the arms under packages/. Its own COPYs read these five paths and
+# nothing else under .devcontainer/: README.md, devcontainer.json, the compose files,
+# the Dockerfile and the host's .env are not admitted, and they churn harder than the
+# scripts do. There is deliberately no sibling ubuntu.dockerfile.dockerignore: BuildKit
+# would prefer one, Buildah (Podman, podman-compose, the devcontainer on a rootless
+# Podman host) has been seen to read THIS file instead and die on the first COPY, so
+# one allowlist serves every runtime. scripts/ci/build-context.sh checks the
+# Dockerfile's COPYs against it. What it costs the seven `COPY . .` builds: their
+# cache keys gain these ~30 small files, which move far less often than crates/.
+!/.devcontainer/ai
+!/.devcontainer/languages
+!/.devcontainer/system
+!/.devcontainer/tools
+!/.devcontainer/post-install.sh
+
 # Re-exclude build outputs and scratch that can appear UNDER the re-included
 # paths, so a local `cargo build`'s target/ (or a stray node_modules) never bloats
 # the context or churns the layer cache. These come last so they win.

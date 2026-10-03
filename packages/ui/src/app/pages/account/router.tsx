@@ -57,8 +57,8 @@ export function accountRoutes(canExecute: boolean) {
             element={<CoveragePlanEditPage />}
           />
           {/* A plan's three tabs are child routes of one layout, so pressing a tab
-              moves only the body: the layout keeps its fetch, its controls, and its
-              once-per-visit top-up across the press. */}
+              moves only the body: the layout keeps its fetch and its controls, and the
+              report of what a control just did, across the press. */}
           <Route
             path={routePatterns.accountCoveragePlan}
             element={<CoveragePlanLayout />}

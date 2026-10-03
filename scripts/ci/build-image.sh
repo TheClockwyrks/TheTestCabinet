@@ -21,9 +21,10 @@
 #                           when the run is also pushing
 #   CONTAINER_TOOL          The client to build with
 #
-# The platform defaults to the cluster's nodes', which the project answered as
-# `image_platform` and DEFAULT_PLATFORM below carries; re-answering it on
-# `copier update` is how it changes. The Dockerfile runs every stage as the image's architecture, so a
+# The platform defaults to the cluster's nodes', which DEFAULT_PLATFORM below
+# carries: linux/arm64, this project's edit over the fleet's amd64 default,
+# because its clusters run arm64 nodes and its images are built on the arm64
+# pool. The Dockerfile runs every stage as the image's architecture, so a
 # build for a platform other than the builder's own runs under QEMU: building
 # with docker, this script registers it with the kernel before the build;
 # building with podman, the host is expected to have it registered already,

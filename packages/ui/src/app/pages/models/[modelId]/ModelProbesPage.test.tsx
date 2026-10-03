@@ -57,6 +57,7 @@ const MODEL = {
   maxInputPrice: null,
   maxOutputPrice: null,
   bannedProviders: [],
+  quantizationFilter: true,
   unknownQuantizationProviders: [],
   releasedAt: null,
   inputModalities: [],

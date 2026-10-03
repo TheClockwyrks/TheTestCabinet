@@ -191,6 +191,22 @@ export function hasPlayableOutcome(state: RunState): boolean {
 }
 
 /**
+ * Whether a run of this state counts toward a coverage cell: the model's own result,
+ * either completed or one of its own failures. An infrastructure-class failure
+ * (`infrastructure`, `harness_error`) or a cancel says nothing about the model and
+ * never counts. Mirrors `RunState::counts_as_model_result` in the Rust contract.
+ */
+export function countsAsModelResult(state: RunState): boolean {
+  return (
+    state === "completed" ||
+    state === "catastrophic" ||
+    state === "timed_out" ||
+    state === "limit_exceeded" ||
+    state === "hung"
+  );
+}
+
+/**
  * Whether a run has a playable build to host on its Play tab. None of an
  * asset-generation run (a static asset), an adversarial run (a match replay), or
  * a performance run (a wasm engine scored on fuel) produces a hostable playable

@@ -259,6 +259,12 @@ export type ModelOut = {
    */
   providerPinSetByHand: boolean;
   /**
+   * Whether a gg run's candidate list is filtered to the native quantization. False accepts
+   * every endpoint at whatever level it declares, `unknown` included, for a model every
+   * provider serves at one precision nobody discloses. Always true for a derived model.
+   */
+  quantizationFilter: boolean;
+  /**
    * The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
    * level any endpoint declares. Always null for a derived model.
    */
@@ -352,9 +358,16 @@ export type ModelConfigInput = {
    */
   providerPin?: string;
   /**
+   * Whether a gg run's candidate list is filtered to the native quantization. Absent is true.
+   * False accepts every endpoint at whatever level it declares, `unknown` included, for a
+   * model every provider serves at one precision nobody discloses; the other filters still
+   * apply.
+   */
+  quantizationFilter?: boolean;
+  /**
    * The native quantization every provider of a gg run's candidate list must serve the model
-   * at (`fp8`, `bf16`, …). Absent or blank takes the highest level any endpoint declares; any
-   * other value must be a level OpenRouter declares.
+   * at (`fp8`, `bf16`, …) while the filter is on. Absent or blank takes the highest level any
+   * endpoint declares; any other value must be a level OpenRouter declares.
    */
   nativeQuantization?: string;
   /**
@@ -727,7 +740,8 @@ export type ModelCandidatesOut = {
   modelId: string;
   /**
    * The native quantization the filter kept: the catalog entry's, else the highest level any
-   * endpoint declares. Null when neither names one.
+   * endpoint declares. Null when neither names one, which the list survives only with the
+   * catalog entry's quantization filter off.
    */
   nativeQuantization: string | null;
   /**

@@ -1,6 +1,6 @@
 //! Unit tests for the coverage transport's pure parts: member resolution, the
 //! outer-axis cell ordering, the counts a matrix cell reports, and the demand the
-//! shared top-up scheduler is fed.
+//! shared launch scheduler is fed.
 //!
 //! Everything here avoids the store on purpose — [`MatrixCtx`] is constructed
 //! directly from counts, which is exactly what it is: a snapshot of four grouped
@@ -13,7 +13,7 @@
 
 use super::*;
 
-use crate::coverage::schedule::{HarnessCapacity, top_up};
+use crate::coverage::schedule::{HarnessCapacity, InFlightLimit, launch_pass};
 
 pub(super) fn combo(model: &str) -> ReviewPlanCombo {
     combo_on(HarnessSlug::Claude, model)
@@ -100,6 +100,8 @@ fn plan(
         case_group_ids: case_group_ids.into_iter().map(String::from).collect(),
         combos,
         cases,
+        outer_axis: CoverageAxis::Case,
+        in_flight_limit: None,
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     }
 }
@@ -107,15 +109,26 @@ fn plan(
 /// A context whose counts are all empty — every cell reads zero of everything.
 pub(super) fn empty_ctx() -> MatrixCtx {
     MatrixCtx {
-        completed: crate::db::CellCounts::new(),
+        runs: crate::db::CellRuns::new(),
         in_flight: crate::db::CellCounts::new(),
         pending: crate::db::CellCounts::new(),
-        unreviewed: crate::db::CellCounts::new(),
         // Every harness idle and unthrottled, which is the default deployment and
-        // the state in which the top-up walks its cells in plain order.
+        // the state in which a launch pass walks its cells in plain order.
         harness_capacity: vec![HarnessCapacity::UNLIMITED; HarnessSlug::RUNNABLE.len()],
         latest_by_slug: HashMap::new(),
     }
+}
+
+/// `n` counted runs of one cell in the order they landed, `r0` first, of which the first
+/// `unreviewed` are completed runs the requester has not reviewed.
+pub(super) fn landed(n: usize, unreviewed: usize) -> Vec<crate::db::CellRun> {
+    (0..n)
+        .map(|i| crate::db::CellRun {
+            id: format!("r{i}"),
+            finished_at: format!("2026-09-01T00:00:{i:02}Z"),
+            unreviewed: i < unreviewed,
+        })
+        .collect()
 }
 
 /// The cell ordering, rendered as `slug/member` strings so an assertion reads as the
@@ -230,11 +243,12 @@ fn a_pin_naming_no_engine_and_one_naming_none_are_the_same_case() {
 }
 
 #[test]
-fn a_top_up_launches_a_harness_cell_on_the_cases_pinned_engine() {
+fn a_launch_pass_launches_a_harness_cell_on_the_cases_pinned_engine() {
     let m = member(combo("opus"));
     let cell = |case: &ReviewPlanCase| {
-        top_up_launch_body(&TopUpCell {
+        launch_body(&LaunchCell {
             rung_id: None,
+            origin: JobOrigin::plan("p1"),
             case,
             member: &m,
             runs: 2,
@@ -426,14 +440,16 @@ fn a_cell_reports_the_requesters_unreviewed_runs_alongside_the_global_counts() {
     let m = member(combo("opus"));
     let key = cell_key(&c, &m);
     let mut ctx = empty_ctx();
-    ctx.completed.insert(key.clone(), 5);
+    ctx.runs.insert(key.clone(), landed(5, 3));
     ctx.in_flight.insert(key.clone(), 2);
-    ctx.pending.insert(key.clone(), 1);
-    ctx.unreviewed.insert(key, 3);
+    ctx.pending.insert(key, 1);
 
-    let cell = ctx.cell(5, &c, &m);
-    // Counts stay global: five runs exist, so the target is met whoever produced them.
-    assert_eq!(cell.completed, 5);
+    let cell = ctx.cell(7, &c, &m, false);
+    // Counts stay global: five runs exist, whoever produced them, and two more are coming.
+    assert_eq!(cell.counted, 5);
+    assert_eq!(cell.run_ids, vec!["r0", "r1", "r2", "r3", "r4"]);
+    assert!(!cell.filled);
+    assert!(!cell.blocked);
     assert_eq!(cell.remaining, 0);
     // `pending` is a subset of `inFlight`, never an addition to it.
     assert_eq!(cell.in_flight, 2);
@@ -447,27 +463,48 @@ fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
-    ctx.completed.insert(cell_key(&cases[0], &combos[0]), 5);
-    ctx.unreviewed.insert(cell_key(&cases[0], &combos[0]), 2);
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(5, 2));
     ctx.in_flight.insert(cell_key(&cases[1], &combos[0]), 1);
 
-    let matrix = ctx.matrix(
-        5,
-        CoverageAxis::Case,
-        BufferTarget::Bounded { runs: 10 },
-        &combos,
-        &cases,
-    );
+    let blocked = HashSet::new();
+    let matrix = ctx.matrix(MatrixInput {
+        runs_per_cell: 5,
+        axis: CoverageAxis::Case,
+        in_flight_limit: InFlightLimit::Bounded { runs: 10 },
+        runs_in_flight: 1,
+        filling: true,
+        combos: &combos,
+        cases: &cases,
+        blocked: &blocked,
+    });
     assert_eq!(matrix.cells_total, 2);
-    // `pong` is satisfied by its five completed runs; `carom` still needs four.
-    assert_eq!(matrix.cells_satisfied, 1);
+    // `pong` is filled by its five counted runs; `carom` still needs four, one of which
+    // is in flight — in flight never fills a cell.
+    assert_eq!(matrix.cells_filled, 1);
+    assert_eq!(matrix.cells_blocked, 0);
     assert_eq!(matrix.runs_missing, 4);
     assert_eq!(matrix.runs_unreviewed, 2);
-    // Outstanding is what the buffer bounds: everything in flight plus everything
-    // finished the reviewer has not judged.
-    assert_eq!(matrix.runs_outstanding, 3);
-    assert_eq!(matrix.buffer_target, BufferTarget::Bounded { runs: 10 });
+    // The progress bar: five of ten runs done.
+    assert_eq!(matrix.runs_done, 5);
+    assert_eq!(matrix.runs_total, 10);
+    assert_eq!(matrix.runs_in_flight, 1);
+    assert_eq!(matrix.in_flight_limit, InFlightLimit::Bounded { runs: 10 });
     assert_eq!(matrix.outer_axis, CoverageAxis::Case);
+    assert!(matrix.filling);
+}
+
+#[test]
+fn runs_beyond_a_cells_target_do_not_overfill_the_progress_bar() {
+    let cases = vec![case("pong")];
+    let combos = members(vec![combo("opus")]);
+    let mut ctx = empty_ctx();
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(7, 0));
+    let roll = ctx.tally(3, &combos, &cases, &HashSet::new());
+    assert_eq!(roll.runs_done, 3);
+    assert_eq!(roll.runs_total, 3);
+    assert_eq!(roll.cells_filled, 1);
 }
 
 #[test]
@@ -477,34 +514,34 @@ fn a_stale_pin_is_flagged_against_the_newest_ingested_version() {
     let mut ctx = empty_ctx();
     ctx.latest_by_slug
         .insert("pong".to_string(), "v2.0.0".to_string());
-    assert!(ctx.cell(3, &c, &m).stale);
+    assert!(ctx.cell(3, &c, &m, false).stale);
 
     // A case that is not ingested at all has no newer version to point at, so it is
     // not flagged — the reviewer has nothing to bump the pin to.
     let ctx = empty_ctx();
-    let cell = ctx.cell(3, &c, &m);
+    let cell = ctx.cell(3, &c, &m, false);
     assert!(!cell.stale);
     assert_eq!(cell.latest_version, "");
 }
 
 #[test]
-fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
+fn a_launch_pass_walks_the_configured_axis_and_emits_whole_cells() {
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![combo("opus"), combo("sonnet")]);
     let ctx = empty_ctx();
 
-    // One case at a time, buffer 5, five runs per cell: the first cell alone
-    // overshoots the buffer, which is correct — a cell's repeats are the unit of
-    // judgement and must not be split across two top-ups.
+    // One case at a time, limit 5, five runs per cell: the first cell alone fills the
+    // limit, which is correct — a cell's repeats are the unit of judgement and must not
+    // be split across two launch passes.
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 5 },
+        InFlightLimit::Bounded { runs: 5 },
         0,
     );
     assert_eq!(launches.len(), 1);
@@ -518,10 +555,10 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 10 },
+        InFlightLimit::Bounded { runs: 10 },
         0,
     );
     assert_eq!(
@@ -536,7 +573,7 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
 #[test]
 fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
     // "One model at a time" puts every Claude cell first, so a plain in-order walk
-    // spends the whole buffer on a harness capped at two and leaves Codex — which
+    // spends the whole limit on a harness capped at two and leaves Codex — which
     // could start immediately — idle. The scheduler reads the cap and interleaves.
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![
@@ -554,14 +591,14 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
         .iter()
         .map(|(case, member)| ctx.demand(2, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 8 },
+        InFlightLimit::Bounded { runs: 8 },
         0,
     );
     // Claude's first cell fills its two slots, so its second is deferred behind both
-    // of Codex's — and only then takes the buffer that is left.
+    // of Codex's — and only then takes the room that is left.
     assert_eq!(
         launches
             .iter()
@@ -572,7 +609,7 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
 }
 
 #[test]
-fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
+fn a_harness_already_at_its_cap_yields_the_limit_to_one_that_is_not() {
     // The steady state: Claude's earlier runs are still working through the queue,
     // so nothing more of it can start until they do.
     let cases = vec![case("pong")];
@@ -591,13 +628,13 @@ fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
         .iter()
         .map(|(case, member)| ctx.demand(3, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 3 },
+        InFlightLimit::Bounded { runs: 3 },
         0,
     );
-    // Only three buffer slots, and the runnable harness gets them.
+    // Only three runs of room, and the runnable harness gets them.
     assert_eq!(
         launches
             .iter()
@@ -631,17 +668,18 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
     let cases = vec![case("pong"), case("carom")];
     let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
-    ctx.completed.insert(cell_key(&cases[0], &combos[0]), 5);
+    ctx.runs
+        .insert(cell_key(&cases[0], &combos[0]), landed(5, 0));
 
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(
+    let launches = launch_pass(
         &demands,
         ctx.harness_capacity(),
-        BufferTarget::Bounded { runs: 10 },
+        InFlightLimit::Bounded { runs: 10 },
         0,
     );
     // `pong` is done and costs nothing; the walk continues to `carom` rather than
@@ -650,39 +688,11 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
     assert_eq!(order(&[ordered[launches[0].cell]]), vec!["carom/opus"]);
 }
 
-#[test]
-fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
-    let cases = vec![case("pong")];
-    let combos = members(vec![combo("opus")]);
-    let mut ctx = empty_ctx();
-    // Ten finished runs of another cell that this reviewer has not looked at is a
-    // full buffer: the plan is not idle because it is done, it is idle because the
-    // reviewer owes it attention.
-    ctx.unreviewed.insert(cell_key(&cases[0], &combos[0]), 10);
-    ctx.completed.insert(cell_key(&cases[0], &combos[0]), 10);
-
-    let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
-    let demands: Vec<_> = ordered
-        .iter()
-        .map(|(case, member)| ctx.demand(15, case, member))
-        .collect();
-    assert_eq!(demands[0].outstanding(), 10);
-    assert!(
-        top_up(
-            &demands,
-            ctx.harness_capacity(),
-            BufferTarget::Bounded { runs: 10 },
-            10
-        )
-        .is_empty()
-    );
-}
-
-/// A plan body at the given target, carrying no members and the given schedule.
+/// A plan body at the given target, carrying no members and the given limit override.
 fn plan_input(
     name: &str,
     runs_per_cell: u32,
-    schedule: Option<CoverageSchedule>,
+    in_flight_limit: Option<InFlightLimit>,
 ) -> CoveragePlanInput {
     CoveragePlanInput {
         name: name.to_string(),
@@ -691,44 +701,31 @@ fn plan_input(
         case_group_ids: vec![],
         combos: vec![],
         cases: vec![],
-        schedule,
+        outer_axis: CoverageAxis::Combination,
+        in_flight_limit,
     }
 }
 
 #[test]
-fn a_plan_input_keeps_its_target_and_the_schedule_separate() {
+fn a_plan_input_keeps_its_target_its_axis_and_a_clamped_limit() {
     let input = plan_input("wide", MAX_RUNS_PER_CELL, None);
-    let (plan, schedule) =
-        plan_from_input("p1".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
+    let plan = plan_from_input("p1".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
     // The ceiling itself is storable — it is what falls outside the range that is
     // refused — and it is stored as sent.
     assert_eq!(plan.runs_per_cell, MAX_RUNS_PER_CELL);
-    // No schedule in the body means "leave it alone" on update and "the default" on
-    // create — never a silently written one.
-    assert!(schedule.is_none());
+    assert_eq!(plan.outer_axis, CoverageAxis::Combination);
+    // No limit means "inherit the account's".
+    assert_eq!(plan.in_flight_limit, None);
 
-    let input = plan_input(
-        "scheduled",
-        7,
-        Some(CoverageSchedule {
-            outer_axis: CoverageAxis::Combination,
-            paused: true,
-            auto_top_up: true,
-            buffer_target: Some(BufferTarget::Bounded { runs: 99_999 }),
-        }),
-    );
-    let (plan, schedule) =
-        plan_from_input("p2".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
+    let input = plan_input("limited", 7, Some(InFlightLimit::Bounded { runs: 99_999 }));
+    let plan = plan_from_input("p2".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
     assert_eq!(plan.runs_per_cell, 7);
-    let schedule = schedule.expect("the body carried a schedule");
-    assert_eq!(schedule.outer_axis, CoverageAxis::Combination);
-    assert!(schedule.paused);
-    // The buffer bounds a top-up's fan-out, so a mistyped value is clamped on the
+    // The limit bounds a launch pass's fan-out, so a mistyped value is clamped on the
     // way to the store.
     assert_eq!(
-        schedule.to_db().buffer_target,
-        Some(BufferTarget::Bounded {
-            runs: MAX_BUFFER_TARGET
+        plan.in_flight_limit,
+        Some(InFlightLimit::Bounded {
+            runs: MAX_IN_FLIGHT_LIMIT
         })
     );
 }
@@ -772,91 +769,186 @@ fn a_derived_target_is_still_normalized_rather_than_refused() {
 }
 
 #[test]
-fn a_zero_buffer_target_survives_clamping() {
-    // "Never top me up automatically" is a real instruction and must be storable —
-    // unlike a runs-per-cell target of zero, which would declare a cell nobody wants.
-    let bounded = |runs| BufferTarget::Bounded { runs };
-    assert_eq!(clamp_buffer_target(bounded(0)), bounded(0));
-    assert_eq!(clamp_buffer_target(bounded(7)), bounded(7));
+fn a_zero_in_flight_limit_survives_clamping() {
+    // "Launch nothing" is a real instruction and must be storable — unlike a
+    // runs-per-cell target of zero, which would declare a cell nobody wants.
+    let bounded = |runs| InFlightLimit::Bounded { runs };
+    assert_eq!(clamp_in_flight_limit(bounded(0)), bounded(0));
+    assert_eq!(clamp_in_flight_limit(bounded(7)), bounded(7));
     assert_eq!(
-        clamp_buffer_target(bounded(u32::MAX)),
-        bounded(MAX_BUFFER_TARGET)
+        clamp_in_flight_limit(bounded(u32::MAX)),
+        bounded(MAX_IN_FLIGHT_LIMIT)
     );
 }
 
 #[test]
-fn an_unbounded_buffer_target_is_not_clamped_into_a_bound() {
-    // The ceiling exists to catch a mistyped *number*. "No bound" is not a number
-    // that can be mistyped, and turning it into the largest bound would quietly
-    // reintroduce the stall the reviewer chose it to avoid.
+fn an_unbounded_in_flight_limit_is_not_clamped_into_a_bound() {
+    // The ceiling exists to catch a mistyped *number*. "No bound" is not a number that
+    // can be mistyped.
     assert_eq!(
-        clamp_buffer_target(BufferTarget::Unbounded),
-        BufferTarget::Unbounded
+        clamp_in_flight_limit(InFlightLimit::Unbounded),
+        InFlightLimit::Unbounded
     );
-    let schedule = CoverageSchedule {
-        buffer_target: Some(BufferTarget::Unbounded),
-        ..CoverageSchedule::default()
-    };
-    assert_eq!(
-        schedule.to_db().buffer_target,
-        Some(BufferTarget::Unbounded)
-    );
-    assert_eq!(CoverageSchedule::from_db(schedule.to_db()), schedule);
 }
 
 #[test]
-fn a_schedule_names_its_buffer_shape_on_the_wire() {
-    // A client has to be able to tell the three instructions apart from the JSON
-    // alone: absent (inherit), a bound, and no bound.
-    let inherit = serde_json::to_value(CoverageSchedule::default()).unwrap();
-    assert!(inherit.get("bufferTarget").is_none());
-    let unbounded = serde_json::to_value(CoverageSchedule {
-        buffer_target: Some(BufferTarget::Unbounded),
-        ..CoverageSchedule::default()
+fn a_plan_names_its_limit_shape_on_the_wire() {
+    // A client has to be able to tell the three instructions apart from the JSON alone:
+    // null (inherit), a bound, and no bound.
+    let inherit = serde_json::to_value(plan(vec![], vec![], vec![], vec![])).unwrap();
+    assert_eq!(inherit["inFlightLimit"], serde_json::Value::Null);
+    let unbounded = serde_json::to_value(CoveragePlan {
+        in_flight_limit: Some(InFlightLimit::Unbounded),
+        ..plan(vec![], vec![], vec![], vec![])
     })
     .unwrap();
     assert_eq!(
-        unbounded["bufferTarget"],
+        unbounded["inFlightLimit"],
         serde_json::json!({ "kind": "unbounded" })
     );
-    let parsed: CoverageSchedule = serde_json::from_value(serde_json::json!({
-        "outerAxis": "case",
-        "paused": false,
-        "autoTopUp": true,
-        "bufferTarget": { "kind": "bounded", "runs": 3 }
+    let parsed: CoveragePlanInput = serde_json::from_value(serde_json::json!({
+        "name": "p",
+        "runsPerCell": 2,
+        "inFlightLimit": { "kind": "bounded", "runs": 3 }
     }))
     .unwrap();
     assert_eq!(
-        parsed.buffer_target,
-        Some(BufferTarget::Bounded { runs: 3 })
+        parsed.in_flight_limit,
+        Some(InFlightLimit::Bounded { runs: 3 })
     );
+    // An absent axis is the default.
+    assert_eq!(parsed.outer_axis, CoverageAxis::Case);
 }
 
 #[test]
-fn a_schedule_round_trips_through_the_stores_shape() {
-    let schedule = CoverageSchedule {
-        outer_axis: CoverageAxis::Combination,
-        paused: true,
-        auto_top_up: true,
-        buffer_target: Some(BufferTarget::Bounded { runs: 4 }),
-    };
-    assert_eq!(CoverageSchedule::from_db(schedule.to_db()), schedule);
-    // The default is the behaviour a plan had before it could be scheduled at all,
-    // and matches the columns' database defaults.
-    let default = CoverageSchedule::default();
-    assert_eq!(default.outer_axis, CoverageAxis::Case);
-    assert!(!default.paused);
-    assert!(!default.auto_top_up);
-    assert_eq!(default.buffer_target, None);
-}
-
-#[test]
-fn a_skipped_top_up_still_reports_what_it_was_aiming_for() {
-    let result = TopUpResult::skipped_by(TopUpSkipped::Paused, BufferTarget::Bounded { runs: 12 });
-    assert_eq!(result.skipped, Some(TopUpSkipped::Paused));
-    assert_eq!(result.buffer_target, BufferTarget::Bounded { runs: 12 });
-    // `outstanding` is absent rather than zero: the scheduler never ran, so nobody
-    // measured it, and reporting zero would read as an empty buffer.
-    assert_eq!(result.outstanding, None);
+fn a_skipped_launch_pass_still_reports_what_it_was_aiming_for() {
+    let result = LaunchPassResult::skipped_by(
+        LaunchSkipped::NotFilling,
+        InFlightLimit::Bounded { runs: 12 },
+    );
+    assert_eq!(result.skipped, Some(LaunchSkipped::NotFilling));
+    assert_eq!(result.in_flight_limit, InFlightLimit::Bounded { runs: 12 });
+    // `inFlight` is absent rather than zero: the scheduler never ran, so nobody measured
+    // it, and reporting zero would read as nothing in flight.
+    assert_eq!(result.in_flight, None);
     assert_eq!(result.enqueued, 0);
+}
+
+#[test]
+fn a_launch_skip_reason_is_named_on_the_wire() {
+    for (reason, token) in [
+        (LaunchSkipped::NotFilling, "notFilling"),
+        (LaunchSkipped::NotRunning, "notRunning"),
+        (LaunchSkipped::Busy, "busy"),
+    ] {
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!(token)
+        );
+    }
+}
+
+#[test]
+fn two_launch_passes_merge_into_one_report() {
+    let first = LaunchPassResult {
+        in_flight: Some(3),
+        enqueued: 2,
+        early_stop_canceled: 1,
+        ..LaunchPassResult::skipped_by(LaunchSkipped::Busy, InFlightLimit::Bounded { runs: 5 })
+    };
+    let first = LaunchPassResult {
+        skipped: None,
+        ..first
+    };
+    let second = LaunchPassResult {
+        skipped: None,
+        in_flight: Some(5),
+        enqueued: 1,
+        early_stop_canceled: 2,
+        ..LaunchPassResult::skipped_by(LaunchSkipped::Busy, InFlightLimit::Unbounded)
+    };
+    let merged = first.merged_with(second);
+    assert_eq!(merged.enqueued, 3);
+    assert_eq!(merged.early_stop_canceled, 3);
+    // The later pass's view of the limit and of what was in flight wins.
+    assert_eq!(merged.in_flight, Some(5));
+    assert_eq!(merged.in_flight_limit, InFlightLimit::Unbounded);
+    assert_eq!(merged.skipped, None);
+}
+
+#[test]
+fn a_cell_holds_the_first_runs_to_land_up_to_its_target_and_reads_no_further() {
+    let c = case("carom");
+    let m = member(combo("opus"));
+    let key = cell_key(&c, &m);
+    let mut ctx = empty_ctx();
+    // Four counted runs, every one unreviewed, and two more of the cell in flight elsewhere,
+    // one of them held back by the queue.
+    ctx.runs.insert(key.clone(), landed(4, 4));
+    ctx.in_flight.insert(key.clone(), 2);
+    ctx.pending.insert(key, 1);
+
+    let cell = ctx.cell(3, &c, &m, false);
+    assert_eq!(cell.run_ids, vec!["r0", "r1", "r2"]);
+    assert_eq!((cell.counted, cell.desired), (3, 3));
+    assert!(cell.filled);
+    // Nothing in flight is wanted by a filled cell, so none is shown: it reads 3/3, never 5/3.
+    assert_eq!(cell.in_flight, 0);
+    assert_eq!(cell.pending, 0);
+    assert_eq!(cell.remaining, 0);
+    // The fourth run is not the plan's, so it is not waiting on its reviewer either.
+    assert_eq!(cell.unreviewed, 3);
+
+    // Raising the target takes in the next run in landing order, and the job in flight
+    // fills the room left.
+    let raised = ctx.cell(5, &c, &m, false);
+    assert_eq!(raised.run_ids, vec!["r0", "r1", "r2", "r3"]);
+    assert_eq!(raised.counted, 4);
+    assert_eq!(raised.in_flight, 1);
+    assert_eq!(raised.pending, 1);
+    assert_eq!(raised.unreviewed, 4);
+    assert_eq!(raised.remaining, 0);
+}
+
+#[test]
+fn a_plan_of_overfilled_cells_rolls_up_and_queues_only_its_own_runs() {
+    let cases = vec![case("pong"), case("carom")];
+    let combos = members(vec![combo("opus"), combo("sonnet")]);
+    let mut ctx = empty_ctx();
+    // Four cells of three; carom has two extras on one cell and pong one on each.
+    for (case, member, runs) in [
+        (&cases[0], &combos[0], 4),
+        (&cases[0], &combos[1], 4),
+        (&cases[1], &combos[0], 5),
+        (&cases[1], &combos[1], 3),
+    ] {
+        ctx.runs.insert(cell_key(case, member), landed(runs, runs));
+    }
+
+    let roll = ctx.tally(3, &combos, &cases, &HashSet::new());
+    assert_eq!((roll.cells_filled, roll.cells_total), (4, 4));
+    assert_eq!((roll.runs_done, roll.runs_total), (12, 12));
+    assert_eq!(roll.runs_unreviewed, 12);
+    assert_eq!(roll.runs_missing, 0);
+
+    let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
+    let queue = plan_queue_of(&ctx, 3, &ordered);
+    assert_eq!(queue.runs.len(), 12);
+    assert!(!queue.truncated);
+    assert!(
+        queue
+            .runs
+            .iter()
+            .all(|run| ["r0", "r1", "r2"].contains(&run.run_id.as_str()))
+    );
+    // In the plan's order, each cell's runs oldest first.
+    assert_eq!(
+        queue.runs[..3]
+            .iter()
+            .map(|run| (run.slug.as_str(), run.run_id.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("pong", "r0"), ("pong", "r1"), ("pong", "r2")]
+    );
+    // A raised target queues the run it takes in.
+    assert_eq!(plan_queue_of(&ctx, 4, &ordered).runs.len(), 15);
 }

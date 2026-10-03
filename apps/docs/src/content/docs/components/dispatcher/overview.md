@@ -17,8 +17,9 @@ The dispatcher runs one loop forever. Each tick:
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
    non-terminal ones as the in-flight total, report any driver-pod death the
-   driver itself could not, and reap the sandbox pods a dead driver orphaned
-   (see [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
+   driver itself could not, report any job whose driver is
+   [lost](#lost-drivers), and reap the sandbox pods a dead driver orphaned (see
+   [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
    than from an in-memory tally is what makes a restart safe.
 2. Admit while the in-flight total is under `TCAB_DISPATCHER_MAX_INFLIGHT`:
    claim the oldest queued run job (`POST /jobs/next`) and create one driver
@@ -74,12 +75,12 @@ the same choice between advancing every climber one rung and taking one climber
 as far as it gets. Both settings are purely a decision about the order cells are
 handed to `POST /jobs/batch`, and the dispatcher behaves identically either way.
 
-A plan or ladder keeps a [review
-buffer](/components/backend/coverage/#the-review-buffer) of outstanding runs and
-refills it as they are reviewed, so the queue this dispatcher drains is normally
-a short, deliberately ordered slice rather than an entire sweep. The buffer is
-bounded by default; an unbounded buffer enqueues every missing cell at once, and
-the queue then holds the whole sweep.
+A plan or a ladder keeps at most its [runs-in-flight
+limit](/components/backend/coverage/#the-runs-in-flight-limit) of its own jobs in
+flight and launches more as they finish, so the queue this dispatcher drains is
+normally a short, deliberately ordered slice from each rather than an entire
+sweep. The limit is bounded by default; an unbounded limit enqueues every missing
+cell at once, and the queue then holds the whole sweep.
 
 Ordering governs when a run starts rather than when it finishes. Runs execute
 concurrently up to the in-flight cap and the per-harness limit, so a slow early
@@ -119,7 +120,35 @@ owned `Job` that failed terminally, the dispatcher checks the backend job's
 state and, while it is still live, reports the failure with the dead pod's logs
 as the detail (`POST /jobs/{id}/status`), presenting the per-job token it
 retained at dispatch. Each job is reported once. A token lost across a restart
-leaves that job to its own driver's reporting.
+leaves that job to [lost-driver detection](#lost-drivers).
+
+## Lost drivers
+
+The backend believes a driver is executing every job it holds as `dispatched`,
+`starting`, or `running`. That belief outlives the driver when nobody is left to
+report its death:
+
+- the whole machine restarted, taking every driver pod and the dispatcher down
+  together (a local cluster after a host or Docker restart);
+- a driver `Job` failed while no dispatcher held its token;
+- a driver exited after its final report failed to reach the backend;
+- a claim whose `Job` was never created.
+
+Each tick, the dispatcher reads the backend's jobs in flight (`GET /jobs/active`)
+and then lists its `Job`s. A driven job with no `Active` driver `Job` is missing.
+A job missing for two minutes without a break is lost, and the dispatcher
+reports it with `POST /jobs/{id}/lost`. That call uses the service token, so it
+needs no per-job token a restart could have lost. The detail names what the
+cluster shows: the dead pod's reason, a driver that exited without its report
+landing, or a `Job` that no longer exists.
+
+The backend fails a lost job exactly as it would a driver's own `failed` report.
+The automatic retry and the coverage feed both apply. It ignores the report for
+a job that is no longer driven, so a report racing the driver's own is harmless.
+
+The grace period covers the gap between a claim and its `Job` appearing, and the
+gap between a driver's last report and its `Job` completing. The clock is held in
+memory, so a dispatcher restart starts it again.
 
 A publisher that dies surfaces as a stuck `dispatched` publish job or is reaped
 by its TTL.

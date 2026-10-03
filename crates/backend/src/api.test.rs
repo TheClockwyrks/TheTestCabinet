@@ -348,10 +348,10 @@ fn user_request(method: &str, uri: &str, body: serde_json::Value) -> Request<Bod
 }
 
 #[tokio::test]
-async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan() {
+async fn an_unbounded_account_limit_is_stored_as_itself_and_inherited_by_a_plan() {
     // The whole chain a reviewer exercises when they switch "No limit" on in their
     // settings: the PUT stores the shape, the GET reads it back as a choice, and a
-    // plan with no override of its own reports it as the target in force.
+    // plan with no override of its own reports it as the limit in force.
     let harness = harness().await;
     let unbounded = serde_json::json!({ "kind": "unbounded" });
 
@@ -360,12 +360,12 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
         user_request(
             "PUT",
             "/coverage-settings",
-            serde_json::json!({ "bufferTarget": unbounded }),
+            serde_json::json!({ "inFlightLimit": unbounded }),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["bufferTarget"], unbounded);
+    assert_eq!(body["inFlightLimit"], unbounded);
     assert_eq!(body["isDefault"], serde_json::Value::Bool(false));
 
     let (status, body) = call(
@@ -374,7 +374,7 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["bufferTarget"], unbounded);
+    assert_eq!(body["inFlightLimit"], unbounded);
     assert_eq!(body["isDefault"], serde_json::Value::Bool(false));
 
     let (status, body) = call(
@@ -409,7 +409,7 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["bufferTarget"], unbounded);
+    assert_eq!(body["inFlightLimit"], unbounded);
 
     // A bound written afterwards replaces it, clamped to the ceiling, and a bound of
     // zero is kept as the bound it is.
@@ -418,13 +418,13 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
         user_request(
             "PUT",
             "/coverage-settings",
-            serde_json::json!({ "bufferTarget": { "kind": "bounded", "runs": 9999 } }),
+            serde_json::json!({ "inFlightLimit": { "kind": "bounded", "runs": 9999 } }),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
-        body["bufferTarget"],
+        body["inFlightLimit"],
         serde_json::json!({ "kind": "bounded", "runs": 500 })
     );
     let (status, body) = call(
@@ -432,13 +432,13 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
         user_request(
             "PUT",
             "/coverage-settings",
-            serde_json::json!({ "bufferTarget": { "kind": "bounded", "runs": 0 } }),
+            serde_json::json!({ "inFlightLimit": { "kind": "bounded", "runs": 0 } }),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
-        body["bufferTarget"],
+        body["inFlightLimit"],
         serde_json::json!({ "kind": "bounded", "runs": 0 })
     );
 }
@@ -637,4 +637,62 @@ async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
         body["refusal"],
         test_cabinet_core::pricing::CandidateRefusal::AllBanned.to_string()
     );
+}
+
+#[tokio::test]
+async fn ladders_and_plans_serve_run_stop_and_fill_and_none_of_the_retired_controls() {
+    // A ladder's verdicts are the gate's alone and it launches only between Run and its
+    // end; a plan launches only while filling. So neither the hand override, nor a
+    // top-up, a schedule, a pause or a ladder halt is served any more.
+    let harness = harness().await;
+    let request = |method: &str, uri: &str| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(
+                axum::http::header::AUTHORIZATION,
+                format!("Bearer {USER_TOKEN}"),
+            )
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                r#"{"combination":{"harness":"claude","model":"m"},"case":{"slug":"pong","version":"v1.0.0","variant":"base"},"rungId":"r","outcome":"passed"}"#,
+            ))
+            .unwrap()
+    };
+    for (method, gone) in [
+        ("POST", "/ladders/l1/outcomes"),
+        ("POST", "/ladders/l1/topup"),
+        ("POST", "/ladders/l1/pause"),
+        ("POST", "/ladders/l1/halt"),
+        ("POST", "/ladders/l1/halt-all"),
+        ("POST", "/ladders/l1/climbers"),
+        ("GET", "/ladders/l1/schedule"),
+        ("POST", "/coverage-plans/p1/topup"),
+        ("POST", "/coverage-plans/p1/pause"),
+        ("GET", "/coverage-plans/p1/schedule"),
+    ] {
+        let (status, body) = call(&harness.router, request(method, gone)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {gone}");
+        assert_eq!(
+            body,
+            serde_json::Value::Null,
+            "{method} {gone} matched no route"
+        );
+    }
+    // The routes that replace them exist: each answers its handler's own 404 for a ladder
+    // or plan the caller does not have, with a message, rather than the router's empty one.
+    for served in [
+        "/ladders/l1/run",
+        "/ladders/l1/stop",
+        "/ladders/l1/climbers/retry",
+        "/coverage-plans/p1/fill",
+        "/coverage-plans/p1/cells/retry",
+    ] {
+        let (status, body) = call(&harness.router, request("POST", served)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{served}");
+        assert_ne!(body, serde_json::Value::Null, "{served} is served");
+    }
+    let (status, body) = call(&harness.router, request("GET", "/ladders/summary")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, serde_json::json!([]));
 }

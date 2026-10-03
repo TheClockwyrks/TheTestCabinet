@@ -71,6 +71,7 @@ fn input(slug: &str) -> ModelConfigInput {
         list_price_cached_input_per_mtok: None,
         list_price_output_per_mtok: None,
         list_price_as_of: None,
+        quantization_filter: None,
         native_quantization: None,
         max_input_price: None,
         max_output_price: None,
@@ -105,6 +106,7 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             description_md: None,
             openrouter_slug: aliases.first().map(|a| a.to_string()),
             provider_pin: None,
+            quantization_filter: true,
             native_quantization: None,
             max_input_price: None,
             max_output_price: None,
@@ -654,11 +656,11 @@ async fn write_config_preserves_the_stored_list_price_when_absent() {
     assert_eq!(stored.config.list_price_source, None);
 }
 
-/// A top-up refuses a harness member whose model carries no list price before the
+/// A launch pass refuses a harness member whose model carries no list price before the
 /// scheduler spends buffer on it, and names the reason; a priced member stays
 /// launchable.
 #[tokio::test]
-async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_top_up() {
+async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_launch_pass() {
     let (_dir, state) = test_state().await;
     state
         .db
@@ -709,11 +711,11 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
     test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
 }
 
-/// A top-up fills a harness member's missing list price from OpenRouter when it resolves
+/// A launch pass fills a harness member's missing list price from OpenRouter when it resolves
 /// the member, so the member launches and its entry carries the filled price for the
 /// per-cell stamp to read.
 #[tokio::test]
-async fn a_harness_members_missing_list_price_is_filled_before_the_top_up() {
+async fn a_harness_members_missing_list_price_is_filled_before_the_launch_pass() {
     let prices = endpoints_listing(serde_json::json!([{
         "provider_name": "Anthropic",
         "pricing": {

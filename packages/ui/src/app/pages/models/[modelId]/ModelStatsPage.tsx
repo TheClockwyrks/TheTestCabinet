@@ -416,13 +416,20 @@ function CandidateList({
   );
 }
 
-// One line naming what the list was filtered by: the native level, the
-// developer provider, and the catalog entry's own settings where it has any.
+// One line naming what the list was filtered by: the native level, or the
+// quantization filter being off, then the developer provider and the catalog
+// entry's own settings where it has any.
 function policySummary(model: ModelSummary, list: ModelCandidates): string {
   const parts = [
-    `Native quantization ${list.nativeQuantization ?? "unknown"}${
-      model.nativeQuantization ? " (set by hand)" : ""
-    }`,
+    model.quantizationFilter
+      ? `Native quantization ${list.nativeQuantization ?? "unknown"}${
+          model.nativeQuantization ? " (set by hand)" : ""
+        }`
+      : `Quantization filter off (set by hand)${
+          list.nativeQuantization
+            ? `, the listing's highest level being ${list.nativeQuantization}`
+            : ""
+        }`,
   ];
   if (model.providerPin) {
     parts.push(

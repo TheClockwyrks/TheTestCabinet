@@ -14,6 +14,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import { SettingRow } from "../../components/SettingRow";
 import { HelpTip } from "../../components/HelpTip";
+import { Switch } from "../../components/Switch";
 import { ModelLogoPicker } from "../../components/ModelLogoPicker";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -150,6 +151,7 @@ export function ModelConfigPage() {
   const [providerPin, setProviderPin] = useState("");
   // The provider policy a gg run's candidate list is filtered by. The prices are
   // kept as typed and parsed on save; the provider lists are one name per line.
+  const [quantizationFilter, setQuantizationFilter] = useState(true);
   const [nativeQuantization, setNativeQuantization] = useState("");
   const [maxInputPrice, setMaxInputPrice] = useState("");
   const [maxOutputPrice, setMaxOutputPrice] = useState("");
@@ -199,6 +201,7 @@ export function ModelConfigPage() {
     setProviderPin(
       existing.providerPinSetByHand ? (existing.providerPin ?? "") : "",
     );
+    setQuantizationFilter(existing.quantizationFilter);
     setNativeQuantization(existing.nativeQuantization ?? "");
     setMaxInputPrice(
       existing.maxInputPrice != null ? String(existing.maxInputPrice) : "",
@@ -409,6 +412,7 @@ export function ModelConfigPage() {
       aliases: cleanAliases,
       openrouterSlug: openrouterSlug.trim() || null,
       providerPin: providerPin.trim() || null,
+      quantizationFilter,
       nativeQuantization: nativeQuantization.trim().toLowerCase() || null,
       maxInputPrice: ceiling.input,
       maxOutputPrice: ceiling.output,
@@ -735,8 +739,24 @@ export function ModelConfigPage() {
           </SettingRow>
 
           <SettingRow
+            label="Quantization filter"
+            description="Keeps the providers serving the model at its native level."
+            help="Switch it off for a model whose precision no provider discloses, as a closed model's is: every endpoint then passes at whatever level it declares, unknown included. The price, cache-read, parameter and ban filters still apply."
+            modified={!quantizationFilter}
+            onReset={() => setQuantizationFilter(true)}
+          >
+            {(id) => (
+              <Switch
+                id={id}
+                checked={quantizationFilter}
+                onChange={setQuantizationFilter}
+              />
+            )}
+          </SettingRow>
+
+          <SettingRow
             label="Native quantization"
-            description="The level every provider must serve the model at."
+            description="The level every provider must serve the model at while the filter is on."
             help="Blank takes the highest level any endpoint declares."
           >
             {(id) => (
@@ -747,6 +767,7 @@ export function ModelConfigPage() {
                   onChange={(e) => setNativeQuantization(e.target.value)}
                   placeholder="e.g. fp8"
                   list="model-quantization-levels"
+                  disabled={!quantizationFilter}
                 />
                 <datalist id="model-quantization-levels">
                   {QUANTIZATION_LEVELS.map((level) => (

@@ -512,6 +512,28 @@ fn run_state_publishability() {
 }
 
 #[test]
+fn only_the_models_own_results_count_toward_a_cell() {
+    let counted: Vec<RunState> = RunState::ALL
+        .into_iter()
+        .filter(|state| state.counts_as_model_result())
+        .collect();
+    assert_eq!(
+        counted,
+        vec![
+            RunState::Completed,
+            RunState::Catastrophic,
+            RunState::TimedOut,
+            RunState::LimitExceeded,
+            RunState::Hung,
+        ]
+    );
+    // A harness error is the harness's or the provider's fault: infrastructure-class.
+    assert!(!RunState::HarnessError.counts_as_model_result());
+    assert!(!RunState::Infrastructure.counts_as_model_result());
+    assert!(!RunState::Canceled.counts_as_model_result());
+}
+
+#[test]
 fn only_a_loadable_build_is_playable() {
     // The distinction the Play tab hangs off: a completed run built, loaded, and
     // served — however badly it validated — so it has a build to host. A catastrophic

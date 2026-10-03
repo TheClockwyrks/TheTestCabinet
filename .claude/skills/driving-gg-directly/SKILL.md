@@ -1,10 +1,6 @@
 ---
-name: driving-gg-directly description: Read this skill before running gg outside The Test
-Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg
-against a tasks/ file". gg is normally launched by core inside a run container; this is
-the recipe for launching the bare binary from a dev box with a hand-written invocation, in
-responses-as-code or tool-calling mode, and reading its telemetry. Verified in the
-devcontainer on 2026-09-22.
+name: driving-gg-directly
+description: Read this skill before running gg outside The Test Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg against a tasks/ file". gg is normally launched by core inside a run container; this is the recipe for launching the bare binary from a dev box with a hand-written invocation, in responses-as-code or tool-calling mode, and reading its telemetry. Verified in the devcontainer on 2026-09-22.
 ---
 
 # Driving gg directly
@@ -24,9 +20,10 @@ through them, not a replacement.
 
 1. **Build.** `cargo build -p test-cabinet-gg` (about a minute when the arm
    artifacts are cached; the first build on a fresh machine reflects eleven
-   toolchains and takes much longer, and waits for the container's background
-   provisioning: with no `~/.cache/tcab-devcontainer-setup.done` marker and no
-   provisioner running, run `bash scripts/devcontainer-setup.sh` first). The
+   toolchains and takes much longer. The dev container's image carries every
+   toolchain; a container built before a pin moved catches up with
+   `scripts/ci/install-gg-toolchains.sh` and
+   `scripts/ci/install-gg-build-toolchains.sh`, both idempotent). The
    binary lands in the target directory cargo builds into: `target/debug/gg` on
    a Linux host, `~/.cache/cargo-target/the-test-cabinet/debug/gg` on a
    virtiofs host such as macOS Podman. `/cargo-target/the-test-cabinet` links to

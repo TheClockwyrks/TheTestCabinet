@@ -2,12 +2,12 @@
 title: Coverage Plans
 ---
 
-A **coverage plan** is a reviewer's standing declaration of the runs they want to
+A **coverage plan** is an account's standing declaration of the runs it wants to
 exist: a set of [pinned cases](#pinned-cases) crossed with a set of
 [combinations](#combinations), plus a target number of runs for each
 `case × combination` **cell**. The backend expands that declaration into a
-matrix, counts what already exists against it, and enqueues the runs that are
-still missing when asked.
+matrix, counts what already exists against it, and launches the missing runs
+when its owner asks it to [fill](#filling-a-plan) the plan.
 
 Plans are per [account](/components/backend/overview/#authentication) and an
 account may hold many. Their members are normally pointers to reusable **coverage
@@ -18,23 +18,26 @@ unioned.
 
 A plan answers "have I run this yet?". Its sibling, the
 [ladder](/components/backend/ladders/), answers "how far does this model get?"
-using the same buffer, counting rules, and halting controls applied to an ordered
-series of cases. Everything below about counting, buffering, and halting is
-shared by both.
+using the same counting rules, the same runs-in-flight limit, and the same launch
+algorithm applied to an ordered series of cases. This page specifies everything
+the two share; the ladder page covers only the difference.
 
-## Counts are global, judgement is yours
+## Counts are global, reviews are labels
 
-**Run and job counts are global.** A cell's `completed` and `inFlight` count every
-run of that exact cell, whoever launched it and for whatever reason. A run someone
-else produced satisfies the target and is never re-requested. A plan observes runs
-rather than owning them.
+A cell is filled by runs of that exact cell, whoever launched them and for
+whatever reason. A run someone else produced satisfies the target and is never
+re-requested. A plan observes runs rather than owning them, and it takes only as
+many as its target asks for (see [a cell's runs](#a-cells-runs)).
 
-**Judgement is per account.** "Unreviewed" means there is no
-[review](/components/core/results/#reviews) row for the requesting account, and
-every gate and buffer decision reads only that account's own review. A run's
-stored `rating` is the worst domain across every reviewer, so a plan or ladder
-must never read it. Two reviewers pointed at the same cabinet therefore share its
-runs and keep separate worklists.
+The validation scripts are assumed correct, so a run's result is known the moment
+it finishes. Reviews never gate, meter, or trigger the launching of runs on a plan
+or a ladder. A review stays an optional label: an aesthetic rating, a writeup, or
+checklist overrides. Publishing still reads reviews as described in
+[Results](/components/core/results/).
+
+"Unreviewed" means there is no [review](/components/core/results/#reviews) row
+for the requesting account, so two reviewers pointed at the same cabinet share its
+runs and keep separate review queues.
 
 ## Pinned cases
 
@@ -69,9 +72,9 @@ The two shapes sit side by side in one plan, in one ladder, and in one
 third-party harness and the same case under a gg configuration are two cells,
 each counted on its own and each asking for `runsPerCell` runs.
 
-A gg combination is fed by the same top-up as everything else. The top-up
-resolves the configuration as the account saved it, binds its launch slots to the
-models the member names, and enqueues a gg run carrying that capability set.
+A gg combination is launched like everything else. The launch pass resolves the
+configuration as the account saved it at that moment, binds its launch slots to
+the models the member names, and enqueues a gg run carrying that capability set.
 
 ### What identifies a gg cell
 
@@ -82,7 +85,7 @@ The id is the identity because an operator renames a configuration freely and tw
 of an account's configurations may carry one name. A
 [ladder's climber key](/components/backend/ladders/#climbers) names a
 configuration by its id as well, so a member, the cell counted for it, and the
-climber that carries its verdicts all resolve to the same configuration. The name
+climber that carries its results all resolve to the same configuration. The name
 is what a run records, and it is what the run log and the
 [query language](/gg/analysis/query-language/) slice by.
 
@@ -99,13 +102,88 @@ account that cannot resolve it would satisfy a cell of somebody else's plan.
 
 A gg member stops being launchable when the configuration it names has been
 deleted, when it leaves a launch slot unbound, or when it binds a model the
-catalog can resolve no context window for. The matrix reports the reason on the
-cell, and a top-up skips that cell and says so, leaving the rest of the plan
-being fed.
+catalog can resolve no context window for. A harness member stops being
+launchable when the catalog can resolve no
+[list price](/components/core/metrics/#cost) for its model, and so does a gg
+member binding such a model.
 
-A top-up likewise skips a harness member whose model the catalog cannot
-resolve a [list price](/components/core/metrics/#cost) for, and a gg member
-binding such a model, reporting the reason.
+The matrix reports the reason on the cell as `unlaunchable`, and a launch pass
+skips that cell and reports it, leaving the rest of the plan being filled.
+
+## Which runs count
+
+One rule decides which finished runs count toward a cell, on a plan and on a
+ladder alike. A run that counts fills one of its cell's target runs, and on a
+ladder it is evidence for the rung's gate.
+
+| run state                                             | class          | counts | on a ladder's gate   |
+| ----------------------------------------------------- | -------------- | ------ | -------------------- |
+| `completed`                                           | model result   | yes    | its validator rating |
+| `catastrophic`, `timed_out`, `limit_exceeded`, `hung` | model result   | yes    | a `broken` run       |
+| `harness_error`, `infrastructure`                     | infrastructure | no     | never read           |
+| `canceled`                                            | stopped        | no     | never read           |
+
+A run of the model's own failure counts because the model had its attempt and
+produced nothing that works. Leaving it out would have the cell relaunched for as
+long as the model keeps failing it. A harness error is the harness's or the
+provider's fault rather than the model's, so it counts no more than an
+infrastructure failure does.
+
+The backend retries a run that ends `infrastructure`, `catastrophic`,
+`harness_error`, or `hung` automatically, up to the launch's `retryCount`. The
+job records its retry in `job.retried_by`, and the run of a retried attempt never
+counts: the attempt and its retry count once, as whatever the last attempt
+became. The retry is enqueued, and the attempt stamped, before the attempt's run
+is stored, so no launch pass ever sees that run without the stamp.
+
+### A cell's runs
+
+A plan cell's runs are the first `runsPerCell` counted runs of the cell to land,
+ordered by when each run finished, with the run id breaking a tie. A counted run
+beyond that number is not the plan's. It stays an ordinary run everywhere else,
+and nothing on the plan counts it, shows it, or queues it for review.
+
+Taking the first to finish keeps a filled cell's runs stable: a run that
+finishes later never changes which runs the cell holds. The order is by finish
+time rather than by when the backend stored the run, so a run whose record
+reaches the backend late, after a run that finished after it, takes its place
+ahead of that run, and the cell's latest run drops out. A run that does not count,
+such as an infrastructure failure, takes no place in the order, so the next
+counted run takes the place instead. Raising `runsPerCell` takes in the next runs
+in the same order, and lowering it lets go of the latest.
+
+A run whose stored record this build can no longer decode still counts and keeps
+its place, since it is the model's result all the same, and dropping it would
+relaunch the cell. It cannot be opened, though, so it is never in the
+[review queue](#the-scoped-review-queue) or in a cell's `unreviewed`, and
+[the plan's runs](#the-plans-runs) leave it out, so the run breakdowns can total
+fewer runs than the matrix counts.
+
+A cell's jobs in flight are shown only while the cell still needs them, up to its
+target less its runs. A cell holding its target shows none, so a cell never
+reads more runs than its target. The jobs still occupy the limit of the plan or
+ladder whose [origin](#attribution-which-plan-or-ladder-launched-a-run) they
+carry, because the limit counts what that plan or ladder launched.
+
+Every figure a plan reports is computed over the plan's runs: the matrix and its
+roll-ups, the summary, the [review queue](#the-scoped-review-queue), and the run
+breakdowns on the console's dashboard, which read
+[the plan's runs](#the-plans-runs). A ladder dispatch counts only the runs it
+launched, so a ladder has no runs beyond its own to leave out.
+
+### A blocked cell
+
+A cell whose runs keep failing on infrastructure would otherwise be relaunched by
+every failure. When a cell's three most recent terminal jobs all failed with no
+run that counts, the cell is **blocked**: every launch pass skips it and reports
+it, and the console shows it blocked with a Retry action. A canceled job breaks
+the streak.
+
+Retrying a blocked cell records the retry. Only jobs that ended after it count
+toward the streak, so the cell is launched again, and three more failures block
+it again. On a plan the streak is read over every job of the cell, matching the
+global counts. On a ladder it is read over the dispatch's own jobs of that rung
+and climber (see [a blocked climber](/components/backend/ladders/#a-blocked-climber)).
 
 ## The matrix
 
@@ -115,22 +193,25 @@ the cases with the combinations, and returns one cell per pair:
 | field                     | meaning                                                          |
 | ------------------------- | ---------------------------------------------------------------- |
 | `desired`                 | the target, from the plan's `runsPerCell`                        |
-| `completed`               | completed runs of the cell, counted globally                     |
-| `inFlight`                | jobs queued, pending, dispatched, starting, or running, globally |
+| `runIds`                  | the [cell's runs](#a-cells-runs), in the order they finished     |
+| `counted`                 | how many runs the cell holds, at most `desired`                  |
+| `inFlight`                | jobs of the cell in flight globally, at most `desired - counted` |
 | `pending`                 | the subset of `inFlight` the queue is deliberately holding back  |
-| `unreviewed`              | completed runs you have not reviewed                             |
-| `remaining`               | `max(0, desired - (completed + inFlight))`                       |
+| `unreviewed`              | the cell's completed runs you have not reviewed                  |
+| `remaining`               | `desired - (counted + inFlight)`                                 |
+| `filled`                  | whether `counted` has reached `desired`                          |
+| `blocked`                 | whether the cell is [blocked](#a-blocked-cell)                   |
 | `latestVersion` / `stale` | whether a newer version of the case has been ingested            |
-| `unlaunchable`            | why a top-up cannot launch this cell, or null                    |
+| `unlaunchable`            | why no launch pass can launch this cell, or null                 |
 
 `pending` is a subset of `inFlight` rather than an addition to it, and is
-surfaced separately so that a full buffer with nothing running is
+surfaced separately so that a plan at its limit with nothing running is
 distinguishable from a wedged dispatcher. A job sits `pending` when its harness
 is at its [parallelism cap](/components/core/harnesses/#per-harness-configuration),
 or when it is a [game jam](/testing/game-jam/overview/#repeat-runs) run of a model
 that already has a jam run in flight.
 
-`inFlight` is counted by the same identity as `completed`. A job records its case
+`inFlight` is counted by the same identity as `counted`. A job records its case
 pin's engine beside its harness and its model when it is enqueued, so the
 in-flight count is one grouped query over the job table.
 
@@ -140,14 +221,31 @@ specification whose runs are not comparable, and a run on another engine was
 built against another runtime. `stale` flags that a newer version exists without
 moving the target. A run recorded with no engine counts as a `none` run.
 
+The matrix also reports the plan's roll-ups: cells filled, cells total, runs
+done (the sum of every cell's `counted`), runs total, runs in flight against the
+plan's limit, runs pending, runs unreviewed, and cells blocked. Runs in flight
+against the limit are the plan's own jobs, which the limit counts until they
+finish. It is the one figure that can include runs beyond the plan's: a job
+whose cell other runs filled in the meantime is still in flight against the
+limit, though its run will not be one of the cell's runs, so the figure can
+exceed the sum of the cells' `inFlight`, and the console says so beside it.
+
+### The plan's runs
+
+`GET /coverage-plans/{id}/runs` returns the summary card of every run the plan's
+cells hold, in the matrix's cell order and in landing order within a cell. It is
+what the console's run breakdowns are computed from, so they describe exactly the
+runs the matrix counts, less any run this build can no longer decode (see
+[a cell's runs](#a-cells-runs)).
+
 ## Emission order is execution order
 
 Each job takes a monotonic `queue_seq` when it is inserted, and the
 [dispatcher](/components/dispatcher/overview/#queue-order) claims strictly in
 ascending order, passing over only a job whose harness is at its cap. The
-sequence in which a top-up emits cells is therefore the sequence in which the
-runs start, and nothing in the dispatcher, the driver, or the queue needs to know
-a plan exists.
+sequence in which a launch pass emits cells is therefore the sequence in which
+the runs start, and nothing in the dispatcher, the driver, or the queue needs to
+know a plan exists.
 
 `outerAxis` chooses that sequence:
 
@@ -158,102 +256,97 @@ a plan exists.
 
 Within a cell the repeats are always emitted together.
 
-## The review buffer
+## The runs-in-flight limit
 
-By default a plan holds a bounded **review buffer** rather than firing every
-missing run at once: keep _N_ runs outstanding, and refill as they are reviewed.
-The first review is usually what reveals a plan was wrong, so spending the whole
-budget before a single run has been looked at is wasteful.
+A plan or a ladder never fires its whole shortfall at once by default. It keeps
+at most _N_ of its own jobs in flight, so it shares the global FIFO queue fairly
+with everything else waiting on it. Its own jobs in flight are the jobs whose
+[origin](#attribution-which-plan-or-ladder-launched-a-run) names it and whose
+state is `queued`, `pending`, `dispatched`, `starting`, or `running`. Completed
+runs never occupy the limit, reviewed or not.
 
-**Outstanding** is what the reviewer still owes attention to, across the plan's
-cells:
-
-```text
-outstanding = in-flight jobs + completed runs the requesting account has not reviewed
-```
-
-This is the one place the [per-account](#counts-are-global-judgement-is-yours)
-number enters the arithmetic. It never changes what a cell needs, only whether
-the plan is allowed to ask for more right now.
-
-### The buffer target
-
-How much work a reviewer wants waiting on them is a property of the account:
-`GET`/`PUT /coverage-settings` holds a single `bufferTarget`, defaulting to a
-bound of ten runs. A plan or a ladder may override it.
-
-A buffer target is a tagged shape rather than a bare number:
+The account's default is held by `GET`/`PUT /coverage-settings` as
+`inFlightLimit`, a bound of ten runs until the account chooses one. A plan or a
+ladder may override it. The limit is a tagged shape rather than a bare number:
 
 ```json
 { "kind": "bounded", "runs": 10 }
 { "kind": "unbounded" }
 ```
 
-A **bounded** target stops a top-up once that many runs are outstanding, and its
-bound is clamped to a ceiling of 500 runs. An **unbounded** target switches the
-reviewer-backlog check off; the per-cell target, the harness parallelism
-preference, and a ladder's gate still apply.
+A **bounded** limit stops a launch pass once that many of the plan's or ladder's
+jobs are in flight, and its bound is clamped to a ceiling of 500 runs. An
+**unbounded** limit launches every missing cell in one pass, and the per-cell
+target and the harness parallelism preference still apply. A bound of `0`
+launches nothing.
 
-The override is nullable, and null is not zero. Null means "inherit the account's
-setting", a bound of `0` means "never top this up automatically", and unbounded
-means "top up everything". Each is a distinct instruction.
+The override is nullable, and null is not zero. Null inherits the account's
+setting, a bound of `0` launches nothing, and unbounded launches everything. Each
+is a distinct instruction.
 
-### Topping up
+## Filling a plan
 
-Top-up is a server endpoint rather than a background daemon. A plan enqueues when
-a top-up is requested and, with `autoTopUp` on, when it is opened and when a
-review is submitted.
+A plan launches nothing until its owner asks it to fill. Filling is a state of
+the plan that survives a backend restart:
 
-A [ladder](/components/backend/ladders/#a-ladder-starts-disabled) is fed by the
-same endpoint at different moments: it is created disabled, opening it enqueues
-nothing, and enabling it starts the climb.
+1. The owner presses All missing (`POST /coverage-plans/{id}/fill`). The plan
+   starts filling, and the backend runs a launch pass that queues missing runs up
+   to the plan's limit. Pressing it again while the plan fills runs another pass.
+2. Each of the plan's runs finishes. The backend runs another launch pass, which
+   launches more missing runs into the room the finished run left.
+3. A cell whose runs keep failing on infrastructure becomes
+   [blocked](#a-blocked-cell). Launch passes skip it until its owner retries it.
+4. Filling ends by itself once every launchable cell is filled. Halt and halt all
+   end it at once.
+
+A plan that is filling stays filling while a blocked cell remains, so a Retry
+relaunches that cell under the limit.
+
+A write to a filling plan's declaration or limit runs a launch pass, so a cell
+the edit added is filled too. Raising runs per cell is how a plan gathers more
+evidence; a plan has no re-run.
+
+### A launch pass
 
 The algorithm is the same for plans and ladders:
 
-1. Walk the cells in the plan's configured
+1. Walk the cells in the configured
    [outer-axis order](#emission-order-is-execution-order).
-2. Skip any cell already at its per-cell target, counted globally.
+2. Skip any cell already at its target, counting `counted + inFlight`.
 3. Skip any cell whose combination
-   [cannot be launched](#a-member-that-cannot-be-launched), reporting the reason.
+   [cannot be launched](#a-member-that-cannot-be-launched), and any
+   [blocked](#a-blocked-cell) cell, reporting each.
 4. Defer any cell whose harness is already at its
    [parallelism cap](#harness-parallelism-comes-first).
-5. Emit whole cells, all of a cell's missing repeats together, until
-   `outstanding` reaches the buffer target. An unbounded target is never
+5. Emit whole cells, all of a cell's missing repeats together, until the plan's
+   or ladder's jobs in flight reach its limit. An unbounded limit is never
    reached, so every missing cell is emitted in one pass.
-6. Walk the deferred cells, in the same order, until the buffer target is
-   reached.
+6. Walk the deferred cells, in the same order, until the limit is reached.
 
-Step 5 overshoots the buffer target by up to one cell, on purpose. A cell's
-repeats are the unit of judgement, so the check happens at the boundary between
-cells rather than inside one.
+Step 5 overshoots the limit by up to one cell, on purpose. A cell's repeats are
+compared against each other, so the check happens at the boundary between cells
+rather than inside one.
 
-Every run a top-up enqueues carries its cell's whole pin: the slug, the version,
-the variant, and the engine. Both combination shapes carry it, so a gg cell's
-runs are built on the cell's engine exactly as a harness cell's are.
+Every run a launch pass enqueues carries its cell's whole pin: the slug, the
+version, the variant, and the engine. Both combination shapes carry it, so a gg
+cell's runs are built on the cell's engine exactly as a harness cell's are.
 
-`POST /coverage-plans/{id}/topup` reports the buffer target in force, the
-occupancy it observed, the cells it launched in emission order with their job
-ids, the cells it could not launch with why, or a `skipped` reason. A top-up that
-ran and enqueued nothing reports `skipped: null` with `enqueued: 0`, which is
-distinct from one that never ran because the plan was `paused` or because another
-top-up held the claim.
+A launch pass reports the limit in force, the jobs in flight it observed, the
+cells it launched in emission order with their job ids, and the cells it could
+not launch with why.
 
 ### Harness parallelism comes first
 
 The queue will not start a run whose harness is already at its
 [maximum parallelism](/components/core/harnesses/#per-harness-configuration), so
-a walk that ignored the cap would hand the whole buffer to the first harness it
+a walk that ignored the cap would hand the whole limit to the first harness it
 met and leave every other harness in the plan idle.
 
 The walk therefore prefers cells that can actually start. A cell whose harness
 has no free slot is set aside, the cells behind it on idle harnesses are emitted
-first, and the set-aside cells are picked up in a second pass over whatever
-buffer is left. Within one harness the plan's order is preserved, and only the
+first, and the set-aside cells are picked up in a second pass over whatever room
+is left. Within one harness the plan's order is preserved, and only the
 interleaving between harnesses changes.
-
-The second pass queues real depth ahead of the reviewer. A plan whose harnesses
-are all throttled would otherwise stop dead the moment the reviewer stopped
-submitting reviews, because top-up is an endpoint rather than a daemon.
 
 gg is one lane like any other harness: every configuration's runs share the gg
 cap, because what a cap bounds is how many runs of a harness execute at once.
@@ -262,82 +355,132 @@ Capacity is read globally and across every job state, including states that
 occupy no slot. A run merely queued for a harness consumes that harness's cap
 before anything enqueued after it, whoever queued it.
 
-### One top-up at a time
+### When launch passes run
 
-Top-up is serialized per plan by a claim marker on the plan row
-(`topping_up_at`), taken by a conditional update so that it is a real mutual
-exclusion. A caller that finds the claim held answers `skipped: "busy"` rather
-than waiting. The claim carries a two-minute lease, so a request that dies before
-releasing the claim frees the plan when the lease expires.
+There is no background daemon. The backend runs a plan's launch pass when the
+owner starts filling it, edits it while it fills, or retries a blocked cell, and
+when a job reaches a terminal state:
 
-The endpoint is idempotent: it recomputes outstanding from the database on every
-call, so calling it twice after the first call's launches have landed yields the
-next slice of work.
+- A job that **succeeded** or **failed** feeds every filling plan whose cells
+  include the job's cell. A failed job that enqueued an automatic retry feeds
+  nothing, since the retry takes its place in flight.
+- A **canceled** job feeds the same plans, and the running dispatch its origin
+  names. It was in flight, so it held its cell for every plan filling that cell
+  and held a place under its plan's or dispatch's limit. Once it is gone, the
+  cell is missing again and nothing else would notice, because a canceled job
+  never finishes. This covers a cancel by hand, a plan's halt or a ladder's stop
+  reaching another plan's cells, and a gate's early stop. A plan that was just
+  halted, or a dispatch that was just stopped, launches nothing, because its fill
+  or dispatch has ended.
+- The [global bulk-cancel endpoints](/components/backend/api/#stopping-runs-in-bulk)
+  feed nothing. They stop the cabinet, and refilling the queue they just emptied
+  would undo that. A plan they leave filling with nothing in flight resumes when
+  its owner presses All missing again.
+
+The launch pass runs as the plan's owner after the job's status is stored, so a
+failed pass never fails the driver's report. Once the definition store is
+servable after a start, the backend runs one launch pass for every filling plan.
+
+### One launch pass at a time
+
+Launch passes are serialized per plan or ladder by a leased claim on its row. A
+pass that finds the claim held leaves a request for another pass and tries the
+claim once more. The holder checks for a request after it releases the claim,
+so a run that lands during a pass is never left unseen. A holder serves at most
+five passes, and a request still standing after the last one, or after a pass
+that failed, is served by a fresh launch pass.
+
+The claim carries a two-minute lease, so a pass that dies before releasing it
+frees the row when the lease expires. The backend is the single coordinator, so
+it releases every claim before it serves.
+
+A pass recomputes everything from the database, the limit included, so a second
+pass after the first one's launches have landed yields the next slice of work,
+and a pass served for a request launches under the limit as it stands then.
+
+### Launching a cell by hand
+
+The Tests tab launches one more run of a cell, or the cell's whole shortfall, at
+once. A launch by hand is the owner's explicit decision, so it ignores the limit.
+It is attributed to the plan, so it occupies the plan's limit while it runs and
+a halt reaches it.
 
 ## The scoped review queue
 
-`GET /coverage-plans/{id}/queue` returns the plan's
-completed-but-unreviewed-by-you runs in the order its cells were emitted rather
-than newest-first. The buffer is filled with a case's repeats adjacent so they
-can be judged against each other. The queue is capped rather than paginated,
-because it exists to be walked from the front, and reports `truncated` when
-there is more behind it.
+`GET /coverage-plans/{id}/queue` returns the plan's completed runs the requesting
+account has not reviewed, in the order its cells are emitted rather than
+newest-first, so a case's repeats can be labelled side by side. Only the
+[cell's runs](#a-cells-runs) are offered, so a run beyond a cell's target never
+reaches the queue. The queue is
+capped rather than paginated, because it exists to be walked from the front, and
+reports `truncated` when there is more behind it.
+
+The queue is informational. Nothing on it launches or holds back a run.
 
 Runs of [auto-graded](/testing/performance/overview/) test types never appear.
 They are graded by machine, so listing them would produce a worklist item nobody
 can act on.
 
-## Pausing and halting
+## Halting
 
-Three controls, distinct because "stop" carries three different costs:
+Two controls, distinct because stopping carries two different costs:
 
-- **`pause`** stops topping up and leaves the queue completely alone. It is
-  reversible. The [web console](/components/web/overview/#planning-and-steering-runs)
-  exposes no control by that name: a plan's `paused` and `autoTopUp` are driven
-  together by one auto top-up setting, and a ladder's by its enabled setting.
-- **`halt`** pauses, then cancels this plan's `queued` and `pending` jobs. Those
-  jobs have no driver and have spent nothing, so it needs no confirmation. This
-  is the common case.
+- **`halt`** ends the plan's filling, then cancels the plan's `queued` and
+  `pending` jobs. Those jobs have no driver and have spent nothing, so it needs
+  no confirmation. This is the common case.
 - **`halt all`** does the above, plus `dispatched`, `starting`, and `running`.
   Those runs are partly or wholly paid for, so it is confirmed before it runs.
 
-Both halts reuse the same atomic cancel transition a single
-`POST /jobs/{id}/cancel` uses.
+Both reuse the same atomic cancel transition a single `POST /jobs/{id}/cancel`
+uses, reach only jobs whose origin names this plan, and report how many jobs they
+cancelled, so "the queue was already empty" and "nothing I launched was found"
+are distinguishable.
 
-A halt reports how many jobs it cancelled, so "the queue was already empty" and
-"nothing I launched was found" are distinguishable.
+A launch pass checks that its fill is still the plan's filling one immediately
+before it enqueues, and again after. A halt that lands during a pass therefore
+never leaves a refilled queue behind: the pass either enqueues nothing or cancels
+the jobs it just enqueued, and only those. An automatic retry is checked the same
+way: a retry enqueued while the halt swept is cancelled once it exists.
 
 The [global bulk-cancel endpoints](/components/backend/api/#stopping-runs-in-bulk)
 sweep the same states with no origin filter, stopping the cabinet rather than one
 plan.
 
-## Attribution: which plan launched a run
+## Attribution: which plan or ladder launched a run
 
-For a scoped halt to be safe, a job records two nullable columns:
+A job records two nullable columns:
 
 - **`user_id`**, the account that launched it.
-- **`origin`**, either `plan:<id>` or `ladder:<id>`, or null for a launch by
-  hand. The prefix matters, because plan and ladder ids are minted independently
-  and nothing stops them colliding.
+- **`origin`**, the plan or ladder that launched it, or null for a launch by
+  hand from the run form.
 
-A run launched by hand stays out of every scoped halt.
+An origin takes one of three forms:
 
-An automatic retry inherits the original launcher and origin rather than taking
-the retrier's, so a retried run stays inside the buffer that asked for it and
-remains reachable by that plan's halt.
+| origin                                    | launched by                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `plan:<planId>`                           | a launch by hand from the plan's Tests tab                                                       |
+| `plan:<planId>/<fillId>`                  | a launch pass while the plan was filling                                                         |
+| `ladder:<ladderId>/<dispatchId>/<rungId>` | a launch pass of one [dispatch](/components/backend/ladders/#a-configuration-and-its-dispatches) |
 
-A retry is also withheld while that plan or ladder is paused. Runs already in
-flight when the pause landed still finish, and only the next attempt is withheld.
-A run launched by hand retries as always.
+The prefix matters, because plan and ladder ids are minted independently and
+nothing stops them colliding. A plan mints a fresh `fillId` each time it starts
+filling, and a ladder mints a `dispatchId` for each Run. A plan's halt and its
+limit reach every job whose origin names the plan in either form. A run launched
+from the run form stays out of every scoped halt.
 
-Coverage counting ignores both columns. They exist for halting and for
-attribution, and folding them into the counts would re-introduce the per-account
-counting this design rejects.
+An automatic retry inherits the original launcher and origin, so a retried run
+stays inside the limit that launched it and remains reachable by its halt. A
+retry is withheld when its origin no longer launches anything: a fill that has
+ended, or a dispatch that is no longer the ladder's running one. A run launched
+by hand, from the run form or a plan's Tests tab, retries as always.
+
+Coverage counting on a plan ignores both columns. A ladder dispatch reads its
+own origin, because a dispatch counts only the runs it launched.
 
 ## Endpoints
 
 The plan surface, all auth-gated and keyed to the token's account, is specified
-in the [HTTP API](/components/backend/api/#coverage-plans-ladders-and-the-review-buffer):
-groups and plans, the matrix, the account-wide settings, the schedule, top-up,
-the scoped queue, and the three halting controls. The ladder counterparts are on
+in the [HTTP API](/components/backend/api/#coverage-plans-and-ladders): groups
+and plans, the matrix, the account-wide settings, filling, the per-cell retry,
+the scoped queue, and the two halting controls. The ladder counterparts are on
 the [Ladders](/components/backend/ladders/) page.

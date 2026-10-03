@@ -41,12 +41,21 @@ The catalog is The Test Cabinet's full set of test cases.
 ## Climber
 
 A climber is one [combination](#combination) enrolled on a [ladder](#ladder),
-the thing that actually does the climbing. Each climber's progress is tracked
-separately, so a model added to a standing ladder starts at [rung](#rung) one
-while the others carry on from wherever they had reached. A climber is climbing,
-awaiting review, [walled](#wall), held (stopped by hand), or [topped
-out](#topped-out). Climber and combination name the same thing: the first is the
-role it plays on a ladder, the second is what it is.
+the thing that actually does the climbing. Within a ladder's dispatch each
+climber's progress is tracked separately, and a climber is in one of four
+states:
+
+- **Running**: working its current [rung](#rung), which the dispatch can still
+  launch.
+- **Blocked**: its current rung is undecided and cannot progress until something
+  is fixed, usually followed by a Retry.
+- **Failed**: it failed a rung and stopped there, so "failed at rung four" is a
+  ladder's headline result for one model.
+- **Completed**: it passed every rung, and the ladder has no further question to
+  ask of that combination.
+
+Climber and combination name the same thing: the first is the role it plays on a
+ladder, the second is what it is.
 
 ## Combination
 
@@ -66,12 +75,13 @@ thing:
 1. The measurement: how much of a declared matrix actually has runs. A coverage
    plan declares test cases pinned to a version, variant and engine, crossed
    with [combinations](#combination) and a target run count per cell, and its
-   coverage is how many of those cells have met their target. This is the older
-   and narrower sense. See [Coverage plans](/components/backend/coverage/).
+   coverage is how many of those cells have met their target. A cell holds the
+   first runs to land up to its target, and a run beyond that is not the plan's.
+   This is the older and narrower sense. See [Coverage plans](/components/backend/coverage/).
 2. The feature area: the reviewer scheduling surface as a whole, which is plans,
    [ladders](#ladder), the reusable groups both draw their members from, the
-   account-wide [review buffer](#review-buffer), and the pause and halt
-   controls. This is the sense in which the console has a Coverage section and
+   account-wide [runs-in-flight limit](#runs-in-flight-limit), and the halt and
+   stop controls. This is the sense in which the console has a Coverage section and
    the backend a coverage API, and it takes in ladders, which are not plans and
    aim at no matrix at all.
 3. Code coverage: how much of a produced implementation's own `src/` the tests
@@ -172,9 +182,16 @@ A ladder is an ordered series of test cases that [climbers](#climber) ascend one
 rung a model stops at is the result. Where a [coverage](#coverage) plan asks
 whether a cell has been run yet and treats its cells as an unordered set, a
 ladder asks how far a model gets and treats its steps as a sequence in which
-each is harder than the last. Whether a climber advances is decided by the
-ladder's gate, a single rule parameterised by a [rating](#rating) floor and a
-threshold. See [Ladders](/components/backend/ladders/).
+each is harder than the last.
+
+A ladder is a configuration and does nothing by itself. Running it starts a
+**dispatch**, which snapshots the configuration, launches every climber's first
+rung, and climbs automatically: a single gate, parameterised by a
+[rating](#rating) floor and a threshold, reads the ratings the validators decided
+for the dispatch's own runs, and the backend launches the next rung as soon as the
+gate clears. A ladder keeps only its latest dispatch. Every rung is a
+[validator-rated](#validator-rated) case version, and reviews never move a climb.
+See [Ladders](/components/backend/ladders/).
 
 ## Leaderboard
 
@@ -273,19 +290,6 @@ and item weights produce the review's numeric [score](#score), averaged across
 the run's reviews. A run may carry one review per account, typically from
 people other than the operator who produced it.
 
-## Review buffer
-
-The review buffer is how many runs a [coverage](#coverage) plan or
-[ladder](#ladder) may leave waiting on you before it stops enqueueing:
-everything in flight, plus everything finished that you have not
-[reviewed](#review). Its size is a property of the reviewer, an account-wide
-setting overridable per plan or ladder, rather than of any one plan, because it
-describes how much work you want to come back to. It exists so the first few
-reviews can still steer a plan, where firing an entire matrix at once spends the
-whole budget before anyone has looked at a single run. Refilling it is called a
-top-up. The setting is either a bound on outstanding runs or no limit, which
-makes a top-up enqueue every missing run at once.
-
 ## Reviewer checklist
 
 A test case may declare a reviewer checklist: a list of major, observable
@@ -326,12 +330,20 @@ token and cost data.
 ## Rung
 
 A rung is one step of a [ladder](#ladder): exactly one test case, pinned to an
-exact version and [variant](#variant), with an optional override of how many
-runs it takes to judge. The rungs' order is the climb. Each rung carries a
+exact version, [variant](#variant), and engine, with an optional override of how
+many runs it takes to judge. The rungs' order is the climb. Each rung carries a
 stable opaque id rather than being identified by its position, because rungs get
-reordered and re-pinned and every recorded verdict references that id. A
-positional identifier would silently reattribute a [climber](#climber)'s history
-to a different case.
+reordered and every job a dispatch launches references that id.
+
+A climber passes or fails each rung it reaches. A failed rung is the result the
+gate computed from the validator ratings of that rung's runs, and the validators
+are assumed correct, so it stands as the climber's result for that version of
+the case. An infrastructure failure, a harness error, or a canceled run never
+fails a rung, because none of them says anything about the model. A run that
+ended on the model's own failure, such as a timeout, counts as a broken run.
+
+One climber on one rung is a **rung slot**, the unit a ladder's rung counts are
+reported in: three climbers on four rungs are twelve rung slots.
 
 ## Runners
 
@@ -340,6 +352,15 @@ one: the per-run [driver](#driver) a [dispatcher](#dispatcher) creates for each
 run, built on the [core](/components/core/overview/). The
 [CLI](/components/cli/overview/) and the [web console](#web-console) enqueue a
 run at the [backend](#backend) and watch it.
+
+## Runs-in-flight limit
+
+The runs-in-flight limit is how many of a [coverage](#coverage) plan's or a
+[ladder](#ladder) dispatch's own jobs may be queued, pending, dispatched,
+starting, or running at once. It exists so one plan or ladder shares the global
+queue fairly with everything else waiting on it. It is an account-wide setting
+overridable per plan and per ladder, and is either a bound or no limit, which
+launches every missing run at once. Completed runs never occupy it.
 
 ## Score
 
@@ -369,15 +390,6 @@ from this snapshot, so the gallery keeps no live dependency on the backend.
 
 Test cases provide the scenarios used for testing. Each test case represents an
 isolated task that a harness and model must perform.
-
-## Topped out
-
-A [climber](#climber) has topped out when it has cleared every [rung](#rung) of
-its [ladder](#ladder): there is nothing left to climb, and the ladder has no
-further question to ask of that [combination](#combination). It is the only one
-of the five climber states that is nobody's move, the opposite end of the ladder
-from a [wall](#wall), and distinct from held, which is a stop the reviewer
-chose.
 
 ## User account
 
@@ -432,17 +444,6 @@ A voxel run's authoritative output is the data its voxel binary emits: the
 meshed geometry as a per-part `.glb`, and a rendered preview. The validator
 parses and validates that emitted data rather than regenerating it, and the
 frontend renders an interactive 3D model with three.js.
-
-## Wall
-
-A wall is the [rung](#rung) a [climber](#climber) failed and therefore stopped
-at, so "walled at rung four" is a ladder's headline result for one model. It is
-a verdict the gate computed from your [reviews](#review) of that rung's runs, so
-it is an opinion rather than a fact about the model: a reviewer can promote a
-climber past a wall by hand, and the automatic verdict is kept underneath rather
-than overwritten, so clearing the override restores exactly what the gate said.
-A failed or canceled job is never a wall, because infrastructure failures are
-retried and only completed runs are evidence.
 
 ## Web console
 

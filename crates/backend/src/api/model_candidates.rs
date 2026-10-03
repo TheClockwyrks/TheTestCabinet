@@ -38,7 +38,8 @@ pub struct ModelCandidatesOut {
     /// The OpenRouter id the endpoints listing was read under.
     pub model_id: String,
     /// The native quantization the filter kept: the catalog entry's, else the highest level any
-    /// endpoint declares. Null when neither names one.
+    /// endpoint declares. Null when neither names one, which the list survives only with the
+    /// catalog entry's quantization filter off.
     pub native_quantization: Option<String>,
     /// The candidates, in the order a run tries them. Empty exactly when
     /// [`refusal`](Self::refusal) is set.
@@ -115,6 +116,7 @@ impl CatalogCandidates {
                 .filter(|provider| !provider.is_empty())
                 .map(str::to_string),
             policy: CandidatePolicy {
+                quantization_filter: config.quantization_filter,
                 native_quantization: config
                     .native_quantization
                     .as_deref()
@@ -204,7 +206,7 @@ fn candidates_out(
     match built {
         Ok(list) => ModelCandidatesOut {
             model_id,
-            native_quantization: Some(list.native_quantization),
+            native_quantization: list.native_quantization,
             candidates: list
                 .candidates
                 .into_iter()

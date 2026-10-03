@@ -90,6 +90,26 @@ Under `gate run --report-dir` the directory is the gate's own folder in the
 report, which also holds its `output.log`. A gate adds files to it and leaves
 what it finds there alone.
 
+The pipeline names `target/gate-artifacts/<id>` as the directory of every gate
+that runs tests, and each of its jobs that runs one ends by publishing the
+reports those gates wrote as the job's test results, whether the tests passed
+or failed. `scripts/ci/collect-test-results.sh` copies each
+`target/gate-artifacts/<id>/junit.xml` present, and nothing else, to
+`target/test-results/<id>/junit.xml`, and that directory is published as the
+pipeline artifact `test-results-<job>-<attempt>`, so `test-results-rust-1` and
+`test-results-web-1` on a first attempt:
+
+```text
+test-results-web-1/
+  web-test/junit.xml
+  web-browser-test/junit.xml
+  ci-tests/junit.xml
+```
+
+A job whose gates wrote no report publishes no such artifact, and a rerun of a
+job publishes its own beside the first attempt's. The screenshots and the
+coverage stay in the artifacts that already carry them.
+
 A gate's test tool has to label each case with something that tells it apart
 from every other case in the run, because the metrics key a test
 `<gate>::<classname>::<name>` and a repeated key is read as a retry. nextest
@@ -106,16 +126,20 @@ A gate that runs tests asks `artifacts_dir()` where its report goes and passes
 that on to its test tool. Then run it with
 `uv run --quiet --project ci gate run <id>`.
 
-The hooks, the pipeline's steps and the lists of gates are rendered by the
-template, so a gate is wired into them by answering it rather than by editing
-them: add it to the `extra_gates` answer, with its id, its name, the track its
-step runs on, whether it has a hook and the files that fire the hook, and run
-`copier update`. `ci/tests/test_wiring.py` holds the scripts, the hooks and the
-steps to one another. A gate too slow for a commit is answered with no hook,
-and `rust-test` and `rust-doctest` are given none by answering `rust_test_hook`
-no; each then runs in `make gate` and the pipeline only.
+Then wire it into the places that run a gate: a hook in
+`.pre-commit-config.yaml` with the files that fire it, a step in
+`azure-pipelines.yml` on the track whose image carries the tools it needs, and
+a row in the lists of gates in `CLAUDE.md` and the documentation. The step of
+a gate that runs tests names `CI_GATE_ARTIFACTS: target/gate-artifacts/<id>`,
+and its job publishes its test results as above.
+`ci/tests/test_wiring.py` holds the scripts, the hooks and the steps to one
+another, and every gate that calls `artifacts_dir()` to such a step in a job
+that publishes them. A gate too slow for a commit gets no hook and is named in
+that test's `HOOKLESS` instead; it then runs in `make gate` and the pipeline
+only. Those files are rendered by the template, and a template update carries
+these edits through its merge.
 
-The project's own gates, as answered:
+This project's own gates, wired in the same way:
 
 | Id | Name | Track | Hook |
 | --- | --- | --- | --- |
@@ -128,11 +152,16 @@ The project's own gates, as answered:
 | `k8s-deploy-sets` | kubernetes deploy sets | web | yes |
 | `ci-image-pins` | project jobs pin the Rust CI image | web | yes |
 | `scripts-test` | script library tests (node --test) | web | yes |
-| `file-endings` | file endings outside frozen versions | web | no |
 | `workspace-test` | npm workspace tests (vitest) | web | no |
 | `validators-typecheck` | validator projects typecheck (tsc) | web | no |
 | `site-build` | gallery build (vite build) | web | no |
 | `contract-drift` | generated contract drift | rust | no |
+
+The four without a hook build the workspace packages, or the Rust workspace,
+before they check anything, which is more than a commit waits on; `HOOKLESS`
+in `tests/test_wiring.py` names them, with `rust-test` and `rust-doctest`.
+`scripts-test` and `workspace-test` run tests, so their steps name an
+artifact directory and the web job's test results carry their reports.
 
 One check, one id: the id is the unit a hook, a pipeline step and an issue all
 name, so a check that shares an id with another cannot be reported on alone.

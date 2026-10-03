@@ -12,8 +12,10 @@
 # what goes, the cache repository, the credential forms, and the refusals.
 set -uo pipefail
 
-# The agent names the commit a run is on in this variable, and the script
-# keeps that commit's image; a case that wants it sets it for that call alone.
+# Azure sets BUILD_SOURCEVERSION for every step, and the script keeps the image
+# of the commit it names, so a run of this test on the pipeline would keep one
+# tag more than every case expects. The cases that are about that commit name
+# it themselves, so it is forgotten here.
 unset BUILD_SOURCEVERSION
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

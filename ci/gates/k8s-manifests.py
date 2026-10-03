@@ -15,8 +15,8 @@ properties the manifests are only correct if they hold:
   * each overlay's objects sit in its own namespace, which is the base's
     namespace followed by the overlay's name, `<project>-local` for the local
     cluster's, except for the overlay the pipeline deploys, whose namespace is
-    the one the project answered: `tcab-staging` for
-    `staging`.
+    `DEPLOYED_NAMESPACE` below: `tcab-staging` for `staging` by the
+    fleet's convention, which a project deploying elsewhere edits there.
 
 The checks read kustomize's canonical output, whose indentation and key order
 are fixed by the renderer rather than by the manifests' own formatting. That is
@@ -36,7 +36,7 @@ MANIFESTS = Path("deployments/k8s")
 OVERLAYS = MANIFESTS / "overlays"
 BASE_NAMESPACE = MANIFESTS / "base" / "namespace.yaml"
 
-# The overlay the pipeline deploys and the namespace it was answered with,
+# The overlay the pipeline deploys and the namespace it deploys into,
 # which is the one namespace not named for its overlay. deploy.sh waits on the
 # rollouts in it, so an overlay placing its objects anywhere else is a deploy
 # that waits on workloads it never applied.

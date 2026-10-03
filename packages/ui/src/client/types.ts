@@ -117,6 +117,11 @@ export interface Model {
   /** Whether `providerPin` is set by hand on the catalog entry rather than
    * observed on the listing. */
   providerPinSetByHand: boolean;
+  /** Whether a gg run's candidate list is filtered to the native quantization.
+   * False accepts every endpoint at whatever level it declares, `unknown`
+   * included, for a model every provider serves at one precision nobody
+   * discloses. Always true for a derived model. */
+  quantizationFilter: boolean;
   /** The native quantization set by hand (`fp8`, `bf16`, …), or null to take the
    * highest level any endpoint declares. Always null for a derived model. */
   nativeQuantization: string | null;
@@ -149,6 +154,9 @@ export interface ModelInput {
   /** The developer provider set by hand, or null to take the provider the
    * endpoints listing names for the model id's author segment. */
   providerPin: string | null;
+  /** Whether a gg run's candidate list is filtered to the native quantization.
+   * Absent is true. */
+  quantizationFilter?: boolean;
   /** The native quantization set by hand, or null for the listing's highest. */
   nativeQuantization?: string | null;
   /** The price ceiling's input half, USD per million tokens. Set with
@@ -377,7 +385,8 @@ export interface ModelCandidate {
 export interface ModelCandidates {
   /** The OpenRouter id the endpoints listing was read under. */
   modelId: string;
-  /** The native quantization the filter used, or null when none is known. */
+  /** The native quantization the filter used, or null when none is known, which
+   * the list survives only with the catalog entry's quantization filter off. */
   nativeQuantization: string | null;
   /** The candidates, in the order a run tries them. */
   candidates: ModelCandidate[];
@@ -1208,18 +1217,21 @@ export interface LaunchConfig {
 }
 
 // What a run is being launched *on behalf of*, recorded on the enqueued job as its
-// origin. It is deliberately structured rather than the `plan:<id>` / `ladder:<id>`
-// string the backend stores: the transport formats it, so a caller cannot mistype an
-// origin into a `400` (or, worse on an older backend, into a run that no halt would
-// ever reach). Absent means a hand-launch — the run form's own submit — which no
-// plan's or ladder's scoped halt should ever sweep up.
+// origin. It is deliberately structured rather than the `plan:<id>` string the backend
+// stores: the transport formats it, so a caller cannot mistype an origin into a `400`.
+// Absent means a hand-launch — the run form's own submit — which no plan's scoped halt
+// should ever sweep up.
 //
-// Attribution is bookkeeping only. Coverage counting stays global: a run counts toward
-// its cell's target whoever launched it and whatever launched it, so tagging a run's
-// origin never changes what a plan considers still missing.
+// Only a plan's hand launches (its Tests tab) carry one from the console: a plan's
+// fill passes and a ladder dispatch's launches are minted by the backend, which
+// refuses any other origin from a client.
+//
+// Attribution is bookkeeping only. Plan coverage counting stays global: a run counts
+// toward its cell's target whoever launched it, so tagging a run's origin never
+// changes what a plan considers still missing.
 export interface LaunchOrigin {
-  kind: "plan" | "ladder";
-  // The plan's or ladder's opaque id.
+  kind: "plan";
+  // The plan's opaque id.
   id: string;
 }
 
