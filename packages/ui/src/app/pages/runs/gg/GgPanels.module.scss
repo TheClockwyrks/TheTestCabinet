@@ -2101,19 +2101,10 @@ $context-palette: (
   white-space: nowrap;
 }
 
+// Layout only: the shared `Select` fills its box, and here the box is the label's
+// row, so the dropdown keeps its own width beside the "Show" caption.
 .rangeSelect {
-  padding: t.$space-2xs t.$space-xs;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid t.$color-border;
-  background: t.$color-bg;
-  color: t.$color-text;
-  font-size: t.$font-sm;
-  font-family: inherit;
-  cursor: pointer;
-
-  &:hover {
-    border-color: t.$color-accent;
-  }
+  width: auto;
 }
 
 // The frame's position over the run. Takes the row's slack so dragging is precise

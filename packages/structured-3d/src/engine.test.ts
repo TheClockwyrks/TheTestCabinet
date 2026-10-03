@@ -43,6 +43,7 @@ import {
   createContextlessCanvas,
   createStage,
   createStubCanvas,
+  createSurface,
   installCanvasContexts,
   type Stage,
 } from "./testing/canvas";
@@ -92,6 +93,8 @@ interface Fakes {
   /** Make the driver's `tick` throw once. */
   failNextTick(error: Error): void;
   registered: Array<[string, unknown]>;
+  /** Every magnitude the on-screen controls drove an action to, in order. */
+  driven: Array<[string, number]>;
   /** Every camera pose the listener was placed at, in frame order. */
   listens: CameraSnapshot[];
   unlocks: number;
@@ -107,6 +110,7 @@ function fakes(log: string[] = []): Fakes {
   let openFailure: Error | null = null;
   let tickFailure: Error | null = null;
   const registered: Array<[string, unknown]> = [];
+  const driven: Array<[string, number]> = [];
   const samples: Array<[number, number]> = [];
   const listens: CameraSnapshot[] = [];
 
@@ -152,6 +156,7 @@ function fakes(log: string[] = []): Fakes {
     input: {
       register: (name, binding) => registered.push([name, binding]),
       layout: () => null,
+      drive: (name, value) => driven.push([name, value]),
       endFrame: () => log.push("input.endFrame"),
       detach: () => log.push("input.detach"),
     },
@@ -211,6 +216,7 @@ function fakes(log: string[] = []): Fakes {
       tickFailure = error;
     },
     registered,
+    driven,
     listens,
     get unlocks() {
       return state.unlocks;
@@ -1210,6 +1216,235 @@ describe("destroy", () => {
     expect(engine.frame().count).toBe(0);
     await expect(engine.advance(1)).resolves.toBeUndefined();
     expect(engine.frame().count).toBe(0);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The on-screen touch controls                                               */
+/* -------------------------------------------------------------------------- */
+
+describe("touch controls", () => {
+  const engines: Engine[] = [];
+  afterEach(() => {
+    for (const engine of engines.splice(0)) engine.destroy();
+    document.body.replaceChildren();
+    document.head.replaceChildren();
+  });
+
+  /** A surface listening on the document, which is where an overlay can go. */
+  function documented(): SurfaceMetrics {
+    return createSurface({
+      cssWidth: 320,
+      cssHeight: 180,
+      dpr: 2,
+      events: document,
+    }).surface;
+  }
+
+  /** A touch-shaped plain event, dispatched at the document as a player's would be. */
+  const touch = (): void => {
+    document.dispatchEvent(
+      Object.assign(new Event("pointerdown", { bubbles: true }), {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+  };
+
+  /** A pointer-shaped plain event dispatched at a control, bubbling as a browser's would. */
+  const press = (element: Element, type: "pointerdown" | "pointerup"): void => {
+    element.dispatchEvent(
+      Object.assign(new Event(type, { bubbles: true }), {
+        pointerType: "touch",
+      }),
+    );
+  };
+
+  it("reports null and draws nothing when no layout was selected", () => {
+    const { engine } = build({ surface: documented() });
+    engines.push(engine);
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("draws the selected layout's controls in the document, hidden", () => {
+    const { engine } = build({
+      layout: "dual-stick-two-buttons",
+      surface: documented(),
+    });
+    engines.push(engine);
+
+    expect(engine.touchControls()).toEqual({
+      layout: "dual-stick-two-buttons",
+      visible: false,
+    });
+    const container = document.querySelector<HTMLElement>(
+      "[data-touch-controls]",
+    );
+    expect(container?.getAttribute("data-touch-controls")).toBe(
+      "dual-stick-two-buttons",
+    );
+    expect(container?.hidden).toBe(true);
+  });
+
+  it("shows them on a touch and reports it through the engine's events", () => {
+    const { engine } = build({ layout: "single-stick", surface: documented() });
+    engines.push(engine);
+    const seen: unknown[] = [];
+    engine.events.on("touch-controls:shown", (payload) => seen.push(payload));
+    engine.events.on("touch-controls:hidden", (payload) => seen.push(payload));
+
+    touch();
+    expect(engine.touchControls()?.visible).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    expect(engine.touchControls()?.visible).toBe(false);
+
+    expect(seen).toEqual([
+      { layout: "single-stick" },
+      { layout: "single-stick", reason: "keyboard" },
+    ]);
+  });
+
+  it("reports null over a surface whose target has no document", () => {
+    // `build`'s default surface listens on a bare `EventTarget`.
+    const { engine } = build({ layout: "dpad-4" });
+    engines.push(engine);
+
+    expect(engine.touchControls()).toBeNull();
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+  });
+
+  it("drives a control's action through the input port, and back to rest", () => {
+    const { engine, fixture } = build({
+      layout: "dpad-4",
+      surface: documented(),
+    });
+    engines.push(engine);
+    touch();
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="confirm"]',
+    );
+    if (button === null) throw new Error("no confirm button was drawn");
+
+    press(button, "pointerdown");
+    expect(fixture.driven).toEqual([["confirm", 1]]);
+
+    press(button, "pointerup");
+    expect(fixture.driven).toEqual([
+      ["confirm", 1],
+      ["confirm", 0],
+    ]);
+  });
+
+  it("is removed by destroy, before the input port detaches", () => {
+    const { engine, fixture } = build({
+      layout: "dual-stick",
+      surface: documented(),
+    });
+    touch();
+    const stick = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="move-up"]',
+    );
+    if (stick === null) throw new Error("no move stick was drawn");
+    // A held button, so the teardown has an action to return to rest.
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="pause"]',
+    );
+    if (button === null) throw new Error("no pause button was drawn");
+    press(button, "pointerdown");
+    fixture.log.length = 0;
+    fixture.driven.length = 0;
+
+    engine.destroy();
+
+    expect(document.querySelector("[data-touch-controls]")).toBeNull();
+    expect(engine.touchControls()).toBeNull();
+    // Every control is released on the way out, the held one included, and a
+    // release drives rest whether or not the action was held.
+    expect(fixture.driven).toContainEqual(["pause", 0]);
+    expect(fixture.driven.every(([, value]) => value === 0)).toBe(true);
+    expect(fixture.log).toEqual(["audio.silence", "input.detach"]);
+  });
+
+  it("detaches the input port and disposes the renderer when the overlay cannot be built", () => {
+    const fixture = fakes();
+    const stage = createStage({ cssWidth: 320, cssHeight: 180, dpr: 2 });
+    const live = watchContextLoss(stage.stage.canvas);
+    const append = document.body.append.bind(document.body);
+    document.body.append = (): void => {
+      document.body.append = append;
+      throw new Error("no room for an overlay");
+    };
+
+    expect(() =>
+      assembleEngine(
+        {
+          canvas: stage.stage.canvas,
+          screen: stage.screen.canvas,
+          width: 640,
+          height: 360,
+          game: definition(),
+          clock: new ConstantClock(10),
+          surface: documented(),
+          layout: "dpad-4",
+        },
+        () => fixture.subsystems,
+        {},
+      ),
+    ).toThrow(/no room/);
+
+    expect(fixture.log).toContain("input.detach");
+    expect(live()).toBe(0);
+  });
+
+  it("drives a registered action a player controller reads on its next tick", async () => {
+    const reads: Array<[number, boolean]> = [];
+    class Reader extends PlayerController {
+      override tick(): void {
+        reads.push([
+          this.input.value("confirm"),
+          this.input.pressed("confirm"),
+        ]);
+      }
+    }
+    class Mode extends GameMode {
+      override playerControllerClass = Reader;
+      override beginPlay(): void {
+        this.addPlayer();
+      }
+    }
+    class Game extends GameInstance {
+      override initialize(api: InitApi): null {
+        api.input.register("confirm", { keys: ["Enter"] });
+        return null;
+      }
+    }
+    const { engine } = realEngine(
+      {
+        instance: Game,
+        levels: { arena: { mode: Mode } },
+        startLevel: "arena",
+      },
+      { layout: "single-stick", surface: documented() },
+    );
+    engines.push(engine);
+    await engine.initialize();
+    touch();
+    const button = document.querySelector<HTMLElement>(
+      '[data-touch-controls] [data-action="confirm"]',
+    );
+    if (button === null) throw new Error("no confirm button was drawn");
+
+    press(button, "pointerdown");
+    await engine.advance(1);
+    expect(reads.at(-1)).toEqual([1, true]);
+
+    press(button, "pointerup");
+    await engine.advance(1);
+    expect(reads.at(-1)).toEqual([0, false]);
   });
 });
 

@@ -252,6 +252,16 @@
 .settingNumber {
   flex: none;
   width: 6rem;
+  max-width: 100%;
+}
+
+// The ladder threshold's number beside its unit, wrapping on narrow viewports.
+.settingThreshold {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+  max-width: 100%;
 }
 
 // The runs-in-flight limit's number beside its no-limit switch, wrapping on narrow viewports.
@@ -260,6 +270,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: t.$space-md;
+  max-width: 100%;
 }
 
 .settingToggle {
@@ -867,7 +878,7 @@
   align-items: flex-start;
   gap: t.$space-sm;
   margin-bottom: t.$space-md;
-  max-width: 32rem;
+  max-width: min(32rem, 100%);
   width: 100%;
 }
 
@@ -875,13 +886,15 @@
 // so the two read as one control over a list rather than as two unrelated inputs.
 .modelStage {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: t.$space-sm;
   width: 100%;
 
-  // The combobox owns the remaining width; the button keeps its own.
+  // The combobox owns the remaining width; the button keeps its own and drops
+  // under the combobox when the two no longer fit.
   > :first-child {
-    flex: 1;
+    flex: 1 1 12rem;
     min-width: 0;
   }
 }
@@ -1051,7 +1064,7 @@
   flex-direction: column;
   gap: t.$space-xs;
   margin-bottom: t.$space-lg;
-  max-width: 28rem;
+  max-width: min(28rem, 100%);
 }
 
 // The kind selector on the group editor: a segmented control (Combinations / Test

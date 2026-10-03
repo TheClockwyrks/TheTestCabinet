@@ -1,0 +1,25 @@
+@use "../styles/controls" as c;
+
+.button {
+  @include c.button-base;
+}
+
+.primary {
+  @include c.button-primary;
+}
+
+.secondary {
+  @include c.button-secondary;
+}
+
+.danger {
+  @include c.button-danger;
+}
+
+.link {
+  @include c.button-link;
+}
+
+.small {
+  @include c.button-small;
+}

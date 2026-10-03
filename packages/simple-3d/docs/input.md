@@ -253,9 +253,11 @@ position.
 
 ## Touch layouts
 
-A touch layout is the name of a control scheme and the action vocabulary it
-brings with it. Selection is declarative: it tags the actions the game registers
-rather than drawing controls or registering anything.
+A touch layout is the name of a control scheme, the action vocabulary it brings
+with it, and the on-screen controls the engine draws for it on a touchscreen.
+Selection tags the actions the game registers and puts the controls on screen;
+the game still registers each action with its own key binding, so one
+vocabulary is playable from a keyboard and from the screen alike.
 
 ```ts
 interface TouchLayout {
@@ -279,13 +281,13 @@ const engine = createEngine({
 });
 ```
 
-| Layout                   | Controls                                 | Own vocabulary                                                                                       |
-| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        |
-| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              |
-| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    |
-| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
-| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     |
+| Layout                   | Controls                                 | Own vocabulary                                                                                       | Drawn on screen                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        | A four-way pad at the bottom left, a large round `confirm` button at the bottom right, and the menu buttons at the top right.                                                   |
+| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              | The pad at the bottom left, round `a` and `b` buttons at the bottom right with `a` nearer the thumb and a smaller `confirm` beside them, and the menu buttons at the top right. |
+| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    | An analog stick at the bottom left for the `move-` directions, a large round `confirm` button at the bottom right, and the menu buttons at the top right.                       |
+| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` | The move stick at the bottom left, a second stick at the bottom right for the `look-` directions, and the menu buttons at the top right.                                        |
+| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     | The two sticks, round `a` and `b` buttons above the right stick with `a` nearer the thumb, and the menu buttons at the top right.                                               |
 
 The menu actions `["confirm", "back", "pause", "mute"]` are appended to every
 entry's own vocabulary in that order, so `TOUCH_LAYOUTS["single-stick"].actions`
@@ -335,6 +337,68 @@ A pair of opposed directional actions becomes one signed axis in `update`:
 const strafe = api.input.value("move-right") - api.input.value("move-left");
 const advance = api.input.value("move-up") - api.input.value("move-down");
 ```
+
+## On-screen controls
+
+The engine draws the selected layout's controls, so a game that has selected
+the layout and registered its vocabulary is playable on a touchscreen with
+nothing further. The controls are a DOM overlay above the canvas rather than
+part of the picture: nothing the game draws, the recorder captures, or a
+validator compares includes them.
+
+The controls are hidden at construction and appear on the first `pointerdown`
+whose `pointerType` is `"touch"`. A `keydown`, or a `pointerdown` or
+`pointermove` whose `pointerType` is `"mouse"` or `"pen"`, hides them, and the
+next touch shows them again, so a device with both a touchscreen and a keyboard
+shows them exactly while the screen is in use. A mouse or pen reaching a
+control hides the controls rather than operating them. The touch that shows
+them is a touch on the game and reaches the pointer as any other.
+
+A control drives its actions through the same resolution a key goes through,
+so `value` and `pressed` read one number whichever source moved it. A stick
+reports its deflection as two analog pairs, the vertical component to its up
+and down actions and the horizontal component to its left and right actions:
+an analog action receives the partial magnitude the thumb has pushed it to, and
+a digital one quantizes it to `1`. A pad resolves eight ways and drives two
+actions on a diagonal. A stick reads as rest inside a radial dead zone of 15 %
+of its radius about the centre, and a pad inside an axial one of 15 % of its
+half-extent; past either, the travel is rescaled so full deflection still reads
+`1`. A button drives its action to `1` while it is held and back to `0` when
+it lifts, exactly as a key does, so each press arms the edge `pressed` reports
+once. Releasing any control returns its actions to `0`, and so does hiding the
+controls.
+
+A contact on a control belongs to the control: the engine captures the pointer
+so a thumb that slides off keeps driving until it lifts, and the contact
+reaches neither the pointer snapshot, the samples, nor the contacts. The
+container carries `data-touch-controls` naming the layout and each control
+carries `data-action` naming the action it drives, with a stick or a pad
+listing every action it drives in `data-actions`, so a test finds a control
+and drives it by dispatching touch pointer events at its element while the
+controls are showing; a hidden control ignores its pointer events.
+
+```ts
+interface TouchControlsState {
+  layout: string;
+  visible: boolean;
+}
+
+engine.touchControls(): TouchControlsState | null;
+```
+
+`engine.touchControls()` reports the selected layout and whether its controls
+are showing, as a fresh copy, or `null` when the engine was built without a
+layout, over a surface with no document to place the overlay in, or after
+`destroy`. Each transition emits an event, subscribed to with
+`engine.events.on`:
+
+```ts
+"touch-controls:shown": { layout: string };
+"touch-controls:hidden": { layout: string; reason: "keyboard" | "mouse" | "pen" };
+```
+
+`destroy` removes the overlay along with every other listener, and
+`engine.touchControls()` reports `null` from then on.
 
 ## `RegisteredAction`
 

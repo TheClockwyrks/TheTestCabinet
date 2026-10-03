@@ -259,7 +259,6 @@ export function CoveragePlanEditPage() {
               // save is refused.
               <NumberField
                 id={id}
-                className={exec.input}
                 wrapperClassName={styles.settingNumber}
                 showProblem={false}
                 {...runsPerCellField.bounds}

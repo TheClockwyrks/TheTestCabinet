@@ -33,6 +33,8 @@ import { routes } from "../../routes";
 import { TIME_RANGES, rangeById } from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
 import styles from "./dashboards/GgDashboards.module.scss";
+import { Input } from "../../../primitives/Input";
+import { Select } from "../../../primitives/Select";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 
@@ -154,16 +156,14 @@ export function GgSavedQueriesPage() {
         <div className={styles.form}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Name</span>
-            <input
-              className={styles.input}
+            <Input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
           </label>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Description</span>
-            <input
-              className={styles.input}
+            <Input
               value={draft.description}
               onChange={(e) =>
                 setDraft({ ...draft, description: e.target.value })
@@ -172,8 +172,7 @@ export function GgSavedQueriesPage() {
           </label>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Query</span>
-            <input
-              className={styles.queryInput}
+            <Input
               value={draft.query}
               placeholder="| stats count() by model"
               onChange={(e) => setDraft({ ...draft, query: e.target.value })}
@@ -181,8 +180,7 @@ export function GgSavedQueriesPage() {
           </label>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Range</span>
-            <select
-              className={styles.select}
+            <Select
               value={draft.rangeId}
               onChange={(e) => setDraft({ ...draft, rangeId: e.target.value })}
             >
@@ -191,7 +189,7 @@ export function GgSavedQueriesPage() {
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className={styles.formActions}>
             <button

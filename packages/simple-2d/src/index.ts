@@ -12,8 +12,10 @@
  *   the game's fixed logical design size onto whatever size the page gave the
  *   element, resynced every frame so a resize needs no handler at all.
  * - **Input** — named actions over `KeyboardEvent.code` bindings and a closed
- *   catalogue of touch layouts, with edge detection done once and correctly, and
- *   a pointer mapped into the game's own logical coordinates.
+ *   catalogue of touch layouts, with edge detection done once and correctly, a
+ *   pointer mapped into the game's own logical coordinates, and the on-screen
+ *   controls a layout draws for a touchscreen, shown while the screen is the
+ *   input in use.
  * - **Audio** — cues played by name, synthesized or file-backed, and the
  *   first-gesture unlock a browser insists on.
  * - **Assets** — resolution and loading under one fixed root.
@@ -72,6 +74,7 @@ import type {
   RenderApi,
   RunOptions,
   SurfaceMetrics,
+  TouchControlsState,
   Transition,
   UpdateApi,
   Viewport,
@@ -83,6 +86,7 @@ import { FrameLoop } from "./frame";
 import { InputRegistry } from "./input";
 import { PointerInput } from "./pointer";
 import { ContextRecorder } from "./recording";
+import { TouchControls } from "./touch-controls";
 import { applyViewport, domSurface, syncCanvas } from "./viewport";
 
 /**
@@ -325,6 +329,31 @@ export function createEngine<S, D = unknown>(
   // rethrows, and constructing the pointer past that point means there is never a
   // moment where its listeners exist with no engine to detach them.
   const pointer = new PointerInput(surface, () => viewport);
+
+  // After the pointer, so the touch that reveals the controls reaches the game's
+  // pointer before the overlay appears, and only under a layout: without one
+  // there is no vocabulary to draw. The controls find their document through the
+  // surface's event target and are inert over a target with none, so the
+  // headless case costs nothing and reports `null`.
+  const layout = input.layout();
+  let touchControls: TouchControls | null = null;
+  if (layout !== null) {
+    try {
+      touchControls = new TouchControls({
+        surface,
+        actions: input,
+        layout,
+        emit,
+      });
+    } catch (error) {
+      // The registry's key listeners and the pointer's listeners are on the
+      // target by now, and a refused drawing means no engine is returned to
+      // detach them with. Undo before rethrowing, as the layout gate above does.
+      input.detach();
+      pointer.detach();
+      throw error;
+    }
+  }
 
   /** The fit as a caller owns it — a copy, so holding one observes no later frame. */
   const snapshot = (): Viewport => ({
@@ -686,6 +715,14 @@ export function createEngine<S, D = unknown>(
      */
     diagnostics: (): readonly DiagnosticReading[] => diagnostics.read(),
 
+    /**
+     * The selected layout's on-screen controls and whether they are showing,
+     * or `null` when there are none to report on: no layout was selected, or
+     * the surface's event target has no document to draw them in.
+     */
+    touchControls: (): TouchControlsState | null =>
+      touchControls?.state() ?? null,
+
     recording: (): boolean => recorder.active,
 
     /**
@@ -733,7 +770,7 @@ export function createEngine<S, D = unknown>(
     },
 
     /**
-     * Halt the loop and drop every listener.
+     * Halt the loop, remove the on-screen controls, and drop every listener.
      *
      * Idempotent, because teardown races: a page unload, an explicit call, and a
      * test's `afterEach` all reach here, and only the first one has anything to do.
@@ -743,14 +780,18 @@ export function createEngine<S, D = unknown>(
      * caller's own scene, and leaving the bus subscribed after teardown keeps that
      * scope alive and lets a stale handler observe a successor engine's events.
      *
-     * The audio bus is silenced in between: a looping cue would otherwise outlive
-     * the engine that started it, sounding on a page whose game is gone. Silencing
-     * announces nothing, since the subscriptions are about to go with it.
+     * The touch controls go before the registry they drive, so a control a thumb
+     * was holding returns its action to rest through a registry that is still
+     * attached. The audio bus is silenced after the listeners: a looping cue would
+     * otherwise outlive the engine that started it, sounding on a page whose game
+     * is gone. Silencing announces nothing, since the subscriptions are about to
+     * go with it.
      */
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
       loop.halt();
+      touchControls?.detach();
       input.detach();
       pointer.detach();
       target.removeEventListener("keydown", onOverlayKey);

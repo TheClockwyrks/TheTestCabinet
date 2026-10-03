@@ -376,7 +376,9 @@ export interface Viewport {
  * the DOM, which is what lets the engine run over a canvas with no document
  * behind it. Absent, the engine reads the canvas's element size, its window's
  * device pixel ratio, its bounding rectangle for the origin, and listens on the
- * canvas's owning document.
+ * canvas's owning document. The on-screen touch controls are a DOM overlay
+ * placed in the document behind `events()`, so over a target with none there
+ * are no controls and `Engine.touchControls` reports `null`.
  */
 export interface SurfaceMetrics {
   /** The canvas's laid-out CSS width, measured on every call. */
@@ -456,11 +458,35 @@ export interface RegisteredAction {
   layout: string | null;
 }
 
-/** One entry of the touch-layout catalogue. */
+/**
+ * One entry of the touch-layout catalogue: the name of a control scheme, the
+ * action vocabulary it brings with it, and the on-screen controls the engine
+ * draws for it.
+ *
+ * Selection tags the actions the game registers, so a reader can establish
+ * which vocabulary is live as a static fact, and puts the layout's controls on
+ * screen for a touchscreen player. The game still registers each action with
+ * its own key binding.
+ */
 export interface TouchLayout {
   name: string;
   /** The layout's own vocabulary followed by the four menu actions. */
   actions: string[];
+}
+
+/**
+ * The selected layout's on-screen controls, as `Engine.touchControls` reports
+ * them.
+ *
+ * The controls are hidden until the surface receives its first touch, and a
+ * keyboard, mouse, or pen input hides them again until the next touch, so
+ * `visible` says whether the screen is the input in use.
+ */
+export interface TouchControlsState {
+  /** The selected layout, whose controls the engine draws. */
+  layout: string;
+  /** Whether the controls are showing. */
+  visible: boolean;
 }
 
 /**

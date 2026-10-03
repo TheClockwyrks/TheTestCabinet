@@ -1035,29 +1035,10 @@
   color: t.$color-text-muted;
 }
 
-// The custom-instructions and system-prompt editors: a full-width monospace-friendly
-// textarea on the same surface as the inputs.
+// The custom-instructions and system-prompt editors are the shared `Textarea`;
+// this is layout only, the gap that sets one off from what follows it.
 .textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: t.$space-sm;
   margin-bottom: t.$space-md;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  color: t.$color-text;
-  font: inherit;
-  line-height: 1.4;
-  resize: vertical;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    outline-offset: 1px;
-  }
-
-  &:disabled {
-    opacity: 0.6;
-  }
 }
 
 // The full system-prompt template is Handlebars source, so it reads as code.

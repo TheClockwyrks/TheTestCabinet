@@ -2,7 +2,6 @@
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
 @use "../../../styles/breakpoints" as bp;
-@use "../../../styles/forms" as f;
 
 .section {
   margin-bottom: t.$space-xl;
@@ -39,23 +38,6 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: t.$color-text-muted;
-}
-
-.select {
-  font: inherit;
-  font-size: t.$font-sm;
-  padding: t.$space-sm;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    border-color: t.$color-accent;
-  }
 }
 
 // One vertical band of the report (the cohort's figures, its rings, the

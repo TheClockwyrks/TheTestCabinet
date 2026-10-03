@@ -20,6 +20,7 @@ import type {
 } from "@clockwyrks/run-record/gg-query";
 import { asDisplay, formatIdentifier, formatLiteral } from "../query";
 import styles from "./GgDiscover.module.scss";
+import { Input } from "../../../../primitives/Input";
 
 interface GgFieldSidebarProps {
   catalog: GgFieldCatalog;
@@ -90,7 +91,7 @@ export function GgFieldSidebar({
           {catalog.documents.toLocaleString("en-US")} runs
         </span>
       </div>
-      <input
+      <Input
         className={styles.sidebarSearch}
         type="search"
         value={needle}

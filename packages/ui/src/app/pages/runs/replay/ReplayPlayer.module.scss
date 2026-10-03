@@ -1,6 +1,5 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
-@use "../../../styles/forms" as f;
 
 // The engine replay player: a canvas the recording is re-drawn into, the transport
 // that drives it, and the notes it puts under a frame it could not draw whole.
@@ -130,14 +129,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+// The speed picker sits in the control bar at its own width, drawn at the bar's
+// compact height so it lines up with the transport buttons beside it.
 .speed {
   flex: none;
-  padding: t.$space-xs t.$space-sm;
+  width: auto;
+  padding-block: t.$space-xs;
   font-size: t.$font-sm;
-  color: t.$color-text;
-  background-color: t.$color-surface-2;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
 }

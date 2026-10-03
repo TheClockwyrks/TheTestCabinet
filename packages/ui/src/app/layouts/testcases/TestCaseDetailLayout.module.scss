@@ -2,7 +2,6 @@
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 @use "../../styles/breakpoints" as bp;
-@use "../../styles/forms" as f;
 
 .header {
   display: flex;
@@ -230,30 +229,14 @@
   @include h.halo;
 }
 
+// The coordinate pickers sit inline beside their labels, so each takes its own
+// width; on a phone the growing variant control hands it the width it has left.
 .variantSelect {
-  font: inherit;
-  font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-sm;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
+  width: auto;
 
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    border-color: t.$color-accent;
-  }
-
-  // Fill the width the growing variant control gives it and grow the tap target
-  // a touch so the selector is comfortable on mobile. Bump only the block/inline
-  // padding with longhands so the chevron room (padding-right) survives.
   @include bp.below(t.$bp-md) {
     flex: 1 1 auto;
     min-width: 0;
-    padding-block: t.$space-sm;
-    padding-left: t.$space-sm;
   }
 }
 

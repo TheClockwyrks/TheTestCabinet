@@ -18,7 +18,8 @@ The engine owns the frame loop, the
 [clock](/engines/structured-2d/apis/clocks/) that decides what each frame's
 delta time is, the fit from the logical design size to the canvas, the camera
 projection, the rendering pipeline, collision detection, the input action
-registry and its bindings, the audio bus, the asset loader, the debug overlay
+registry and its bindings, the on-screen touch controls a layout draws, the
+audio bus, the asset loader, the debug overlay
 together with the frame metrics it reports, the draw-command recorder over the
 context the rendering pipeline draws through, and the debug surface the game
 instance returned from its `initialize`, held for a caller to read back.

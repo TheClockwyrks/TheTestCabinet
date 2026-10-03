@@ -17,6 +17,7 @@ import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { Button, Input } from "../../../primitives";
 import styles from "./RunsPage.module.scss";
 
 // The Runs settings tab (`/settings/runs`, web console only): the account-wide
@@ -174,7 +175,7 @@ function InFlightSetting({
           onSave(target);
         }}
       >
-        <input
+        <Input
           className={styles.input}
           type="number"
           min={0}
@@ -195,13 +196,9 @@ function InFlightSetting({
           />
           <span>No limit</span>
         </label>
-        <button
-          className={styles.primary}
-          type="submit"
-          disabled={busy || !dirty}
-        >
+        <Button variant="primary" type="submit" disabled={busy || !dirty}>
           {dirty || !valid ? "Save limit" : "Saved"}
-        </button>
+        </Button>
       </form>
     </section>
   );

@@ -24,6 +24,7 @@ import {
 } from "@clockwyrks/ui";
 import { turnTotalMs, type TurnTiming } from "./useGgRunState";
 import styles from "./GgPanels.module.scss";
+import { Select } from "../../../../primitives/Select";
 
 // The most bars the graph will draw at once. Beyond this the columns stop being
 // comparable, so the view windows rather than narrowing them further.
@@ -238,7 +239,7 @@ export function TurnTimingGraph({ timings }: { timings: TurnTiming[] }) {
         <div className={styles.rangeControls}>
           <label className={styles.rangeLabel}>
             Show
-            <select
+            <Select
               className={styles.rangeSelect}
               value={framedSize}
               onChange={(e) => setSize(Number(e.target.value))}
@@ -248,7 +249,7 @@ export function TurnTimingGraph({ timings }: { timings: TurnTiming[] }) {
                   {n} turns
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <button
             type="button"

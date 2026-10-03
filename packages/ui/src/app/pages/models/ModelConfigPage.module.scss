@@ -53,81 +53,14 @@
   width: 34rem;
 }
 
-.input,
-.textarea {
-  width: 100%;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
-}
-
-.textarea {
-  resize: vertical;
-  min-height: 9rem;
-}
-
-// A one-name-per-line list: a few rows, not a prose field.
+// A one-name-per-line list: a few rows, not a prose field. The description
+// textarea takes the primitive's own height.
 .textareaShort {
   min-height: 5rem;
 }
 
-// --- OpenRouter fill-in --------------------------------------------------------
-
-// The slug input and its fill action on one line, wrapping when cramped — the
-// same shape as the logo picker's URL + fetch row.
-.fillRow {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  flex-wrap: wrap;
-
-  .input {
-    flex: 1 1 12rem;
-    min-width: 0;
-  }
-}
-
-// An outlined secondary action matching the logo picker's fetch button, so the
-// form's two "go get this for me" controls read as the same affordance.
-.fill {
-  flex: 0 0 auto;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-text;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover:not(:disabled),
-  &:focus-visible:not(:disabled) {
-    border-color: t.$color-accent;
-    color: t.$color-accent;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
+// The slug + fill row and each alias row are a `ControlRow`: the text field
+// takes the spare width and the actions drop under it when cramped.
 
 .fillError {
   color: t.$color-negative;
@@ -146,75 +79,25 @@
   gap: t.$space-sm;
 }
 
-.aliasRow {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-}
-
-// The per-row harness-family selector: sized to its content and styled like the
-// text input so the slug + family read as one control group.
+// The per-row harness-family selector: sized to its content beside the slug.
 .aliasFamily {
   flex: 0 0 auto;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
+  width: auto;
 }
 
-// The per-row remove control: a muted destructive glyph, brightening on hover;
-// dimmed when it is the last remaining row (which can't be removed).
+// The per-row remove control: a square glyph button, dimmed when it is the last
+// remaining row (which can't be removed).
 .aliasRemove {
   flex: 0 0 auto;
   width: 2.25rem;
   height: 2.25rem;
+  padding: 0;
   font-size: t.$font-lg;
-  line-height: 1;
-  color: t.$color-text-muted;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  cursor: pointer;
-
-  &:hover:not(:disabled),
-  &:focus-visible:not(:disabled) {
-    color: t.$color-negative;
-    border-color: t.$color-negative;
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
 }
 
-// The add-row action: an outlined accent affordance, self-sized to its label.
+// The add-row action, self-sized to its label.
 .aliasAdd {
   align-self: flex-start;
-  padding: t.$space-xs t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  border-radius: t.$radius-sm;
-  background: transparent;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: color-mix(in srgb, t.$color-accent 14%, transparent);
-  }
 }
 
 // --- Actions ------------------------------------------------------------------
@@ -227,50 +110,9 @@
   flex-wrap: wrap;
 }
 
-.primary {
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  padding: t.$space-sm t.$space-lg;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  color: t.$color-bg;
-  box-shadow: var(--ttc-glow);
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-// A muted destructive button that only brightens to the negative color on
-// hover/focus, matching the run-delete control.
+// The delete action sits at the row's far end, away from the save.
 .deleteButton {
   margin-left: auto;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-text-muted;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  background: transparent;
-  cursor: pointer;
-  @include h.halo;
-
-  &:hover:not(:disabled),
-  &:focus-visible:not(:disabled) {
-    color: t.$color-negative;
-    border-color: t.$color-negative;
-    background: color-mix(in srgb, t.$color-negative 8%, transparent);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: progress;
-  }
 }
 
 .notice {

@@ -29,7 +29,9 @@ trap 'rm -rf "$tmp"' EXIT
 cat >"$tmp/docker" <<'STUB'
 #!/usr/bin/env bash
 # The stub daemon: $STUB_LOCAL lists the local store's tags, $STUB_REGISTRY the
-# registry's, one per line; every call is appended to $STUB_LOG.
+# registry's, one per line; every call is appended to $STUB_LOG. A push of the ref
+# $STUB_PUSH_FAIL_REF names fails, as a registry refusing the connection does, while the
+# count in the file $STUB_PUSH_FAILS is above zero, and each failure takes one off it.
 set -euo pipefail
 echo "$*" >>"$STUB_LOG"
 has() { grep -qxF "$2" "$1" 2>/dev/null; }
@@ -60,7 +62,19 @@ image)
 	;;
 inspect) ref="${*: -1}"; has "$STUB_LOCAL" "$ref" || exit 1; echo "${ref%%:*}@sha256:pushed-${ref##*:}" ;;
 tag) has "$STUB_LOCAL" "$2" || { echo "stub: $2 is not local" >&2; exit 1; }; add "$STUB_LOCAL" "$3" ;;
-push) ref="${*: -1}"; has "$STUB_LOCAL" "$ref" || exit 1; add "$STUB_REGISTRY" "$ref" ;;
+push)
+	ref="${*: -1}"
+	has "$STUB_LOCAL" "$ref" || exit 1
+	if [ -n "${STUB_PUSH_FAIL_REF:-}" ] && [ "$ref" = "$STUB_PUSH_FAIL_REF" ]; then
+		left="$(cat "$STUB_PUSH_FAILS")"
+		if [ "$left" -gt 0 ]; then
+			echo $((left - 1)) >"$STUB_PUSH_FAILS"
+			echo "stub: dial tcp: connect: connection refused" >&2
+			exit 1
+		fi
+	fi
+	add "$STUB_REGISTRY" "$ref"
+	;;
 pull) ref="${*: -1}"; has "$STUB_REGISTRY" "$ref" || exit 1; add "$STUB_LOCAL" "$ref" ;;
 buildx)
 	case "$3" in
@@ -97,6 +111,7 @@ prefix="test-cabinet-"
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
+		STUB_PUSH_FAIL_REF="${STUB_PUSH_FAIL_REF:-}" STUB_PUSH_FAILS="$tmp/push-fails" REGISTRY_RETRY_DELAY=0 \
 		DOCKER="$tmp/docker" PUSH=1 RECLAIM=1 REUSE_INPUTS="${REUSE_INPUTS:-$inputs}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
@@ -181,6 +196,38 @@ out="$(REUSE_INPUTS="$tmp/inputs2" run sprite-gg)" && status=0 || status=$?
 check_equal "with exit 1" "1" "$status"
 check_contains "and says which" "sprite-gg is built from sprite, which the table does not list" "$out"
 check_equal "before anything is built" "" "$(builds)"
+
+echo "a push the registry refuses for a moment is retried, and the build passes"
+: >"$tmp/local"; : >"$tmp/registry"
+variant="${reg}/${prefix}sprite-gg:sha1-amd64"
+pushes_of() { grep -cxF "push $1" "$tmp/log" || true; }
+echo 2 >"$tmp/push-fails"
+out="$(STUB_PUSH_FAIL_REF="$variant" run base sprite sprite-gg)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "the refused push is tried three times" "3" "$(pushes_of "$variant")"
+check_contains "and each retry is reported" "attempt 2 of 4); retrying" "$out"
+check_contains "the commit tag is in the registry" "$variant" "$(cat "$tmp/registry")"
+check_contains "with its reference line" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:pushed-sha1-amd64" "$out"
+
+# The failure this guards against: a push inside `$(push_and_pin ...)` ran without `set -e`,
+# so a refused push was followed by the inputs tag, a reference line, a reclaim and exit 0,
+# and the commit's tag was only found missing when the architectures were fused.
+echo "a push the registry keeps refusing ends the build there"
+: >"$tmp/local"; : >"$tmp/registry"
+echo 99 >"$tmp/push-fails"
+out="$(STUB_PUSH_FAIL_REF="$variant" run base sprite sprite-gg)" && status=0 || status=$?
+check_equal "with exit 1" "1" "$status"
+check_equal "after every attempt" "4" "$(pushes_of "$variant")"
+check_contains "and says it gave up" "failed 4 time(s), exiting 1; giving up" "$out"
+check_lacks "no commit tag reached the registry" "$variant" "$(cat "$tmp/registry")"
+check_lacks "no inputs tag was pushed for it" "${reg}/${prefix}sprite-gg:inputs-" "$(cat "$tmp/registry")"
+check_lacks "no reference line was printed for it" "==> sprite-gg reference:" "$out"
+check_lacks "and it was not reclaimed" "reclaiming ${prefix}sprite-gg:" "$out"
+
+echo "a retry count that is not a positive integer is refused"
+out="$(REGISTRY_ATTEMPTS=0 run base 2>&1)" && status=0 || status=$?
+check_equal "with exit 1" "1" "$status"
+check_contains "and says why" "REGISTRY_ATTEMPTS must be a positive integer" "$out"
 
 echo "REUSE_INPUTS without PUSH is refused"
 out="$(cd "$HERE/.." && PATH="$tmp/bin:$PATH" DOCKER="$tmp/docker" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" REUSE_INPUTS="$inputs" containers/build.sh base 2>&1)" && status=0 || status=$?

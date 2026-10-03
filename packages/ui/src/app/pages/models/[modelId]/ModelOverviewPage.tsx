@@ -36,6 +36,7 @@ import {
   totalTokens,
 } from "../../../format";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
+import { Select } from "../../../../primitives";
 import styles from "./ModelOverviewPage.module.scss";
 
 // The query-string keys the selected cohort is carried in, so a specific case +
@@ -217,9 +218,8 @@ function CohortPicker({
         <label className={styles.pickerLabel} htmlFor={caseId}>
           Test case
         </label>
-        <select
+        <Select
           id={caseId}
-          className={styles.select}
           value={testCase.slug}
           onChange={(event) => onSelectCase(event.target.value)}
         >
@@ -228,16 +228,15 @@ function CohortPicker({
               {option.name} ({option.runs} {option.runs === 1 ? "run" : "runs"})
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       {testCase.variants.length > 1 && (
         <div className={styles.picker}>
           <label className={styles.pickerLabel} htmlFor={variantId}>
             Variant
           </label>
-          <select
+          <Select
             id={variantId}
-            className={styles.select}
             value={variant.slug}
             onChange={(event) => onSelectVariant(event.target.value)}
           >
@@ -246,7 +245,7 @@ function CohortPicker({
                 {entry.name} ({entry.runs} {entry.runs === 1 ? "run" : "runs"})
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
     </div>

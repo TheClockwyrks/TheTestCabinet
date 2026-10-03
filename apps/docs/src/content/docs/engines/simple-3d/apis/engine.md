@@ -45,20 +45,20 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field        | Default                                   | Meaning                                                                                                                                |
-| ------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `canvas`     | —                                         | The canvas the engine sizes, clears, and renders the scene through.                                                                    |
-| `width`      | —                                         | The logical design width the game draws in. Finite and positive.                                                                       |
-| `height`     | —                                         | The logical design height the game draws in. Finite and positive.                                                                      |
-| `game`       | —                                         | The [game](/engines/simple-3d/apis/game/) this engine drives.                                                                          |
-| `background` | —                                         | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, the canvas is cleared to transparency. |
-| `layout`     | —                                         | A touch layout from the [catalogue](/engines/simple-3d/apis/input/), whose vocabulary the game then registers.                         |
-| `clock`      | `new WallClock()`                         | The [clock](/engines/simple-3d/apis/clocks/) supplying each frame's delta.                                                             |
-| `surface`    | Read from the canvas                      | Where the engine reads its element size and device pixel ratio.                                                                        |
-| `assetRoot`  | `"assets/"`                               | The root every [asset path](/engines/simple-3d/apis/assets/) resolves under.                                                           |
-| `screen`     | Created from the canvas's owning document | The canvas the [screen layer](/engines/simple-3d/apis/rendering/) draws on.                                                            |
-| `projection` | `"perspective"`                           | Which kind of camera the engine creates and renders through.                                                                           |
-| `shadows`    | `false`                                   | `true` enables PCF soft shadow maps on the renderer.                                                                                   |
+| Field        | Default                                   | Meaning                                                                                                                                                      |
+| ------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `canvas`     | —                                         | The canvas the engine sizes, clears, and renders the scene through.                                                                                          |
+| `width`      | —                                         | The logical design width the game draws in. Finite and positive.                                                                                             |
+| `height`     | —                                         | The logical design height the game draws in. Finite and positive.                                                                                            |
+| `game`       | —                                         | The [game](/engines/simple-3d/apis/game/) this engine drives.                                                                                                |
+| `background` | —                                         | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, the canvas is cleared to transparency.                       |
+| `layout`     | —                                         | A touch layout from the [catalogue](/engines/simple-3d/apis/input/), whose vocabulary the game then registers and whose on-screen controls the engine draws. |
+| `clock`      | `new WallClock()`                         | The [clock](/engines/simple-3d/apis/clocks/) supplying each frame's delta.                                                                                   |
+| `surface`    | Read from the canvas                      | Where the engine reads its element size and device pixel ratio.                                                                                              |
+| `assetRoot`  | `"assets/"`                               | The root every [asset path](/engines/simple-3d/apis/assets/) resolves under.                                                                                 |
+| `screen`     | Created from the canvas's owning document | The canvas the [screen layer](/engines/simple-3d/apis/rendering/) draws on.                                                                                  |
+| `projection` | `"perspective"`                           | Which kind of camera the engine creates and renders through.                                                                                                 |
+| `shadows`    | `false`                                   | `true` enables PCF soft shadow maps on the renderer.                                                                                                         |
 
 `background` paints the whole canvas, so the letterbox bars carry it. A game
 may also set `scene.background`, which paints inside the viewport alone.
@@ -82,7 +82,9 @@ The engine reads the canvas's laid-out size and device pixel ratio through this
 seam every frame, and attaches its key and pointer listeners to the event target
 it returns. Supplied, it replaces every measurement the engine would otherwise
 take from the DOM, which is what lets the engine run over a canvas with no
-document behind it.
+document behind it. The on-screen touch controls are a DOM overlay, so over a
+surface whose event target has no document there are none, and
+`touchControls()` reports `null`.
 
 `origin()` is the canvas's top-left corner in the client coordinate space
 pointer events report their positions in, and it is what the engine subtracts
@@ -132,6 +134,7 @@ interface Engine<S, D = unknown> {
   viewport(): Viewport;
   view(): View;
   diagnostics(): readonly DiagnosticReading[];
+  touchControls(): TouchControlsState | null;
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Promise<Recording>;
@@ -143,26 +146,27 @@ interface RunOptions {
 }
 ```
 
-| Member           | Effect                                                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `events`         | Subscribe to engine [events](/engines/simple-3d/apis/game/). Available from construction.                                              |
-| `state`          | The current state, as a read-only view: the value the most recent transition left.                                                     |
-| `debug`          | The [debug surface](/engines/simple-3d/apis/game/) the game returned beside its state.                                                 |
-| `scene`          | The [scene](/engines/simple-3d/apis/rendering/) the engine renders, live. Available from construction.                                 |
-| `camera`         | The camera the engine renders through, live. Available from construction.                                                              |
-| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                      |
-| `apply`          | Replace the state with what a [`Transition<S>`](/engines/simple-3d/apis/game/) returns from the current one, and return the new state. |
-| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                         |
-| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                        |
-| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                    |
-| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                          |
-| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                      |
-| `view`           | The [`View`](/engines/simple-3d/apis/view/): the camera as it stood at the most recent render, with picking and projection through it. |
-| `diagnostics`    | Every registered [diagnostic](/engines/simple-3d/apis/diagnostics/) source and what it reports now, in registration order.             |
-| `recording`      | Whether the [recorder](/engines/simple-3d/apis/recording/) is capturing frames.                                                        |
-| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                    |
-| `stopRecording`  | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`.                                   |
-| `destroy`        | Halt the loop, drop every listener, and dispose the renderer.                                                                          |
+| Member           | Effect                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine [events](/engines/simple-3d/apis/game/). Available from construction.                                                               |
+| `state`          | The current state, as a read-only view: the value the most recent transition left.                                                                      |
+| `debug`          | The [debug surface](/engines/simple-3d/apis/game/) the game returned beside its state.                                                                  |
+| `scene`          | The [scene](/engines/simple-3d/apis/rendering/) the engine renders, live. Available from construction.                                                  |
+| `camera`         | The camera the engine renders through, live. Available from construction.                                                                               |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                                       |
+| `apply`          | Replace the state with what a [`Transition<S>`](/engines/simple-3d/apis/game/) returns from the current one, and return the new state.                  |
+| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                                          |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                                         |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                                     |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                                           |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                                       |
+| `view`           | The [`View`](/engines/simple-3d/apis/view/): the camera as it stood at the most recent render, with picking and projection through it.                  |
+| `diagnostics`    | Every registered [diagnostic](/engines/simple-3d/apis/diagnostics/) source and what it reports now, in registration order.                              |
+| `touchControls`  | The selected layout and whether its [on-screen controls](/engines/simple-3d/apis/input/) are showing, or `null` when there are none or after `destroy`. |
+| `recording`      | Whether the [recorder](/engines/simple-3d/apis/recording/) is capturing frames.                                                                         |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                                     |
+| `stopRecording`  | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`.                                                    |
+| `destroy`        | Halt the loop, remove the on-screen controls, drop every listener, and dispose the renderer.                                                            |
 
 ### `initialize`
 
@@ -311,8 +315,8 @@ render. Before the first render it answers from the camera defaults.
 
 ## `engine.destroy()`
 
-Halts the loop, detaches every listener, and disposes the renderer. Idempotent,
-because teardown races.
+Halts the loop, removes the on-screen touch controls, detaches every listener,
+and disposes the renderer. Idempotent, because teardown races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
 the loop and leaves the engine usable, so the two are separate acts. Destroying

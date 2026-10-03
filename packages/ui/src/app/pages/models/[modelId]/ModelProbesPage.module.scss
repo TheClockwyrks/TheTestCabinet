@@ -69,29 +69,13 @@
   color: t.$color-text-muted;
 }
 
-%control {
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
-}
-
+// The pickers and the number fields are the form primitives; only their widths
+// live here.
 .select {
-  @extend %control;
   max-width: 18rem;
 }
 
 .number {
-  @extend %control;
   width: 7rem;
 }
 
@@ -103,23 +87,6 @@
   height: 1.25rem;
   margin: t.$space-sm 0;
   accent-color: t.$color-accent;
-}
-
-.run {
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  padding: t.$space-sm t.$space-lg;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  color: t.$color-bg;
-  box-shadow: var(--ttc-glow);
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 }
 
 // --- History -------------------------------------------------------------------

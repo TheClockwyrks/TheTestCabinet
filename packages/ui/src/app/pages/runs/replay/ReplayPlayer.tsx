@@ -33,6 +33,7 @@ import {
   useReplayClock,
   type ReplayClock,
 } from "./useReplayClock";
+import { Select } from "../../../../primitives";
 import styles from "./ReplayPlayer.module.scss";
 
 /** A recording being fetched, the recording, or the reason there is none. */
@@ -324,7 +325,7 @@ export function ReplayTransport({ clock }: { clock: ReplayClock }) {
       <label className={styles.controlLabel} htmlFor={`${id}-speed`}>
         speed
       </label>
-      <select
+      <Select
         id={`${id}-speed`}
         className={styles.speed}
         value={clock.speed}
@@ -336,7 +337,7 @@ export function ReplayTransport({ clock }: { clock: ReplayClock }) {
             {s}×
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

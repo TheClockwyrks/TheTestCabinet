@@ -21,7 +21,7 @@ a caller subscribes to.
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | [Frame](/engines/simple-2d/concepts/frame/)             | The loop, simulated time, the clock behind delta time, and pacing.                                                       |
 | [Viewport](/engines/simple-2d/concepts/viewport/)       | The fixed logical design size, the letterboxed fit, the measurement seam, and the per-frame resync.                      |
-| [Input](/engines/simple-2d/concepts/input/)             | Named actions over bindings, magnitudes and edges, the pointer, and the touch layout catalogue.                          |
+| [Input](/engines/simple-2d/concepts/input/)             | Named actions over bindings, magnitudes and edges, the pointer, the touch layout catalogue, and the on-screen controls.  |
 | [Audio](/engines/simple-2d/concepts/audio/)             | Synthesized and file-backed cues, the first-interaction unlock, and the cue events.                                      |
 | [Assets](/engines/simple-2d/concepts/assets/)           | The single asset root, path resolution, and the load events.                                                             |
 | [Diagnostics](/engines/simple-2d/concepts/diagnostics/) | Named sources, reading them back, and the overlay drawn in device space.                                                 |

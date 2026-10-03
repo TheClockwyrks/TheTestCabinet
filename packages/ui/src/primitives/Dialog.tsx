@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "./Button";
 import styles from "./Dialog.module.scss";
 
 /** Every focusable control a dialog's chrome can contain, for the focus trap. */
@@ -145,15 +146,14 @@ export function Dialog({
         {details && <div className={styles.details}>{details}</div>}
         <div className={styles.actions}>
           {actions.map((action, i) => (
-            <button
+            <Button
               key={action.label}
-              type="button"
-              className={`${styles.action} ${styles[action.tone ?? "secondary"]}`}
+              variant={action.tone ?? "secondary"}
               data-dialog-autofocus={i === focusIndex ? "" : undefined}
               onClick={action.onClick}
             >
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

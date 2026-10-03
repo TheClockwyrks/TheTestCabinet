@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Button, Input, Select } from "../../primitives";
 import { recordedHarnesses } from "../data/harnesses";
 import { useModels } from "../data/useModels";
 import { useTestCases } from "../data/useTestCases";
@@ -49,8 +50,7 @@ export function RunFilters({
 
   return (
     <div className={styles.filters}>
-      <input
-        className={styles.search}
+      <Input
         type="search"
         placeholder={searchPlaceholder}
         value={state.query}
@@ -86,9 +86,14 @@ export function RunFilters({
           </label>
         )}
         {state.activeCount > 0 && (
-          <button type="button" className={styles.clear} onClick={state.clear}>
+          <Button
+            variant="link"
+            size="small"
+            className={styles.clear}
+            onClick={state.clear}
+          >
             Clear filters
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -120,7 +125,7 @@ function FacetSelect({
   const value = state.facets[facet];
 
   return (
-    <select
+    <Select
       className={styles.facet}
       value={value}
       disabled={needsCase}
@@ -141,7 +146,7 @@ function FacetSelect({
       {value && !options.some((option) => option.value === value) && (
         <option value={value}>{value}</option>
       )}
-    </select>
+    </Select>
   );
 }
 

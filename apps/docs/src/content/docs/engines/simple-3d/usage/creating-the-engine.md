@@ -105,7 +105,7 @@ const opening = await engine.initialize();
 | Option       | Effect                                                                                                                                                                          |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `background` | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Left out, the canvas clears to transparency and the page shows through behind the game. |
-| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions.                                                                               |
+| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions and whose on-screen controls the engine draws.                                 |
 | `assetRoot`  | The root every asset path resolves under. Defaults to `assets/`.                                                                                                                |
 | `surface`    | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document.                                          |
 | `screen`     | The canvas the screen layer draws on. Defaults to one created from the stage canvas's owning document.                                                                          |
@@ -248,11 +248,11 @@ const controller = new AbortController();
 await engine.run({ signal: controller.signal });
 ```
 
-`engine.destroy()` halts the loop, detaches every listener, and disposes the
-renderer. It is idempotent, and it resolves any promise `run` returned. The
-scene and the objects the game placed in it stay as they stand, so a caller
-that reads the scene after destroying the engine still finds what the last
-frame left.
+`engine.destroy()` halts the loop, removes the on-screen touch controls,
+detaches every listener, and disposes the renderer. It is idempotent, and it
+resolves any promise `run` returned. The scene and the objects the game placed
+in it stay as they stand, so a caller that reads the scene after destroying the
+engine still finds what the last frame left.
 
 ```ts
 engine.destroy();

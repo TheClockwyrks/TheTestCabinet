@@ -10,6 +10,15 @@
 # through .azure/project/ci-image-steps.yml, which is the only moment an older
 # image becomes stale.
 #
+# The image and the attestation an index names carry no tag of their own, and
+# the registry deletes either of them out from under the index without a
+# word: the tag then still resolves, and a pull of it fails with the image's
+# digest "not found". So before anything untagged goes, every kept tag's
+# manifest is read back and whatever it names is kept with it. An unkept index
+# is deleted on its own; the registry does not delete what it names, which is
+# why its children are selected separately, and why a child two indexes share
+# survives the deletion of one of them.
+#
 # What is kept is what `master`, `staging` and `nightly` pin in
 # ci/images/tags.yml as `ciImageTag`, the commit whose image pipeline run built
 # both tracks' images, plus what this checkout's copy of the file pins, plus
@@ -224,9 +233,8 @@ delete_manifest() {
 		return 0
 	fi
 	# The status rather than curl's own success, because one of these is not a
-	# failure. Deleting an index deletes the manifests it names, so a child
-	# selected in the same pass as its parent is already gone by the time its
-	# turn comes and the registry answers 404.
+	# failure. A manifest another run, or a hand, deleted since the catalogue
+	# was read answers 404, and it is gone either way.
 	local status
 	status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
 		--request DELETE \
@@ -248,18 +256,77 @@ delete_manifest() {
 	esac
 }
 
-# Reads the catalogue on stdin and prints the digest of every manifest to
-# delete: one whose tags are all unkept, and one with no tag at all that is
-# older than the grace period above. `all` as the kept tags keeps every tagged
-# manifest, which is the cache repository's rule. A kept index's own children
-# are named by digest and carry no tag, which is why the untagged ones are
-# held to an age rather than deleted outright.
-select_manifests() {
-	local kept="$1" cutoff="$2"
+# Reads the catalogue on stdin and prints the digest of every manifest a kept
+# tag names, one per line. `all` as the kept tags names every tagged manifest,
+# which is the cache repository's rule.
+kept_manifests() {
+	local kept="$1"
 	local kept_json="$kept"
 	[ "$kept" != all ] || kept_json='null'
-	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" '
+	jq -r --argjson kept "$kept_json" '
 		.manifests[]
+		| select(
+			((.tags // []) | length > 0)
+			and ($kept == null
+				or ([.tags[] | select(. as $t | $kept | index($t))] | length) > 0)
+		)
+		| .digest
+	'
+}
+
+# The digests one manifest names, one per line: an index's image and
+# attestation manifests, and nothing for a plain image. The registry is asked
+# for either shape an index comes in and either shape an image comes in, so
+# that it answers with the manifest rather than a conversion of it, which a
+# digest could not name. A manifest that cannot be read is a failure, not an
+# empty answer: the caller treats "could not ask" as a reason to stop.
+children_of() {
+	local repository="$1" digest="$2" authorization="$3"
+	curl --silent --show-error --fail \
+		--header "Authorization: ${authorization}" \
+		--header "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+		"https://${REGISTRY}/v2/${repository}/manifests/${digest}" |
+		jq -r '.manifests[]?.digest // empty'
+}
+
+# Every digest a purge of one repository must leave alone, as a JSON array:
+# the manifest each kept tag names, read off the catalogue on stdin, and
+# whatever each of those names in turn. Fails, printing nothing, when one of
+# them cannot be read back from the registry, because a kept index whose
+# children are unknown is a kept index whose children would be deleted.
+protected_manifests() {
+	local repository="$1" authorization="$2" kept="$3" catalogue="$4"
+	local digest children
+	local digests=()
+	while read -r digest; do
+		[ -n "$digest" ] || continue
+		digests+=("$digest")
+		if ! children="$(children_of "$repository" "$digest" "$authorization")"; then
+			echo "ci-image-purge.sh: cannot read ${repository}@${digest}, which a kept tag names; refusing to purge" >&2
+			return 1
+		fi
+		while read -r digest; do
+			[ -n "$digest" ] || continue
+			digests+=("$digest")
+		done <<<"$children"
+	done < <(kept_manifests "$kept" <<<"$catalogue")
+	printf '%s\n' "${digests[@]}" | jq -R -s 'split("\n") | map(select(. != ""))'
+}
+
+# Reads the catalogue on stdin and prints the digest of every manifest to
+# delete: one whose tags are all unkept, and one with no tag at all that is
+# older than the grace period above and that no kept manifest names. `all` as
+# the kept tags keeps every tagged manifest, which is the cache repository's
+# rule. The age is for a build in flight, whose image is pushed before the
+# index that will name it; the protected list is for the children of what is
+# already kept, which no age would save.
+select_manifests() {
+	local kept="$1" cutoff="$2" protected="$3"
+	local kept_json="$kept"
+	[ "$kept" != all ] || kept_json='null'
+	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" --argjson protected "$protected" '
+		.manifests[]
+		| select(.digest as $digest | ($protected | index($digest)) == null)
 		| select(
 			if (.tags // []) | length > 0
 			then $kept != null
@@ -272,7 +339,7 @@ select_manifests() {
 }
 
 main() {
-	local authorization cache_authorization kept kept_json cutoff catalogue digest failed=0
+	local authorization cache_authorization kept kept_json cutoff catalogue protected digest failed=0
 
 	if ! authorization="$(authorization_for "$REPOSITORY")"; then
 		exit 1
@@ -297,20 +364,24 @@ main() {
 		echo "ci-image-purge.sh: cannot list ${REPOSITORY}" >&2
 		exit 1
 	fi
+	if ! protected="$(protected_manifests "$REPOSITORY" "$authorization" "$kept_json" "$catalogue")"; then
+		exit 1
+	fi
 	while read -r digest; do
 		[ -n "$digest" ] || continue
 		delete_manifest "$REPOSITORY" "$digest" "$authorization" || failed=1
-	done < <(select_manifests "$kept_json" "$cutoff" <<<"$catalogue")
+	done < <(select_manifests "$kept_json" "$cutoff" "$protected" <<<"$catalogue")
 
 	# The cache repository holds one tag, which buildx overwrites. Everything
 	# untagged in it is an overwrite's leavings; at most 200 go per run, which
 	# is far more than one build orphans and keeps a first run bounded.
 	if cache_authorization="$(authorization_for "$CACHE_REPOSITORY" 2>/dev/null)" &&
-		catalogue="$(manifests_in "$CACHE_REPOSITORY" "$cache_authorization" 2>/dev/null)"; then
+		catalogue="$(manifests_in "$CACHE_REPOSITORY" "$cache_authorization" 2>/dev/null)" &&
+		protected="$(protected_manifests "$CACHE_REPOSITORY" "$cache_authorization" all "$catalogue")"; then
 		while read -r digest; do
 			[ -n "$digest" ] || continue
 			delete_manifest "$CACHE_REPOSITORY" "$digest" "$cache_authorization" || failed=1
-		done < <(select_manifests all "$cutoff" <<<"$catalogue" | head -n 200)
+		done < <(select_manifests all "$cutoff" "$protected" <<<"$catalogue" | head -n 200)
 	fi
 
 	exit "$failed"

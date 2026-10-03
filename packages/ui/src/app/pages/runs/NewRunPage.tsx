@@ -701,7 +701,6 @@ export function NewRunPage() {
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
           <NumberField
-            className={styles.input}
             problemClassName={styles.fieldProblem}
             {...maxRuntimeField.bounds}
             value={maxRuntimeField.raw}
@@ -716,7 +715,6 @@ export function NewRunPage() {
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Run count</span>
           <NumberField
-            className={styles.input}
             problemClassName={styles.fieldProblem}
             {...runCountField.bounds}
             value={runCountField.raw}
@@ -729,7 +727,6 @@ export function NewRunPage() {
         >
           <span className={styles.fieldLabel}>Retry count</span>
           <NumberField
-            className={styles.input}
             problemClassName={styles.fieldProblem}
             {...retryCountField.bounds}
             value={retryCountField.raw}

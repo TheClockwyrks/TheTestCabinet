@@ -29,6 +29,7 @@ import { type Completion, type ParseResult, completeQuery } from "../query";
 import { type QueryExample, queryExamples } from "./examples";
 import { highlightSpans } from "./highlight";
 import styles from "./GgDiscover.module.scss";
+import { Button } from "../../../../primitives/Button";
 
 interface QueryEditorProps {
   /** The query source text. The editor is fully controlled — the page owns the text
@@ -273,8 +274,7 @@ export function QueryEditor({
             </ul>
           )}
         </div>
-        <button
-          type="button"
+        <Button
           className={styles.run}
           onClick={() => {
             setOpen(false);
@@ -283,15 +283,14 @@ export function QueryEditor({
           disabled={busy}
         >
           {busy ? "Running…" : "Run"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           className={styles.examplesToggle}
           aria-expanded={examplesOpen}
           onClick={() => setExamplesOpen((current) => !current)}
         >
           Examples
-        </button>
+        </Button>
       </div>
 
       {/* Live validation. Every diagnostic is listed with its span already underlined
