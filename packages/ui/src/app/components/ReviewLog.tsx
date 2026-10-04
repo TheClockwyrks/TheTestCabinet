@@ -42,12 +42,12 @@ interface ReviewColumn {
   render: (entry: MyReview, caseName: string, modelName: string) => ReactNode;
 }
 
-// This account's own verdict for a run: the worst rating across the domains it
-// scored, or — for a game jam, which scores no domains — its whole-game overall
-// grade (mirrors the run log's rating cell so the two tables read identically).
-// On a validator-rated run the account's review carries the run-wide aesthetic
-// tier (and possibly verdict overrides), so its badge is the aesthetic one,
-// shown beside the run's functional rating.
+// This account's own functional verdict for a run: the worst rating across the
+// domains it scored, or — for a game jam, which scores no domains — its
+// whole-game overall grade (mirrors the run log's FUNCTIONALITY cell so the two
+// tables read identically). On a validator-rated run the functional rating is
+// the validators'; the account's review there carries the run-wide aesthetic
+// tier, which the AESTHETIC column shows.
 function reviewerVerdict(entry: MyReview): ReactNode {
   const { review, run } = entry;
   const rated = review.ratings.length > 0;
@@ -56,24 +56,37 @@ function reviewerVerdict(entry: MyReview): ReactNode {
     : run.validatorRated
       ? run.rating
       : null;
-  const aesthetic = reviewAesthetic(review);
-  const grade = rated || aesthetic ? null : overallGradeOf(review.checklist);
+  const grade =
+    rated || reviewAesthetic(review) ? null : overallGradeOf(review.checklist);
   return (
-    <span className={styles.rating} data-label="Rating">
+    <span className={styles.rating} data-label="Functionality">
       {grade ? (
         <GradeBadge status={grade} />
       ) : overall ? (
         <RatingBadge rating={overall} />
       ) : (
-        !aesthetic && <span className={styles.noRating}>&mdash;</span>
+        <span className={styles.noRating}>&mdash;</span>
       )}
-      {aesthetic && <AestheticBadge rating={aesthetic} />}
+    </span>
+  );
+}
+
+// The aesthetic tier this account's review assigned, or a dash.
+function reviewerAesthetic(entry: MyReview): ReactNode {
+  const aesthetic = reviewAesthetic(entry.review);
+  return (
+    <span className={styles.rating} data-label="Aesthetic">
+      {aesthetic ? (
+        <AestheticBadge rating={aesthetic} />
+      ) : (
+        <span className={styles.noRating}>&mdash;</span>
+      )}
     </span>
   );
 }
 
 // The reviews log's columns, left→right: the caret gutter, the reviewed run's
-// identity (test · harness · variant · model), the account's own rating, and
+// identity (test · harness · variant · model), the account's own ratings, and
 // when it reviewed. The identity columns mirror the run log's order and cell
 // treatments so the two tables line up; every data column is optional so the
 // picker can show or hide any of them.
@@ -101,7 +114,7 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
   {
     id: "harness",
     label: "HARNESS",
-    default: "7rem",
+    default: "6.5rem",
     min: 64,
     optional: true,
     render: (entry) => (
@@ -113,7 +126,7 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
   {
     id: "variant",
     label: "VARIANT",
-    default: "6rem",
+    default: "5.5rem",
     min: 56,
     optional: true,
     render: (entry) => (
@@ -126,7 +139,7 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
     id: "model",
     label: "MODEL",
     default: "1.6fr",
-    min: 96,
+    min: 112,
     optional: true,
     render: (_entry, _caseName, modelName) => (
       <span className={styles.model} data-label="Model">
@@ -136,11 +149,20 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
   },
   {
     id: "rating",
-    label: "RATING",
-    default: "6rem",
-    min: 56,
+    label: "FUNCTIONALITY",
+    default: "9rem",
+    min: 112,
     optional: true,
     render: (entry) => reviewerVerdict(entry),
+  },
+  {
+    id: "aesthetic",
+    label: "AESTHETIC",
+    default: "7.5rem",
+    min: 104,
+    optional: true,
+    defaultVisible: false,
+    render: (entry) => reviewerAesthetic(entry),
   },
   {
     id: "reviewed",

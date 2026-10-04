@@ -97,6 +97,17 @@ queued time out of it, and the count begins when the run reaches `starting`. It
 advances off one clock the whole log shares, and the log holds that clock only
 while a duration is moving.
 
+### Columns
+
+A run's two ratings are separate columns. Functionality holds the functional
+rating, a game jam's overall grade in its place, or a failed run's failure tier.
+Aesthetic holds the reviewer's aesthetic tier and is hidden until a viewer
+enables it from the column picker.
+
+Every column has a minimum width. When the shown columns need more than the
+log's width, the log scrolls horizontally instead of narrowing a column below
+its minimum.
+
 ### Deleting a run
 
 An unpublished run is deletable and a published one is not, which is the rule the

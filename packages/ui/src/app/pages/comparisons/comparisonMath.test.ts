@@ -9,6 +9,7 @@ import {
   armDistributionGroups,
   appendRunIds,
   armTopUps,
+  clearRunIds,
   countedRunIds,
   harnessArmLaunchItems,
   isGgArm,
@@ -17,6 +18,7 @@ import {
   pruneDeadRunIds,
   remainingForArm,
   reportedLiveRunIds,
+  runsInFlight,
   toolCallChartData,
   totalMissingRuns,
   withArmRunIds,
@@ -464,6 +466,32 @@ describe("armDistributionGroups", () => {
     ]);
     expect(groups[0]).toMatchObject({ ciLow: 119.75, ciHigh: 120.25, n: 3 });
   });
+
+  it("draws each run that reported the metric as a point linking to its run", () => {
+    const arm = {
+      ...result({ id: "a", label: "pi" }, { cost: summary(1) }),
+      runPoints: [
+        { runId: "r1", cost: 0.5, sessionSeconds: 90 },
+        // A run whose cost was never reported has no cost point.
+        { runId: "r2", sessionSeconds: 120 },
+        { runId: "r3", cost: 1.5 },
+      ],
+    };
+    const [group] = armDistributionGroups([arm], "cost", new Map());
+    expect(group!.points).toEqual([
+      { runId: "r1", value: 0.5, href: "/runs/r1" },
+      { runId: "r3", value: 1.5, href: "/runs/r3" },
+    ]);
+  });
+
+  it("draws boxes without points for a result that carries no run points", () => {
+    const [group] = armDistributionGroups(
+      [result({ id: "a", label: "pi" }, { cost: summary(1) })],
+      "cost",
+      new Map(),
+    );
+    expect(group!.points).toEqual([]);
+  });
 });
 
 describe("presentedRatio", () => {
@@ -566,5 +594,34 @@ describe("toolCallChartData", () => {
     ]);
     // Two distinct series get two distinct colors.
     expect(new Set(series.map((s) => s.color)).size).toBe(series.length);
+  });
+});
+
+describe("clearRunIds", () => {
+  it("empties every arm's recorded runs and keeps everything else", () => {
+    const config = {
+      controls: {},
+      n: 2,
+      arms: [
+        { id: "a", label: "A", runIds: ["a-1", "a-2"] },
+        { id: "b", label: "B", runIds: ["b-1"] },
+      ],
+    } as unknown as ComparisonConfig;
+    const cleared = clearRunIds(config);
+    expect(cleared.arms.map((a) => a.runIds)).toEqual([[], []]);
+    expect(cleared.arms.map((a) => a.label)).toEqual(["A", "B"]);
+    expect(cleared.n).toBe(2);
+    // The input is left as it was.
+    expect(config.arms[0]!.runIds).toEqual(["a-1", "a-2"]);
+  });
+});
+
+describe("runsInFlight", () => {
+  it("counts the held runs that have not landed, across arms", () => {
+    const results = [
+      { arm: { id: "a" }, liveRunIds: ["a-1", "a-2"], nObserved: 1 },
+      { arm: { id: "b" }, liveRunIds: ["b-1"], nObserved: 1 },
+    ] as unknown as ComparisonArmResult[];
+    expect(runsInFlight(results)).toBe(1);
   });
 });

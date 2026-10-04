@@ -153,12 +153,19 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   padding: t.$space-md t.$space-lg;
-  // Stated in full: the callout is a `<p>`, so leaving the top edge unset hands
-  // it to the user agent's 1em, which only happens to disappear because the
-  // block above it collapses a larger margin into it.
-  margin: 0 0 t.$space-xl;
+  // Stated in full: the callout is a `<p>`, and its group spaces it.
+  margin: 0;
   color: t.$color-text;
   font-family: var(--ttc-font);
+}
+
+// The ratio callouts read as one section: close together, with the column's
+// usual gap between the group and the charts below it.
+.ratioCallouts {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin: 0 0 t.$space-xl;
 }
 
 // The detail page's figure column: every section — the three charts and the

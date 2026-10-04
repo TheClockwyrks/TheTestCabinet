@@ -27,7 +27,6 @@ import {
 import { engineName } from "../../data/engines";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import {
-  bestAestheticRating,
   bestGrade,
   bestRating,
   foldLeaderboardEntries,
@@ -662,7 +661,6 @@ function GroupBoardRow({
   // A jam's runs carry a whole-game grade in place of a domain rating; a row
   // never carries both, so the badge adapts exactly as the case board's does.
   const grade = bestGrade(entry.grades);
-  const aesthetic = bestAestheticRating(entry.aesthetics);
   return (
     <div className={styles.boardRow} role="row">
       <span className={styles.rank}>{rank}</span>
@@ -681,7 +679,9 @@ function GroupBoardRow({
       {/* formatUsd already renders an em dash for a pair no run of which
           reported a comparable cost (an empty list means a null mean). */}
       <span className={styles.cost}>{formatUsd(mean(entry.costs))}</span>
-      <span className={styles.badges}>
+      {/* The functional badge only: the aesthetic tier is an opt-in column on
+          the run log, and a board this narrow has no room for a second badge. */}
+      <span className={styles.badge}>
         {grade ? (
           <GradeBadge status={grade} />
         ) : row.best ? (
@@ -689,7 +689,6 @@ function GroupBoardRow({
         ) : (
           <span className={styles.noRating}>—</span>
         )}
-        {aesthetic && <AestheticBadge rating={aesthetic} />}
       </span>
     </div>
   );

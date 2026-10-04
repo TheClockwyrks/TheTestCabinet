@@ -11,8 +11,9 @@ interface AestheticBadgeProps {
 // {@link RatingBadge}. It renders with the same chrome so the pair reads as two
 // verdicts of one run wherever they sit side by side (a run header, a run log
 // row, a gallery card). The Legendary tier is exceptional and reserved, so its
-// chip is distinct on sight: a slowly shimmering two-tone gradient (a static
-// gradient under `prefers-reduced-motion`, still unlike any flat tier). The
+// chip is distinct on sight: a bright label over a slowly drifting deep
+// rainbow, opaque so it reads the same on a panel or on the bare backdrop
+// (static under `prefers-reduced-motion`, still unlike any flat tier). The
 // tier's full description is exposed as the title; the visible text names the
 // channel so a lone badge is never mistaken for a functional rating.
 export function AestheticBadge({ rating, className }: AestheticBadgeProps) {

@@ -10,6 +10,8 @@ interface SectionWidgetProps {
   title: string;
   /** A one-line explanation of what the section shows, under the title. */
   hint?: string;
+  /** A caption under the section's body. */
+  caption?: string;
   /** Controls rendered on the header's trailing edge (e.g. a metric picker). */
   actions?: ReactNode;
   /** The section's body — a chart, a table, a stack of per-arm rows. */
@@ -28,6 +30,7 @@ interface SectionWidgetProps {
 export function SectionWidget({
   title,
   hint,
+  caption,
   actions,
   children,
 }: SectionWidgetProps) {
@@ -41,6 +44,7 @@ export function SectionWidget({
         {actions && <div className={styles.actions}>{actions}</div>}
       </header>
       {children}
+      {caption && <p className={styles.caption}>{caption}</p>}
     </Panel>
   );
 }
@@ -53,7 +57,7 @@ interface ChartWidgetProps {
    * ("Average tokens by model — per run"). Defaults to {@link title}.
    */
   chartTitle?: string;
-  /** A one-line explanation of what the chart shows, under the title. */
+  /** An explanation of how to read the chart, as a caption under it. */
   hint?: string;
   /** Controls rendered on the header's trailing edge (e.g. a metric picker). */
   actions?: ReactNode;
@@ -72,6 +76,8 @@ interface ChartWidgetProps {
 // floating on the backdrop, and it is the only place the title/hint/controls
 // arrangement above a chart is defined — {@link SectionWidget} is that
 // arrangement, shared with the non-chart sections that sit in the same column.
+// A chart's hint is a caption under the figure: it explains how to read the
+// marks, so it reads best once the reader has seen them.
 export function ChartWidget({
   title,
   chartTitle,
@@ -81,7 +87,7 @@ export function ChartWidget({
   empty = "Nothing to chart yet.",
 }: ChartWidgetProps) {
   return (
-    <SectionWidget title={title} hint={hint} actions={actions}>
+    <SectionWidget title={title} caption={hint} actions={actions}>
       {spec ? (
         <Chart title={chartTitle ?? title} spec={spec} />
       ) : (

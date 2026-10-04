@@ -365,3 +365,79 @@ describe("ComparisonEditPage", () => {
     }
   });
 });
+
+describe("ComparisonEditPage, editing", () => {
+  // The form edits the case, version, variant and engine. The controls it does not
+  // show are written back as loaded: a change to any control starts every
+  // configuration over, so a save that only renamed the comparison must not read
+  // as one.
+  it("writes the controls it does not edit back as they were loaded", async () => {
+    const stored = {
+      id: "cmp-1",
+      name: "Carom — gg vs Kilo",
+      description: "",
+      complete: false,
+      config: {
+        controls: {
+          caseSlug: "carom",
+          version: "v1.0.0",
+          variant: "base",
+          orchestratorSlug: "plan-then-build",
+          engineSlug: "none",
+          containerBuild: "build-7",
+        },
+        arms: [
+          {
+            id: "kilo",
+            label: "Kilo",
+            harnessSlug: "kilo",
+            modelId: "openai/gpt-5.6-sol",
+            runIds: ["job-1"],
+          },
+          {
+            id: "gg",
+            label: "gg minimal",
+            ggConfigId: "saved:cfg-minimal",
+            ggSlotModels: { "root.primary": "openai/gpt-5.6-sol" },
+            runIds: ["job-2"],
+          },
+        ],
+        n: 2,
+      },
+      arms: [],
+    };
+    const updateComparison = vi.fn().mockResolvedValue(stored);
+    const value = {
+      ...backendValue(vi.fn()),
+    } as unknown as BackendContextValue & { client: Record<string, unknown> };
+    value.client = {
+      ...value.client,
+      getComparison: vi.fn().mockResolvedValue(stored),
+      updateComparison,
+    };
+    render(
+      <MemoryRouter initialEntries={["/runs/comparisons/cmp-1/edit"]}>
+        <BackendProvider value={value}>
+          <Routes>
+            <Route
+              path="/runs/comparisons/:id/edit"
+              element={<ComparisonEditPage />}
+            />
+            <Route path="/runs/comparisons/:id" element={<div>detail</div>} />
+          </Routes>
+        </BackendProvider>
+      </MemoryRouter>,
+    );
+
+    const nameField = await screen.findByDisplayValue("Carom — gg vs Kilo");
+    fireEvent.change(nameField, { target: { value: "Renamed" } });
+    const save = screen.getByRole("button", { name: /^Save/ });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(updateComparison).toHaveBeenCalledTimes(1));
+
+    expect(updateComparison.mock.calls[0]![1].config.controls).toEqual(
+      stored.config.controls,
+    );
+  });
+});

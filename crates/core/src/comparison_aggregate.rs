@@ -11,8 +11,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comparison::{
-    ArmDiagnostics, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig, Confound,
-    ScorePoint, automated_only_score,
+    ArmDiagnostics, ArmRunPoint, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig,
+    Confound, ScorePoint, automated_only_score,
 };
 use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
 use crate::metrics::TokenCounts;
@@ -31,11 +31,13 @@ const FULL_MARKS_EPSILON: f64 = 1e-9;
 /// arm reads exactly the runs its [`run_ids`](ComparisonArm::run_ids) name that are
 /// present in the map.
 ///
-/// `live` is every recorded id that still exists — a run still stored, or a job still
-/// queued or running — which is a wider set than `runs`: a run launched a minute ago
-/// has no record yet but must not be launched again. The caller resolves it against
-/// the store (statistics are computed here; existence is not a question this module
-/// can answer), and each arm reports its own share as
+/// `runs` holds the **counted** runs alone, keyed by the id the arm recorded, so the
+/// statistics never read a canceled run or an infrastructure failure. `live` is every
+/// recorded id the arm holds — still in flight, or resolved to a counted run — which
+/// is a wider set than `runs`: a run launched a minute ago has no record yet but must
+/// not be launched again. The caller resolves both against the store (statistics are
+/// computed here; what a recorded id stands for is not a question this module can
+/// answer), and each arm reports its own share of `live` as
 /// [`live_run_ids`](ComparisonArmResult::live_run_ids).
 pub fn aggregate_comparison(
     config: &ComparisonConfig,
@@ -70,9 +72,9 @@ fn aggregate_arm(
     let arm_runs: Vec<&RunRecord> = ids.iter().map(|id| &runs[id]).collect();
     let seed = seed_from_run_ids(&ids);
 
-    // The arm's still-existing ids, in launch order rather than sorted: this is what a
-    // top-up counts off, and the order it was launched in is the order a reader reads
-    // it in. Wider than `ids` above — a run that has not reported back yet exists.
+    // The ids the arm holds, in launch order rather than sorted: this is what a top-up
+    // counts off, and the order it was launched in is the order a reader reads it in.
+    // Wider than `ids` above — a run that has not reported back yet is held.
     let live_run_ids: Vec<String> = arm
         .run_ids
         .iter()
@@ -101,6 +103,17 @@ fn aggregate_arm(
         .filter_map(|r| r.metrics.session_seconds)
         .collect();
     let session_duration = MetricSummary::compute(&sessions, seed);
+    // The raw values the three distributions summarize, one entry per counted run.
+    let run_points: Vec<ArmRunPoint> = ids
+        .iter()
+        .zip(&arm_runs)
+        .map(|(id, r)| ArmRunPoint {
+            run_id: id.clone(),
+            cost: r.metrics.cost.comparable,
+            tokens: r.metrics.tokens.total().map(|t| t as f64),
+            session_seconds: r.metrics.session_seconds,
+        })
+        .collect();
 
     // Automated-only scores, over the runs that carry validators. A run whose
     // covered denominator is zero (no auto-checkable points ran) contributes to
@@ -144,6 +157,7 @@ fn aggregate_arm(
         cost,
         tokens: tokens_summary,
         session_duration,
+        run_points,
         score,
         pass_rate,
         diagnostics: diagnostics_of(&arm_runs),

@@ -31,6 +31,11 @@ import { highlightSpans } from "./highlight";
 import styles from "./GgDiscover.module.scss";
 import { Button } from "../../../../primitives/Button";
 
+/** The textarea's placeholder, also laid out invisibly in the painted layer while the
+ *  query is empty so the box sizes to it. */
+const PLACEHOLDER =
+  'state:completed and model:"anthropic/*" | stats avg(score) by preset';
+
 interface QueryEditorProps {
   /** The query source text. The editor is fully controlled — the page owns the text
    *  because the URL does. */
@@ -198,6 +203,12 @@ export function QueryEditor({
                 {span.text}
               </span>
             ))}
+            {/* While empty, the placeholder's invisible copy sizes the box: the
+                textarea takes this layer's size, and a wrapped placeholder would
+                otherwise overflow a one-line box and scroll. */}
+            {value === "" && (
+              <span className={styles.placeholderSizer}>{PLACEHOLDER}</span>
+            )}
             {/* A trailing newline keeps the last line's height when the text ends bare. */}
             {"\n"}
           </pre>
@@ -216,7 +227,7 @@ export function QueryEditor({
             aria-expanded={open && completions.length > 0}
             aria-controls={listId}
             aria-autocomplete="list"
-            placeholder='state:completed and model:"anthropic/*" | stats avg(score) by preset'
+            placeholder={PLACEHOLDER}
             onChange={(event) => {
               onChange(event.target.value);
               setCaret(event.target.selectionStart);

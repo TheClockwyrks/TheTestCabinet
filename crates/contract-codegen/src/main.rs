@@ -598,7 +598,7 @@ fn main() -> Result<()> {
             file: "comparison.ts",
             decls: ts_decls![&cfg;
                 cstats::MetricSummary, cstats::PassRate,
-                cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics,
+                cmp::ScorePoint, cmp::ArmScore, cmp::ArmDiagnostics, cmp::ArmRunPoint,
                 cmp::Confound, cmp::ComparisonControls, cmp::ComparisonArm, cmp::ComparisonConfig,
                 cmp::ComparisonArmResult, cmp::Comparison,
                 bapi::ComparisonInput,
