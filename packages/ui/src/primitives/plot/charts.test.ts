@@ -594,6 +594,56 @@ describe("horizontalBarChart", () => {
     }
   });
 
+  // The bars' geometry and the x tick labels, for the extent tests below.
+  function barsAndTicks(node: Element) {
+    return {
+      bars: [...node.querySelectorAll('[aria-label="bar"] rect')].map(
+        (rect) => ({
+          x: Number(rect.getAttribute("x")),
+          width: Number(rect.getAttribute("width")),
+        }),
+      ),
+      ticks: [
+        ...node.querySelectorAll('[aria-label="x-axis tick label"] text'),
+      ].map((text) => text.textContent),
+    };
+  }
+
+  // Every value zero fits a degenerate `[0, 0]` domain, which Plot draws with every bar
+  // at full width and a `0.000000` tick.
+  it("draws an all-zero ranking as empty bars", () => {
+    const { bars, ticks } = barsAndTicks(
+      render(
+        horizontalBarChart(
+          [
+            { label: "a.ts", value: 0 },
+            { label: "b.ts", value: 0 },
+          ],
+          palette,
+        ),
+      ),
+    );
+    expect(bars.map((bar) => bar.width)).toEqual([0, 0]);
+    expect(ticks[0]).toBe("0");
+  });
+
+  it("holds a caller's fixed extent rather than fitting the data", () => {
+    const { bars, ticks } = barsAndTicks(
+      render(
+        horizontalBarChart(
+          [
+            { label: "a.ts", value: 50 },
+            { label: "b.ts", value: 100 },
+          ],
+          palette,
+          { domain: [0, 100] },
+        ),
+      ),
+    );
+    expect(bars[0]!.width * 2).toBeCloseTo(bars[1]!.width, 0);
+    expect(ticks.at(-1)).toBe("100");
+  });
+
   it("frames taller for more rows, so every row keeps the same height", () => {
     const three = horizontalBarChart(
       [

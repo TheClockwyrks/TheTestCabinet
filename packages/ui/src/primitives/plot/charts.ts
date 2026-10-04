@@ -1300,6 +1300,12 @@ export interface HorizontalBarLabels {
    * right of the shortest bar is free). Omit to leave the axis to carry the values.
    */
   valueLabel?: (value: number) => string;
+  /**
+   * The x extent, for a measure whose scale is fixed rather than set by the data — a
+   * percentage is `[0, 100]`, so a ranking of files all at 3% reads as nearly empty
+   * bars rather than full ones. Omit to fit the data from zero.
+   */
+  domain?: readonly [number, number];
 }
 
 // Geometry for a horizontal bar chart. The height is a function of the row count rather
@@ -1358,6 +1364,7 @@ export function horizontalBarChart(
     Math.max(MIN_LABEL_MARGIN, Math.ceil(longest * GLYPH_PX) + 12),
   );
   const valueLabel = labels.valueLabel;
+  const allZero = data.every((d) => d.value === 0);
   // Room at the right for the direct labels, measured from the longest one actually
   // rendered — a label drawn outside the frame is a clipped label, which is the failure
   // the direct labels were added to avoid.
@@ -1382,6 +1389,19 @@ export function horizontalBarChart(
       grid: true,
       zero: true,
       tickFormat: labels.xTickFormat,
+      ...(labels.domain
+        ? { domain: labels.domain }
+        : allZero
+          ? // A ranking of zeros fits a `[0, 0]` domain, which Plot can only draw by
+            // putting zero mid-frame, every bar at full width and a `0.000000` tick. A
+            // unit extent draws them as the empty bars they are, and the one tick is
+            // the only figure the data supports.
+            {
+              domain: [0, 1],
+              ticks: [0],
+              tickFormat: labels.xTickFormat ?? String,
+            }
+          : {}),
     },
     y: { label: null, type: "band", domain: order, padding: 0.32 },
     marks: [

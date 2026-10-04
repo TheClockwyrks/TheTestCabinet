@@ -119,6 +119,9 @@ export function ToolchainCoverage({
             spec={(palette) =>
               horizontalBarChart(bars, palette, {
                 valueLabel: (value) => `${value.toFixed(1)}%`,
+                // A percentage, so the bars are lengths out of 100 rather than out of
+                // the best file in the ranking.
+                domain: [0, 100],
               })
             }
           />
