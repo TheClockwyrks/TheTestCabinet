@@ -46,6 +46,11 @@ Small `n` is the norm, and every view states it plainly.
 as such. The raw points are shown alongside the summary, so the box and median
 read as an aid over the data rather than as a replacement for it.
 
+A distribution chart's value axis spans the lowest to the highest value any arm
+reached, padded by a margin on each side, rather than starting at zero. A box
+plot reads by position, not by length, so a zero baseline adds nothing and
+flattens an arm whose runs sit close together far from zero.
+
 Rigor scales to how close the call is. An effect of several multiples dwarfs the
 noise at three runs per arm, and showing the two distributions is enough. The
 formal machinery earns its keep on close calls, such as two [gg

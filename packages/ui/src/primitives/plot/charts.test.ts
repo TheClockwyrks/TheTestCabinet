@@ -544,6 +544,57 @@ describe("distributionChart", () => {
     ];
     expect(() => render(distributionChart(lone, palette))).not.toThrow();
   });
+
+  // The fitted y domain the spec carries, as [low, high].
+  function yDomain(spec: ReturnType<typeof distributionChart>): number[] {
+    return (spec.y as { domain: number[] }).domain;
+  }
+
+  it("fits the value axis to the data with a margin instead of starting at zero", () => {
+    // Values span 1–14, so the 8% margin is 1.04 on each side; the low side
+    // stops at zero, since every value is non-negative.
+    const [low, high] = yDomain(distributionChart(groups, palette));
+    expect(low).toBe(0);
+    expect(high).toBeCloseTo(14 + 1.04);
+    // Far from zero, both margins apply in full.
+    const shifted = groups.map((g) => ({
+      ...g,
+      points: g.points.map((p) => ({ ...p, value: p.value + 100 })),
+      min: g.min + 100,
+      max: g.max + 100,
+      ciLow: g.ciLow + 100,
+      ciHigh: g.ciHigh + 100,
+    }));
+    const [shiftedLow, shiftedHigh] = yDomain(
+      distributionChart(shifted, palette),
+    );
+    expect(shiftedLow).toBeCloseTo(101 - 1.04);
+    expect(shiftedHigh).toBeCloseTo(114 + 1.04);
+  });
+
+  it("keeps an all-positive axis from padding below zero", () => {
+    const near = [{ ...groups[0]!, min: 0.02, ciLow: 0.05 }];
+    expect(yDomain(distributionChart(near, palette))[0]).toBe(0);
+  });
+
+  it("pads a single-value distribution relative to the value", () => {
+    const lone = [
+      {
+        label: "solo",
+        n: 1,
+        points: [],
+        median: 50,
+        mean: 50,
+        min: 50,
+        max: 50,
+        q1: 50,
+        q3: 50,
+      },
+    ];
+    const [low, high] = yDomain(distributionChart(lone, palette));
+    expect(low).toBeCloseTo(46);
+    expect(high).toBeCloseTo(54);
+  });
 });
 
 describe("horizontalBarChart", () => {

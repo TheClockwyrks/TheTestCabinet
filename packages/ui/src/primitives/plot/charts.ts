@@ -851,6 +851,38 @@ interface DistributionLabels {
 const CI_DX = -14;
 const POINTS_DX = 14;
 
+// The share of the data's span added above and below it on a distribution
+// chart's value axis, so the extreme whisker, CI tick or point sits off the
+// frame's edge.
+const DISTRIBUTION_PAD = 0.08;
+
+// A distribution chart's value domain: the lowest to the highest value any group
+// reaches (whiskers, CI bounds and raw points), padded on both sides. A box plot
+// reads by position rather than length, so the axis fits the data instead of
+// starting at zero, which would flatten a tight group far from it. A degenerate
+// span (every value equal) is padded relative to the value itself, and padding
+// never pushes an all-non-negative axis below zero.
+function distributionDomain(
+  groups: readonly DistributionGroup[],
+): [number, number] {
+  const values = groups.flatMap((g) => [
+    g.min,
+    g.max,
+    ...(g.ciLow != null ? [g.ciLow] : []),
+    ...(g.ciHigh != null ? [g.ciHigh] : []),
+    ...g.points.map((p) => p.value),
+  ]);
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0) return [0, 1];
+  const lo = Math.min(...finite);
+  const hi = Math.max(...finite);
+  const span = hi - lo;
+  const pad =
+    span > 0 ? span * DISTRIBUTION_PAD : Math.abs(lo) * DISTRIBUTION_PAD || 1;
+  const low = lo >= 0 ? Math.max(0, lo - pad) : lo - pad;
+  return [low, hi + pad];
+}
+
 // A per-arm distribution chart: for each group, a box (Q1–Q3) with whiskers
 // (min–max) and a median tick, a bootstrap confidence interval on the median
 // (thin, offset left), and every raw run plotted as its own point (offset right)
@@ -880,18 +912,23 @@ export function distributionChart(
     (g) => g.ciLow != null && g.ciHigh != null,
   ) as DistributionGroup[];
 
+  const domain = distributionDomain(groups);
+
   return {
     ...basePlotOptions(palette),
     x: { label: null, type: "band", domain: order },
     y: {
       label: labels.y ?? null,
       grid: true,
-      zero: true,
+      domain,
       tickFormat: labels.yTickFormat,
     },
     color: { type: "identity" },
     marks: [
-      Plot.ruleY([0], { stroke: palette.border }),
+      // The zero baseline, drawn only when the fitted axis reaches it.
+      ...(domain[0] <= 0 && domain[1] >= 0
+        ? [Plot.ruleY([0], { stroke: palette.border })]
+        : []),
       // Whisker: the full min–max range, a thin vertical rule at the arm's x
       // position (`ruleX`, not `ruleY` — the mark that spans a y-interval at a
       // fixed x, rather than a horizontal line).
