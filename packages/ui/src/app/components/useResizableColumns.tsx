@@ -16,12 +16,14 @@ import styles from "./useResizableColumns.module.scss";
  * a column keeps its width even when the visible set changes (a column toggled
  * off and back on, or a differently-scoped table that shares some columns).
  *
- * `default` is the track's resting size — any valid `grid-template-columns`
- * value (`"1fr"`, `"7rem"`, …). It's used verbatim until the user drags this
- * column, so an untouched table renders pixel-identically to its static SCSS
- * template. `min` is the floor (in px) a drag can shrink the column to — the
- * effective floor is raised to the header label's own width so a column can
- * never be dragged narrower than its label (see the label clamp below). A
+ * `default` is the track's resting size — a fixed length (`"7rem"`) or a
+ * flexible one (`"1fr"`). `min` is the column's floor in px. A flexible track
+ * rests at `minmax(<min>px, <default>)`, so it absorbs slack but never shrinks
+ * below its floor: once the shown columns' floors exceed the container, the rows
+ * grow past it and the table scrolls horizontally instead of crushing a column.
+ * `min` is also the floor a drag can shrink the column to — the effective drag
+ * floor is raised to the header label's own width so a column can never be
+ * dragged narrower than its label (see the label clamp below). A
  * column with `resizable: false` gets no drag handle on its right edge (e.g. a
  * caret gutter).
  */
@@ -114,8 +116,8 @@ function saveWidths(storageKey: string, widths: Widths): void {
  * The mechanism is a single custom property, `--ttc-cols`, set on the
  * container and read by the row template (`grid-template-columns: var(--ttc-cols,
  * <default>)`). Each track resolves to its pinned pixel width, else its `default`
- * — so an untouched table renders on its flexible template and fills its
- * container. The first drag freezes every column at its rendered width, so once
+ * (a flexible one floored at its `min`) — so an untouched table renders on its
+ * flexible template and fills its container, scrolling once the floors exceed it. The first drag freezes every column at its rendered width, so once
  * the user has resized anything the table is fully pinned and each later drag
  * moves only the boundary grabbed. Widths persist under `storageKey`, keyed by
  * column id. During a drag the property is written imperatively so only the
@@ -145,7 +147,10 @@ export function useResizableColumns({
       }
       const tracks = columns.map((col) => {
         const w = ws[col.id];
-        return w == null ? col.default : `${w}px`;
+        if (w != null) return `${w}px`;
+        return col.default.endsWith("fr")
+          ? `minmax(${col.min}px, ${col.default})`
+          : col.default;
       });
       el.style.setProperty("--ttc-cols", tracks.join(" "));
     },

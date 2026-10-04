@@ -89,6 +89,13 @@
   gap: t.$space-lg;
 }
 
+// The Sessions tab's search box, spaced off the run log beneath it the way the runs
+// list's filter controls are.
+.sessionSearch {
+  margin-top: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
 .totalRuns {
   color: t.$color-text-muted;
   font-size: t.$font-sm;

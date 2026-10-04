@@ -373,11 +373,8 @@
   color: t.$color-text-muted;
 }
 
-// The functional badge (or a jam's grade) with the aesthetic badge beside it.
-.badges {
+// The functional badge, or a jam's grade.
+.badge {
   display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: t.$space-xs;
   justify-content: flex-end;
 }

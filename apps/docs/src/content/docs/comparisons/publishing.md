@@ -25,7 +25,8 @@ Cloudflare Pages deploy for the playable build
 means one pod, repo, and deploy per run, against GitHub and Cloudflare rate
 limits.
 
-`POST /comparisons/{id}/publish` enqueues one publish job per arm run and lets
+`POST /comparisons/{id}/publish` enqueues one publish job per
+[counted](/comparisons/experiments/#which-runs-an-arm-holds) arm run and lets
 the dispatcher drain them through the existing queue (`POST /publish-jobs/next`
 → pod → `POST /publish-jobs/{id}/result`). Run ids are deduplicated across arms
 first, so a run shared by two arms is published once.

@@ -69,7 +69,9 @@
 }
 
 .wordmark {
-  font-family: var(--ttc-display);
+  // Doto is bundled in `app/index.ts`; the display stack stands in while it
+  // loads.
+  font-family: "Doto Variable", var(--ttc-display);
   font-size: t.$font-lg;
   font-weight: 700;
   letter-spacing: 0.02em;

@@ -479,6 +479,52 @@ fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
     assert!((summary.max - 150.0).abs() < 1e-9);
 }
 
+/// Every counted run is reported as a raw point in sorted-id order, carrying the
+/// values its distributions summarize, with an unreported metric left absent.
+#[test]
+fn an_arm_reports_each_counted_run_as_a_raw_point() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    for (id, cost, session) in [("pi-2", 0.75, None), ("pi-1", 0.5, Some(90.0))] {
+        let mut run = record(Run {
+            id,
+            harness: HarnessSlug::Pi,
+            model: "anthropic/claude-opus-4.8",
+            cost,
+            tokens: 100,
+            tool_calls: &[],
+            scripts: vec![script("a", true)],
+            auth: AuthMode::ApiKey,
+        });
+        run.metrics.session_seconds = session;
+        runs.insert(id.to_string(), run);
+    }
+
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    // `pi-3` was recorded but never counted, so it has no point.
+    config.arms[0].run_ids = vec!["pi-2".into(), "pi-1".into(), "pi-3".into()];
+
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    assert_eq!(
+        arms[0].run_points,
+        vec![
+            ArmRunPoint {
+                run_id: "pi-1".into(),
+                cost: Some(0.5),
+                tokens: Some(100.0),
+                session_seconds: Some(90.0),
+            },
+            ArmRunPoint {
+                run_id: "pi-2".into(),
+                cost: Some(0.75),
+                tokens: Some(100.0),
+                session_seconds: None,
+            },
+        ]
+    );
+}
+
 /// The same run, moved onto an engine. Written as a mutation rather than another
 /// [`Run`] field because the engine is fixed for every other test in this file:
 /// only the two below vary it, and a field would put `engine: "none"` on a dozen

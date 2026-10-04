@@ -411,3 +411,65 @@ fn an_unresolvable_case_version_leaves_the_engine_control_unchecked() {
     let store = DefinitionStore::open(dir.path()).expect("open store");
     assert!(ensure_engine_control_supported(&store, &sample_config()).is_ok());
 }
+
+/// The defect the resolution exists for, end to end: an arm records the job id its
+/// launch handed back, the run the job stored carries an id of its own, and the
+/// comparison still observes that run. A canceled run is held by neither figure, and
+/// the comparison completes once every arm holds `n` landed runs.
+#[tokio::test]
+async fn an_arm_observes_the_runs_its_recorded_jobs_stored() {
+    use crate::db::tests::{links, new_job, record};
+    use test_cabinet_core::run_record::RunState;
+
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = store_supporting(&["none"]);
+    let land = |job: &'static str, run: &'static str, state: RunState| {
+        let db = &db;
+        async move {
+            db.enqueue_job(new_job(job, "2026-06-23T00:00:00Z"))
+                .await
+                .unwrap();
+            let mut r = record(run);
+            r.status.state = state;
+            db.push(&r, &links(), None, None).await.unwrap();
+            db.set_job_state(job, "succeeded", "2026-06-23T00:30:00Z", None, Some(run))
+                .await
+                .unwrap();
+        }
+    };
+    land("pi-job", "pi-run", RunState::Completed).await;
+    land("kilo-job", "kilo-run", RunState::Catastrophic).await;
+    land("kilo-canceled", "kilo-canceled-run", RunState::Canceled).await;
+
+    let mut config = sample_config();
+    config.n = 1;
+    config.arms[0].run_ids = vec!["pi-job".into()];
+    config.arms[1].run_ids = vec!["kilo-job".into(), "kilo-canceled".into()];
+    let stored = stored_from_input(
+        "c1".into(),
+        "u1",
+        ComparisonInput {
+            name: "Pi vs Kilo".into(),
+            description: String::new(),
+            config,
+        },
+        "2026-06-23T00:00:00Z",
+        "2026-06-23T00:00:00Z",
+    )
+    .unwrap();
+
+    let comparison = assemble_comparison(&db, &store, stored).await.unwrap();
+    let observed: Vec<(usize, Vec<String>)> = comparison
+        .arms
+        .iter()
+        .map(|a| (a.n_observed, a.live_run_ids.clone()))
+        .collect();
+    assert_eq!(
+        observed,
+        vec![
+            (1, vec!["pi-job".to_string()]),
+            (1, vec!["kilo-job".to_string()]),
+        ]
+    );
+    assert!(comparison.complete);
+}

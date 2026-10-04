@@ -851,6 +851,38 @@ interface DistributionLabels {
 const CI_DX = -14;
 const POINTS_DX = 14;
 
+// The share of the data's span added above and below it on a distribution
+// chart's value axis, so the extreme whisker, CI tick or point sits off the
+// frame's edge.
+const DISTRIBUTION_PAD = 0.08;
+
+// A distribution chart's value domain: the lowest to the highest value any group
+// reaches (whiskers, CI bounds and raw points), padded on both sides. A box plot
+// reads by position rather than length, so the axis fits the data instead of
+// starting at zero, which would flatten a tight group far from it. A degenerate
+// span (every value equal) is padded relative to the value itself, and padding
+// never pushes an all-non-negative axis below zero.
+function distributionDomain(
+  groups: readonly DistributionGroup[],
+): [number, number] {
+  const values = groups.flatMap((g) => [
+    g.min,
+    g.max,
+    ...(g.ciLow != null ? [g.ciLow] : []),
+    ...(g.ciHigh != null ? [g.ciHigh] : []),
+    ...g.points.map((p) => p.value),
+  ]);
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0) return [0, 1];
+  const lo = Math.min(...finite);
+  const hi = Math.max(...finite);
+  const span = hi - lo;
+  const pad =
+    span > 0 ? span * DISTRIBUTION_PAD : Math.abs(lo) * DISTRIBUTION_PAD || 1;
+  const low = lo >= 0 ? Math.max(0, lo - pad) : lo - pad;
+  return [low, hi + pad];
+}
+
 // A per-arm distribution chart: for each group, a box (Q1–Q3) with whiskers
 // (min–max) and a median tick, a bootstrap confidence interval on the median
 // (thin, offset left), and every raw run plotted as its own point (offset right)
@@ -880,18 +912,23 @@ export function distributionChart(
     (g) => g.ciLow != null && g.ciHigh != null,
   ) as DistributionGroup[];
 
+  const domain = distributionDomain(groups);
+
   return {
     ...basePlotOptions(palette),
     x: { label: null, type: "band", domain: order },
     y: {
       label: labels.y ?? null,
       grid: true,
-      zero: true,
+      domain,
       tickFormat: labels.yTickFormat,
     },
     color: { type: "identity" },
     marks: [
-      Plot.ruleY([0], { stroke: palette.border }),
+      // The zero baseline, drawn only when the fitted axis reaches it.
+      ...(domain[0] <= 0 && domain[1] >= 0
+        ? [Plot.ruleY([0], { stroke: palette.border })]
+        : []),
       // Whisker: the full min–max range, a thin vertical rule at the arm's x
       // position (`ruleX`, not `ruleY` — the mark that spans a y-interval at a
       // fixed x, rather than a horizontal line).
@@ -1300,6 +1337,12 @@ export interface HorizontalBarLabels {
    * right of the shortest bar is free). Omit to leave the axis to carry the values.
    */
   valueLabel?: (value: number) => string;
+  /**
+   * The x extent, for a measure whose scale is fixed rather than set by the data — a
+   * percentage is `[0, 100]`, so a ranking of files all at 3% reads as nearly empty
+   * bars rather than full ones. Omit to fit the data from zero.
+   */
+  domain?: readonly [number, number];
 }
 
 // Geometry for a horizontal bar chart. The height is a function of the row count rather
@@ -1358,6 +1401,7 @@ export function horizontalBarChart(
     Math.max(MIN_LABEL_MARGIN, Math.ceil(longest * GLYPH_PX) + 12),
   );
   const valueLabel = labels.valueLabel;
+  const allZero = data.every((d) => d.value === 0);
   // Room at the right for the direct labels, measured from the longest one actually
   // rendered — a label drawn outside the frame is a clipped label, which is the failure
   // the direct labels were added to avoid.
@@ -1382,6 +1426,19 @@ export function horizontalBarChart(
       grid: true,
       zero: true,
       tickFormat: labels.xTickFormat,
+      ...(labels.domain
+        ? { domain: labels.domain }
+        : allZero
+          ? // A ranking of zeros fits a `[0, 0]` domain, which Plot can only draw by
+            // putting zero mid-frame, every bar at full width and a `0.000000` tick. A
+            // unit extent draws them as the empty bars they are, and the one tick is
+            // the only figure the data supports.
+            {
+              domain: [0, 1],
+              ticks: [0],
+              tickFormat: labels.xTickFormat ?? String,
+            }
+          : {}),
     },
     y: { label: null, type: "band", domain: order, padding: 0.32 },
     marks: [

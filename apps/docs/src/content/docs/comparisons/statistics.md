@@ -46,6 +46,11 @@ Small `n` is the norm, and every view states it plainly.
 as such. The raw points are shown alongside the summary, so the box and median
 read as an aid over the data rather than as a replacement for it.
 
+A distribution chart's value axis spans the lowest to the highest value any arm
+reached, padded by a margin on each side, rather than starting at zero. A box
+plot reads by position, not by length, so a zero baseline adds nothing and
+flattens an arm whose runs sit close together far from zero.
+
 Rigor scales to how close the call is. An effect of several multiples dwarfs the
 noise at three runs per arm, and showing the two distributions is enough. The
 formal machinery earns its keep on close calls, such as two [gg
@@ -59,6 +64,12 @@ For comparable cost, total tokens, and session duration,
 the first and third quartiles, the interquartile range, and a bootstrap
 confidence interval on the median. A run missing a metric is left out of that
 metric's distribution rather than folded in as a zero.
+
+Each arm also reports its counted runs' raw values as `runPoints`, one entry
+per run in sorted-id order carrying the run id and its comparable cost, total
+tokens, and session seconds. A metric the run did not report is absent from its
+entry. These are the points a chart draws beside each box, and each one links
+to its run.
 
 The interval comes from 10,000 bootstrap resamples, taking the 2.5th and 97.5th
 percentiles of the resulting medians. Bootstrapping assumes no normality,

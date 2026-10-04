@@ -6,7 +6,9 @@
 // router and a <GalleryDataProvider> built from its data source (the static site
 // from the build-time snapshot; the web console from a backend + worker). The
 // app's global stylesheet is imported here as a side effect so a host needs only
-// to import this entry.
+// to import this entry. The wordmark's font, Doto, is bundled here too, so both
+// hosts serve it from their own origin rather than from Google Fonts.
+import "@fontsource-variable/doto";
 import "./styles/global.scss";
 
 export { GalleryApp } from "./GalleryApp";

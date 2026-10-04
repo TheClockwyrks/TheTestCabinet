@@ -109,7 +109,7 @@ export function GgSessionsPage() {
       />
 
       <input
-        className={runExec.input}
+        className={`${runExec.input} ${gg.sessionSearch}`}
         type="search"
         placeholder="Search by test case or model…"
         value={query}

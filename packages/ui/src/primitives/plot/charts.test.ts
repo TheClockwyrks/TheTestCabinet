@@ -544,6 +544,57 @@ describe("distributionChart", () => {
     ];
     expect(() => render(distributionChart(lone, palette))).not.toThrow();
   });
+
+  // The fitted y domain the spec carries, as [low, high].
+  function yDomain(spec: ReturnType<typeof distributionChart>): number[] {
+    return (spec.y as { domain: number[] }).domain;
+  }
+
+  it("fits the value axis to the data with a margin instead of starting at zero", () => {
+    // Values span 1–14, so the 8% margin is 1.04 on each side; the low side
+    // stops at zero, since every value is non-negative.
+    const [low, high] = yDomain(distributionChart(groups, palette));
+    expect(low).toBe(0);
+    expect(high).toBeCloseTo(14 + 1.04);
+    // Far from zero, both margins apply in full.
+    const shifted = groups.map((g) => ({
+      ...g,
+      points: g.points.map((p) => ({ ...p, value: p.value + 100 })),
+      min: g.min + 100,
+      max: g.max + 100,
+      ciLow: g.ciLow + 100,
+      ciHigh: g.ciHigh + 100,
+    }));
+    const [shiftedLow, shiftedHigh] = yDomain(
+      distributionChart(shifted, palette),
+    );
+    expect(shiftedLow).toBeCloseTo(101 - 1.04);
+    expect(shiftedHigh).toBeCloseTo(114 + 1.04);
+  });
+
+  it("keeps an all-positive axis from padding below zero", () => {
+    const near = [{ ...groups[0]!, min: 0.02, ciLow: 0.05 }];
+    expect(yDomain(distributionChart(near, palette))[0]).toBe(0);
+  });
+
+  it("pads a single-value distribution relative to the value", () => {
+    const lone = [
+      {
+        label: "solo",
+        n: 1,
+        points: [],
+        median: 50,
+        mean: 50,
+        min: 50,
+        max: 50,
+        q1: 50,
+        q3: 50,
+      },
+    ];
+    const [low, high] = yDomain(distributionChart(lone, palette));
+    expect(low).toBeCloseTo(46);
+    expect(high).toBeCloseTo(54);
+  });
 });
 
 describe("horizontalBarChart", () => {
@@ -592,6 +643,56 @@ describe("horizontalBarChart", () => {
     for (let i = 1; i < ys.length; i += 1) {
       expect(ys[i]).toBeGreaterThan(ys[i - 1]!);
     }
+  });
+
+  // The bars' geometry and the x tick labels, for the extent tests below.
+  function barsAndTicks(node: Element) {
+    return {
+      bars: [...node.querySelectorAll('[aria-label="bar"] rect')].map(
+        (rect) => ({
+          x: Number(rect.getAttribute("x")),
+          width: Number(rect.getAttribute("width")),
+        }),
+      ),
+      ticks: [
+        ...node.querySelectorAll('[aria-label="x-axis tick label"] text'),
+      ].map((text) => text.textContent),
+    };
+  }
+
+  // Every value zero fits a degenerate `[0, 0]` domain, which Plot draws with every bar
+  // at full width and a `0.000000` tick.
+  it("draws an all-zero ranking as empty bars", () => {
+    const { bars, ticks } = barsAndTicks(
+      render(
+        horizontalBarChart(
+          [
+            { label: "a.ts", value: 0 },
+            { label: "b.ts", value: 0 },
+          ],
+          palette,
+        ),
+      ),
+    );
+    expect(bars.map((bar) => bar.width)).toEqual([0, 0]);
+    expect(ticks[0]).toBe("0");
+  });
+
+  it("holds a caller's fixed extent rather than fitting the data", () => {
+    const { bars, ticks } = barsAndTicks(
+      render(
+        horizontalBarChart(
+          [
+            { label: "a.ts", value: 50 },
+            { label: "b.ts", value: 100 },
+          ],
+          palette,
+          { domain: [0, 100] },
+        ),
+      ),
+    );
+    expect(bars[0]!.width * 2).toBeCloseTo(bars[1]!.width, 0);
+    expect(ticks.at(-1)).toBe("100");
   });
 
   it("frames taller for more rows, so every row keeps the same height", () => {

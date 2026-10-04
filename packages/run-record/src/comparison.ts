@@ -147,6 +147,30 @@ export type ArmDiagnostics = {
 };
 
 /**
+ * One counted run's raw metric values, the data an arm's distributions summarize.
+ * A metric the run did not report is `None`, on the same terms as its
+ * distribution leaving the run out.
+ */
+export type ArmRunPoint = {
+  /**
+   * The run's id, as the arm recorded it.
+   */
+  runId: string;
+  /**
+   * The run's comparable cost (USD).
+   */
+  cost?: number;
+  /**
+   * The run's total tokens.
+   */
+  tokens?: number;
+  /**
+   * The run's harness session duration, in seconds.
+   */
+  sessionSeconds?: number;
+};
+
+/**
  * A control that slipped: two of an arm's runs disagreed on a variable that was
  * meant to be held constant. Surfaced so a comparison whose arms are not truly
  * comparable reads as compromised rather than quietly folding the runs together.
@@ -265,6 +289,10 @@ export type ComparisonArm = {
    * exactly these runs, so an arm's membership is explicit and unambiguous — the
    * only reliable way to tell two gg arms apart (they can share a root model but
    * differ in capability set, which no run tuple distinguishes).
+   *
+   * Each is the id a launch handed back, which is a **job** id; the backend
+   * resolves it to the run that job stands for (docs/comparisons/experiments.md,
+   * "Which runs an arm holds").
    */
   runIds?: Array<string>;
 };
@@ -306,20 +334,22 @@ export type ComparisonArmResult = {
    */
   nDesired: number;
   /**
-   * The number of runs actually observed for this arm.
+   * The number of the arm's **counted** runs that have landed: the runs its
+   * statistics are computed from.
    */
   nObserved: number;
   /**
-   * The arm's recorded [run ids](ComparisonArm::run_ids) that **still exist**:
-   * each one a run is still stored for, or a job is still queued or running for.
-   * In the arm's launch order.
+   * The arm's recorded [run ids](ComparisonArm::run_ids) that the arm **holds**:
+   * each one still in flight, or resolved to a stored run that counts toward `n`
+   * (docs/comparisons/experiments.md, "Which runs an arm holds"). In the arm's
+   * launch order.
    *
    * This is the count a "trigger missing runs" tops up against, and neither figure
    * beside it can serve. [`ComparisonArm::run_ids`] records every run ever
-   * launched, so an arm whose runs were deleted keeps counting dead ids and can
-   * never be topped up again. [`n_observed`](Self::n_observed) counts only the runs
-   * whose record has landed, so topping up against it relaunches every run still in
-   * flight. This counts the runs that exist right now, in flight or finished.
+   * launched, so an arm whose runs were deleted, canceled or failed on
+   * infrastructure would keep counting them and never be topped up again.
+   * [`n_observed`](Self::n_observed) counts only the runs whose record has landed,
+   * so topping up against it relaunches every run still in flight.
    *
    * Always serialized, empty array included: an arm with no live runs and a backend
    * that predates the field are different answers, and a console can only tell them
@@ -343,6 +373,12 @@ export type ComparisonArmResult = {
    * contributes nothing, on the same terms as a run missing its cost.
    */
   sessionDuration?: MetricSummary;
+  /**
+   * Every counted run's raw values, in sorted-id order: the points a view draws
+   * beside each distribution. The TypeScript type stays optional so a console
+   * still reads a result written by a backend that predates the field.
+   */
+  runPoints?: Array<ArmRunPoint>;
   /**
    * The automated-only score across the arm's runs.
    */
@@ -406,6 +442,11 @@ export type Comparison = {
    * The computed per-arm results, in the config's arm order.
    */
   arms: Array<ComparisonArmResult>;
+  /**
+   * Whether every arm holds `n` counted runs and none in flight
+   * ([`is_complete`]).
+   */
+  complete: boolean;
 };
 
 /**

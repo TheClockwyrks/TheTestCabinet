@@ -22,9 +22,16 @@
   text-shadow: var(--tcab-glow);
 }
 
-// A one-line explanation of what the chart shows, under the title.
+// A one-line explanation of what the section shows, under the title.
 .hint {
   margin: t.$space-xs 0 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A chart's reading guide, under the figure.
+.caption {
+  margin: t.$space-sm 0 0;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
 }

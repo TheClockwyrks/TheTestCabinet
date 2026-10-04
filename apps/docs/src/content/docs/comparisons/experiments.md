@@ -66,10 +66,10 @@ classes and cost fields.
 ## Triggering the runs
 
 A comparison reuses the existing launch paths rather than adding a run queue of
-its own. Its "trigger missing runs" action tops each arm up to `N`, counting off
-the runs the arm records that still exist. The arm's recorded run ids are pruned
-of runs that no longer exist, so a run deleted after it was launched is
-triggered again.
+its own. Its "trigger missing runs" action tops each arm up to `N`, counting the
+arm's runs that are in flight or that [count](#which-runs-an-arm-holds) toward
+it. Before it launches, the action prunes the arm's recorded ids of runs that do
+not count, so the stored configuration names only the runs the arm holds.
 
 - A harness arm launches through the shared batch path, `launchBatch()` →
   `POST /jobs/batch` (`packages/ui/src/app/pages/runs/launchBatch.ts`), with the
@@ -78,15 +78,64 @@ triggered again.
   request per run, with the arm's slot models bound onto the capability set it
   names.
 
-Runs are matched back to their arm by the run ids the arm records at launch, not
-by their [`RunSubject`](/components/core/run-records/) tuple. Two gg arms can
-share a root model and differ only in capability set, which no run tuple
+A launch the backend refuses records nothing on the arm, and the console shows
+the refusal's reason on the page.
+
+### Which runs an arm holds
+
+Runs are matched back to their arm by the ids the arm records at launch, not by
+their [`RunSubject`](/components/core/run-records/) tuple. Two gg arms can share
+a root model and differ only in capability set, which no run tuple
 distinguishes, so an arm's membership is explicit.
+
+A launch returns a job id, and the run its driver stores carries an id of its
+own. The backend resolves each recorded id to the run it stands for by following
+the job's `record_id`, and by following `retried_by` to the retry when the
+backend retried the attempt, so an attempt and its retry are one run. An id
+that already names a stored run resolves to that run.
+
+A resolved run counts toward `N` by the rule that decides
+[which runs count](/components/backend/coverage/#which-runs-count) toward a
+coverage cell. A run that ends in the model's own failure counts, because the
+model had its attempt. A run that ends `harness_error` or `infrastructure`, is
+canceled, or was deleted does not count, and neither does a job that ended
+without storing a run. The next trigger launches a replacement for each of them.
+
+An arm's statistics, diagnostics and published runs are computed from its
+counted runs. An arm reports the ids it holds, in flight or counted, as
+`liveRunIds`, and the number of counted runs that have landed as `nObserved`.
+
+### A complete comparison
+
+A comparison is complete when every arm has `N` counted runs and none in
+flight. The console then states that the comparison is complete in place of the
+trigger action, and offers "Run again".
+
+Run again starts a new round. It clears every arm's recorded ids and launches
+`N` runs per arm. The previous round's runs stay stored as ordinary runs.
+
+### Editing a comparison
+
+An arm's launch identity is its harness and model, or its gg configuration and
+slot models. Saving an edit (`PUT /comparisons/{id}`) compares each arm with the
+stored arm of the same id, and the backend decides which recorded ids each arm
+keeps:
+
+- An arm whose launch identity is unchanged keeps its ids, so a run already in
+  flight is not launched a second time.
+- An added arm, and an arm whose launch identity changed, starts with no ids.
+- A change to any control starts every arm with no ids.
+- On a complete comparison, adding, removing or changing an arm starts every
+  arm with no ids, so the edited comparison is run again as a whole.
+
+Changing `N`, the name or the description keeps every arm's ids, and raising
+`N` leaves the difference to the next trigger. A run an edit drops stays stored
+as an ordinary run, and one still in flight runs to its end.
 
 ## Result computation
 
 Only the configuration is stored. Every arm's statistics and diagnostics are
-computed from its runs each time a comparison is read (`aggregate_comparison`,
+computed from its counted runs each time a comparison is read (`aggregate_comparison`,
 `crates/core/src/comparison_aggregate.rs`), so a comparison always reflects
 whatever runs have since landed.
 
