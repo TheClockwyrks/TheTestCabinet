@@ -1,5 +1,16 @@
 @use "../styles/tokens" as t;
 
+// The deep rainbow behind the Legendary label: saturated hues mixed most of the
+// way into the background color. It starts and ends on the same hue so it tiles.
+$legendary-spectrum:
+  color-mix(in srgb, #ec4899 48%, t.$color-bg) 0%,
+  color-mix(in srgb, #f97316 48%, t.$color-bg) 17%,
+  color-mix(in srgb, #eab308 48%, t.$color-bg) 33%,
+  color-mix(in srgb, #22c55e 48%, t.$color-bg) 50%,
+  color-mix(in srgb, #06b6d4 48%, t.$color-bg) 67%,
+  color-mix(in srgb, #8b5cf6 48%, t.$color-bg) 83%,
+  color-mix(in srgb, #ec4899 48%, t.$color-bg) 100%;
+
 // A run's aesthetic rating, shown as a color-coded chip with the same chrome as
 // RatingBadge (over the `--tcab-aesthetic-*` tokens), selected by the
 // `data-aesthetic` attribute so the markup stays a single element.
@@ -30,11 +41,14 @@
     --aesthetic-color: var(--tcab-aesthetic-slop);
   }
 
-  // Legendary is the exceptional tier, so its chip is unlike every flat tier: the
-  // text is a two-tone gradient that drifts slowly across the label (a shimmer),
-  // over a faint blend of the same two colors, with a soft glow. The gradient is
-  // three times the chip's width and animates its position, so the sheen sweeps
-  // end to end and loops seamlessly.
+  // Legendary is the exceptional tier, so its chip is unlike every flat tier: a
+  // deep rainbow drifts behind the label, with a soft glow. The label is a
+  // mostly opaque near-white over a diffuse dark glow, so it stands off every hue
+  // the rainbow passes through while taking a faint tint of the hue beneath it.
+  //
+  // The chip is opaque, so it reads the same on a panel and on the bare
+  // backdrop, and it replaces any inherited text-shadow (the readability halo of
+  // loose text on the backdrop) with its own glow.
   &[data-aesthetic="legendary"] {
     --aesthetic-color: var(--tcab-aesthetic-legendary);
     --aesthetic-color-2: var(--tcab-aesthetic-legendary-2);
@@ -45,50 +59,28 @@
     );
     box-shadow: 0 0 0.6rem
       color-mix(in srgb, var(--aesthetic-color) 45%, transparent);
-    color: transparent;
-    // Two layers: the text gradient on top, clipped to the label, over the faint
-    // chip fill clipped to the box.
-    background-image:
-      linear-gradient(
-        100deg,
-        var(--aesthetic-color) 0%,
-        var(--aesthetic-color-2) 25%,
-        #ffffff 50%,
-        var(--aesthetic-color-2) 75%,
-        var(--aesthetic-color) 100%
-      ),
-      linear-gradient(
-        100deg,
-        color-mix(in srgb, var(--aesthetic-color) 22%, transparent),
-        color-mix(in srgb, var(--aesthetic-color-2) 22%, transparent)
-      );
-    background-size:
-      300% 100%,
-      100% 100%;
-    background-position:
-      0% 0,
-      0 0;
-    background-clip: text, border-box;
-    -webkit-background-clip: text, border-box;
+    color: rgb(255 250 240 / 82%);
+    text-shadow: 0 0 0.3rem rgb(0 0 0 / 65%);
+    // The rainbow is twice the chip's width and the animation moves it by one
+    // whole width, so it loops seamlessly.
+    background-image: linear-gradient(90deg, $legendary-spectrum);
+    background-size: 200% 100%;
+    background-position: 0% 0;
     animation: aesthetic-shimmer 4s linear infinite;
   }
 }
 
 @keyframes aesthetic-shimmer {
   from {
-    background-position:
-      0% 0,
-      0 0;
+    background-position: 0% 0;
   }
   to {
-    background-position:
-      -300% 0,
-      0 0;
+    background-position: -200% 0;
   }
 }
 
 // Motion is a courtesy, not the signal: without it the chip is still the only
-// gradient-text, glowing tier, so Legendary stays distinct when static.
+// rainbow, glowing tier, so Legendary stays distinct when static.
 @media (prefers-reduced-motion: reduce) {
   .badge[data-aesthetic="legendary"] {
     animation: none;

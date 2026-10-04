@@ -74,7 +74,7 @@ export interface EnrichedRun {
    * name was carried on the card) — which shows its model instead. */
   configName: string | null;
   rating: Rating | null;
-  /** The run's aggregate aesthetic rating, shown beside the functional one. Null
+  /** The run's aggregate aesthetic rating, shown in its own column. Null
    * until a reviewer rates the channel — always, for a legacy run. */
   aesthetic: AestheticRating | null;
   /** A game-jam run's whole-game overall grade, shown as its badge in place of a
@@ -342,7 +342,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "harness",
     label: "HARNESS",
-    default: "7rem",
+    default: "6.5rem",
     min: 64,
     optional: true,
     sortKey: (row) => row.summary.subject.harnessSlug.toLowerCase(),
@@ -364,7 +364,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "variant",
     label: "VARIANT",
-    default: "6rem",
+    default: "5.5rem",
     min: 56,
     optional: true,
     sortKey: (row) => row.summary.subject.variant.toLowerCase(),
@@ -396,7 +396,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "engine",
     label: "ENGINE",
-    default: "6rem",
+    default: "5.5rem",
     min: 56,
     optional: true,
     sortKey: (row) => row.summary.subject.engineSlug.toLowerCase(),
@@ -425,10 +425,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     id: "model",
     label: "MODEL / CONFIG",
     default: "1.6fr",
-    // Unchanged by the wider header: the drag floor is already raised to the
-    // measured width of the header's own label (see `useResizableColumns`), so
-    // "MODEL / CONFIG" cannot be dragged down to a stub whatever this says.
-    min: 96,
+    // Wide enough to recognize a model or configuration name. The drag floor is
+    // also raised to the measured width of the header's own label (see
+    // `useResizableColumns`), so "MODEL / CONFIG" never truncates either.
+    min: 112,
     optional: true,
     sortKey: (row) => (row.configName ?? row.modelName).toLowerCase(),
     render: (row) => modelCell(row.configName, row.modelName),
@@ -441,7 +441,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "timestamp",
     label: "STARTED",
-    default: "10.5rem",
+    default: "13rem",
     min: 120,
     optional: true,
     defaultVisible: false,
@@ -469,7 +469,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "duration",
     label: "DURATION",
-    default: "5.5rem",
+    default: "6.5rem",
     min: 64,
     optional: true,
     defaultVisible: false,
@@ -584,9 +584,9 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   },
   {
     id: "rating",
-    label: "RATING",
-    default: "6rem",
-    min: 56,
+    label: "FUNCTIONALITY",
+    default: "9rem",
+    min: 112,
     optional: true,
     // Ordered best→worst by RATINGS rank, so ascending lists the best runs first.
     sortKey: (row) => (row.rating == null ? null : RATINGS.indexOf(row.rating)),
@@ -594,7 +594,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       const presentation = describeRunState(row.summary.state);
       if (presentation.isFailure) {
         return (
-          <span className={styles.rating} data-label="Rating">
+          <span className={styles.rating} data-label="Functionality">
             <span
               className={styles.activeStatus}
               data-state={row.summary.state}
@@ -605,7 +605,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         );
       }
       return (
-        <span className={styles.rating} data-label="Rating">
+        <span className={styles.rating} data-label="Functionality">
           {/* A game jam carries a whole-game overall grade in place of a domain
               rating, so its badge is the grade; every other run shows its rating. */}
           {row.grade ? (
@@ -615,7 +615,6 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
           ) : (
             <span className={styles.noRating}>&mdash;</span>
           )}
-          {row.aesthetic && <AestheticBadge rating={row.aesthetic} />}
         </span>
       );
     },
@@ -626,6 +625,28 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         </span>
       </span>
     ),
+  },
+  // The reviewer's aesthetic tier, its own column so it never stacks under the
+  // functional rating. Off by default, and unsortable for the same reason POINTS
+  // is: the server has no aesthetic sort key, so on a server-ordered page a sort
+  // affordance here would silently return date order.
+  {
+    id: "aesthetic",
+    label: "AESTHETIC",
+    default: "7.5rem",
+    min: 104,
+    optional: true,
+    defaultVisible: false,
+    render: (row) => (
+      <span className={styles.rating} data-label="Aesthetic">
+        {row.aesthetic ? (
+          <AestheticBadge rating={row.aesthetic} />
+        ) : (
+          <span className={styles.noRating}>&mdash;</span>
+        )}
+      </span>
+    ),
+    renderActive: () => activeDash("Aesthetic", false),
   },
 ];
 

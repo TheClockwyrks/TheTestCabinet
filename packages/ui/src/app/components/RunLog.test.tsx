@@ -19,6 +19,8 @@ function summary(
     model?: string;
     harness?: string;
     ggPreset?: string | null;
+    rating?: string | null;
+    aesthetic?: string | null;
   } = {},
 ): RunSummary {
   const {
@@ -26,6 +28,8 @@ function summary(
     model = "anthropic/claude",
     harness = "claude",
     ggPreset = null,
+    rating = null,
+    aesthetic = null,
   } = opts;
   return {
     id,
@@ -52,7 +56,8 @@ function summary(
       cost: { comparable: 1, actual: 1 },
     },
     state: "completed",
-    rating: null,
+    rating,
+    aesthetic,
   } as unknown as RunSummary;
 }
 
@@ -182,6 +187,37 @@ describe("RunLog", () => {
     expect(
       container.querySelectorAll('[data-label="Started"]').length,
     ).toBeGreaterThan(0);
+  });
+
+  it("shows the aesthetic tier in its own column, hidden by default", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <SelectHarness
+            runs={[
+              summary("r-rated", "alpha", {
+                rating: "great",
+                aesthetic: "legendary",
+              }),
+            ]}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    const functionality = container.querySelector(
+      '[data-label="Functionality"]',
+    );
+    expect(functionality).toHaveTextContent(/great/i);
+    expect(functionality?.querySelector("[data-aesthetic]")).toBeNull();
+    expect(container.querySelector("[data-aesthetic]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "AESTHETIC" }));
+
+    const aesthetic = container.querySelector('[data-label="Aesthetic"]');
+    expect(
+      aesthetic?.querySelector('[data-aesthetic="legendary"]'),
+    ).not.toBeNull();
   });
 
   it("hides a column that was shown by default", () => {
@@ -351,12 +387,14 @@ describe("RunLog", () => {
     ]) {
       fireEvent.click(screen.getByRole("checkbox", { name: label }));
     }
-    const survivor = screen.getByRole("checkbox", { name: "RATING" });
+    const survivor = screen.getByRole("checkbox", { name: "FUNCTIONALITY" });
     expect(survivor).toBeDisabled();
 
     // A hidden column can still be re-shown, which unlocks the survivor again.
     fireEvent.click(screen.getByRole("checkbox", { name: "COST" }));
-    expect(screen.getByRole("checkbox", { name: "RATING" })).not.toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "FUNCTIONALITY" }),
+    ).not.toBeDisabled();
   });
 });
 

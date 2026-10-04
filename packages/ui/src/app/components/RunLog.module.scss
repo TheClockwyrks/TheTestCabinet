@@ -52,9 +52,10 @@
   // visible edge. Without this the grid tracks overflow the box (which stays at
   // the panel width) once resized columns exceed it, leaving the styling to stop
   // mid-row while the cells scroll on past. `fit-content` still collapses to the
-  // panel at rest, so flexible tracks keep absorbing slack and cells truncate;
-  // the per-scope `min-width` below (raised to at least `100%`) keeps every row
-  // filling the visible width.
+  // panel when the columns fit, so flexible tracks keep absorbing slack, and
+  // `min-width` keeps every row filling the visible width. When they don't fit,
+  // each flexible track holds its floor (`minmax(<min>px, <n>fr)`, set by
+  // useResizableColumns) and the row grows past the panel, which then scrolls.
   width: fit-content;
   min-width: 100%;
 }
@@ -66,25 +67,29 @@
   // identical when unset or for a non-resizable instance.
   grid-template-columns: var(
     --ttc-cols,
-    1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem 5.5rem minmax(112px, 1.6fr) 5rem 5rem
+      9rem
   );
-  min-width: max(100%, 46rem);
 }
 
 .log[data-scope="variant"] .row {
   // caret · harness · model · tokens · cost · rating
   // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
   // resting template used until the user drags a header boundary.
-  grid-template-columns: var(--ttc-cols, 1.2rem 7rem 1.6fr 5rem 5rem 6rem);
-  min-width: max(100%, 30rem);
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem 6.5rem minmax(112px, 1.6fr) 5rem 5rem 9rem
+  );
 }
 
 .log[data-scope="model"] .row {
   // caret · test · harness · variant · tokens · cost · rating
   // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
   // resting template used until the user drags a header boundary.
-  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem);
-  min-width: max(100%, 40rem);
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem 5rem 5rem 9rem
+  );
 }
 
 .log[data-scope="reviews"] .row {
@@ -92,8 +97,10 @@
   // Reviews tab — the reviewed run's identity, the account's own rating, and when
   // it reviewed). Resizable via `--ttc-cols` (see the global scope above); the
   // fallback is the resting template used until the user drags a header boundary.
-  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem);
-  min-width: max(100%, 46rem);
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem minmax(112px, 1.6fr) 9rem 9rem
+  );
 }
 
 // Dim the reviews table while a new page loads, keeping the prior rows in place
@@ -474,8 +481,7 @@ a.row:hover .selectCell .spinner,
     width: auto;
   }
 
-  // Neutralize the per-scope fixed templates / min-widths so nothing forces an
-  // overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
+  // Neutralize the per-scope fixed templates so nothing forces an overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
   .log[data-scope="global"] .row,
   .log[data-scope="variant"] .row,
   .log[data-scope="model"] .row,
