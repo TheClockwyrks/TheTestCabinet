@@ -4,6 +4,7 @@ import type { HarnessSlug } from "@clockwyrks/run-record";
 import type {
   Comparison,
   ComparisonArm,
+  ComparisonControls,
   ComparisonInput,
 } from "@clockwyrks/run-record/comparison";
 import { useAuth } from "../../../client/auth";
@@ -87,6 +88,15 @@ export function ComparisonEditPage() {
 
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(editing);
+  // Whether the comparison being edited was complete when loaded, which decides what
+  // an edit to its configurations does to their runs (docs/comparisons/
+  // experiments.md, "Editing a comparison").
+  const [loadedComplete, setLoadedComplete] = useState(false);
+  // The controls as loaded. The form edits the case, version, variant and engine;
+  // the rest are written back as they were, since a change to any control starts
+  // every configuration over.
+  const [loadedControls, setLoadedControls] =
+    useState<ComparisonControls | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -167,6 +177,8 @@ export function ComparisonEditPage() {
         // an edit: the ids the form writes back are the ones still live, so an arm
         // whose runs were deleted stops counting them and can be topped up again.
         setArms(pruneDeadRunIds(c.config, c.arms).arms.map(draftFromArm));
+        setLoadedComplete(c.complete);
+        setLoadedControls(c.config.controls);
         setLoading(false);
       })
       .catch((e) => {
@@ -336,8 +348,12 @@ export function ComparisonEditPage() {
           caseSlug: sel.slug,
           version: sel.version,
           variant: sel.variant,
-          orchestratorSlug: DEFAULT_ORCHESTRATOR_SLUG,
+          orchestratorSlug:
+            loadedControls?.orchestratorSlug ?? DEFAULT_ORCHESTRATOR_SLUG,
           engineSlug: engine,
+          ...(loadedControls?.containerBuild
+            ? { containerBuild: loadedControls.containerBuild }
+            : {}),
         },
         arms: arms.map((arm) => armFromDraft(arm, derivedLabel(arm))),
         n: nField.value,
@@ -512,6 +528,13 @@ export function ComparisonEditPage() {
           </div>
 
           <p className={exec.sectionLabel}>Configurations compared</p>
+          {editing && (
+            <p className={exec.muted}>
+              {loadedComplete
+                ? "This comparison is complete. Adding, removing or changing a configuration, or changing the test above, starts every configuration over."
+                : "A configuration you leave unchanged keeps its runs, including runs still in flight. A configuration you add or change starts with no runs, and changing the test above starts every configuration over."}
+            </p>
+          )}
           <div className={exec.comboList}>
             {arms.map((arm) => (
               <div key={arm.id} className={exec.comboRow}>

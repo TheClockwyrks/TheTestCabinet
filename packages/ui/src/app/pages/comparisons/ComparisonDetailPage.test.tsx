@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -143,14 +149,22 @@ const COMPARISON_FROM_OLD_BACKEND = {
   ],
 } as unknown as Comparison;
 
-/** The same comparison with its one run still alive: nothing to trigger. */
+/** The same comparison with its one run still in flight: nothing to trigger, and
+ *  not complete either. */
 const COMPARISON_FULL = {
   ...COMPARISON,
   config: {
     ...COMPARISON.config,
     arms: [{ ...COMPARISON.config.arms[0]!, runIds: ["alive-1"] }],
   },
+  arms: [{ ...COMPARISON.arms[0]!, liveRunIds: ["alive-1"], nObserved: 0 }],
+} as unknown as Comparison;
+
+/** The same comparison with its one run landed: complete. */
+const COMPARISON_COMPLETE = {
+  ...COMPARISON_FULL,
   arms: [{ ...COMPARISON.arms[0]!, liveRunIds: ["alive-1"], nObserved: 1 }],
+  complete: true,
 } as unknown as Comparison;
 
 function backendValue(
@@ -343,8 +357,36 @@ describe("ComparisonDetailPage", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute(
       "title",
-      expect.stringContaining("already has 1 live run"),
+      expect.stringContaining("already holds 1 run, 1 still in flight"),
     );
+  });
+
+  it("says a complete comparison is complete and offers a new round", async () => {
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-round-2" });
+    const updateComparison = vi.fn().mockResolvedValue(COMPARISON_COMPLETE);
+    renderPage(launchGgRun, {
+      getComparison: vi.fn().mockResolvedValue(COMPARISON_COMPLETE),
+      updateComparison,
+    });
+
+    expect(
+      await screen.findByText(/^Complete: every configuration has its 1 run/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Trigger/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run again" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveAccessibleName("Run comparison again");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Run again" }));
+
+    // The full N for the arm, and the previous round's run is no longer the arm's.
+    await waitFor(() => expect(updateComparison).toHaveBeenCalledTimes(1));
+    expect(launchGgRun).toHaveBeenCalledTimes(1);
+    expect(updateComparison.mock.calls[0]![1].config.arms[0].runIds).toEqual([
+      "job-round-2",
+    ]);
   });
 
   it("deletes the comparison through the themed dialog, then leaves for the list", async () => {

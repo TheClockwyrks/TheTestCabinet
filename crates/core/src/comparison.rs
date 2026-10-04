@@ -126,8 +126,24 @@ pub struct ComparisonArm {
     /// exactly these runs, so an arm's membership is explicit and unambiguous — the
     /// only reliable way to tell two gg arms apart (they can share a root model but
     /// differ in capability set, which no run tuple distinguishes).
+    ///
+    /// Each is the id a launch handed back, which is a **job** id; the backend
+    /// resolves it to the run that job stands for (docs/comparisons/experiments.md,
+    /// "Which runs an arm holds").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub run_ids: Vec<String>,
+}
+
+impl ComparisonArm {
+    /// Whether `other` launches the same runs as this arm: the same harness and model,
+    /// or the same gg configuration and slot models. The label and the recorded runs
+    /// are not part of it.
+    pub fn same_launch_identity(&self, other: &ComparisonArm) -> bool {
+        self.harness_slug == other.harness_slug
+            && self.model_id == other.model_id
+            && self.gg_config_id == other.gg_config_id
+            && self.gg_slot_models == other.gg_slot_models
+    }
 }
 
 /// The stored configuration of a comparison: its controls, the dimension it varies,
@@ -216,18 +232,20 @@ pub struct ComparisonArmResult {
     pub arm: ComparisonArm,
     /// The desired sample size (from [`ComparisonConfig::n`]), echoed for display.
     pub n_desired: u32,
-    /// The number of runs actually observed for this arm.
+    /// The number of the arm's **counted** runs that have landed: the runs its
+    /// statistics are computed from.
     pub n_observed: usize,
-    /// The arm's recorded [run ids](ComparisonArm::run_ids) that **still exist**:
-    /// each one a run is still stored for, or a job is still queued or running for.
-    /// In the arm's launch order.
+    /// The arm's recorded [run ids](ComparisonArm::run_ids) that the arm **holds**:
+    /// each one still in flight, or resolved to a stored run that counts toward `n`
+    /// (docs/comparisons/experiments.md, "Which runs an arm holds"). In the arm's
+    /// launch order.
     ///
     /// This is the count a "trigger missing runs" tops up against, and neither figure
     /// beside it can serve. [`ComparisonArm::run_ids`] records every run ever
-    /// launched, so an arm whose runs were deleted keeps counting dead ids and can
-    /// never be topped up again. [`n_observed`](Self::n_observed) counts only the runs
-    /// whose record has landed, so topping up against it relaunches every run still in
-    /// flight. This counts the runs that exist right now, in flight or finished.
+    /// launched, so an arm whose runs were deleted, canceled or failed on
+    /// infrastructure would keep counting them and never be topped up again.
+    /// [`n_observed`](Self::n_observed) counts only the runs whose record has landed,
+    /// so topping up against it relaunches every run still in flight.
     ///
     /// Always serialized, empty array included: an arm with no live runs and a backend
     /// that predates the field are different answers, and a console can only tell them
@@ -295,6 +313,52 @@ pub struct Comparison {
     pub config: ComparisonConfig,
     /// The computed per-arm results, in the config's arm order.
     pub arms: Vec<ComparisonArmResult>,
+    /// Whether every arm holds `n` counted runs and none in flight
+    /// ([`is_complete`]).
+    #[serde(default)]
+    pub complete: bool,
+}
+
+/// Whether a comparison is **complete**: it has arms, and every one holds at least `n`
+/// counted runs that have landed and none still in flight. A comparison whose case
+/// could not be resolved has no arm results and is never complete.
+pub fn is_complete(n: u32, arms: &[ComparisonArmResult]) -> bool {
+    !arms.is_empty()
+        && arms
+            .iter()
+            .all(|arm| arm.n_observed >= n as usize && arm.live_run_ids.len() == arm.n_observed)
+}
+
+/// Decide which recorded run ids each arm of an edited comparison keeps, in place on
+/// `incoming` (docs/comparisons/experiments.md, "Editing a comparison").
+///
+/// `stored` is the configuration being replaced and `stored_complete` whether it was
+/// [complete](is_complete). An arm of `incoming` keeps the ids the request carries
+/// when the stored arm of the same id has the
+/// [same launch identity](ComparisonArm::same_launch_identity); an added arm and a
+/// changed arm start empty. A change to the controls empties every arm, and so does
+/// adding, removing or changing an arm of a complete comparison. Changing `n`, the
+/// name or the description is not a change to any arm.
+pub fn carry_run_ids(
+    stored: &ComparisonConfig,
+    stored_complete: bool,
+    incoming: &mut ComparisonConfig,
+) {
+    let unchanged = |arm: &ComparisonArm| {
+        stored
+            .arms
+            .iter()
+            .find(|s| s.id == arm.id)
+            .is_some_and(|s| s.same_launch_identity(arm))
+    };
+    let arms_changed =
+        stored.arms.len() != incoming.arms.len() || incoming.arms.iter().any(|arm| !unchanged(arm));
+    let reset_all = stored.controls != incoming.controls || (stored_complete && arms_changed);
+    for arm in &mut incoming.arms {
+        if reset_all || !unchanged(arm) {
+            arm.run_ids.clear();
+        }
+    }
 }
 
 /// A run's **automated-only** score: `score_checklist` restricted to the checklist
@@ -434,3 +498,7 @@ fn restrict_items_to_covered(items: &[ReviewItem], covered: &BTreeSet<String>) -
 #[cfg(test)]
 #[path = "comparison.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "comparison.editing.test.rs"]
+mod editing_tests;

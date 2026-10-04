@@ -27,12 +27,12 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::comparison::{Comparison, ComparisonConfig};
+use test_cabinet_core::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
 use test_cabinet_core::comparison_aggregate::aggregate_comparison;
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::AuthUser;
-use crate::db::{NewPublishJob, StoredComparison};
+use crate::db::{ArmRunStatus, NewPublishJob, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
@@ -155,7 +155,18 @@ pub async fn update_comparison(
         return Err(ApiError::not_found("comparison not found"));
     };
     ensure_engine_control_supported(&state.store, &input.config)?;
-    let stored = stored_from_input(id, &user.0.id, input, &existing.created_at, &now()?)?;
+    // Which recorded runs each arm keeps is the backend's call, made against the
+    // comparison as it stands (docs/comparisons/experiments.md, "Editing a
+    // comparison").
+    let existing_config = existing.config.clone();
+    let created_at = existing.created_at.clone();
+    let existing_complete = assemble_comparison(state.db.as_ref(), &state.store, existing)
+        .await
+        .map_err(ApiError::from)?
+        .complete;
+    let mut input = input;
+    carry_run_ids(&existing_config, existing_complete, &mut input.config);
+    let stored = stored_from_input(id, &user.0.id, input, &created_at, &now()?)?;
     let updated = state
         .db
         .update_comparison(&user.0.id, &stored)
@@ -233,15 +244,24 @@ pub async fn publish_comparison(
         return Err(ApiError::not_found("comparison not found"));
     };
 
-    // Every arm run, deduplicated, in arm/launch order. Each publishable one is
-    // enqueued through the ordinary publish queue (one pod/repo/deploy per run —
-    // publishing is expensive, so it is a real job, not a flag flip); an
-    // un-publishable one is recorded rather than aborting the batch.
+    // Every counted arm run, resolved from the id the arm recorded to the run it
+    // stored and deduplicated, in arm/launch order. Each publishable one is enqueued
+    // through the ordinary publish queue (one pod/repo/deploy per run — publishing is
+    // expensive, so it is a real job, not a flag flip); an un-publishable one is
+    // recorded rather than aborting the batch.
+    let resolved = state
+        .db
+        .resolve_arm_runs(&arm_run_ids(&stored.config))
+        .await
+        .map_err(ApiError::from)?;
     let mut seen = BTreeSet::new();
     let mut enqueued = Vec::new();
     let mut skipped = Vec::new();
     for arm in &stored.config.arms {
-        for run_id in &arm.run_ids {
+        for recorded in &arm.run_ids {
+            let Some(ArmRunStatus::Counted(run_id)) = resolved.get(recorded) else {
+                continue;
+            };
             if !seen.insert(run_id.clone()) {
                 continue;
             }
@@ -296,10 +316,23 @@ pub(crate) async fn assemble_comparison(
     stored: StoredComparison,
 ) -> crate::error::Result<Comparison> {
     let run_ids = arm_run_ids(&stored.config);
-    let runs = load_arm_runs(db, &run_ids).await?;
-    // What still exists, in flight or finished, so the console tops each arm up
-    // against reality rather than against the ids it once recorded.
-    let live = db.live_run_ids(&run_ids).await?;
+    // What each recorded id stands for: in flight, a counted run, or nothing the arm
+    // holds. The console tops each arm up against the ids it holds rather than against
+    // the ids it once recorded, and the statistics read the counted runs alone.
+    let resolved = db.resolve_arm_runs(&run_ids).await?;
+    let runs = load_arm_runs(db, &resolved).await?;
+    // Held: in flight, or a counted run whose record loaded. A counted run whose
+    // record this build cannot decode is left out of both figures alike, so it can
+    // never read as a run forever in flight.
+    let live: BTreeSet<String> = resolved
+        .iter()
+        .filter(|(id, status)| match status {
+            ArmRunStatus::InFlight => true,
+            ArmRunStatus::Counted(_) => runs.contains_key(*id),
+            ArmRunStatus::NotCounted => false,
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
     let arms = match store.read_manifest(
         &stored.config.controls.case_slug,
         &stored.config.controls.version,
@@ -318,6 +351,7 @@ pub(crate) async fn assemble_comparison(
         }
         Err(_) => Vec::new(),
     };
+    let complete = is_complete(stored.config.n, &arms);
     Ok(Comparison {
         id: stored.id,
         user_id: stored.user_id,
@@ -329,6 +363,7 @@ pub(crate) async fn assemble_comparison(
         updated_at: stored.updated_at,
         config: stored.config,
         arms,
+        complete,
     })
 }
 
@@ -348,16 +383,34 @@ fn arm_run_ids(config: &ComparisonConfig) -> Vec<String> {
     ids
 }
 
-/// Load the run records named by `ids` into a lookup, skipping any that are no
-/// longer stored.
+/// Load the record of every counted run in `resolved`, keyed by the id the arm
+/// recorded (the job id a launch handed back) rather than by the run's own id, since
+/// the recorded id is what an arm names its runs by.
 async fn load_arm_runs(
     db: &crate::db::Db,
-    ids: &[String],
+    resolved: &BTreeMap<String, ArmRunStatus>,
 ) -> crate::error::Result<BTreeMap<String, RunRecord>> {
+    let counted: Vec<(&String, &String)> = resolved
+        .iter()
+        .filter_map(|(recorded, status)| match status {
+            ArmRunStatus::Counted(run_id) => Some((recorded, run_id)),
+            _ => None,
+        })
+        .collect();
+    let run_ids: Vec<String> = counted
+        .iter()
+        .map(|(_, run_id)| (*run_id).clone())
+        .collect();
+    let by_run_id: BTreeMap<String, RunRecord> = db
+        .get_runs(&run_ids)
+        .await?
+        .into_iter()
+        .map(|stored| (stored.record.id.clone(), stored.record))
+        .collect();
     let mut runs = BTreeMap::new();
-    for id in ids {
-        if let Some(stored) = db.get_run(id).await? {
-            runs.insert(id.clone(), stored.record);
+    for (recorded, run_id) in counted {
+        if let Some(record) = by_run_id.get(run_id) {
+            runs.insert(recorded.clone(), record.clone());
         }
     }
     Ok(runs)

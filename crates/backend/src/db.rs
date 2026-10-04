@@ -61,6 +61,17 @@ use crate::store::{CaseNames, StoredManifest};
 /// and `running` each have a driver Job coming up or executing.
 const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
 
+/// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArmRunStatus {
+    /// The run's job, or its retry's, is still queued or running.
+    InFlight,
+    /// The run landed and counts toward the arm's `n`; the id of the stored run.
+    Counted(String),
+    /// The run landed but does not count, was deleted, or its job stored none.
+    NotCounted,
+}
+
 /// The column value that stores an [unbounded](InFlightLimit::Unbounded) runs-in-flight
 /// limit.
 ///
@@ -980,7 +991,18 @@ impl Db {
         // run by a plain column (`job.record_id` / `publish_job.run_id`, no foreign
         // key back to the run), so they would otherwise be orphaned — delete them in
         // the same transaction so a deleted run leaves nothing behind.
+        //
+        // The one job kept is an attempt the backend retried: a comparison arm
+        // records the attempt's job id and reaches the retry's run through its
+        // `retried_by`, which nothing else links back to. It keeps that link and
+        // loses the run.
         run::Entity::delete_by_id(run_id.to_string())
+            .exec(&txn)
+            .await?;
+        job::Entity::update_many()
+            .col_expr(job::Column::RecordId, Expr::value(Option::<String>::None))
+            .filter(job::Column::RecordId.eq(run_id))
+            .filter(job::Column::RetriedBy.is_not_null())
             .exec(&txn)
             .await?;
         job::Entity::delete_many()
@@ -3483,67 +3505,133 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
-    /// Which of `ids` still exist as runs: the ones a `run` row is stored for, the
-    /// ones a `job` still holds in flight (`queued`, `pending`, `dispatched`,
-    /// `starting`, or `running`), and the ones whose job produced a `run` row that is
-    /// still stored.
+    /// What each id a comparison arm recorded stands for (docs/comparisons/experiments.md,
+    /// "Which runs an arm holds"), keyed by the recorded id. Every id in `ids` has an
+    /// entry.
     ///
-    /// Three ways because the id a launch hands back is the **job** id, and the record
-    /// the driver mints later carries an id of its own ([`test_cabinet_core::mint_run_id`]);
-    /// `job.record_id` is the only link between the two. So a recorded id is live while
-    /// its job sits in the queue, live once the run it produced is stored, and dead
-    /// once that run is deleted — which is the whole question a comparison asks before
-    /// topping an arm back up to `n`.
+    /// The id a launch hands back is a **job** id, and the record its driver mints later
+    /// carries an id of its own ([`test_cabinet_core::mint_run_id`]). So a recorded job
+    /// id is followed along `retried_by` to the last attempt (an attempt and its retry
+    /// are one run), and that attempt along `record_id` to the run it stored. An id no
+    /// job carries is read as a run id directly.
     ///
-    /// Ids that match nothing are simply absent, so the result is a subset of `ids`.
-    pub async fn live_run_ids(&self, ids: &[String]) -> Result<std::collections::BTreeSet<String>> {
-        use std::collections::BTreeSet;
+    /// The run then [counts](test_cabinet_core::run_record::RunState::counts_as_model_result)
+    /// or it does not, by the rule a coverage cell counts by: a model's own failure
+    /// counts, a harness or infrastructure failure, a cancel, a deleted run and a job
+    /// that stored none do not, and nor does a run whose record this build cannot read.
+    pub async fn resolve_arm_runs(
+        &self,
+        ids: &[String],
+    ) -> Result<std::collections::BTreeMap<String, ArmRunStatus>> {
+        use std::collections::{BTreeMap, BTreeSet};
         if ids.is_empty() {
-            return Ok(BTreeSet::new());
+            return Ok(BTreeMap::new());
         }
         let conn = self.conn();
-        let requested: BTreeSet<String> = ids.iter().cloned().collect();
 
-        // Every job enqueued under one of the ids, with the state that says whether it
-        // is still in flight and the record it produced if it has finished.
-        let jobs: Vec<(String, String, Option<String>)> = job::Entity::find()
-            .select_only()
-            .column(job::Column::Id)
-            .column(job::Column::State)
-            .column(job::Column::RecordId)
-            .filter(job::Column::Id.is_in(ids.to_vec()))
-            .into_tuple()
-            .all(&conn)
-            .await?;
-
-        // The run rows to look for: the ids themselves (a recorded id that is already a
-        // run id), plus the record each matched job produced (the row a recorded job id
-        // resolves to once its run landed).
-        let mut wanted = requested.clone();
-        for (_, _, record_id) in &jobs {
-            if let Some(record_id) = record_id {
-                wanted.insert(record_id.clone());
+        // Every job reachable from the recorded ids along `retried_by`, fetched a
+        // generation at a time: (state, record_id, retried_by) by job id.
+        let mut jobs: BTreeMap<String, (String, Option<String>, Option<String>)> = BTreeMap::new();
+        let mut frontier: BTreeSet<String> = ids.iter().cloned().collect();
+        while !frontier.is_empty() {
+            let rows: Vec<(String, String, Option<String>, Option<String>)> = job::Entity::find()
+                .select_only()
+                .column(job::Column::Id)
+                .column(job::Column::State)
+                .column(job::Column::RecordId)
+                .column(job::Column::RetriedBy)
+                .filter(job::Column::Id.is_in(frontier.iter().cloned().collect::<Vec<_>>()))
+                .into_tuple()
+                .all(&conn)
+                .await?;
+            frontier.clear();
+            for (id, state, record_id, retried_by) in rows {
+                if let Some(next) = &retried_by
+                    && !jobs.contains_key(next)
+                {
+                    frontier.insert(next.clone());
+                }
+                jobs.insert(id, (state, record_id, retried_by));
             }
+            frontier.retain(|id| !jobs.contains_key(id));
         }
-        let stored: BTreeSet<String> = run::Entity::find()
-            .select_only()
-            .column(run::Column::Id)
-            .filter(run::Column::Id.is_in(wanted.into_iter().collect::<Vec<_>>()))
-            .into_tuple::<String>()
-            .all(&conn)
-            .await?
-            .into_iter()
+
+        // Each recorded id's last attempt: in flight, or the run id it resolves to.
+        enum Resolved {
+            InFlight,
+            Run(String),
+            Nothing,
+        }
+        let mut resolved: Vec<(String, Resolved)> = Vec::with_capacity(ids.len());
+        for id in ids {
+            let mut current = id.clone();
+            let mut seen = BTreeSet::new();
+            let outcome = loop {
+                let Some((state, record_id, retried_by)) = jobs.get(&current) else {
+                    // No job carries the id: an id that is already a run id.
+                    break Resolved::Run(current);
+                };
+                if let Some(next) = retried_by
+                    && jobs.contains_key(next)
+                    && seen.insert(current.clone())
+                {
+                    current = next.clone();
+                    continue;
+                }
+                if IN_FLIGHT_STATES.contains(&state.as_str()) {
+                    break Resolved::InFlight;
+                }
+                break match record_id {
+                    Some(record_id) => Resolved::Run(record_id.clone()),
+                    None => Resolved::Nothing,
+                };
+            };
+            resolved.push((id.clone(), outcome));
+        }
+
+        // The stored state of every run a recorded id resolved to, and whether this
+        // build can read its record: a comparison's statistics read the record, so a
+        // run they cannot read is not one the arm holds.
+        let wanted: Vec<String> = resolved
+            .iter()
+            .filter_map(|(_, r)| match r {
+                Resolved::Run(id) => Some(id.clone()),
+                _ => None,
+            })
             .collect();
+        let states: BTreeMap<String, String> = if wanted.is_empty() {
+            BTreeMap::new()
+        } else {
+            run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::RunState)
+                .filter(run::Column::Id.is_in(wanted))
+                .filter(run::Column::RecordReadable.eq(true))
+                .into_tuple::<(String, String)>()
+                .all(&conn)
+                .await?
+                .into_iter()
+                .collect()
+        };
+        let counted = counted_run_states();
 
-        let mut live: BTreeSet<String> = requested.intersection(&stored).cloned().collect();
-        for (job_id, state, record_id) in jobs {
-            let in_flight = IN_FLIGHT_STATES.contains(&state.as_str());
-            let produced_a_stored_run = record_id.is_some_and(|id| stored.contains(&id));
-            if in_flight || produced_a_stored_run {
-                live.insert(job_id);
-            }
-        }
-        Ok(live)
+        Ok(resolved
+            .into_iter()
+            .map(|(id, r)| {
+                let status = match r {
+                    Resolved::InFlight => ArmRunStatus::InFlight,
+                    Resolved::Run(run_id) => match states.get(&run_id) {
+                        Some(state) if counted.contains(&state.as_str()) => {
+                            ArmRunStatus::Counted(run_id)
+                        }
+                        _ => ArmRunStatus::NotCounted,
+                    },
+                    Resolved::Nothing => ArmRunStatus::NotCounted,
+                };
+                (id, status)
+            })
+            .collect())
     }
 
     /// The legacy single-per-account plans that the startup backfill has not yet

@@ -9,6 +9,7 @@ import {
   armDistributionGroups,
   appendRunIds,
   armTopUps,
+  clearRunIds,
   countedRunIds,
   harnessArmLaunchItems,
   isGgArm,
@@ -17,6 +18,7 @@ import {
   pruneDeadRunIds,
   remainingForArm,
   reportedLiveRunIds,
+  runsInFlight,
   toolCallChartData,
   totalMissingRuns,
   withArmRunIds,
@@ -566,5 +568,34 @@ describe("toolCallChartData", () => {
     ]);
     // Two distinct series get two distinct colors.
     expect(new Set(series.map((s) => s.color)).size).toBe(series.length);
+  });
+});
+
+describe("clearRunIds", () => {
+  it("empties every arm's recorded runs and keeps everything else", () => {
+    const config = {
+      controls: {},
+      n: 2,
+      arms: [
+        { id: "a", label: "A", runIds: ["a-1", "a-2"] },
+        { id: "b", label: "B", runIds: ["b-1"] },
+      ],
+    } as unknown as ComparisonConfig;
+    const cleared = clearRunIds(config);
+    expect(cleared.arms.map((a) => a.runIds)).toEqual([[], []]);
+    expect(cleared.arms.map((a) => a.label)).toEqual(["A", "B"]);
+    expect(cleared.n).toBe(2);
+    // The input is left as it was.
+    expect(config.arms[0]!.runIds).toEqual(["a-1", "a-2"]);
+  });
+});
+
+describe("runsInFlight", () => {
+  it("counts the held runs that have not landed, across arms", () => {
+    const results = [
+      { arm: { id: "a" }, liveRunIds: ["a-1", "a-2"], nObserved: 1 },
+      { arm: { id: "b" }, liveRunIds: ["b-1"], nObserved: 1 },
+    ] as unknown as ComparisonArmResult[];
+    expect(runsInFlight(results)).toBe(1);
   });
 });

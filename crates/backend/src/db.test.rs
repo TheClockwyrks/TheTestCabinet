@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
@@ -8710,64 +8710,90 @@ async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed()
     assert_eq!(stored.reviews.len(), 1);
 }
 
-/// The three ways a comparison arm's recorded id still names something that exists.
-/// A comparison tops an arm up to `n` by counting these off, so each one it misses is
-/// a run relaunched for nothing.
+/// A recorded run in `state`, stored under `run_id` and produced by the finished job
+/// `job_id` — the shape every arm run takes once it lands, the arm holding the job id.
+async fn landed(db: &Db, job_id: &str, run_id: &str, state: RunState) {
+    db.enqueue_job(new_job(job_id, "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    let mut r = record(run_id);
+    r.status.state = state;
+    db.push(&r, &links(), None, None).await.unwrap();
+    db.set_job_state(job_id, "failed", "2026-06-23T00:30:00Z", None, Some(run_id))
+        .await
+        .unwrap();
+}
+
+/// The defect this exists for: an arm records the job id a launch hands back, and the
+/// run its driver stores carries an id of its own minting. The recorded id resolves to
+/// that run, so an arm's statistics read the runs it launched.
 #[tokio::test]
-async fn live_run_ids_counts_stored_runs_jobs_in_flight_and_jobs_whose_run_landed() {
+async fn resolve_arm_runs_follows_a_job_to_the_run_it_stored() {
     let db = Db::connect_in_memory().await.unwrap();
-
-    // A run recorded under the id the arm holds.
-    db.push(&record("r1"), &links(), None, None).await.unwrap();
-
-    // A job still in the queue: no record yet, and relaunching it would double the
-    // arm.
-    db.enqueue_job(new_job("queued", "2026-06-23T00:00:00Z"))
+    landed(&db, "job", "produced", RunState::Completed).await;
+    // An id that is already a run id resolves to itself.
+    db.push(&record("direct"), &links(), None, None)
         .await
         .unwrap();
 
-    // A job that has finished. The arm recorded the id the launch handed back — the
-    // job id — while the run the driver produced carries an id of its own minting,
-    // so only `job.record_id` ties the two together.
-    db.enqueue_job(new_job("finished", "2026-06-23T00:01:00Z"))
+    let resolved = db
+        .resolve_arm_runs(&["job".to_string(), "direct".to_string()])
         .await
         .unwrap();
-    db.push(&record("produced"), &links(), None, None)
-        .await
-        .unwrap();
-    db.set_job_state(
-        "finished",
-        "succeeded",
-        "2026-06-23T00:30:00Z",
-        None,
-        Some("produced"),
-    )
-    .await
-    .unwrap();
-
-    let live = db
-        .live_run_ids(&[
-            "r1".to_string(),
-            "queued".to_string(),
-            "finished".to_string(),
-            "never-existed".to_string(),
-        ])
-        .await
-        .unwrap();
-
     assert_eq!(
-        live,
-        BTreeSet::from([
-            "r1".to_string(),
-            "queued".to_string(),
-            "finished".to_string(),
+        resolved,
+        BTreeMap::from([
+            (
+                "job".to_string(),
+                ArmRunStatus::Counted("produced".to_string())
+            ),
+            (
+                "direct".to_string(),
+                ArmRunStatus::Counted("direct".to_string())
+            ),
         ])
     );
 }
 
-/// Every in-flight state counts, including the two the queue has not dispatched yet.
+/// A run of the model's own failure counts, as a coverage cell counts it: the model had
+/// its attempt. A harness or infrastructure failure and a cancel do not.
 #[tokio::test]
-async fn live_run_ids_counts_a_job_in_every_in_flight_state() {
+async fn resolve_arm_runs_counts_a_model_failure_and_not_a_harness_failure_or_cancel() {
+    let db = Db::connect_in_memory().await.unwrap();
+    landed(
+        &db,
+        "catastrophic",
+        "r-catastrophic",
+        RunState::Catastrophic,
+    )
+    .await;
+    landed(&db, "timed-out", "r-timed-out", RunState::TimedOut).await;
+    landed(&db, "harness", "r-harness", RunState::HarnessError).await;
+    landed(&db, "infra", "r-infra", RunState::Infrastructure).await;
+    landed(&db, "canceled", "r-canceled", RunState::Canceled).await;
+
+    let ids: Vec<String> = ["catastrophic", "timed-out", "harness", "infra", "canceled"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
+    assert_eq!(
+        resolved["catastrophic"],
+        ArmRunStatus::Counted("r-catastrophic".to_string())
+    );
+    assert_eq!(
+        resolved["timed-out"],
+        ArmRunStatus::Counted("r-timed-out".to_string())
+    );
+    assert_eq!(resolved["harness"], ArmRunStatus::NotCounted);
+    assert_eq!(resolved["infra"], ArmRunStatus::NotCounted);
+    assert_eq!(resolved["canceled"], ArmRunStatus::NotCounted);
+}
+
+/// Every in-flight state holds the run, including the two the queue has not
+/// dispatched yet: relaunching one would double the arm.
+#[tokio::test]
+async fn resolve_arm_runs_holds_a_job_in_every_in_flight_state() {
     let db = Db::connect_in_memory().await.unwrap();
     for (i, state) in IN_FLIGHT_STATES.iter().enumerate() {
         db.enqueue_job(new_job(state, &format!("2026-06-23T00:0{i}:00Z")))
@@ -8778,43 +8804,91 @@ async fn live_run_ids_counts_a_job_in_every_in_flight_state() {
             .unwrap();
     }
     let ids: Vec<String> = IN_FLIGHT_STATES.iter().map(|s| s.to_string()).collect();
-    let live = db.live_run_ids(&ids).await.unwrap();
-    assert_eq!(live, ids.into_iter().collect::<BTreeSet<_>>());
+    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
+    assert!(
+        resolved.values().all(|s| *s == ArmRunStatus::InFlight),
+        "{resolved:?}"
+    );
 }
 
-/// The defect this exists for: an operator launched an arm's runs, deleted them, and
-/// came back. Both the run id and the job id the arm might hold are dead, so the arm
-/// can be topped back up.
+/// An attempt the backend retried is one run with its retry: the recorded id follows
+/// `retried_by` and stands for whatever the last attempt is.
 #[tokio::test]
-async fn live_run_ids_drops_an_id_whose_run_was_deleted() {
+async fn resolve_arm_runs_follows_an_automatic_retry() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None, None).await.unwrap();
-    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+    db.enqueue_job(new_job("attempt", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
-    db.set_job_state("j1", "succeeded", "2026-06-23T00:30:00Z", None, Some("r1"))
+    let mut failed = record("attempt-run");
+    failed.status.state = RunState::Infrastructure;
+    assert!(
+        db.enqueue_retry(
+            "attempt",
+            Some("attempt-run"),
+            NewJob {
+                attempt: 1,
+                ..new_job("retry", "2026-06-23T00:50:00Z")
+            },
+        )
         .await
-        .unwrap();
+        .unwrap()
+    );
+    db.push(&failed, &links(), None, None).await.unwrap();
+    db.set_job_state(
+        "attempt",
+        "failed",
+        "2026-06-23T00:40:00Z",
+        None,
+        Some("attempt-run"),
+    )
+    .await
+    .unwrap();
 
-    db.delete_run("r1").await.unwrap();
+    // While the retry is queued, the recorded attempt is in flight.
+    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
+    assert_eq!(resolved["attempt"], ArmRunStatus::InFlight);
 
-    let live = db
-        .live_run_ids(&["r1".to_string(), "j1".to_string()])
-        .await
-        .unwrap();
-    assert!(live.is_empty(), "{live:?}");
-}
-
-/// A job that ended without producing a record is dead too — nothing was recorded and
-/// nothing is still running, so the run it stood for has to be launched again.
-#[tokio::test]
-async fn live_run_ids_drops_a_terminal_job_that_produced_no_record() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.enqueue_job(new_job("failed", "2026-06-23T00:00:00Z"))
+    // Once the retry lands, the attempt stands for the retry's run.
+    db.push(&record("retry-run"), &links(), None, None)
         .await
         .unwrap();
     db.set_job_state(
-        "failed",
+        "retry",
+        "succeeded",
+        "2026-06-23T01:20:00Z",
+        None,
+        Some("retry-run"),
+    )
+    .await
+    .unwrap();
+    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
+    assert_eq!(
+        resolved["attempt"],
+        ArmRunStatus::Counted("retry-run".to_string())
+    );
+
+    // Deleting the failed attempt's run keeps the attempt's job, so the arm still
+    // reaches the retry's run through it.
+    db.delete_run("attempt-run").await.unwrap();
+    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
+    assert_eq!(
+        resolved["attempt"],
+        ArmRunStatus::Counted("retry-run".to_string())
+    );
+}
+
+/// A run deleted after it landed, a job that ended without storing a run, and an id
+/// nothing carries are not held, so the arm can be topped back up.
+#[tokio::test]
+async fn resolve_arm_runs_holds_nothing_for_a_deleted_run_or_a_job_with_no_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    landed(&db, "deleted", "r-deleted", RunState::Completed).await;
+    db.delete_run("r-deleted").await.unwrap();
+    db.enqueue_job(new_job("no-record", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state(
+        "no-record",
         "failed",
         "2026-06-23T00:05:00Z",
         Some("could not pull the run image"),
@@ -8822,24 +8896,23 @@ async fn live_run_ids_drops_a_terminal_job_that_produced_no_record() {
     )
     .await
     .unwrap();
-    db.enqueue_job(new_job("canceled", "2026-06-23T00:01:00Z"))
-        .await
-        .unwrap();
-    db.set_job_state("canceled", "canceled", "2026-06-23T00:06:00Z", None, None)
-        .await
-        .unwrap();
 
-    let live = db
-        .live_run_ids(&["failed".to_string(), "canceled".to_string()])
-        .await
-        .unwrap();
-    assert!(live.is_empty(), "{live:?}");
+    let ids: Vec<String> = ["deleted", "no-record", "never-existed"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
+    assert_eq!(resolved.len(), 3);
+    assert!(
+        resolved.values().all(|s| *s == ArmRunStatus::NotCounted),
+        "{resolved:?}"
+    );
 }
 
 #[tokio::test]
-async fn live_run_ids_of_nothing_is_empty() {
+async fn resolve_arm_runs_of_nothing_is_empty() {
     let db = Db::connect_in_memory().await.unwrap();
-    assert!(db.live_run_ids(&[]).await.unwrap().is_empty());
+    assert!(db.resolve_arm_runs(&[]).await.unwrap().is_empty());
 }
 
 /// The list-price write puts a complete, dated, sourced price onto a curated entry and

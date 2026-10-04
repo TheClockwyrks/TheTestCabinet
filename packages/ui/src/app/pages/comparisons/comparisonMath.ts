@@ -131,6 +131,27 @@ export function pruneDeadRunIds(
   };
 }
 
+/**
+ * Every arm with its recorded `runIds` cleared: the start of a new round, where
+ * "Run again" launches `N` runs per arm (docs/comparisons/experiments.md, "A complete
+ * comparison"). The previous round's runs stay stored as ordinary runs.
+ */
+export function clearRunIds(config: ComparisonConfig): ComparisonConfig {
+  return {
+    ...config,
+    arms: config.arms.map((arm) => ({ ...arm, runIds: [] })),
+  };
+}
+
+/** How many of a comparison's held runs have not landed yet, across every arm. */
+export function runsInFlight(results: readonly ComparisonArmResult[]): number {
+  return results.reduce(
+    (sum, result) =>
+      sum + Math.max(0, countedRunIds(result).length - result.nObserved),
+    0,
+  );
+}
+
 /** One arm and how many runs it still needs to reach the comparison's `N`. */
 export interface ArmTopUp {
   arm: ComparisonArm;

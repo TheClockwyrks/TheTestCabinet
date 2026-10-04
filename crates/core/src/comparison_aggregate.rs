@@ -31,11 +31,13 @@ const FULL_MARKS_EPSILON: f64 = 1e-9;
 /// arm reads exactly the runs its [`run_ids`](ComparisonArm::run_ids) name that are
 /// present in the map.
 ///
-/// `live` is every recorded id that still exists — a run still stored, or a job still
-/// queued or running — which is a wider set than `runs`: a run launched a minute ago
-/// has no record yet but must not be launched again. The caller resolves it against
-/// the store (statistics are computed here; existence is not a question this module
-/// can answer), and each arm reports its own share as
+/// `runs` holds the **counted** runs alone, keyed by the id the arm recorded, so the
+/// statistics never read a canceled run or an infrastructure failure. `live` is every
+/// recorded id the arm holds — still in flight, or resolved to a counted run — which
+/// is a wider set than `runs`: a run launched a minute ago has no record yet but must
+/// not be launched again. The caller resolves both against the store (statistics are
+/// computed here; what a recorded id stands for is not a question this module can
+/// answer), and each arm reports its own share of `live` as
 /// [`live_run_ids`](ComparisonArmResult::live_run_ids).
 pub fn aggregate_comparison(
     config: &ComparisonConfig,
@@ -70,9 +72,9 @@ fn aggregate_arm(
     let arm_runs: Vec<&RunRecord> = ids.iter().map(|id| &runs[id]).collect();
     let seed = seed_from_run_ids(&ids);
 
-    // The arm's still-existing ids, in launch order rather than sorted: this is what a
-    // top-up counts off, and the order it was launched in is the order a reader reads
-    // it in. Wider than `ids` above — a run that has not reported back yet exists.
+    // The ids the arm holds, in launch order rather than sorted: this is what a top-up
+    // counts off, and the order it was launched in is the order a reader reads it in.
+    // Wider than `ids` above — a run that has not reported back yet is held.
     let live_run_ids: Vec<String> = arm
         .run_ids
         .iter()
