@@ -278,6 +278,13 @@
   pointer-events: none;
 }
 
+// The placeholder's copy in the painted layer while the query is empty: invisible,
+// but it gives the layer the placeholder's wrapped height, so the textarea above
+// (which takes the layer's size) fits the placeholder rather than scrolling it.
+.placeholderSizer {
+  visibility: hidden;
+}
+
 .input {
   @include f.text-control;
   @include editor-text;
@@ -412,6 +419,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
   overflow: hidden;
@@ -429,8 +437,10 @@
   text-align: left;
   cursor: pointer;
 
+  // The hover wash every row on the panel surface uses (the run log, the column
+  // picker).
   &:hover {
-    background: t.$color-surface-2;
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
   }
 }
 
@@ -490,8 +500,11 @@
 
 // A wide result (several group-by columns plus aggregations) scrolls inside its own
 // container so the page body never scrolls horizontally.
+// The results sit on the shared translucent panel surface, as the run log does, so
+// the backdrop reads through them without competing with the text.
 .tableWrap {
   overflow-x: auto;
+  background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
 }
@@ -513,7 +526,8 @@
     color: t.$color-text-muted;
     font-family: var(--ttc-font);
     font-weight: 600;
-    background: t.$color-surface-2;
+    // Darker than the rows, and opaque because it sticks over them on scroll.
+    background: t.$color-bg-2;
     position: sticky;
     top: 0;
   }
