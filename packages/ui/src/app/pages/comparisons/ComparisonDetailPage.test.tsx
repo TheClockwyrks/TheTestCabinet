@@ -263,6 +263,20 @@ describe("ComparisonDetailPage", () => {
     });
   });
 
+  it("shows a refused launch's reason on the page", async () => {
+    const launchGgRun = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("`anthropic/claude-opus-4.8` has no provider candidate"),
+      );
+    renderPage(launchGgRun);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Trigger/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "has no provider candidate",
+    );
+  });
+
   it("shows the held-constant engine on the controls strip", async () => {
     renderPage(vi.fn());
     expect(await screen.findByText("Engine")).toBeInTheDocument();

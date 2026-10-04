@@ -128,6 +128,9 @@ export function ComparisonDetailPage() {
       // experiments.md, "Triggering the runs").
       let nextConfig = pruneDeadRunIds(comparison.config, comparison.arms);
       const { controls } = nextConfig;
+      // A refused launch comes back as a per-run error rather than a throw, so it is
+      // collected here and shown once the arms are written back.
+      const launchErrors = new Set<string>();
       for (const { arm, remaining } of armTopUps(nextConfig, comparison.arms)) {
         if (remaining <= 0) continue;
 
@@ -189,6 +192,7 @@ export function ComparisonDetailPage() {
               results.push({ runId: ack.jobId });
             } catch (e) {
               results.push({ error: String(e) });
+              launchErrors.add(String(e));
             }
           }
           nextConfig = withArmRunIds(
@@ -203,6 +207,7 @@ export function ComparisonDetailPage() {
             runtime.track,
             harnessArmLaunchItems(controls, arm, remaining),
           );
+          for (const { error } of launched) if (error) launchErrors.add(error);
           nextConfig = withArmRunIds(
             nextConfig,
             arm.id,
@@ -225,6 +230,7 @@ export function ComparisonDetailPage() {
         );
         setComparison(updated);
       }
+      if (launchErrors.size > 0) setError([...launchErrors].join(" "));
     } catch (e) {
       setError(String(e));
     } finally {
