@@ -613,23 +613,28 @@ export function ComparisonDetailPage() {
         </div>
       )}
 
-      {costRatio && (
-        <p className={styles.ratioCallout}>
-          {costRatio.higher.arm.label}&rsquo;s median cost is ~
-          {costRatio.ratio.toFixed(1)}× {costRatio.lower.arm.label}&rsquo;s (
-          {formatUsd(costRatio.higher.cost!.median)} vs{" "}
-          {formatUsd(costRatio.lower.cost!.median)}).
-        </p>
-      )}
-      {sessionRatio && (
-        <p className={styles.ratioCallout}>
-          {sessionRatio.higher.arm.label}&rsquo;s median session duration is ~
-          {sessionRatio.ratio.toFixed(1)}× {sessionRatio.lower.arm.label}
-          &rsquo;s ({formatRunTime(
-            sessionRatio.higher.sessionDuration!.median,
-          )}{" "}
-          vs {formatRunTime(sessionRatio.lower.sessionDuration!.median)}).
-        </p>
+      {(costRatio || sessionRatio) && (
+        <div className={styles.ratioCallouts}>
+          {costRatio && (
+            <p className={styles.ratioCallout}>
+              {costRatio.higher.arm.label}&rsquo;s median cost is ~
+              {costRatio.ratio.toFixed(1)}× {costRatio.lower.arm.label}&rsquo;s
+              ({formatUsd(costRatio.higher.cost!.median)} vs{" "}
+              {formatUsd(costRatio.lower.cost!.median)}).
+            </p>
+          )}
+          {sessionRatio && (
+            <p className={styles.ratioCallout}>
+              {sessionRatio.higher.arm.label}&rsquo;s median session duration is
+              ~{sessionRatio.ratio.toFixed(1)}× {sessionRatio.lower.arm.label}
+              &rsquo;s (
+              {formatRunTime(
+                sessionRatio.higher.sessionDuration!.median,
+              )} vs {formatRunTime(sessionRatio.lower.sessionDuration!.median)}
+              ).
+            </p>
+          )}
+        </div>
       )}
 
       {/* Every figure on this page is a widget in one column, and the column is
@@ -641,7 +646,7 @@ export function ComparisonDetailPage() {
         <ChartWidget
           title="Cost"
           chartTitle="Comparable cost distribution by arm"
-          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
+          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median, dots = each run (opens it). Every arm keeps its own n."
           spec={
             costGroups.length === 0
               ? undefined
@@ -657,7 +662,7 @@ export function ComparisonDetailPage() {
         <ChartWidget
           title="Tokens"
           chartTitle="Total token distribution by arm"
-          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
+          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median, dots = each run (opens it). Every arm keeps its own n."
           spec={
             tokenGroups.length === 0
               ? undefined
@@ -674,7 +679,7 @@ export function ComparisonDetailPage() {
         <ChartWidget
           title="Session duration"
           chartTitle="Session duration distribution by arm"
-          hint="The harness session alone, in seconds. Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. A run recorded before session durations were measured contributes nothing."
+          hint="The harness session alone, in seconds. Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median, dots = each run (opens it). A run recorded before session durations were measured contributes nothing."
           spec={
             sessionGroups.length === 0
               ? undefined

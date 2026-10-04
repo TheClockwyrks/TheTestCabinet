@@ -163,6 +163,29 @@ pub struct ComparisonConfig {
     pub n: u32,
 }
 
+/// One counted run's raw metric values, the data an arm's distributions summarize.
+/// A metric the run did not report is `None`, on the same terms as its
+/// distribution leaving the run out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ArmRunPoint {
+    /// The run's id, as the arm recorded it.
+    pub run_id: String,
+    /// The run's comparable cost (USD).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub cost: Option<f64>,
+    /// The run's total tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub tokens: Option<f64>,
+    /// The run's harness session duration, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub session_seconds: Option<f64>,
+}
+
 /// A run's automated-only score point — earned over total, restricted to the
 /// machine-checkable checklist points (so a Carom run reads 68/68, not 68/70).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -270,6 +293,12 @@ pub struct ComparisonArmResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub session_duration: Option<MetricSummary>,
+    /// Every counted run's raw values, in sorted-id order: the points a view draws
+    /// beside each distribution. The TypeScript type stays optional so a console
+    /// still reads a result written by a backend that predates the field.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub run_points: Vec<ArmRunPoint>,
     /// The automated-only score across the arm's runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]

@@ -147,6 +147,30 @@ export type ArmDiagnostics = {
 };
 
 /**
+ * One counted run's raw metric values, the data an arm's distributions summarize.
+ * A metric the run did not report is `None`, on the same terms as its
+ * distribution leaving the run out.
+ */
+export type ArmRunPoint = {
+  /**
+   * The run's id, as the arm recorded it.
+   */
+  runId: string;
+  /**
+   * The run's comparable cost (USD).
+   */
+  cost?: number;
+  /**
+   * The run's total tokens.
+   */
+  tokens?: number;
+  /**
+   * The run's harness session duration, in seconds.
+   */
+  sessionSeconds?: number;
+};
+
+/**
  * A control that slipped: two of an arm's runs disagreed on a variable that was
  * meant to be held constant. Surfaced so a comparison whose arms are not truly
  * comparable reads as compromised rather than quietly folding the runs together.
@@ -349,6 +373,12 @@ export type ComparisonArmResult = {
    * contributes nothing, on the same terms as a run missing its cost.
    */
   sessionDuration?: MetricSummary;
+  /**
+   * Every counted run's raw values, in sorted-id order: the points a view draws
+   * beside each distribution. The TypeScript type stays optional so a console
+   * still reads a result written by a backend that predates the field.
+   */
+  runPoints?: Array<ArmRunPoint>;
   /**
    * The automated-only score across the arm's runs.
    */

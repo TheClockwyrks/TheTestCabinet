@@ -466,6 +466,32 @@ describe("armDistributionGroups", () => {
     ]);
     expect(groups[0]).toMatchObject({ ciLow: 119.75, ciHigh: 120.25, n: 3 });
   });
+
+  it("draws each run that reported the metric as a point linking to its run", () => {
+    const arm = {
+      ...result({ id: "a", label: "pi" }, { cost: summary(1) }),
+      runPoints: [
+        { runId: "r1", cost: 0.5, sessionSeconds: 90 },
+        // A run whose cost was never reported has no cost point.
+        { runId: "r2", sessionSeconds: 120 },
+        { runId: "r3", cost: 1.5 },
+      ],
+    };
+    const [group] = armDistributionGroups([arm], "cost", new Map());
+    expect(group!.points).toEqual([
+      { runId: "r1", value: 0.5, href: "/runs/r1" },
+      { runId: "r3", value: 1.5, href: "/runs/r3" },
+    ]);
+  });
+
+  it("draws boxes without points for a result that carries no run points", () => {
+    const [group] = armDistributionGroups(
+      [result({ id: "a", label: "pi" }, { cost: summary(1) })],
+      "cost",
+      new Map(),
+    );
+    expect(group!.points).toEqual([]);
+  });
 });
 
 describe("presentedRatio", () => {

@@ -2,6 +2,7 @@
 // and its charts — kept free of React/network so the top-up math and the
 // tool-call grouping are unit-tested directly (see comparisonMath.test.ts).
 import type {
+  ArmRunPoint,
   ComparisonArm,
   ComparisonArmResult,
   ComparisonConfig,
@@ -16,6 +17,7 @@ import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import { resolveEngineSlug } from "../../data/engines";
 import type { LaunchItem } from "../runs/launchBatch";
 import { categoricalColor } from "../../../primitives/plot/palette";
+import { routes } from "../../routes";
 
 /**
  * The arm's recorded runs that **still exist** — a run is stored for it, or a job
@@ -312,11 +314,22 @@ export function medianRatio(aMedian: number, bMedian: number): number {
  */
 export type ArmMetric = "cost" | "tokens" | "sessionDuration";
 
+// The field of a run point that carries each metric's raw value.
+const RUN_POINT_FIELD: Readonly<
+  Record<ArmMetric, "cost" | "tokens" | "sessionSeconds">
+> = {
+  cost: "cost",
+  tokens: "tokens",
+  sessionDuration: "sessionSeconds",
+};
+
 /**
  * Each arm's distribution of `metric`, in the arms' order, as the groups a
- * distribution chart draws. An arm with no distribution for the metric (none of
- * its runs reported it, such as runs recorded before the stage durations were
- * measured) is left out rather than drawn at zero.
+ * distribution chart draws, with every counted run that reported the metric as
+ * a point linking to its run. An arm with no distribution for the metric (none
+ * of its runs reported it, such as runs recorded before the stage durations
+ * were measured) is left out rather than drawn at zero. A result from a backend
+ * that predates `runPoints` draws its boxes without points.
  */
 export function armDistributionGroups(
   arms: readonly ComparisonArmResult[],
@@ -331,7 +344,12 @@ export function armDistributionGroups(
         label: a.arm.label,
         color: colorForArm.get(a.arm.id),
         n: summary.n,
-        points: [],
+        points: (a.runPoints ?? []).flatMap((p: ArmRunPoint) => {
+          const value = p[RUN_POINT_FIELD[metric]];
+          return value == null
+            ? []
+            : [{ runId: p.runId, value, href: routes.runDetail(p.runId) }];
+        }),
         median: summary.median,
         mean: summary.mean,
         min: summary.min,

@@ -11,8 +11,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comparison::{
-    ArmDiagnostics, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig, Confound,
-    ScorePoint, automated_only_score,
+    ArmDiagnostics, ArmRunPoint, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig,
+    Confound, ScorePoint, automated_only_score,
 };
 use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
 use crate::metrics::TokenCounts;
@@ -103,6 +103,17 @@ fn aggregate_arm(
         .filter_map(|r| r.metrics.session_seconds)
         .collect();
     let session_duration = MetricSummary::compute(&sessions, seed);
+    // The raw values the three distributions summarize, one entry per counted run.
+    let run_points: Vec<ArmRunPoint> = ids
+        .iter()
+        .zip(&arm_runs)
+        .map(|(id, r)| ArmRunPoint {
+            run_id: id.clone(),
+            cost: r.metrics.cost.comparable,
+            tokens: r.metrics.tokens.total().map(|t| t as f64),
+            session_seconds: r.metrics.session_seconds,
+        })
+        .collect();
 
     // Automated-only scores, over the runs that carry validators. A run whose
     // covered denominator is zero (no auto-checkable points ran) contributes to
@@ -146,6 +157,7 @@ fn aggregate_arm(
         cost,
         tokens: tokens_summary,
         session_duration,
+        run_points,
         score,
         pass_rate,
         diagnostics: diagnostics_of(&arm_runs),
