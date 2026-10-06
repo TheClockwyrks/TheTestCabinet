@@ -21,6 +21,11 @@
       ]
     }
   },
+  // The ports the project serves on, each labelled with what serves there. The
+  // documentation site's dev server (`npm run --workspace apps/docs dev`, the
+  // `docs` command in .nyxsis/project.toml) binds Astro's default, 4321.
+  "forwardPorts": [4321],
+  "portsAttributes": { "4321": { "label": "Documentation site" } },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "postStartCommand": "bash .devcontainer/post-start.sh",
   "updateRemoteUserUID": false

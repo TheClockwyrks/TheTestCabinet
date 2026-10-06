@@ -1,6 +1,8 @@
 # What Nyxsis runs in a workspace of this repository. Every command runs inside the
-# devcontainer, from the checkout's root, with no shell; the Makefile is what each one
-# calls, so a command here and a developer's shell run the same thing.
+# devcontainer, from the checkout's root, with no shell, and each names what a
+# developer's shell runs for the same thing: a Makefile target where one exists, or
+# the npm script where the Makefile has none (`make docs` builds the site; the `docs`
+# command below serves it live).
 
 # What removes this project's build output.
 clean = ["make", "clean"]
