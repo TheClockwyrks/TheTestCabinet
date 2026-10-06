@@ -42,7 +42,8 @@ chmod +x "$RUSTUP_INIT"
 	--component rustfmt
 rm -f "$RUSTUP_INIT"
 
-# shellcheck disable=SC2016
-if ! grep -Fqx 'export PATH="$HOME/.cargo/bin:$PATH"' "$HOME/.bashrc"; then
-	echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.bashrc"
-fi
+# Nothing here puts ~/.cargo/bin on the PATH. The devcontainer's Dockerfile
+# does, after ~/.local/bin, where languages/rust/permit-wrapper.sh places a
+# wrapper named cargo, and a shell that put the toolchain's bin directory first
+# would run cargo past it. The line rustup-init adds to the shell's startup
+# files adds the directory only where it is missing.

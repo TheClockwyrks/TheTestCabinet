@@ -53,6 +53,14 @@ x-devcontainer-build-args: &devcontainer-build-args
   NEXTEST_VERSION: 0.9.140
   NEXTEST_SHA256_AMD64: bc2a998567816eef7b087b920036f49fb89aa2a8a603f6a3d84098be160b62c5
   NEXTEST_SHA256_ARM64: 8b3f4d4560b6b0f83774fecc6be07e47716dbad0eb0bb6c3890f478f4affe4b6
+  # mold (languages/rust/mold.sh), the linker cargo links the two glibc targets
+  # with, which installs from the release's archive for this architecture and
+  # checks it before taking anything out of it. The version and the two
+  # checksums move together: each checksum is the `sha256sum` of the release's
+  # archive for that machine, x86_64 on amd64 and aarch64 on arm64.
+  MOLD_VERSION: 2.40.4
+  MOLD_SHA256_AMD64: 4c999e19ffa31afa5aa429c679b665d5e2ca5a6b6832ad4b79668e8dcf3d8ec1
+  MOLD_SHA256_ARM64: c799b9ccae8728793da2186718fbe53b76400a9da396184fac0c64aa3298ec37
   # The compiler the image installs, which rust-toolchain.toml pins for every
   # checkout. The two name the same channel or the image ships a compiler
   # nothing builds with.

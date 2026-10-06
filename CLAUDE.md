@@ -163,6 +163,26 @@ and their excludes keep the frozen test-case versions and test-case media out.
 The [`coding`](.claude/skills/coding/SKILL.md) skill says which gates a change
 runs before it is reported done.
 
+Leave the machine's CPU at the load real work puts on it. Running a stress
+tool, a busy loop or a deliberately oversubscribed parallel run to provoke a
+flaky test is not allowed, for two reasons:
+
+- A test is written to be deterministic, so the fix for a flaky one is to
+  remove its dependence on timing or scheduling. Passing under load is a
+  brittle and incorrect standard to hold a test to.
+- The machine is shared with other projects' workspaces, and artificial load
+  takes the CPU their real work needs.
+
+The heavy cargo subcommands, `build`, `check`, `clippy`, `doc`, `test` and
+`nextest`, take turns with the other workspaces on the machine through the
+devcontainer's `cargo` wrapper. The wrapper is what `cargo` names on the
+container's `PATH`, so an agent runs cargo as it would anywhere else and needs
+to do nothing for it.
+
+Given `--report-dir`, the runner keeps every gate's output in a file and
+writes a summary of the run, which is how an agent is handed a failure
+without the output itself reaching it.
+
 ### CI
 
 `azure-pipelines.yml` runs the template's two gate jobs (`rust` and `web`, one
@@ -171,6 +191,9 @@ step per gate or upstream hook) on every push to `master`, `staging` and
 overlay on `staging`. Both jobs run inside the CI images at the commit
 [`ci/images/tags.yml`](ci/images/tags.yml) pins as `ciImageTag`, and end by
 publishing the JUnit reports their test gates wrote as `test-results-<job>-<attempt>`.
+A commit that changes a file an image is built from is followed by a second,
+once the image pipeline's run on it has pushed the images, writing that commit
+into `ciImageTag`; the change is complete when the pin follows it.
 The project's own jobs and stages come from `.azure/project/`: gg's test
 partitions, a `rust_build` job that links every target and seeds the template
 `rust` job's target cache, the release binaries, the submodule pins, the image
@@ -232,6 +255,17 @@ template's, and are edited like any other file.
   [`analyzing-run-costs`](.claude/skills/analyzing-run-costs/SKILL.md).
 - Browser screenshots:
   [`playwright-26.04`](.claude/skills/playwright-26.04/SKILL.md).
+- Updating this repository against its template, by hand or through a template
+  update tool, or resolving the conflicts or taking the steps an update left:
+  the [`template-migration`](.claude/skills/template-migration/SKILL.md)
+  skill, which holds a guide per template version, stating what each brings
+  and each step it leaves to take by hand.
+- Configuring the repository for the fleet that manages it, or changing
+  anything the fleet reads (the declarations folder at the root, the answers
+  file, the devcontainer's compose file and its variables, `forwardPorts`, the
+  pipeline's test results): the skill
+  [`nyxsis`](.claude/skills/nyxsis/SKILL.md) <!-- cspell:disable-line -->
+  first. It states each one's shape, its default and what is done with it.
 
 ## Issue board
 

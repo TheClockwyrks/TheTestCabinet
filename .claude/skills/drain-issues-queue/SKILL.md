@@ -289,10 +289,9 @@ apply the following:
     }
     ```
 
-- Require all agents to use `flock` on a path you specify (i.e. shared across
-  all workflows) whenever they run a command expected to consume the entire CPU
-  to avoid massively oversubscribing the CPU due to concurrent agents' command
-  execution.
+- Heavy commands need no coordination from you or the agents: the
+  devcontainer's `cargo` wrapper makes cargo's heavy subcommands take turns
+  with every other workspace on the machine.
 
 If any of the above conflicts with the workflow authoring skill's content, stop
 before starting any workflows and notify the user.

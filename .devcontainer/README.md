@@ -27,7 +27,10 @@ passes in the pipeline exactly when it passes here.
 ## What the image carries
 
 - The Rust toolchain `rust-toolchain.toml` pins, with `rustfmt`, `clippy` and
-  `cargo-nextest`.
+  `cargo-nextest`, and `mold`, the linker cargo links a glibc build with. See
+  [Linker](#linker). A wrapper named `cargo` in `~/.local/bin` runs the heavy
+  subcommands in turn with the machine's other workspaces. See
+  [The cargo wrapper](#the-cargo-wrapper).
 - This architecture's musl target and `musl-tools`, for static builds. See
   [Static builds](#static-builds).
 - Node and npm, which the web app, the documentation site, the prose gates and
@@ -95,10 +98,11 @@ into rather than a build argument, because Podman supplies none, and fails
 loudly on an architecture it has no mapping for.
 
 Every script that downloads a binary by hand runs it once, immediately after
-installing it. `kubectl`, `k3d`, `docker`, `lazygit` and `cargo-nextest` all
-install just as happily when they are built for the other CPU, and would first
-fail against a cluster, in the test gate, or under your fingers. The three
-browser engines are started once for the same reason, by `tools/browsers.sh`. A
+installing it. `kubectl`, `k3d`, `docker`, `lazygit`, `cargo-nextest` and
+`mold` all install just as happily when they are built for the other CPU, and
+would first fail against a cluster, in the test gate, or under your fingers.
+The three browser engines are started once for the same reason, by
+`tools/browsers.sh`. A
 wrong-architecture `node` fails unrecognizably, because `npm`'s shebang leaves
 the failed exec to glibc:
 
@@ -110,6 +114,56 @@ The release archive `languages/rust/cargo-nextest.sh` downloads is checked
 against the checksum `docker-compose.yml` pins beside `NEXTEST_VERSION` for
 this architecture, `NEXTEST_SHA256_AMD64` or `NEXTEST_SHA256_ARM64`, before the
 binary is taken out of it, and nextest is never built from source.
+`languages/rust/mold.sh` checks mold's archive the same way, against
+`MOLD_SHA256_AMD64` or `MOLD_SHA256_ARM64` beside `MOLD_VERSION`.
+
+## Linker
+
+Cargo links the two glibc targets, `x86_64-unknown-linux-gnu` and
+`aarch64-unknown-linux-gnu`, with `mold`. A test build links one binary per
+crate at once, and `mold` links each in a fraction of the time GNU `ld`
+takes. It carries debug info through, so a failed test reports the
+same panic and backtrace.
+
+`languages/rust/mold.sh` installs `mold` beside `cargo`, with `cc-mold`, a
+driver that runs `cc -fuse-ld=mold`. The image's environment names that driver
+as each target's linker:
+
+```sh
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
+```
+
+The image sets them, so a terminal, the editor's language server and an `exec`
+naming `cargo` all link alike. Every other target, such as a musl one, links
+with what its own configuration names. Unsetting the variable for a command
+links it with GNU `ld`:
+
+```sh
+env -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER \
+  -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER cargo build
+```
+
+## The cargo wrapper
+
+`languages/rust/permit-wrapper.sh` places a wrapper named `cargo` in
+`~/.local/bin`, which the Dockerfile puts on the `PATH` ahead of
+`~/.cargo/bin`, so every program that runs `cargo` by name reaches it first. It
+runs the toolchain's cargo, at `$CARGO_HOME/bin/cargo` or
+`~/.cargo/bin/cargo`, with the arguments it was given.
+
+The subcommand is the first argument that is not an option, after a leading
+`+toolchain`. `build`, `check`, `clippy`, `doc`, `test` and `nextest` wait
+for a permit from the fleet's agent, which the machine's workspaces share, and
+start with the permit's share of the cores in their environment. That happens
+only where the agent's executable is in the container and the session the
+agent started names its workspace. Every other subcommand, a terminal opened by
+hand and a container without the executable run cargo as it is. The permit is
+advisory: a command the agent grants none within the wait runs without one, so
+a machine whose agent is down builds as it always did.
+
+The CI images do not run the script. A pipeline job runs no agent, and a job
+that caches the crate registry repoints `CARGO_HOME`.
 
 ## Browsers
 
