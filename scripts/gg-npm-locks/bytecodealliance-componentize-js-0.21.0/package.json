@@ -1,0 +1,10 @@
+{
+  "name": "bytecodealliance-componentize-js-0.21.0",
+  "private": true,
+  "dependencies": {
+    "@bytecodealliance/componentize-js": "0.21.0"
+  },
+  "overrides": {
+    "@bytecodealliance/preview2-shim": "0.26.0"
+  }
+}
