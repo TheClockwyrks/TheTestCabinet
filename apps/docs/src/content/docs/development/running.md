@@ -77,10 +77,9 @@ pipeline and the run images use, so a first image build is long and a pin
 moving under `packages/` rebuilds that layer alone.
 
 When the container is created, `.devcontainer/post-create.sh` installs the git
-hook, places cargo's target directory and runs `npm ci`, and nothing runs in the
-background afterwards: the whole workspace builds as soon as it returns. In a
-container built before a gg pin moved, the two installers reconcile it by hand
-without a rebuild:
+hook and runs `npm ci`, and nothing runs in the background afterwards: the
+whole workspace builds as soon as it returns. In a container built before a gg
+pin moved, the two installers reconcile it by hand without a rebuild:
 
 ```sh
 scripts/ci/install-gg-toolchains.sh
@@ -89,20 +88,10 @@ scripts/ci/install-gg-build-toolchains.sh
 
 ### Where cargo builds
 
-On a host whose checkout reaches the container over virtiofs or FUSE (macOS
-Podman, Docker Desktop), parallel `rustc` processes writing crate metadata into
-the checkout fail intermittently with E0463. There,
-`.devcontainer/tools/cargo-target.sh`, run once by `post-create.sh`, points
-cargo at `~/.cache/cargo-target/the-test-cabinet`, inside the container, through
-`~/.cargo/config.toml` and an exported `CARGO_TARGET_DIR`. It is rebuilt from
-scratch after every container rebuild, and `make clean` does not reach it. On a
-Linux host, cargo builds into `target/` in the checkout.
-`TCAB_CARGO_TARGET_RELOCATE=1` or `=0` forces or forbids the move when the
-script is run by hand.
-
-Either way `/cargo-target/the-test-cabinet` links to the target directory in
-use, so a path such as `/cargo-target/the-test-cabinet/debug/gg` works on every
-host.
+cargo builds into `target/` in the checkout, where `make clean` reaches it, so
+a locally built gg is at `target/debug/gg`. A `CARGO_TARGET_DIR` set in the
+environment moves it, and the scripts that look for a built binary honour the
+variable.
 
 ## The whole stack on k3d
 

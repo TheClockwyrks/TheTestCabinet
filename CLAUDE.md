@@ -210,12 +210,9 @@ Before the first start, copy the host's file to `.devcontainer/.env`
 [`.devcontainer/README.md`](.devcontainer/README.md#host-files)). The container
 user is `dev`. The image carries everything a build needs, gg's eleven
 program-language toolchains included, so the first image build is long and the
-container's creation is short: `post-create.sh` installs the git hook, places
-cargo's target directory and runs `npm ci`, and nothing runs in the background
-afterwards. On a virtiofs or FUSE host (macOS Podman, Docker Desktop), cargo
-builds into `~/.cache/cargo-target/the-test-cabinet` instead of `target/`, and
-`/cargo-target/the-test-cabinet` links to whichever target directory is in use.
-See [`development/running.md`](apps/docs/src/content/docs/development/running.md#the-dev-container).
+container's creation is short: `post-create.sh` installs the git hook and runs
+`npm ci`, and nothing runs in the background afterwards. cargo builds into
+`target/` in the checkout, which `make clean` removes. See [`development/running.md`](apps/docs/src/content/docs/development/running.md#the-dev-container).
 
 ## Doing things (guides & quickstarts)
 

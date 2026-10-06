@@ -24,10 +24,7 @@ through them, not a replacement.
    toolchain; a container built before a pin moved catches up with
    `scripts/ci/install-gg-toolchains.sh` and
    `scripts/ci/install-gg-build-toolchains.sh`, both idempotent). The
-   binary lands in the target directory cargo builds into: `target/debug/gg` on
-   a Linux host, `~/.cache/cargo-target/the-test-cabinet/debug/gg` on a
-   virtiofs host such as macOS Podman. `/cargo-target/the-test-cabinet` links to
-   it in the dev container, so the path below works on either.
+   binary lands at `target/debug/gg` in the checkout.
 2. **Check the sandbox arms.** `PATH="$HOME/.local/bin:$PATH" gg selfcheck`
    drives every language's bootstrap turn with no model. On 2026-09-22 ten arms
    passed here; `rust` failed for want of the `wasm32-wasip1` target. Use
@@ -57,7 +54,7 @@ through them, not a replacement.
    ```sh
    set -a; source .env; set +a          # OPENROUTER_API_KEY lives in the repo .env
    export PATH="$HOME/.local/bin:$PATH" # purs, node, esbuild for the sandbox arms
-   /cargo-target/the-test-cabinet/debug/gg --config inv.json > run.ndjson
+   target/debug/gg --config inv.json > run.ndjson
    ```
 
    Exit `0` is a session that ended by its own `finish` call, `3` is a run

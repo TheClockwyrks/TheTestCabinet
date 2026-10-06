@@ -305,26 +305,12 @@ them together and the gate runs it on every commit.
 
 ## Where cargo builds
 
-On most hosts cargo builds into the checkout's `target/`, where `make clean`
-reaches it. On a checkout mounted over virtiofs or FUSE (Podman on macOS,
-Docker Desktop), parallel `rustc` processes writing crate metadata into the
-checkout fail intermittently with E0463 ("can't find crate"), so there
-`tools/cargo-target.sh`, run once by `post-create.sh`, points cargo at
-`~/.cache/cargo-target/the-test-cabinet` in the container's own layer, through
-a marked block in `~/.cargo/config.toml` and an exported `CARGO_TARGET_DIR` in
-`~/.bashrc`. What it relocates is lost with the container's layer, so a rebuilt
-container builds from scratch. Run by hand,
-`TCAB_CARGO_TARGET_RELOCATE=1 bash .devcontainer/tools/cargo-target.sh` forces
-the move and `=0` forbids it; a `CARGO_TARGET_DIR` already set is a choice
-already made, and nothing is touched.
-
-Either way `/cargo-target/the-test-cabinet` links to the directory cargo builds
-into. The test cases' reference implementations default to that path and
-`crates/core` looks there for a locally built gg, so
-`/cargo-target/the-test-cabinet/debug/gg` works on every host. The image
-creates `/cargo-target` owned by the container user, so the link takes no
-privilege, and the script never fails the container's creation: it says what it
-could not do and how to do it by hand. Running it again is safe.
+cargo builds into the checkout's `target/`, where `make clean` reaches it and
+where `crates/core` looks for a locally built gg (`target/debug/gg`,
+`target/release/gg`). Every machine in the fleet runs Podman with the checkout
+bound in directly, so nothing moves the directory elsewhere; a developer who
+wants it elsewhere sets `CARGO_TARGET_DIR`, which the scripts that look for a
+built binary honour.
 
 ## What the compose file declares
 

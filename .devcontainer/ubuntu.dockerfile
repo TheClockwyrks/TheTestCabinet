@@ -45,11 +45,6 @@ RUN bash /tmp/scripts/apt.sh && \
 	bash /tmp/scripts/init-user.sh && \
 	rm -rf /tmp/scripts
 
-# Where tools/cargo-target.sh, run from post-create.sh, links the directory
-# cargo builds into. Owned by the container user, so writing the link takes no
-# privilege once the container is running.
-RUN mkdir -p /cargo-target && chown "${USER_UID}:${USER_GID}" /cargo-target
-
 # Claude Code's managed settings. Every session in the image runs unattended,
 # and the managed file is the one source Claude Code takes a default of bypass
 # permissions mode from whichever configuration directory a session points it
