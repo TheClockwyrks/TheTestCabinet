@@ -146,26 +146,87 @@
   font-size: t.$font-sm;
 }
 
-// The presented (never a verdict) ratio callout for a two-arm comparison —
-// "Kilo's median cost is ~6.8x Pi's" — a single plain sentence, not a badge.
-.ratioCallout {
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  padding: t.$space-md t.$space-lg;
-  // Stated in full: the callout is a `<p>`, and its group spaces it.
+// The presented (never a verdict) ratios of a two-arm comparison, one tile per
+// metric: side by side where there is room for two, stacked where there is not.
+.ratioTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: t.$space-md;
+  margin: 0 0 t.$space-xl;
+}
+
+// The ratio itself: the one figure the tile exists to state.
+.ratioTileFigure {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
   margin: 0;
   color: t.$color-text;
   font-family: var(--ttc-font);
+  font-size: t.$font-xl;
+  line-height: 1.1;
 }
 
-// The ratio callouts read as one section: close together, with the column's
-// usual gap between the group and the charts below it.
-.ratioCallouts {
+.ratioTileCaption {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.ratioTileRows {
   display: flex;
   flex-direction: column;
+  gap: t.$space-md;
+  margin: t.$space-md 0 0;
+}
+
+// One arm: its name and its median on a line, and its bar under both.
+.ratioTileRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: t.$space-md;
+  row-gap: t.$space-xs;
+}
+
+.ratioTileArm {
+  display: flex;
+  align-items: center;
   gap: t.$space-sm;
-  margin: 0 0 t.$space-xl;
+  min-width: 0;
+  color: t.$color-text;
+}
+
+// A long arm label gives way before the median beside it does.
+.ratioTileArmLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ratioTileValue {
+  margin: 0;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// The bar's full length is the higher median, so the lower arm's bar is its
+// share of it.
+.ratioTileTrack {
+  grid-column: 1 / -1;
+  margin: 0;
+  height: 0.5rem;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+}
+
+.ratioTileBar {
+  display: block;
+  height: 100%;
+  // A bar never thins to nothing, so the arm's color stays findable.
+  min-width: t.$space-xs;
+  border-radius: t.$radius-sm;
 }
 
 // The detail page's figure column: every section — the three charts and the

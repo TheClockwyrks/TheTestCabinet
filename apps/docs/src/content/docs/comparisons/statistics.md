@@ -66,10 +66,11 @@ confidence interval on the median. A run missing a metric is left out of that
 metric's distribution rather than folded in as a zero.
 
 Each arm also reports its counted runs' raw values as `runPoints`, one entry
-per run in sorted-id order carrying the run id and its comparable cost, total
-tokens, and session seconds. A metric the run did not report is absent from its
-entry. These are the points a chart draws beside each box, and each one links
-to its run.
+per run, in the sorted order of the ids the arm recorded. An entry carries the
+stored run's own id, which is the id the run's page is addressed by, and the
+run's comparable cost, total tokens, and session seconds. A metric the run did
+not report is absent from its entry. These are the points a chart draws beside
+each box, and each one links to its run.
 
 The interval comes from 10,000 bootstrap resamples, taking the 2.5th and 97.5th
 percentiles of the resulting medians. Bootstrapping assumes no normality,
@@ -94,6 +95,11 @@ distributions are drawn under it. A ratio is reported for a metric only when
 both arms have a distribution for it and the denominator median is above zero.
 Cost and session duration each get their own, since the slower arm is not
 necessarily the more expensive one.
+
+Each ratio is shown as a tile that leads with the ratio and lists the two arms
+under it, the higher median first. An arm's row carries its color, its median,
+and a bar whose length is the median's share of the higher one. The tile uses
+the arms' identity colors alone, so neither arm reads as the better one.
 
 No p-value and no significance badge is shown. A significance verdict is a
 verdict, and at three runs per arm a rank-based test would mislead.

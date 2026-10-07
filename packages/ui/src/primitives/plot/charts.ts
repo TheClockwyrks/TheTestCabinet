@@ -119,17 +119,24 @@ const POINTER_RADIUS = 1000;
 // unreadable. Filling it with the dark surface lets the light text read; the
 // text color is left as the ambient `currentColor`. See `POINTER_RADIUS` for the
 // column-pointer behavior.
+//
+// The box never takes the pointer. Plot pins a tip on pointer-down and from then
+// on lets it receive pointer events, and a tip opens over the mark it describes
+// whenever it has no room on the other side, so the pointer-up of a click on a
+// linked point would land on the tip and the click would never reach the link.
 function tipBox(palette: ChartPalette): {
   pointer: "x";
   maxRadius: number;
   fill: string;
   stroke: string;
+  pointerEvents: "none";
 } {
   return {
     pointer: "x",
     maxRadius: POINTER_RADIUS,
     fill: palette.surface,
     stroke: palette.border,
+    pointerEvents: "none",
   };
 }
 
@@ -1065,12 +1072,14 @@ function tipBoxXY(palette: ChartPalette): {
   maxRadius: number;
   fill: string;
   stroke: string;
+  pointerEvents: "none";
 } {
   return {
     pointer: "xy",
     maxRadius: POINT_POINTER_RADIUS,
     fill: palette.surface,
     stroke: palette.border,
+    pointerEvents: "none",
   };
 }
 

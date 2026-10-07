@@ -170,7 +170,9 @@ pub struct ComparisonConfig {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ArmRunPoint {
-    /// The run's id, as the arm recorded it.
+    /// The stored run's own id, which is the id the run's page is addressed by. It
+    /// differs from the id the arm [recorded](ComparisonArm::run_ids), which names
+    /// the job that produced the run.
     pub run_id: String,
     /// The run's comparable cost (USD).
     #[serde(default, skip_serializing_if = "Option::is_none")]
