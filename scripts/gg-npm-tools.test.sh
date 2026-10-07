@@ -43,8 +43,11 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # A copy of the resolver beside a lock directory of this test's own, so the
-# repository's real locks play no part.
-mkdir -p "$tmp/scripts/gg-npm-locks/scope-tool-1.2.3" "$tmp/bin" "$tmp/home"
+# repository's real locks play no part. $HOME/.local is a symlink into a cache
+# directory, as scripts/ci/gg-ci-toolchains.sh lays a pipeline job's out, so
+# the user prefix is reached through a link and the real path differs from it.
+mkdir -p "$tmp/scripts/gg-npm-locks/scope-tool-1.2.3" "$tmp/bin" "$tmp/home" "$tmp/cache/home/.local"
+ln -s "$tmp/cache/home/.local" "$tmp/home/.local"
 cp "$SCRIPTS_DIR/gg-npm-tools.sh" "$tmp/scripts/"
 cat >"$tmp/scripts/gg-npm-locks/scope-tool-1.2.3/package.json" <<'EOF'
 {
@@ -87,11 +90,12 @@ run() { # [VAR=value...] function args...
 }
 
 expected_dir="$tmp/home/.local/share/tcab/gg-npm/scope-tool-1.2.3-$digest"
+real_dir="$tmp/cache/home/.local/share/tcab/gg-npm/scope-tool-1.2.3-$digest"
 out="$(run gg_npm_tool @scope/tool 1.2.3)"
 check_equal "a cold tool resolves" "0" "$?"
 check_contains "to the user prefix, stamped with the version and the lock's digest" "$expected_dir" "$out"
-check_equal "installed with npm ci from the lock's two files, and nothing else" \
-	"npm ci --silent --no-audit --no-fund --prefix $expected_dir [files=package-lock.json package.json]" \
+check_equal "installed with npm ci from the lock's two files, and nothing else, by the prefix's real path" \
+	"npm ci --loglevel=error --no-audit --no-fund --prefix $real_dir [files=package-lock.json package.json]" \
 	"$(cat "$tmp/calls.log")"
 check_contains "saying so" "==> installing @scope/tool@1.2.3 -> $expected_dir" "$out"
 
@@ -109,6 +113,13 @@ check_equal "GG_NPM_INSTALL_DIR moves the user prefix" "$tmp/elsewhere/scope-too
 printf '{"name":"scope-tool-1.2.3","lockfileVersion":3,"packages":{}}\n' >"$tmp/scripts/gg-npm-locks/scope-tool-1.2.3/package-lock.json"
 out="$(run gg_npm_tool_dir @scope/tool 1.2.3)"
 check_equal "a re-resolved lock is a new stamp" "1" "$([ "$out" != "$expected_dir" ] && echo 1)"
+
+printf '#!/usr/bin/env bash\necho "npm error something npm said" >&2\nexit 1\n' >"$tmp/bin/npm"
+rm -rf "$tmp/cache/home/.local/share/tcab/gg-npm"
+out="$(run gg_npm_tool @scope/tool 1.2.3)"
+check_equal "a failed npm ci fails the resolution" "1" "$?"
+check_contains "with npm's own message" "npm error something npm said" "$out"
+check_contains "and the lock it was installing" "npm ci failed to install @scope/tool@1.2.3 from the lock at $tmp/scripts/gg-npm-locks/scope-tool-1.2.3" "$out"
 
 out="$(run gg_npm_tool @scope/tool 9.9.9)"
 check_equal "a pin with no lock fails" "1" "$?"

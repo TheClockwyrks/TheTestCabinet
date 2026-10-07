@@ -144,10 +144,25 @@ gg_npm_tool() {
 		mkdir -p "$dir"
 		# The prefix is an `npm ci` of the committed lock and nothing else: `npm ci` installs exactly
 		# what the lock resolved and fails if the manifest and the lock disagree, where `npm install`
-		# would resolve every range again on the day and write a tree nobody reviewed. `--silent`
-		# and the two `--no-*` flags keep an ordinary build's log about the build.
-		cp "$lock/package.json" "$lock/package-lock.json" "$dir/"
-		npm ci --silent --no-audit --no-fund --prefix "$dir" >&2
+		# would resolve every range again on the day and write a tree nobody reviewed.
+		#
+		# BY ITS REAL PATH. Handed a prefix that goes through a symlink, npm models the project as a
+		# link to its target and names that target after its directory, then finds no such package
+		# in the lock and refuses: `Missing: <directory>@ from lock file`, on a lock that is in sync.
+		# A pipeline job's `$HOME/.local` IS such a link, into the directory its toolchain cache
+		# restores (scripts/ci/gg-ci-toolchains.sh), so every CI install went through one. `npm
+		# install` never checked a lock and never noticed.
+		#
+		# `--loglevel=error` keeps an ordinary build's log about the build and still prints the
+		# sentence npm fails with; `--silent` printed nothing, and the one line above was all a
+		# failed pipeline step had to say.
+		real="$(cd "$dir" && pwd -P)"
+		cp "$lock/package.json" "$lock/package-lock.json" "$real/"
+		if ! npm ci --loglevel=error --no-audit --no-fund --prefix "$real" >&2; then
+			echo "error: npm ci failed to install $package@$version from the lock at $lock." >&2
+			echo "       npm's own message is above; its full log is under \$HOME/.npm/_logs." >&2
+			return 1
+		fi
 	fi
 
 	if [ ! -d "$dir/node_modules/$package" ]; then

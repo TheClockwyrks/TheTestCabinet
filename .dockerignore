@@ -311,6 +311,15 @@
 !/scripts/gg-artifacts.sh
 !/scripts/gg-downloads.sh
 !/scripts/gg-npm-tools.sh
+# The table test of the npm-tool resolver. No image runs it; it is here because it
+# is one of the `scripts/gg-*.sh` family the gate keeps complete, and the devcontainer
+# image's `./scripts/gg-*.sh` COPY would otherwise name a file the context lacks.
+!/scripts/gg-npm-tools.test.sh
+# The committed lock of each npm-delivered build tool's tree, which the resolver
+# installs with `npm ci`. Every image that runs install-gg-build-tools.sh — the
+# devcontainer image at build time, the driver's gg stage — reads the lock out of
+# the context beside the resolver. A directory, named without a wildcard.
+!/scripts/gg-npm-locks
 !/scripts/gg-probe-fixtures.sh
 !/scripts/gg-reference.sh
 !/scripts/gg-scratch-lock.sh

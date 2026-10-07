@@ -177,6 +177,13 @@ COPY --chown=${USER_UID}:${USER_GID} \
 COPY --chown=${USER_UID}:${USER_GID} \
 	./scripts/gg-*.sh \
 	/tmp/scripts/gg-repo/scripts/
+# The lock each npm-delivered build tool's tree is installed from. The resolver
+# in gg-npm-tools.sh reads it beside itself, and install-gg-build-tools.sh runs
+# that resolver in this layer; a lock moving reinstalls the tool, so the
+# directory is part of this layer's cache key on purpose.
+COPY --chown=${USER_UID}:${USER_GID} \
+	./scripts/gg-npm-locks/ \
+	/tmp/scripts/gg-repo/scripts/gg-npm-locks/
 COPY --chown=${USER_UID}:${USER_GID} \
 	./rust-toolchain.toml \
 	/tmp/scripts/gg-repo/rust-toolchain.toml
